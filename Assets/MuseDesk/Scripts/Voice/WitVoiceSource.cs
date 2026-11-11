@@ -1,5 +1,8 @@
 using System;
 using UnityEngine;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
 using Oculus.Voice;
 using Meta.WitAi;
 using Meta.WitAi.Json;
@@ -51,6 +54,15 @@ namespace MuseDesk.Voice
         public void StartListening()
         {
             if (appVoice == null) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Mic is a dangerous permission on Quest; request on first use. The user re-triggers
+            // after granting (a one-time flow), so we return rather than listen without permission.
+            if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+            {
+                Permission.RequestUserPermission(Permission.Microphone);
+                return;
+            }
+#endif
             appVoice.Activate();
             ListeningChanged?.Invoke(true);
         }
