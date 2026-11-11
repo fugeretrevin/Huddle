@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/decision_response.schema.json",
+  "title": "Decision Response v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "action",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject",
+        "request_changes"
+      ]
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 200
+    },
+    "comment": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  },
+  "additionalProperties": false
+}

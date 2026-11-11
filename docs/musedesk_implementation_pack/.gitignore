@@ -1,0 +1,24 @@
+# secrets and backend state
+.env
+**/.env
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/data/*.sqlite3
+**/sandbox_workspaces/
+# Unity generated
+quest/Library/
+quest/Temp/
+quest/Obj/
+quest/Logs/
+quest/UserSettings/
+quest/.vs/
+quest/.idea/
+quest/Builds/
+quest/Build/
+# builds, archives, caches
+*.apk
+*.aab
+*.zip
+.DS_Store

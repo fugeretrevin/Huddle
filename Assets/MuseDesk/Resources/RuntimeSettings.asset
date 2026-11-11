@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f7ad6d8dce02c8469386ea0e6de649c, type: 3}
+  m_Name: RuntimeSettings
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Config.RuntimeSettings
+  apiBaseUrl: http://127.0.0.1:8765
+  webSocketBaseUrl: ws://127.0.0.1:8765
+  preferOfflineDemo: 1
+  connectTimeoutSeconds: 6
+  manualTrayDistance: 0.5
+  maxReachMeters: 0.65
+  showDiagnosticsOverlay: 1

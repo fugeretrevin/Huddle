@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/task_create.schema.json",
+  "title": "Task Create v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_template",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "task_template": {
+      "type": "string",
+      "enum": [
+        "auth_demo"
+      ]
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 200
+    }
+  },
+  "additionalProperties": false
+}

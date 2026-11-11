@@ -1,0 +1,52 @@
+# ───────────────────────── Unity ─────────────────────────
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/.vs/
+/.idea/
+/.vscode/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.booproj
+*.svd
+*.pidb
+*.unityproj
+*.apk
+*.aab
+*.unitypackage
+crashlytics-build.properties
+sysinfo.txt
+*.stackdump
+
+# Unity meta files for ignored folders are not needed
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# ───────────────────────── Backend (Python) ──────────────
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+*.pyc
+*.pyo
+**/data/*.sqlite3
+**/sandbox_workspaces/
+.env
+**/.env
+
+# ───────────────────────── Misc ──────────────────────────
+.DS_Store
+*.zip
+*.log
+
+# Pipeline/compile scratch
+TempAssembly*.dll

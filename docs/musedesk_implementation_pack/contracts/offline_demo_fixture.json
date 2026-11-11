@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "mode": "demo",
+  "source_mode": "demo",
+  "title": "Offline scripted demonstration \u2014 no PC code is modified",
+  "agents": [
+    {
+      "agent_id": "researcher",
+      "role": "Researcher",
+      "station": "research",
+      "initial_state": "idle"
+    },
+    {
+      "agent_id": "developer",
+      "role": "Developer",
+      "station": "development",
+      "initial_state": "idle"
+    },
+    {
+      "agent_id": "tester",
+      "role": "Tester",
+      "station": "testing",
+      "initial_state": "idle"
+    }
+  ],
+  "decision": {
+    "decision_id": "demo-auth-approval-1",
+    "title": "Choose authentication approach",
+    "summary": "Use OAuth rather than storing passwords?",
+    "rationale": "A managed identity flow avoids building and maintaining password storage for this prototype.",
+    "risk_level": "medium",
+    "priority": "blocking",
+    "allowed_actions": [
+      "approve",
+      "reject",
+      "request_changes"
+    ]
+  },
+  "question_answer": {
+    "question": "Why not store passwords?",
+    "answer": "Password storage requires additional security controls. OAuth is a reasonable first-prototype choice, but depends on an external identity provider."
+  },
+  "branches": {
+    "approve": {
+      "developer_state": "coding",
+      "result": "Simulated OAuth UI scaffold complete",
+      "tests_passed": 5
+    },
+    "reject": {
+      "developer_state": "waiting",
+      "result": "Simulated alternative proposed; no OAuth changes made"
+    },
+    "request_changes": {
+      "developer_state": "waiting",
+      "result": "Simulated revised proposal: email-link sign-in"
+    }
+  }
+}
