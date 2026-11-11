@@ -58,8 +58,8 @@ public static class PolishV2
         // white + outlined text for everything on the doc
         foreach (var tmp in doc.GetComponentsInChildren<TMP_Text>(true)) Readable(tmp);
 
-        // face the user (text reads from -Z, so point -Z at the user)
-        AddFace(doc, false);
+        // face the user (TMP reads from +Z, so point +Z at the user)
+        AddFace(doc, true);
 
         // group detail (body + answer) so it only shows when expanded
         if (panel != null && doc.transform.Find("Details") == null)
@@ -105,8 +105,8 @@ public static class PolishV2
                 Eye(head, "Eye_R", new Vector3(0.3f, 0.15f, 0.82f));
             }
 
-            // readable label faces the user (-Z toward user)
-            if (v.label != null) { Readable(v.label); AddFace(v.label.gameObject, false); }
+            // readable label faces the user (+Z toward user)
+            if (v.label != null) { Readable(v.label); AddFace(v.label.gameObject, true); }
 
             // agent faces the user with its +Z (where the eyes are)
             AddFace(v.gameObject, true);
@@ -129,10 +129,11 @@ public static class PolishV2
                 tmp.text = "!"; tmp.fontSize = 10f; tmp.alignment = TextAlignmentOptions.Center;
                 tmp.color = new Color(0.6f, 0.05f, 0.05f);
                 tmp.rectTransform.sizeDelta = new Vector2(4f, 5f);
-                AddFace(alert, false);
+                AddFace(alert, true);
                 v.alert = alert;
                 alert.SetActive(false);
             }
+            if (v.alert != null) AddFace(v.alert, true);
             sb.AppendLine($"{v.agentId}: eyes + label + alert");
         }
     }
@@ -173,7 +174,7 @@ public static class PolishV2
             tmp.text = "grab me"; tmp.fontSize = 5f; tmp.alignment = TextAlignmentOptions.Center;
             tmp.rectTransform.sizeDelta = new Vector2(12f, 4f);
             Readable(tmp);
-            AddFace(go, false);
+            AddFace(go, true);
         }
         sb.AppendLine("grabbable cube: bright + labeled + reachable");
     }
@@ -185,7 +186,7 @@ public static class PolishV2
             .FirstOrDefault(t => t.name == "DiagnosticsText")?.gameObject;
         if (diag == null) return;
         foreach (var tmp in diag.GetComponentsInChildren<TMP_Text>(true)) Readable(tmp);
-        AddFace(diag, false);
+        AddFace(diag, true);
         sb.AppendLine("diagnostics readable");
     }
 
@@ -193,27 +194,12 @@ public static class PolishV2
     static void Readable(TMP_Text t)
     {
         if (t == null) return;
-        // White + bold reads far better than black on passthrough; a dark backdrop quad
-        // behind floating text gives full contrast. (outlineWidth NREs on a fresh TMP.)
+        // White + bold reads far better than black on passthrough, with no occlusion risk.
         t.color = Color.white;
         t.fontStyle |= FontStyles.Bold;
-        Backdrop(t);
-    }
-
-    // A dark, double-sided backdrop a hair behind the glyphs so white text is readable on
-    // any real-world background. Quad is parented to the text and offset on both faces.
-    static void Backdrop(TMP_Text t)
-    {
-        if (t == null || t.transform.Find("Backdrop") != null) return;
-        var w = Mathf.Max(4f, t.rectTransform.sizeDelta.x) * 1.02f;
-        var h = Mathf.Max(3f, t.rectTransform.sizeDelta.y) * 1.02f;
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = "Backdrop";
-        go.transform.SetParent(t.transform, false);
-        go.transform.localPosition = new Vector3(0f, 0f, 0.2f);   // a hair behind the glyph plane
-        go.transform.localScale = new Vector3(w, h, 0.02f);
-        StripCollider(go);
-        Tint(go.GetComponent<Renderer>(), new Color(0.08f, 0.09f, 0.12f));
+        // Remove any backdrop a prior pass may have added (facing was uncertain; drop it).
+        var bd = t.transform.Find("Backdrop");
+        if (bd != null) UnityEngine.Object.DestroyImmediate(bd.gameObject);
     }
 
     static void MakeButton(GameObject src, Transform parent, string label, Vector3 localPos,
