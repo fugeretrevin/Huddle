@@ -54,6 +54,9 @@ TempAssembly*.dll
 # Diagnostic captures from the agent pipeline
 /Screenshots/
 
+# Claude Code session data + agent worktrees (never track these)
+/.claude/
+
 # Gradle/IL2CPP build intermediates
 /.utmp/
 
