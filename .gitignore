@@ -56,3 +56,6 @@ TempAssembly*.dll
 
 # Unity crash recovery
 /[Aa]ssets/_Recovery/
+
+# live backend state
+/backend/data/
