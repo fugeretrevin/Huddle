@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Config.RuntimeSettings
   apiBaseUrl: http://127.0.0.1:8765
   webSocketBaseUrl: ws://127.0.0.1:8765
-  preferOfflineDemo: 1
-  connectTimeoutSeconds: 6
+  preferOfflineDemo: 0
+  connectTimeoutSeconds: 5
   manualTrayDistance: 0.5
   maxReachMeters: 0.65
   showDiagnosticsOverlay: 1
