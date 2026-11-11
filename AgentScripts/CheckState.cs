@@ -1,10 +1,48 @@
+using System.Linq;
 using System.Text;
 using UnityEngine;
 using MuseDesk.Networking;
 using MuseDesk.DebugTools;
+using MuseDesk.Documents;
 
 public static class CheckState
 {
+    public static string DocState()
+    {
+        var sb = new StringBuilder();
+        var del = Object.FindAnyObjectByType<DocumentDeliveryController>();
+        if (del == null) return "no DocumentDeliveryController";
+        var doc = del.paperRoot;
+        sb.AppendLine($"doc active={doc != null && doc.activeInHierarchy}");
+        var panel = del.panel;
+        if (panel != null)
+        {
+            sb.AppendLine($"  title='{(panel.title ? panel.title.text : "")}'");
+            sb.AppendLine($"  summary='{(panel.summary ? panel.summary.text : "")}'");
+            sb.AppendLine($"  body='{(panel.body ? panel.body.text.Replace("\n", " | ") : "")}'");
+            sb.AppendLine($"  status='{(panel.status ? panel.status.text : "")}'");
+            sb.AppendLine($"  answer='{(panel.answer ? panel.answer.text : "")}'");
+            sb.AppendLine($"  actions active={(panel.actionsRoot ? panel.actionsRoot.activeSelf.ToString() : "n/a")}");
+        }
+        return sb.ToString();
+    }
+
+    public static string PanelApprove()
+    {
+        var del = Object.FindAnyObjectByType<DocumentDeliveryController>();
+        if (del == null) return "no DocumentDeliveryController";
+        del.OnApprove();
+        return "panel OnApprove called";
+    }
+
+    public static string PanelAsk()
+    {
+        var del = Object.FindAnyObjectByType<DocumentDeliveryController>();
+        if (del == null) return "no DocumentDeliveryController";
+        del.OnAskWhy();
+        return "panel OnAskWhy called";
+    }
+
     public static string Now()
     {
         var sb = new StringBuilder();

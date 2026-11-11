@@ -96,12 +96,36 @@ namespace MuseDesk.Networking
         }
 
         /// <summary>Approve the decision currently awaiting a human (e.g. from a hand-poked button).</summary>
-        public void ApprovePending()
+        public void ApprovePending() => RespondPending("approve");
+        public void RejectPending() => RespondPending("reject");
+        public void RequestChangesPending() => RespondPending("request_changes");
+
+        void RespondPending(string action)
         {
             if (!string.IsNullOrEmpty(PendingDecisionId))
-                Respond(PendingDecisionId, "approve", "Approved via foundation poke button");
+                Respond(PendingDecisionId, action, $"{action} via hand UI");
             else
-                Debug.Log("[MuseDesk] ApprovePending: no decision awaiting.");
+                Debug.Log($"[MuseDesk] {action}: no decision awaiting.");
+        }
+
+        /// <summary>Ask a contextual question about the pending decision; answer returned via callback.</summary>
+        public async void AskPending(string question, Action<string> onAnswer)
+        {
+            if (Gateway == null || string.IsNullOrEmpty(PendingDecisionId))
+            {
+                onAnswer?.Invoke("(no decision to ask about yet)");
+                return;
+            }
+            try
+            {
+                var ans = await Gateway.AskAsync("researcher", PendingDecisionId, question, _cts.Token);
+                onAnswer?.Invoke(ans?.Answer ?? "(no answer)");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MuseDesk] ask failed: {ex.Message}");
+                onAnswer?.Invoke("(couldn't reach the backend for an answer)");
+            }
         }
 
         void OnEvent(EventEnvelope e)
