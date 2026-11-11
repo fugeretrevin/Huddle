@@ -59,3 +59,9 @@ TempAssembly*.dll
 
 # live backend state
 /backend/data/
+
+# Voice: Wit.ai configuration holds a credential (client/server token) - never commit
+/Assets/MuseDesk/Voice/WitConfig_MuseDesk.asset
+/Assets/MuseDesk/Voice/WitConfig_MuseDesk.asset.meta
+/Assets/MuseDesk/Voice.meta
+/ProjectSettings/wit.config
