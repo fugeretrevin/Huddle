@@ -50,3 +50,6 @@ sysinfo.txt
 
 # Pipeline/compile scratch
 TempAssembly*.dll
+
+# Gradle/IL2CPP build intermediates
+/.utmp/
