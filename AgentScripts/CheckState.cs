@@ -4,9 +4,21 @@ using UnityEngine;
 using MuseDesk.Networking;
 using MuseDesk.DebugTools;
 using MuseDesk.Documents;
+using MuseDesk.Agents;
 
 public static class CheckState
 {
+    public static string MoveState()
+    {
+        var sb = new StringBuilder();
+        foreach (var m in Object.FindObjectsByType<AgentMovement>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            var v = m.GetComponent<AgentView>();
+            sb.AppendLine($"{(v ? v.agentId : m.name)}: atHome={m.AtHome} pos={m.transform.position}");
+        }
+        return sb.ToString();
+    }
+
     public static string DocState()
     {
         var sb = new StringBuilder();

@@ -26,24 +26,57 @@ namespace MuseDesk.Agents
 
         static readonly int ColorId = Shader.PropertyToID("_BaseColor");
 
+        enum Motion { Calm, Read, Type, Examine, Hop, Shake }
+
         string _state = AgentStates.Idle;
         float _bobAmp;
         float _bobSpeed;
+        Motion _motion = Motion.Calm;
         Vector3 _bobHome;
+        Quaternion _bobRot;
+        float _hopT = 99f;
         MaterialPropertyBlock _mpb;
 
         void Awake()
         {
             _mpb = new MaterialPropertyBlock();
-            if (bob != null) _bobHome = bob.localPosition;
+            if (bob != null) { _bobHome = bob.localPosition; _bobRot = bob.localRotation; }
             SetState(AgentStates.Idle, displayName);
         }
 
         void Update()
         {
             if (bob == null) return;
-            float y = Mathf.Sin(Time.time * _bobSpeed) * _bobAmp;
-            bob.localPosition = _bobHome + Vector3.up * y;
+            float t = Time.time * _bobSpeed;
+            Vector3 pos = _bobHome;
+            Quaternion rot = _bobRot;
+
+            switch (_motion)
+            {
+                case Motion.Read:    // gentle side-to-side sway
+                    rot = _bobRot * Quaternion.Euler(0f, Mathf.Sin(t) * 10f, 0f);
+                    pos += Vector3.up * Mathf.Abs(Mathf.Sin(t * 0.5f)) * _bobAmp;
+                    break;
+                case Motion.Type:    // fast small vertical taps
+                    pos += Vector3.up * Mathf.Abs(Mathf.Sin(t * 2f)) * _bobAmp;
+                    rot = _bobRot * Quaternion.Euler(Mathf.Sin(t * 2f) * 4f, 0f, 0f);
+                    break;
+                case Motion.Examine: // slow forward/back tilt
+                    rot = _bobRot * Quaternion.Euler(Mathf.Sin(t) * 12f, 0f, 0f);
+                    break;
+                case Motion.Hop:     // one-time celebratory hop then settle
+                    _hopT += Time.deltaTime;
+                    pos += Vector3.up * Mathf.Max(0f, Mathf.Sin(_hopT * 6f)) * (_hopT < 1.2f ? 0.02f : 0f);
+                    break;
+                case Motion.Shake:   // quick nervous shake
+                    pos += Vector3.right * Mathf.Sin(t * 8f) * _bobAmp;
+                    break;
+                default:             // Calm idle breathing
+                    pos += Vector3.up * Mathf.Sin(t) * _bobAmp;
+                    break;
+            }
+            bob.localPosition = pos;
+            bob.localRotation = rot;
         }
 
         public void SetState(string state, string progress = null)
@@ -58,6 +91,9 @@ namespace MuseDesk.Agents
             }
             _bobAmp = busy * baseBobHeight;
             _bobSpeed = baseBobSpeed * Mathf.Max(0.5f, busy);
+            var newMotion = MotionFor(_state);
+            if (newMotion == Motion.Hop && _motion != Motion.Hop) _hopT = 0f;
+            _motion = newMotion;
             if (label != null)
                 label.text = $"{displayName}\n<size=60%>{Pretty(_state)}</size>";
         }
@@ -74,6 +110,16 @@ namespace MuseDesk.Agents
             AgentStates.Complete    => (new Color(0.40f, 0.85f, 0.55f), 0.3f),
             AgentStates.Error       => (new Color(0.90f, 0.35f, 0.35f), 0.6f),
             _                       => (new Color(0.72f, 0.72f, 0.76f), 0.3f), // idle
+        };
+
+        static Motion MotionFor(string s) => s switch
+        {
+            AgentStates.Researching => Motion.Read,
+            AgentStates.Coding      => Motion.Type,
+            AgentStates.Testing     => Motion.Examine,
+            AgentStates.Complete    => Motion.Hop,
+            AgentStates.Error       => Motion.Shake,
+            _                       => Motion.Calm,
         };
 
         static string Pretty(string s) => string.IsNullOrEmpty(s) ? "" : s.Replace('_', ' ');
