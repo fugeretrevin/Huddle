@@ -26,6 +26,10 @@ namespace MuseDesk.Agents
 
         public bool AtHome { get; private set; } = true;
 
+        /// <summary>True whenever the agent is physically translating (walking out or home),
+        /// so the view can play a walk cycle instead of its idle/working motion.</summary>
+        public bool IsMoving => _moving;
+
         void Awake()
         {
             _parent = transform.parent;

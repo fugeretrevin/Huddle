@@ -2,32 +2,29 @@ using System.Linq;
 using System.Text;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using MuseDesk.Agents;
 
-/// <summary>Report the shader on each visible prop so we can spot a non-URP (magenta) material.</summary>
+/// <summary>Dump one agent's Bob hierarchy to confirm the arm rig.</summary>
 public static class InspectGrab
 {
     public static string Dump()
     {
         var scene = EditorSceneManager.GetActiveScene();
+        var view = scene.GetRootGameObjects()
+            .SelectMany(r => r.GetComponentsInChildren<AgentView>(true))
+            .FirstOrDefault(v => v.agentId == "researcher");
+        if (view == null) return "no researcher";
         var sb = new StringBuilder();
-        foreach (var r in scene.GetRootGameObjects()
-                     .SelectMany(ro => ro.GetComponentsInChildren<Renderer>(true)))
-        {
-            var mat = r.sharedMaterial;
-            string shader = mat == null ? "NULL MATERIAL" : (mat.shader == null ? "NULL SHADER" : mat.shader.name);
-            // Only show the interesting props to keep it short.
-            string n = r.gameObject.name;
-            if (n.Contains("Grabbable") || n.Contains("Card") || n.Contains("Back") ||
-                n.Contains("Agent") || n.Contains("Body") || n.Contains("Head") || n.Contains("Eye"))
-                sb.Append($"{Path(r.transform)}  ->  {shader}\n");
-        }
+        sb.Append($"movement={view.movement != null} armL={(view.armL ? view.armL.name : "null")} armR={(view.armR ? view.armR.name : "null")}\n");
+        Walk(view.bob, 0, sb);
         return sb.ToString();
     }
 
-    static string Path(Transform t)
+    static void Walk(Transform t, int d, StringBuilder sb)
     {
-        var s = t.name;
-        while (t.parent != null) { t = t.parent; s = t.name + "/" + s; }
-        return s;
+        if (t == null) return;
+        sb.Append(new string(' ', d * 2)).Append(t.name)
+          .Append($"  lp={t.localPosition} ls={t.localScale}\n");
+        foreach (Transform c in t) Walk(c, d + 1, sb);
     }
 }

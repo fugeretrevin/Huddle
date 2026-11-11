@@ -24,6 +24,15 @@ namespace MuseDesk.Agents
 
         public void SetAlert(bool on) { if (alert) alert.SetActive(on); }
 
+        [Header("Walk")]
+        [Tooltip("Set by the builder; drives a walk cycle (bounce + arm swing) while the agent translates.")]
+        public AgentMovement movement;
+        public Transform armL;
+        public Transform armR;
+        public float walkSpeed = 9f;
+        public float walkBounce = 0.014f;
+        public float armSwingDeg = 38f;
+
         [Header("Motion")]
         public float baseBobHeight = 0.004f;
         public float baseBobSpeed = 2f;
@@ -38,6 +47,7 @@ namespace MuseDesk.Agents
         Motion _motion = Motion.Calm;
         Vector3 _bobHome;
         Quaternion _bobRot;
+        Quaternion _armLHome = Quaternion.identity, _armRHome = Quaternion.identity;
         float _hopT = 99f;
         MaterialPropertyBlock _mpb;
 
@@ -45,6 +55,8 @@ namespace MuseDesk.Agents
         {
             _mpb = new MaterialPropertyBlock();
             if (bob != null) { _bobHome = bob.localPosition; _bobRot = bob.localRotation; }
+            if (armL != null) _armLHome = armL.localRotation;
+            if (armR != null) _armRHome = armR.localRotation;
             if (alert != null) alert.SetActive(false);
             SetState(AgentStates.Idle, displayName);
         }
@@ -52,6 +64,12 @@ namespace MuseDesk.Agents
         void Update()
         {
             if (bob == null) return;
+
+            // Walking overrides idle/working motion: a little bounce + opposed arm swing so the
+            // agent reads as a character strolling up, not a prop sliding across the desk.
+            if (movement != null && movement.IsMoving) { Walk(); return; }
+            RestArms();
+
             float t = Time.time * _bobSpeed;
             Vector3 pos = _bobHome;
             Quaternion rot = _bobRot;
@@ -82,6 +100,23 @@ namespace MuseDesk.Agents
             }
             bob.localPosition = pos;
             bob.localRotation = rot;
+        }
+
+        void Walk()
+        {
+            float t = Time.time * walkSpeed;
+            // Two bounces per stride, with a tiny forward-lean into the step.
+            bob.localPosition = _bobHome + Vector3.up * Mathf.Abs(Mathf.Sin(t)) * walkBounce;
+            bob.localRotation = _bobRot * Quaternion.Euler(7f, 0f, Mathf.Sin(t) * 3f);
+            float swing = Mathf.Sin(t) * armSwingDeg;
+            if (armL != null) armL.localRotation = _armLHome * Quaternion.Euler(swing, 0f, 0f);
+            if (armR != null) armR.localRotation = _armRHome * Quaternion.Euler(-swing, 0f, 0f);
+        }
+
+        void RestArms()
+        {
+            if (armL != null) armL.localRotation = Quaternion.Slerp(armL.localRotation, _armLHome, Time.deltaTime * 8f);
+            if (armR != null) armR.localRotation = Quaternion.Slerp(armR.localRotation, _armRHome, Time.deltaTime * 8f);
         }
 
         public void SetState(string state, string progress = null)
