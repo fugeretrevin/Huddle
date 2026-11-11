@@ -24,6 +24,10 @@ namespace MuseDesk.Documents
 
         [Header("Action controls (wired by builder)")]
         public GameObject actionsRoot;   // hidden once a response is pending
+        [Tooltip("Extra detail (rationale/alternatives/risk/answer) shown when the paper is grabbed/expanded.")]
+        public GameObject detailsRoot;   // hidden until Expand()
+
+        public bool IsExpanded { get; private set; }
 
         public void Bind(DecisionContent c, string sourceMode)
         {
@@ -49,7 +53,22 @@ namespace MuseDesk.Documents
             if (status) status.text = "";
             if (answer) answer.text = "";
             SetActionsVisible(true);
+            Collapse();
         }
+
+        public void Expand()
+        {
+            IsExpanded = true;
+            if (detailsRoot) detailsRoot.SetActive(true);
+        }
+
+        public void Collapse()
+        {
+            IsExpanded = false;
+            if (detailsRoot) detailsRoot.SetActive(false);
+        }
+
+        public void ToggleExpand() { if (IsExpanded) Collapse(); else Expand(); }
 
         public void SetResponding()
         {

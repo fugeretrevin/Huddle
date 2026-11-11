@@ -19,6 +19,10 @@ namespace MuseDesk.Agents
         public Renderer bodyRenderer;
         public TMP_Text label;
         public Transform bob;          // child that bobs while working
+        [Tooltip("Exclamation-point indicator shown when this agent needs a decision.")]
+        public GameObject alert;
+
+        public void SetAlert(bool on) { if (alert) alert.SetActive(on); }
 
         [Header("Motion")]
         public float baseBobHeight = 0.004f;
@@ -41,6 +45,7 @@ namespace MuseDesk.Agents
         {
             _mpb = new MaterialPropertyBlock();
             if (bob != null) { _bobHome = bob.localPosition; _bobRot = bob.localRotation; }
+            if (alert != null) alert.SetActive(false);
             SetState(AgentStates.Idle, displayName);
         }
 

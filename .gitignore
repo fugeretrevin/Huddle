@@ -53,3 +53,6 @@ TempAssembly*.dll
 
 # Gradle/IL2CPP build intermediates
 /.utmp/
+
+# Unity crash recovery
+/[Aa]ssets/_Recovery/

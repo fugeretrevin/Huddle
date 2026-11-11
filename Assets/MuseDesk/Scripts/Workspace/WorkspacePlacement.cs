@@ -33,6 +33,15 @@ namespace MuseDesk.Workspace
         [Tooltip("Vertical offset above a detected table surface, metres.")]
         [Range(0f, 0.08f)] public float tableClearance = 0.02f;
 
+        [Header("Off-desk mode (MAIN): agents sit to the side/low and walk up to the user")]
+        public bool offDeskMode = true;
+        [Tooltip("Metres to the user's side (+ = right) for the off-desk station cluster.")]
+        public float offDeskSide = 0.75f;
+        [Tooltip("Metres in front of the user for the station cluster.")]
+        public float offDeskDepth = 0.1f;
+        [Tooltip("Metres below eye level (approximates desk-side / floor-adjacent).")]
+        public float offDeskDrop = 0.55f;
+
         public PlacementState State { get; private set; } = PlacementState.WaitingForScene;
         public Transform WorkspaceRootTransform => workspaceRoot;
 
@@ -52,9 +61,63 @@ namespace MuseDesk.Workspace
 
         void OnEnable()
         {
+            if (offDeskMode)
+            {
+                StartCoroutine(PlaceOffDeskRoutine());
+                return;
+            }
             if (MRUK.Instance != null)
                 MRUK.Instance.RegisterSceneLoadedCallback(OnSceneLoaded);
             StartCoroutine(SceneLoadWatchdog());
+        }
+
+        /// <summary>
+        /// Off-desk main mode: park the station cluster to the user's side and a bit low
+        /// (desk-side / floor-adjacent), facing the user, once tracking has settled. Agents
+        /// then walk up to the user to deliver. No table dependency.
+        /// </summary>
+        IEnumerator PlaceOffDeskRoutine()
+        {
+            // wait for valid head tracking
+            float t = 0f;
+            while (t < 1.0f)
+            {
+                t += Time.deltaTime;
+                EnsureHead();
+                if (_head != null && _head.position.sqrMagnitude > 0.0004f) break;
+                yield return null;
+            }
+            EnsureHead();
+            if (workspaceRoot == null) yield break;
+
+            Vector3 pos = OffDeskPosition();
+            workspaceRoot.position = pos;
+            workspaceRoot.rotation = FacingUserYaw(pos);
+            workspaceRoot.gameObject.SetActive(true);
+            if (placementGuide != null) placementGuide.SetActive(false);
+            _sceneHandled = true;
+            State = PlacementState.PlacedManual;
+            Placed?.Invoke(State);
+            StartCoroutine(RefaceUser());
+            Debug.Log("[MuseDesk] Workspace placed off-desk (side/low).");
+        }
+
+        Vector3 OffDeskPosition()
+        {
+            EnsureHead();
+            if (_head == null) return new Vector3(offDeskSide, 0.5f, offDeskDepth);
+            Vector3 fwd = _head.forward; fwd.y = 0f;
+            if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.forward;
+            fwd.Normalize();
+            Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+            return _head.position + right * offDeskSide + fwd * offDeskDepth + Vector3.down * offDeskDrop;
+        }
+
+        void EnsureHead()
+        {
+            if (_head != null) return;
+            var cam = Camera.main;
+            _head = cam != null ? cam.transform : null;
         }
 
         void OnDisable()
@@ -123,7 +186,29 @@ namespace MuseDesk.Workspace
             if (placementGuide != null) placementGuide.SetActive(false);
             State = PlacementState.PlacedFromTable;
             Placed?.Invoke(State);
+            StartCoroutine(RefaceUser());
             Debug.Log("[MuseDesk] Workspace placed on detected table.");
+        }
+
+        /// <summary>
+        /// Re-orients the workspace toward the user for a couple of seconds after placement.
+        /// Head tracking is often not settled at placement time, so the first FacingUserYaw can
+        /// point the diorama the wrong way; this converges it once tracking is live, then locks.
+        /// </summary>
+        IEnumerator RefaceUser()
+        {
+            float t = 0f;
+            while (t < 2.5f)
+            {
+                t += Time.deltaTime;
+                if (workspaceRoot != null)
+                {
+                    var target = FacingUserYaw(workspaceRoot.position);
+                    workspaceRoot.rotation = Quaternion.Slerp(workspaceRoot.rotation, target,
+                        Time.deltaTime * 8f);
+                }
+                yield return null;
+            }
         }
 
         // ─────────────────────── manual fallback ───────────────────────
@@ -153,6 +238,7 @@ namespace MuseDesk.Workspace
             if (placementGuide != null) placementGuide.SetActive(false);
             State = PlacementState.PlacedManual;
             Placed?.Invoke(State);
+            StartCoroutine(RefaceUser());
             Debug.Log("[MuseDesk] Manual workspace placement confirmed.");
         }
 

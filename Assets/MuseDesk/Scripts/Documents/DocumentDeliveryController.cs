@@ -75,6 +75,9 @@ namespace MuseDesk.Documents
             _currentDecisionId = null;
         }
 
+        /// <summary>Called when the user grabs or pokes the paper — reveal the full detail.</summary>
+        public void OnExpand() { if (panel) panel.Expand(); }
+
         // ── button hooks (poke buttons call these) ──
         public void OnApprove()        { if (panel) panel.SetResponding(); controller?.ApprovePending(); }
         public void OnReject()         { if (panel) panel.SetResponding(); controller?.RejectPending(); }

@@ -42,13 +42,16 @@ namespace MuseDesk.Agents
 
         void OnDecisionRequested(string decisionId, MuseDesk.Models.EventEnvelope e)
         {
-            if (_researcherMove != null && deliveryAnchor != null)
-                _researcherMove.DeliverTo(deliveryAnchor);
+            // Walk toward the user (reachable), not to a fixed desk anchor that may sit
+            // on the far/monitor side after orientation.
+            if (_researcherMove != null) _researcherMove.DeliverInFrontOfUser(0.4f);
+            if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(true);
         }
 
         void OnDecisionResolved(string decisionId, string state)
         {
             if (_researcherMove != null) _researcherMove.ReturnHome();
+            if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(false);
         }
 
         void Update()

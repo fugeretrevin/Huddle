@@ -17,6 +17,8 @@ namespace MuseDesk.Agents
         Vector3 _homeLocal;
         Transform _parent;
         Transform _dest;
+        Vector3 _destPos;
+        bool _useDestPos;
         bool _moving, _returning;
         float _t;
         Action _onArrived;
@@ -33,7 +35,22 @@ namespace MuseDesk.Agents
         public void DeliverTo(Transform destination, Action onArrived = null)
         {
             if (destination == null) return;
-            _dest = destination; _returning = false; _onArrived = onArrived;
+            _dest = destination; _useDestPos = false; _returning = false; _onArrived = onArrived;
+            _startWorld = transform.position; _t = 0f; _moving = true; AtHome = false;
+        }
+
+        /// <summary>Walk to a reachable point in front of the user (stays at the agent's height).</summary>
+        public void DeliverInFrontOfUser(float distance = 0.4f, float dropBelowEye = 0.28f)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            var head = cam.transform;
+            Vector3 fwd = head.forward; fwd.y = 0f;
+            if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.forward;
+            fwd.Normalize();
+            Vector3 pos = head.position + fwd * distance + Vector3.down * dropBelowEye;
+            pos.y = transform.position.y;   // keep the walk on the desk plane
+            _destPos = pos; _useDestPos = true; _returning = false; _onArrived = null;
             _startWorld = transform.position; _t = 0f; _moving = true; AtHome = false;
         }
 
@@ -51,7 +68,7 @@ namespace MuseDesk.Agents
 
             Vector3 targetWorld = _returning && _parent != null
                 ? _parent.TransformPoint(_homeLocal)
-                : (_dest != null ? _dest.position : transform.position);
+                : (_useDestPos ? _destPos : (_dest != null ? _dest.position : transform.position));
 
             Vector3 flat = Vector3.Lerp(_startWorld, targetWorld, k);
             flat.y += Mathf.Abs(Mathf.Sin(_t * Mathf.PI * walkBobSpeed)) * walkBobHeight;
