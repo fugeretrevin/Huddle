@@ -1,0 +1,61 @@
+# P2-06 — Interruption policy and focus inbox
+
+**Owner boundary:** FocusService + Unity inbox  
+**Priority:** Optional before release  
+**Dependencies:** P2-00  
+**Reference:** `MASTER_PHASE2_IMPLEMENTATION.md` and frozen `contracts/phase2/`.
+
+## Goal
+
+Focus state endpoint, digest aggregation from persisted events, nonurgent queue, accessibility modes. This is an implementation assignment, not permission to change Phase 1 behavior, add unreviewed packages, or bypass the approval gate.
+
+## Preflight
+
+1. Read original `AGENTS.md` plus `AGENTS_PHASE2.md`; inspect the real repository and feature versions.
+2. Confirm relevant Phase 1 services compile and existing tests pass; do not assume specifications perfectly match current code.
+3. Identify your owned files; request an integration owner for changes to main scene, package manifest or shared v2 schema.
+4. Build against P2-00's single authoritative DTOs and event names; log any proposed incompatibility before coding.
+
+## Implementation deliverables
+
+- Implement focus state endpoint, digest aggregation from persisted events, nonurgent queue, accessibility modes.
+- Write automated tests for the happy path, one failure, a duplicate/replay event, and serialization of DTOs.
+- Implement a scripted-demo equivalent behind `source_mode=demo`, with truthful visual labels and same UI path.
+- Keep feature behind its `p2_...` flag and provide integration wiring notes (prefab/component name and intended scene parent).
+- Compile/check in the actual project, and document Quest manual steps. If you cannot test on Quest, report that explicitly.
+
+## Exit criterion
+
+Focus suppresses nonurgent walkups without losing blocking/critical decisions; reconnect restores queue.
+
+## Fault injection
+
+- Trigger session reconnect immediately after command or event; expected result: no extra tool execution or duplicate UI object.
+- Try invalid/missing payload fields; expected result: validation error and safe fallback, not crash.
+- Turn off network or switch to scripted demo; expected result: preserved interactive affordance and truthful source label.
+- Enable reduced-motion; expected result: functionality remains accessible without relying on animation completion.
+
+## Do not do
+
+- Never permit a Unity collider/animation handler to modify authoritative task or decision state directly.
+- Never expose workstation absolute paths, secrets, raw logs or room meshes to the headset.
+- Never declare acceptance based on screenshots alone; backend task ID and tests must confirm the corresponding state.
+- Never overwrite the root scene, original Phase 1 prefabs, or v1 contract without approved integration plan.
+
+## Required PR handoff
+
+Report: files changed, exact command(s) to run, test results, known limitations, source mode behavior, schema/API changes, approval safety, and a 30-second Quest test plan.
+
+## Feature-specific step-by-step plan
+
+### Ordered implementation checklist
+
+1. Define server `FocusPolicy` with `normal|focus|do_not_disturb`, expiry, revision, user preferences and quiet event severities. Persist policy in session scope and expose idempotent change route.
+2. Map events to severity `routine|inbox|blocking|critical`. In focus, queue low-priority visual notices while preserving actual events and task execution. Critical actions remain explicitly visible/accessible and never auto-approved.
+3. Store inbox items by canonical event IDs to deduplicate reconnect/replay, and create deterministic digest at session/focus end (counts, task IDs, artifacts, failures).
+4. Unity adds a hands-first focus toggle with 15/30/60 minute and until-off options, quiet inbox stack, event count and `Review now` action; add reduced-motion/quiet audio presentation.
+5. Ensure DemoGatewayV2 models focus expiry/reconnect deterministically without claiming live work.
+
+### Acceptance detail
+
+Two nonurgent completion events during focus produce two inbox records and zero approach animations. Pending blocking decision remains accessible. After reboot and reconnect, focus policy and inbox match server snapshot, with no duplicates.

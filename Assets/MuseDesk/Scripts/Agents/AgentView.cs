@@ -68,11 +68,14 @@ namespace MuseDesk.Agents
             // Walking overrides idle/working motion: a little bounce + opposed arm swing so the
             // agent reads as a character strolling up, not a prop sliding across the desk.
             if (movement != null && movement.IsMoving) { Walk(); return; }
-            RestArms();
 
             float t = Time.time * _bobSpeed;
             Vector3 pos = _bobHome;
             Quaternion rot = _bobRot;
+
+            // Keep the hands alive even while standing: every state gets a little arm motion so
+            // the agents never look like frozen props. Walking still overrides this (above).
+            IdleArms(Time.time);
 
             switch (_motion)
             {
@@ -117,6 +120,41 @@ namespace MuseDesk.Agents
         {
             if (armL != null) armL.localRotation = Quaternion.Slerp(armL.localRotation, _armLHome, Time.deltaTime * 8f);
             if (armR != null) armR.localRotation = Quaternion.Slerp(armR.localRotation, _armRHome, Time.deltaTime * 8f);
+        }
+
+        // Subtle, always-on hand/arm life keyed to what the agent is "doing". Small angles so it
+        // reads as breathing/fidgeting, not flailing. Opposed on left/right for a natural look.
+        void IdleArms(float time)
+        {
+            if (armL == null && armR == null) return;
+            float a, b;   // degrees for L and R
+            switch (_motion)
+            {
+                case Motion.Type:     // quick alternating taps, like working a keyboard
+                    a = (Mathf.Sin(time * 11f) * 0.5f + 0.5f) * 22f;
+                    b = (Mathf.Sin(time * 11f + Mathf.PI) * 0.5f + 0.5f) * 22f;
+                    break;
+                case Motion.Read:     // slow page-holding sway
+                    a = Mathf.Sin(time * 1.6f) * 8f + 6f;
+                    b = Mathf.Sin(time * 1.6f + 0.6f) * 8f + 6f;
+                    break;
+                case Motion.Examine:  // one hand raised, inspecting
+                    a = 30f + Mathf.Sin(time * 2f) * 6f;
+                    b = Mathf.Sin(time * 2f) * 5f;
+                    break;
+                case Motion.Shake:    // agitated
+                    a = Mathf.Sin(time * 9f) * 16f;
+                    b = Mathf.Sin(time * 9f + 0.3f) * 16f;
+                    break;
+                default:              // calm breathing fidget
+                    a = Mathf.Sin(time * 1.3f) * 6f;
+                    b = Mathf.Sin(time * 1.3f + Mathf.PI) * 6f;
+                    break;
+            }
+            if (armL != null)
+                armL.localRotation = Quaternion.Slerp(armL.localRotation, _armLHome * Quaternion.Euler(a, 0f, 0f), Time.deltaTime * 6f);
+            if (armR != null)
+                armR.localRotation = Quaternion.Slerp(armR.localRotation, _armRHome * Quaternion.Euler(b, 0f, 0f), Time.deltaTime * 6f);
         }
 
         public void SetState(string state, string progress = null)

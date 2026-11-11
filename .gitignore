@@ -51,6 +51,9 @@ sysinfo.txt
 # Pipeline/compile scratch
 TempAssembly*.dll
 
+# Diagnostic captures from the agent pipeline
+/Screenshots/
+
 # Gradle/IL2CPP build intermediates
 /.utmp/
 

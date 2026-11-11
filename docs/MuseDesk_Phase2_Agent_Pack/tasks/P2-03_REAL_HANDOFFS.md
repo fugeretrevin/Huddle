@@ -1,0 +1,61 @@
+# P2-03 — Typed collaboration and courier visualization
+
+**Owner boundary:** HandoffService + Unity courier  
+**Priority:** Core  
+**Dependencies:** P2-00, P2-01, P2-02  
+**Reference:** `MASTER_PHASE2_IMPLEMENTATION.md` and frozen `contracts/phase2/`.
+
+## Goal
+
+Exactly-once handoff storage, dependency validation, typed visual cues and historical timeline. This is an implementation assignment, not permission to change Phase 1 behavior, add unreviewed packages, or bypass the approval gate.
+
+## Preflight
+
+1. Read original `AGENTS.md` plus `AGENTS_PHASE2.md`; inspect the real repository and feature versions.
+2. Confirm relevant Phase 1 services compile and existing tests pass; do not assume specifications perfectly match current code.
+3. Identify your owned files; request an integration owner for changes to main scene, package manifest or shared v2 schema.
+4. Build against P2-00's single authoritative DTOs and event names; log any proposed incompatibility before coding.
+
+## Implementation deliverables
+
+- Implement exactly-once handoff storage, dependency validation, typed visual cues and historical timeline.
+- Write automated tests for the happy path, one failure, a duplicate/replay event, and serialization of DTOs.
+- Implement a scripted-demo equivalent behind `source_mode=demo`, with truthful visual labels and same UI path.
+- Keep feature behind its `p2_...` flag and provide integration wiring notes (prefab/component name and intended scene parent).
+- Compile/check in the actual project, and document Quest manual steps. If you cannot test on Quest, report that explicitly.
+
+## Exit criterion
+
+Research blueprint unlocks Developer only after proper approval; courier animation can be skipped without changing execution.
+
+## Fault injection
+
+- Trigger session reconnect immediately after command or event; expected result: no extra tool execution or duplicate UI object.
+- Try invalid/missing payload fields; expected result: validation error and safe fallback, not crash.
+- Turn off network or switch to scripted demo; expected result: preserved interactive affordance and truthful source label.
+- Enable reduced-motion; expected result: functionality remains accessible without relying on animation completion.
+
+## Do not do
+
+- Never permit a Unity collider/animation handler to modify authoritative task or decision state directly.
+- Never expose workstation absolute paths, secrets, raw logs or room meshes to the headset.
+- Never declare acceptance based on screenshots alone; backend task ID and tests must confirm the corresponding state.
+- Never overwrite the root scene, original Phase 1 prefabs, or v1 contract without approved integration plan.
+
+## Required PR handoff
+
+Report: files changed, exact command(s) to run, test results, known limitations, source mode behavior, schema/API changes, approval safety, and a 30-second Quest test plan.
+
+## Feature-specific step-by-step plan
+
+### Ordered implementation checklist
+
+1. Create normalized `Handoff` storage with unique ID, source agent, destination agent, target task, artifact, kind, event seq and state. Only worker orchestration can authoritatively create a handoff.
+2. Validate origin artifact existence, target role and dependency edge; prevent duplicate handoff records when a job retries; never permit a handoff to override pending approvals.
+3. Add `handoff.created`, `handoff.received`, `handoff.failed` v2 projection and make canonical task state available independently of visual delivery.
+4. Implement `HandoffPresenter`: bounded desk-relative waypoints, courier prop pool, one animation per handoff ID, skip/reduced-motion mode, `SnapshotReconcile()` that drops obsolete or duplicate visual cues.
+5. Implement at least Researcher→Developer blueprint, Developer→Tester test request and Tester→Developer failed-test note in the fixture.
+
+### Acceptance detail
+
+A handoff emitted while Quest is asleep must still be in history and have its effect in backend; scene animation may be skipped. An invalid source or duplicate ID must never start two worker jobs.

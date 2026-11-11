@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     model_provider: str | None = None
     provider_api_key: str | None = None
 
+    # ── Phase 2 feature flags (default OFF in live builds; enabled per-fixture once
+    # validated). The /v2 API surface is always mounted and harmless; these flags are
+    # read by the client/integration layer to gate each visual feature.
+    p2_board: bool = False
+    p2_artifacts: bool = False
+    p2_handoffs: bool = False
+    p2_factory: bool = False
+    p2_focus: bool = False
+    p2_room: bool = False
+    p2_diagrams: bool = False
+
 
 _settings: Settings | None = None
 

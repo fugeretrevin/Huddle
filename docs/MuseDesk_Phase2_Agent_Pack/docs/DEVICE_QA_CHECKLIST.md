@@ -1,0 +1,25 @@
+# Quest 3 hands-on Phase 2 QA checklist
+
+- [ ] Clean cold launch in passthrough, no crashes, source mode obvious.
+- [ ] One XR rig; hands recognized; no controller required.
+- [ ] Workspace appears on a reachable desk or manual placement fallback.
+- [ ] All station labels visible and do not block the real monitor.
+- [ ] Grab task card: stable, no jitter severe enough to prevent drop.
+- [ ] Drop card into valid work zone -> Pending -> canonical Assigned.
+- [ ] Drop outside work zone -> cancel; no backend request.
+- [ ] Unassignable card shows reason, doesn't trigger tool action.
+- [ ] Real approval paper still works and cannot be resolved twice.
+- [ ] Real researcher/developer/tester handoff animates once per ID.
+- [ ] Background/sleep the app during courier animation; state restored on return.
+- [ ] Expanded live diff shows sample repository changes and safe sanitized paths.
+- [ ] Failed test report says failed and machine illuminates red, never green.
+- [ ] Corrected successful test report illuminates output shelf only after actual result.
+- [ ] Focus ON: nonurgent messages go to inbox, not animated walkups.
+- [ ] Blocking/critical decision still discoverable in focus.
+- [ ] Diagram node evidence link opens appropriate artifact; unknown graph rejected.
+- [ ] Room permission denied: manual workspace placement works.
+- [ ] Lose live connection: clear network state, no fabricated completion.
+- [ ] With no network: SCRIPTED DEMO remains fully interactive and clearly labeled.
+- [ ] Recenter/resize and reduced-motion toggles work from seated position.
+- [ ] Reconnect: no duplicate task, handoff, document, or inbox entry.
+- [ ] Profile on headset, target interactive 72 FPS, report measured CPU/GPU frame times.

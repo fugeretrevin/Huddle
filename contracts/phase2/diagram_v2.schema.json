@@ -1,0 +1,105 @@
+{
+  "title": "Phase 2 structured diagram",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "diagram_id",
+    "template",
+    "source_mode",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "diagram_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "template": {
+      "enum": [
+        "auth_flow",
+        "task_dependency_graph",
+        "module_dependency_graph"
+      ]
+    },
+    "source_mode": {
+      "enum": [
+        "live",
+        "demo"
+      ]
+    },
+    "nodes": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "icon"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 36
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "icon": {
+            "enum": [
+              "file",
+              "code",
+              "database",
+              "user",
+              "shield",
+              "test",
+              "service",
+              "queue"
+            ]
+          },
+          "evidence_ref": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 18,
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "kind"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "data_flow",
+              "depends_on",
+              "calls",
+              "tests"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase2/diagram_v2.schema.json"
+}

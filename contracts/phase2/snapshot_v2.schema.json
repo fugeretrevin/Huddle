@@ -1,0 +1,147 @@
+{
+  "title": "Phase 2 snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "last_seq",
+    "source_mode",
+    "tasks",
+    "handoffs",
+    "artifacts",
+    "focus"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "last_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_mode": {
+      "enum": [
+        "live",
+        "demo"
+      ]
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "title",
+          "task_state",
+          "agent_id",
+          "priority",
+          "revision",
+          "dependencies",
+          "source_mode"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "task_state": {
+            "enum": [
+              "queued",
+              "running",
+              "awaiting_approval",
+              "blocked",
+              "pause_requested",
+              "paused",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_mode": {
+            "enum": [
+              "live",
+              "demo"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "handoffs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "focus": {
+      "type": "object",
+      "required": [
+        "mode",
+        "revision"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "normal",
+            "focus",
+            "do_not_disturb"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "until": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "inbox": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase2/snapshot_v2.schema.json"
+}

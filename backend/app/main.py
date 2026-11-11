@@ -41,6 +41,9 @@ from .models import (
 )
 from .orchestrator import Orchestrator
 from .live_orchestrator import LiveOrchestrator
+from .phase2.events import Phase2EventBus
+from .phase2.routes import install_phase2_exception_handlers, register_phase2_routes
+from .phase2.store import Phase2Store
 from .settings import Settings, get_settings
 from .storage import Storage
 
@@ -70,10 +73,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         orchestrator = (LiveOrchestrator(storage, bus, settings)
                         if settings.producer == "live"
                         else Orchestrator(storage, bus, settings))
+        phase2_store = Phase2Store(storage)
+        phase2_bus = Phase2EventBus(phase2_store)
         app.state.settings = settings
         app.state.storage = storage
         app.state.bus = bus
         app.state.orchestrator = orchestrator
+        app.state.phase2_store = phase2_store
+        app.state.phase2_bus = phase2_bus
         try:
             yield
         finally:
@@ -300,6 +307,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=exc.status_code, content=detail)
         return JSONResponse(status_code=exc.status_code,
                            content={"error_code": "INVALID_REQUEST", "user_message": str(detail)})
+
+    # ─────────────────────── Phase 2 (additive /v2 surface) ───────────────────────
+    register_phase2_routes(app)
+    install_phase2_exception_handlers(app)
 
     return app
 

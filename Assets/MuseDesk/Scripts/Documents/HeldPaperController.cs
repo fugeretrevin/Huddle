@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using UnityEngine;
 using MuseDesk.Workspace;
@@ -24,21 +25,81 @@ namespace MuseDesk.Documents
         [Tooltip("Re-enable yaw billboard toward the user after the paper is released.")]
         public bool reFaceOnRelease = true;
 
+        [Header("Agent handoff")]
+        [Tooltip("If set, the paper is carried (small) in this agent hand point until the user takes it.")]
+        public Transform agentHoldPoint;
+        [Tooltip("Scale of the paper while the agent holds it out (relative to full).")]
+        public float heldScale = 0.42f;
+        [Tooltip("Local rotation while held by the agent (face the offered side toward the user).")]
+        public Vector3 heldLocalEuler = new Vector3(0f, 0f, 0f);
+        [Tooltip("Seconds to expand up to full size when taken.")]
+        public float expandSeconds = 0.4f;
+
+        [Tooltip("Content (badge/title/text/buttons/details) hidden while the agent holds the blank " +
+                 "paper, revealed when the user takes it.")]
+        public GameObject[] hideWhileHeld;
+
         PropertyInfo _selCount;
         bool _held;
         bool _expandedWhileHeld;
+        bool _taken;
+        bool _scaleLocked;
+        Vector3 _fullScale = Vector3.one;
+        bool _capturedScale;
+
+        void Awake()
+        {
+            if (!_capturedScale) { _fullScale = transform.localScale; _capturedScale = true; }
+        }
 
         void OnEnable()
         {
-            // Fresh decision: start collapsed, facing the user, and placed normally.
+            // Fresh decision: start collapsed.
             _held = false;
             _expandedWhileHeld = false;
-            if (face) face.enabled = true;
-            if (placer) placer.enabled = true;
+            _taken = false;
+            _scaleLocked = false;
+            if (agentHoldPoint != null)
+            {
+                // Carried in the agent's hand: a small blank paper (no content/buttons), parented,
+                // offered toward the user at an angle; no billboard/placer until taken.
+                transform.SetParent(agentHoldPoint, false);
+                transform.localPosition = Vector3.zero;
+                transform.localRotation = Quaternion.Euler(heldLocalEuler);
+                transform.localScale = _fullScale * heldScale;
+                if (face) face.enabled = false;
+                if (placer) placer.enabled = false;
+                SetContent(false);
+            }
+            else
+            {
+                if (face) face.enabled = true;
+                if (placer) placer.enabled = true;
+                SetContent(true);
+            }
         }
+
+        void SetContent(bool on)
+        {
+            if (hideWhileHeld == null) return;
+            foreach (var go in hideWhileHeld) if (go != null) go.SetActive(on);
+        }
+
+        void LateUpdate()
+        {
+            // Once fully taken, keep it at full size so nothing shrinks it back.
+            if (_scaleLocked) transform.localScale = _fullScale;
+        }
+
+        bool _loggedOnce;
 
         void Update()
         {
+            if (!_loggedOnce)
+            {
+                _loggedOnce = true;
+                Debug.Log($"MDGRAB HeldPaperController wired: grabbable={(grabbable != null ? grabbable.GetType().Name : "NULL")} face={(face != null)} placer={(placer != null)} delivery={(delivery != null)}");
+            }
             if (grabbable == null) return;
             if (_selCount == null)
             {
@@ -58,6 +119,17 @@ namespace MuseDesk.Documents
 
         void OnGrabbed()
         {
+            Debug.Log("MDGRAB HeldPaperController.OnGrabbed -> expanding");
+            // Taken from the agent's hand: detach to the world (keep world pose) and grow to full size
+            // as the user lifts it to read — the physical "pick it up and hold it up" gesture.
+            if (agentHoldPoint != null && !_taken)
+            {
+                _taken = true;
+                transform.SetParent(null, true);
+                SetContent(true);          // reveal title/info/buttons now that it's taken
+                StopAllCoroutines();
+                StartCoroutine(ScaleTo(_fullScale, expandSeconds));
+            }
             // Stop fighting the hand.
             if (face) face.enabled = false;
             if (placer) placer.enabled = false;
@@ -67,6 +139,21 @@ namespace MuseDesk.Documents
                 delivery.OnExpand();
                 _expandedWhileHeld = true;
             }
+        }
+
+        IEnumerator ScaleTo(Vector3 target, float seconds)
+        {
+            Vector3 from = transform.localScale;
+            float t = 0f;
+            while (t < seconds)
+            {
+                t += Time.deltaTime;
+                transform.localScale = Vector3.Lerp(from, target, t / seconds);
+                yield return null;
+            }
+            transform.localScale = target;
+            _scaleLocked = true;   // from here on, hold it at full size (LateUpdate enforces)
+            Debug.Log($"MDGRAB paper taken+expanded, locked at scale {target}");
         }
 
         void OnReleased()

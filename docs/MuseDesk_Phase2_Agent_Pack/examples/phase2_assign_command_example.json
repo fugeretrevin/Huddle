@@ -1,0 +1,6 @@
+{
+  "schema_version": 2,
+  "target_agent_id": "researcher",
+  "expected_revision": 0,
+  "idempotency_key": "p2-demo-assign-001"
+}

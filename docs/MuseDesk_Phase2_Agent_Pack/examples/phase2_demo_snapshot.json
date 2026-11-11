@@ -1,0 +1,102 @@
+{
+  "schema_version": 2,
+  "session_id": "phase2-scripted-demo-001",
+  "last_seq": 31,
+  "source_mode": "demo",
+  "tasks": [
+    {
+      "task_id": "research-auth",
+      "title": "Compare auth options",
+      "task_state": "completed",
+      "agent_id": "researcher",
+      "priority": 2,
+      "revision": 3,
+      "dependencies": [],
+      "source_mode": "demo"
+    },
+    {
+      "task_id": "develop-auth",
+      "title": "Build OAuth scaffold",
+      "task_state": "completed",
+      "agent_id": "developer",
+      "priority": 2,
+      "revision": 4,
+      "dependencies": [
+        "research-auth"
+      ],
+      "source_mode": "demo"
+    },
+    {
+      "task_id": "test-auth",
+      "title": "Run login tests",
+      "task_state": "completed",
+      "agent_id": "tester",
+      "priority": 2,
+      "revision": 6,
+      "dependencies": [
+        "develop-auth"
+      ],
+      "source_mode": "demo"
+    }
+  ],
+  "handoffs": [
+    {
+      "handoff_id": "handoff-blueprint-01",
+      "from_agent_id": "researcher",
+      "to_agent_id": "developer",
+      "task_id": "develop-auth",
+      "artifact_id": "art-blueprint",
+      "kind": "blueprint",
+      "state": "received",
+      "source_mode": "demo"
+    },
+    {
+      "handoff_id": "handoff-test-01",
+      "from_agent_id": "developer",
+      "to_agent_id": "tester",
+      "task_id": "test-auth",
+      "artifact_id": "art-diff",
+      "kind": "test_request",
+      "state": "received",
+      "source_mode": "demo"
+    },
+    {
+      "handoff_id": "handoff-fail-01",
+      "from_agent_id": "tester",
+      "to_agent_id": "developer",
+      "task_id": "develop-auth",
+      "artifact_id": "art-test-failed",
+      "kind": "test_failure",
+      "state": "received",
+      "source_mode": "demo"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "art-blueprint",
+      "kind": "research_report",
+      "source_mode": "demo"
+    },
+    {
+      "artifact_id": "art-diff",
+      "kind": "code_diff",
+      "source_mode": "demo"
+    },
+    {
+      "artifact_id": "art-test-failed",
+      "kind": "test_report",
+      "source_mode": "demo"
+    },
+    {
+      "artifact_id": "art-test-passed",
+      "kind": "test_report",
+      "source_mode": "demo"
+    }
+  ],
+  "focus": {
+    "mode": "normal",
+    "revision": 0,
+    "until": null
+  },
+  "inbox": []
+}

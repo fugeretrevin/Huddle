@@ -78,6 +78,9 @@ namespace MuseDesk.Documents
         /// <summary>Called when the user grabs or pokes the paper — reveal the full detail.</summary>
         public void OnExpand() { if (panel) panel.Expand(); }
 
+        /// <summary>Details button: show/hide the extra rationale panel. Never approves anything.</summary>
+        public void OnToggleDetails() { if (panel) panel.ToggleExpand(); }
+
         // ── button hooks (poke buttons call these) ──
         public void OnApprove()        { if (panel) panel.SetResponding(); controller?.ApprovePending(); }
         public void OnReject()         { if (panel) panel.SetResponding(); controller?.RejectPending(); }

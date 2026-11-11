@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "diagram_id": "dia-auth-demo",
+  "template": "auth_flow",
+  "source_mode": "demo",
+  "nodes": [
+    {
+      "id": "u",
+      "label": "User",
+      "icon": "user"
+    },
+    {
+      "id": "f",
+      "label": "Frontend",
+      "icon": "code"
+    },
+    {
+      "id": "a",
+      "label": "Auth service",
+      "icon": "shield"
+    },
+    {
+      "id": "d",
+      "label": "Database",
+      "icon": "database"
+    }
+  ],
+  "edges": [
+    {
+      "source": "u",
+      "target": "f",
+      "kind": "data_flow"
+    },
+    {
+      "source": "f",
+      "target": "a",
+      "kind": "calls"
+    },
+    {
+      "source": "a",
+      "target": "d",
+      "kind": "data_flow"
+    }
+  ]
+}

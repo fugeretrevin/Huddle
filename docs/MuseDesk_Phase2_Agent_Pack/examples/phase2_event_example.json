@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "event_id": "evt-p2-032",
+  "seq": 32,
+  "session_id": "phase2-scripted-demo-001",
+  "occurred_at": "2026-11-11T17:01:00Z",
+  "type": "handoff.created",
+  "task_id": "develop-auth",
+  "agent_id": "researcher",
+  "artifact_id": "art-blueprint",
+  "handoff_id": "handoff-blueprint-01",
+  "payload": {
+    "from_agent_id": "researcher",
+    "to_agent_id": "developer",
+    "kind": "blueprint",
+    "source_mode": "demo"
+  }
+}

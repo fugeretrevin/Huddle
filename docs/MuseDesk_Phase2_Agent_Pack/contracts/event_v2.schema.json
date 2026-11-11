@@ -1,0 +1,82 @@
+{
+  "title": "MuseDesk Phase 2 EventEnvelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "seq",
+    "session_id",
+    "occurred_at",
+    "type",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "session.ready",
+        "agent.status_changed",
+        "task.created",
+        "task.started",
+        "task.progress",
+        "decision.requested",
+        "decision.resolved",
+        "artifact.created",
+        "task.completed",
+        "task.failed",
+        "session.reset",
+        "system.warning",
+        "task.assigned",
+        "task.priority_changed",
+        "task.pause_requested",
+        "task.paused",
+        "task.resumed",
+        "handoff.created",
+        "handoff.received",
+        "handoff.failed",
+        "artifact.page_ready",
+        "focus.changed",
+        "inbox.updated",
+        "diagram.created",
+        "station.milestone"
+      ]
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "agent_id": {
+      "type": "string"
+    },
+    "artifact_id": {
+      "type": "string"
+    },
+    "handoff_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase2/event_v2.schema.json"
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "artifact_id": "art-test-failed",
+  "task_id": "test-auth",
+  "kind": "test_report",
+  "summary": "SCRIPTED DEMO: 7 passed; 1 failed",
+  "source_mode": "demo",
+  "content_hash": "scripted-fixture-v1",
+  "created_at": "2026-11-11T17:00:00Z",
+  "pages": [
+    {
+      "page": 0,
+      "title": "Test run #1",
+      "content": "7 passed, 1 failed. login_redirect_test failed: expected redirect, got status 403. This is scripted demo data.",
+      "line_refs": [
+        "test:login_redirect_test"
+      ]
+    }
+  ]
+}
