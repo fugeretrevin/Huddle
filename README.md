@@ -45,14 +45,23 @@ Android/Meta Quest, then **Build and Run** to a connected Quest 3. On-device, co
 **Settings → Environment Setup → Space Setup** so MRUK can detect your desk (there is a
 manual hand-placed fallback if scene data is denied).
 
+## Modes
+
+- **Offline demo** (default, `MUSEDESK_PRODUCER=demo` / client `preferOfflineDemo=true`): a
+  deterministic scripted producer. Honestly stamped `source_mode="demo"`; runs with no PC.
+- **Live** (`MUSEDESK_PRODUCER=live`): real sandboxed workers write real files and run real
+  pytest behind the human approval gate; executed artifacts stamped `source_mode="live"`.
+
 ## Status
 
 | Area | State |
 |---|---|
-| Backend (TASK-04) | ✅ Implemented, 10/10 tests passing, live smoke-tested |
+| Backend REST+WS, persistence, auth, idempotency (TASK-04) | ✅ Done, tested |
 | Contracts | ✅ Frozen at `contracts/` |
-| Unity XR foundation (TASK-01) | ✅ Scene builds; one rig + passthrough + hands(poke/grab) + MRUK + placement + diagnostics. On-device validation pending |
-| Live workers (TASK-05) | ⏳ Not started (backend producer is deterministic `demo`) |
-| Decision papers UX (TASK-02), characters (TASK-03), integration/offline (TASK-07) | ⏳ Not started |
+| Unity XR foundation (TASK-01) | ✅ Builds + installs on Quest; one rig + passthrough + hands(poke/grab) + MRUK + placement + diagnostics |
+| Client↔backend integration backbone (TASK-07 core) | ✅ Gateways (live+demo), reducer, WS dispatcher, session controller; compiles clean |
+| Live sandboxed workers + approval gate (TASK-05) | ✅ Done, 15/15 tests; real files + real pytest on approve, nothing on reject |
+| Decision-paper UX (TASK-02), characters (TASK-03) | ⏳ Next |
+| On-device validation of hands/placement/FPS | ⏳ Needs headset |
 
-See `backend/README.md` for API details.
+**Backend: 15/15 pytest passing.** See `backend/README.md` for API details.
