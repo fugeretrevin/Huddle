@@ -80,6 +80,11 @@ public static class AddGrabbablePaper
         RepointRigidbody(grab, rb, sb);
         RepointRigidbody(hand, rb, sb);
 
+        // CRITICAL: the pasted HandGrabInteractable carries the SOURCE cube's _pointableElement
+        // (a base-class field), so grabs would route to the cube, not the paper. Repoint to self.
+        RepointField(hand, "_pointableElement", grab, sb);
+        RepointField(hand, "<PointableElement>k__BackingField", null, sb);
+
         // ── controller: grab -> expand + stop fighting the hand ──
         var held = doc.AddComponent<HeldPaperController>();
         held.grabbable = grab;
@@ -104,5 +109,17 @@ public static class AddGrabbablePaper
             BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         if (f != null) { f.SetValue(c, rb); sb.AppendLine($"  {c.GetType().Name}._rigidbody -> self"); }
         else sb.AppendLine($"  {c.GetType().Name}: _rigidbody field not found");
+    }
+
+    // Set a field that may be declared on a base class (e.g. _pointableElement on PointerInteractable).
+    static void RepointField(Component c, string name, object value, StringBuilder sb)
+    {
+        if (c == null) return;
+        for (var t = c.GetType(); t != null; t = t.BaseType)
+        {
+            var f = t.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            if (f != null) { f.SetValue(c, value); sb.AppendLine($"  {c.GetType().Name}.{name} -> {(value is UnityEngine.Object uo ? uo.name : "null")}"); return; }
+        }
+        sb.AppendLine($"  {c.GetType().Name}: {name} not found");
     }
 }
