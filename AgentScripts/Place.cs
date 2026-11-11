@@ -7,6 +7,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Events;
 using MuseDesk.Bootstrap;
+using MuseDesk.Workspace;
 
 /// <summary>
 /// Positions the Meta interaction blocks (pokeable confirm button + grabbable cube)
@@ -15,6 +16,52 @@ using MuseDesk.Bootstrap;
 /// </summary>
 public static class Place
 {
+    /// <summary>
+    /// Reliability pass: lift the pokeable button and grabbable cube OUT of the moving
+    /// WorkspaceRoot, size the cube sensibly, and attach PlaceInFrontOnStart so both park
+    /// in front of the user (facing them); the cube becomes kinematic so it can't fall.
+    /// Removes the placement marker to avoid confusing it with the grabbable.
+    /// </summary>
+    public static string FixProps()
+    {
+        var scene = EditorSceneManager.GetActiveScene();
+        var all = scene.GetRootGameObjects()
+            .SelectMany(r => r.GetComponentsInChildren<Transform>(true))
+            .Select(t => t.gameObject).ToList();
+        var sb = new StringBuilder();
+
+        var poke = all.FirstOrDefault(g => g.name.Contains("Poke Interaction"));
+        var grab = all.FirstOrDefault(g => g.name.Contains("Grabbable Item"));
+        var marker = all.FirstOrDefault(g => g.name == "PlacementMarker");
+
+        if (poke != null)
+        {
+            poke.transform.SetParent(null, true);
+            var p = poke.GetComponent<PlaceInFrontOnStart>() ?? poke.AddComponent<PlaceInFrontOnStart>();
+            p.sideOffset = 0.12f; p.distance = 0.45f; p.faceUser = true;
+            sb.AppendLine($"poke -> front (+0.12): {poke.name}");
+        }
+        else sb.AppendLine("poke NOT FOUND");
+
+        if (grab != null)
+        {
+            grab.transform.SetParent(null, true);
+            grab.transform.localScale = Vector3.one * 0.06f;
+            var p = grab.GetComponent<PlaceInFrontOnStart>() ?? grab.AddComponent<PlaceInFrontOnStart>();
+            p.sideOffset = -0.12f; p.distance = 0.45f; p.faceUser = true;
+            sb.AppendLine($"grab -> front (-0.12), scale 0.06, kinematic: {grab.name}");
+        }
+        else sb.AppendLine("grab NOT FOUND");
+
+        if (marker != null) { Object.DestroyImmediate(marker); sb.AppendLine("removed PlacementMarker"); }
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        sb.AppendLine("scene saved");
+        return sb.ToString();
+    }
+
     public static string InteractionProps()
     {
         var scene = EditorSceneManager.GetActiveScene();

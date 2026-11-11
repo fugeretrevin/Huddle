@@ -21,6 +21,8 @@ namespace MuseDesk.DebugTools
         public long lastSeq;
         public string lastEventId = "-";
         public string sceneStatus = "init";
+        [Tooltip("Free-form status line set by SessionController (pending decision, result, etc.)")]
+        public string note = "";
 
         [Header("Display")]
         public bool visible = true;
@@ -71,7 +73,8 @@ namespace MuseDesk.DebugTools
             _sb.Append("scene  : ").Append(sceneStatus).Append('\n');
             _sb.Append("api    : ").Append(endpoint).Append('\n');
             _sb.Append("fps    : ").Append(Mathf.RoundToInt(_fps)).Append('\n');
-            _sb.Append("seq    : ").Append(lastSeq).Append("  (").Append(lastEventId).Append(')');
+            _sb.Append("seq    : ").Append(lastSeq).Append("  (").Append(lastEventId).Append(")\n");
+            _sb.Append("status : ").Append(string.IsNullOrEmpty(note) ? "-" : note);
             text.text = _sb.ToString();
         }
 
