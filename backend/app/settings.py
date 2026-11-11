@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     require_pairing: bool = True
     log_level: str = "INFO"
 
+    # "demo" = deterministic scripted producer; "live" = real sandboxed workers (TASK-05).
+    producer: str = "demo"
+
     # Deterministic demo producer pacing. Tests set this to 0 for instant stepping.
     producer_step_seconds: float = 1.0
     # Source mode stamped on producer-generated artifacts/events. The TASK-04

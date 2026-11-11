@@ -40,6 +40,7 @@ from .models import (
     TaskState,
 )
 from .orchestrator import Orchestrator
+from .live_orchestrator import LiveOrchestrator
 from .settings import Settings, get_settings
 from .storage import Storage
 
@@ -66,7 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         storage = Storage(settings.db_path)
         bus = EventBus(storage)
-        orchestrator = Orchestrator(storage, bus, settings)
+        orchestrator = (LiveOrchestrator(storage, bus, settings)
+                        if settings.producer == "live"
+                        else Orchestrator(storage, bus, settings))
         app.state.settings = settings
         app.state.storage = storage
         app.state.bus = bus
