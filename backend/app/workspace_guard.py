@@ -80,7 +80,10 @@ class WorkspaceGuard:
     # ─────────────────────── the ONLY allowed command ───────────────────────
     def run_tests(self, ws: Path, timeout: int = 90) -> TestResult:
         ws = Path(ws).resolve()
-        cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(ws)]
+        # --rootdir + the workspace's own pytest.ini isolate this run from any parent
+        # project's pytest config (otherwise a parent testpaths= could collect 0 tests).
+        cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+               "--rootdir", str(ws), str(ws)]
         try:
             proc = subprocess.run(
                 cmd, cwd=str(ws), capture_output=True, text=True, timeout=timeout,
