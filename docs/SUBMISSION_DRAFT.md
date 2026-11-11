@@ -71,8 +71,12 @@ and react, progressive-disclosure paper you expand to read — interactions that
 
 ## 8. Future work
 
-- Cute rigged character models + animations (currently stylized primitives).
-- Voice: push-to-talk "why?" with a spoken/caption answer (needs a speech provider token).
+- Cute rigged character models + animations (currently stylized primitives with a procedural
+  arm-swing walk cycle).
+- Voice (implemented, live-mode only): push-to-talk "approve / reject / why?" via the Meta Voice
+  SDK (Wit.ai). Because Wit is a cloud recognizer, voice can't run in the standalone offline demo,
+  so it's a connected-mode enhancement and the judged offline APK stays hands-only. The client
+  token ships in a voice build, so the offline competition APK is built voice-free.
 - A hosted live sandbox so judges can try live mode without the developer's PC.
 - More agent connectors and a task board; usability study vs. terminal-based agent supervision.
 
