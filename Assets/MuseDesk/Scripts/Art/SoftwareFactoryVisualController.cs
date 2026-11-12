@@ -89,3 +89,4 @@ namespace MuseDesk.Art
         public void PlayCompletedDelivery()   => PlayStageClip(ClipCompletedDelivery);
     }
 }
+

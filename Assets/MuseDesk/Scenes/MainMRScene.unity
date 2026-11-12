@@ -8063,6 +8063,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2010085040}
     m_Modifications:
+    - target: {fileID: 4818342398999638956, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      propertyPath: m_IsTrigger
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 5115347028388653188, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       propertyPath: m_Name
       value: Agent_Researcher
@@ -8109,11 +8113,20 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 7186207604390175219, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1891680390}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 5115347028388653188, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       insertIndex: -1
       addedObject: {fileID: 913268393}
+    - targetCorrespondingSourceObject: {fileID: 5115347028388653188, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 913268395}
+    - targetCorrespondingSourceObject: {fileID: 5115347028388653188, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 913268394}
     - targetCorrespondingSourceObject: {fileID: 2575762184565586316, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
@@ -8169,6 +8182,49 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.FaceUserWhileDelivering
   movement: {fileID: 913268391}
   turnSpeed: 8
+--- !u!114 &913268394
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 913268390}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d70183a034718c044a5c61b7e26c9a0f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.RubberBandReturn
+  maxOffset: 0.04
+  springback: 7
+  pushStrength: 0.6
+  movement: {fileID: 913268391}
+--- !u!54 &913268395
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 913268390}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!1 &949372436
 GameObject:
   m_ObjectHideFlags: 0
@@ -10426,6 +10482,11 @@ Material:
     - _UnderlayColor: {r: 0, g: 0, b: 0, a: 0.5}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
+--- !u!4 &1279687770 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7186207604390175219, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+  m_PrefabInstance: {fileID: 913268387}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1283513353
 GameObject:
   m_ObjectHideFlags: 0
@@ -12060,6 +12121,119 @@ Material:
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
+--- !u!1001 &1501638339
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 1664874720}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_Name
+      value: SoftwareFactory
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 821d6f29fdb30414da6c4ba6181b97f9, type: 2}
+    - target: {fileID: 5866666021909216657, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      propertyPath: m_CullingMode
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1501638343}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1501638342}
+  m_SourcePrefab: {fileID: 100100000, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+--- !u!4 &1501638340 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+  m_PrefabInstance: {fileID: 1501638339}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &1501638341 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: c9bf41312ec1a02409972129b396bd2b, type: 3}
+  m_PrefabInstance: {fileID: 1501638339}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1501638342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1501638341}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bdb84c753c35bf40b26722535f8dd1a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Art.FactoryEventController
+  controller: {fileID: 1998025110}
+  factory: {fileID: 1501638343}
+--- !u!114 &1501638343
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1501638341}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aff36833945c5d54291c13733953431a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Art.SoftwareFactoryVisualController
+  factoryAnimator: {fileID: 0}
+  researchInputSocket: {fileID: 0}
+  devBuildSocket: {fileID: 0}
+  qaChamberSocket: {fileID: 0}
+  deliveryOutputSocket: {fileID: 0}
+  failedReturnSocket: {fileID: 0}
 --- !u!21 &1502781123
 Material:
   serializedVersion: 8
@@ -12135,6 +12309,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1623325230}
     m_Modifications:
+    - target: {fileID: 1321623031511644829, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      propertyPath: m_IsTrigger
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 8374308988561177978, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       propertyPath: m_Name
       value: Agent_Developer
@@ -12186,6 +12364,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 8374308988561177978, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1515650344}
+    - targetCorrespondingSourceObject: {fileID: 8374308988561177978, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1515650346}
+    - targetCorrespondingSourceObject: {fileID: 8374308988561177978, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1515650345}
     - targetCorrespondingSourceObject: {fileID: 3386568390871045394, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
@@ -12236,6 +12420,49 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.FaceUserWhileDelivering
   movement: {fileID: 1515650342}
   turnSpeed: 8
+--- !u!114 &1515650345
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1515650341}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d70183a034718c044a5c61b7e26c9a0f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.RubberBandReturn
+  maxOffset: 0.04
+  springback: 7
+  pushStrength: 0.6
+  movement: {fileID: 1515650342}
+--- !u!54 &1515650346
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1515650341}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!21 &1523753677
 Material:
   serializedVersion: 8
@@ -13519,6 +13746,7 @@ Transform:
   - {fileID: 178412809}
   - {fileID: 1427265729}
   - {fileID: 1621672033}
+  - {fileID: 1501638340}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1671824855
@@ -14530,6 +14758,84 @@ Transform:
   - {fileID: 320459836}
   m_Father: {fileID: 706217391}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &1891680389
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 1279687770}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071067
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_Name
+      value: Collab_ArtifactToken
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+--- !u!4 &1891680390 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: f4e28b0dbbf64d74a898c2fa62d71a0c, type: 3}
+  m_PrefabInstance: {fileID: 1891680389}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1901806796
 GameObject:
   m_ObjectHideFlags: 0
@@ -14682,6 +14988,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1543507059}
     m_Modifications:
+    - target: {fileID: 215809024396943261, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      propertyPath: m_IsTrigger
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 5136949791938249637, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -14733,6 +15043,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 5476883140801681695, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1905904053}
+    - targetCorrespondingSourceObject: {fileID: 5476883140801681695, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1905904055}
+    - targetCorrespondingSourceObject: {fileID: 5476883140801681695, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1905904054}
     - targetCorrespondingSourceObject: {fileID: 5056326148888096942, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
@@ -14783,6 +15099,49 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.FaceUserWhileDelivering
   movement: {fileID: 1905904051}
   turnSpeed: 8
+--- !u!114 &1905904054
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1905904050}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d70183a034718c044a5c61b7e26c9a0f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.RubberBandReturn
+  maxOffset: 0.04
+  springback: 7
+  pushStrength: 0.6
+  movement: {fileID: 1905904051}
+--- !u!54 &1905904055
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1905904050}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!1 &1950223962
 GameObject:
   m_ObjectHideFlags: 0
@@ -15111,6 +15470,7 @@ GameObject:
   - component: {fileID: 1998025114}
   - component: {fileID: 1998025116}
   - component: {fileID: 1998025117}
+  - component: {fileID: 1998025118}
   m_Layer: 0
   m_Name: AppServices
   m_TagString: Untagged
@@ -15404,6 +15764,23 @@ MonoBehaviour:
   sourceBehaviour: {fileID: 530597242}
   requireLiveMode: 0
   voiceEnabled: 1
+--- !u!114 &1998025118
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1998025105}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1216cfcd56492404faf2c7b71bff5f2a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.AgentHandoffController
+  controller: {fileID: 1998025110}
+  registry: {fileID: 1998025112}
+  artifactProp: {fileID: 1891680390}
+  stopDistance: 0.18
+  exchangeHold: 1
 --- !u!1 &2010085039
 GameObject:
   m_ObjectHideFlags: 0
