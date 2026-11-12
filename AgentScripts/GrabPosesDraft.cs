@@ -4,34 +4,245 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using UnityEngine;
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
-using UnityEngine;
+#endif
 
 // =============================================================================
-// GrabPosesDraft  --  DRAFT Editor builder for Meta ISDK 209 "dynamic grab poses"
+// PART II (PRIMARY, updated goal):  DynamicFingerCollisionDraft
+// -----------------------------------------------------------------------------
+// DYNAMIC finger collision -- NO recorded poses. Each finger curls with the real
+// tracked motion but STOPS on contact with a grabbable's colliders, so fingertips
+// rest on the surface instead of passing through. Shape- & position-agnostic.
+//
+// Approach 1 from docs/DYNAMIC_GRAB_POSES.md (Part II): visual-only override of the
+// ISDK HandVisual joint transforms in LateUpdate (after HandVisual.UpdateSkeleton
+// writes the tracked pose). This does NOT fight the ISDK grab transformer (that moves
+// the OBJECT, not the hand joints) nor tracking (we overwrite post-update each frame).
+//
+// Everything is reflection-based: AgentScripts cannot reference Oculus.Interaction by
+// name (same constraint/pattern as FixGrabWire.cs / GrabColliders.cs). Real ISDK 209
+// type/member names used (verified in Library/PackageCache/com.meta.xr.sdk.interaction
+// @75f85e8aa6bd):
+//   Oculus.Interaction.HandVisual            -> Transform GetTransformByHandJointId(HandJointId)
+//                                               IList<Transform> Joints
+//   Oculus.Interaction.Input.HandJointId     -> enum (HandWristRoot, HandIndex1.., *Tip ..)
+//   Oculus.Interaction.Input.IHand           -> bool GetJointPose(HandJointId, out Pose)   (optional)
+//
+// The other engineer attaches this to a GameObject in the rig and runs/tests it.
+// Lines needing in-editor/on-device checks are marked // VERIFY, geometry to eyeball // TUNE.
+//
+// HONEST STATUS: this is a DRAFT solver. The clamp (how far to un-curl a joint on
+// contact) is a first-order approximation: on first penetrating bone it rotates that
+// joint so the bone points at the surface and freezes the rest of the finger. The
+// per-joint curl AXIS/SIGN and script-execution-order vs ISDK's own LateUpdate writers
+// are the main unknowns to confirm on-device.
 // =============================================================================
-// Purpose: give a grabbable a SURFACE-BASED HandGrabPose so the grab snaps to the
-// OUTSIDE of the object (object sticks to the hand, wrist aligns) WITHOUT any
-// recorded hand pose. This is "Approach B" in docs/DYNAMIC_GRAB_POSES.md.
-//
-// IMPORTANT HONEST CAVEAT (verified from package source, see the .md section 0):
-//   A grab surface alone snaps the GRIP/WRIST only. It does NOT curl the fingers
-//   around the geometry. True Alyx-style finger wrap needs a recorded HandPose
-//   (joint rotations) -- see HandGrabStateVisual.cs lines 100-133. This script
-//   deliberately sets _usesHandPose=false (surface-only, no recording).
-//
-// This file is a DRAFT. It uses ONLY real ISDK 209 type/field/method names found
-// in Library/PackageCache/com.meta.xr.sdk.interaction@75f85e8aa6bd. Everything is
-// done by reflection because the AgentScripts assembly does not reference
-// Oculus.Interaction (same pattern as FixGrabWire.cs / GrabColliders.cs).
-//
-// The other engineer runs/tests this. Lines that need in-editor verification are
-// marked // VERIFY, and geometry that must be eyeballed is marked // TUNE.
+[DisallowMultipleComponent]
+public class DynamicFingerCollisionDraft : MonoBehaviour
+{
+    [Tooltip("Layer(s) the grabbable colliders live on. Keep it narrow for cheap casts.")]
+    public LayerMask grabbableMask = ~0;
+
+    [Tooltip("Approx bone thickness used for the sphere casts (m). ISDK's JointsRadiusFeature is more accurate.")]
+    public float boneRadius = 0.008f;
+
+    [Tooltip("Only run the solver when a grabbable collider is within this distance of the wrist (m). <=0 disables the gate.")]
+    public float proximityGate = 0.18f;
+
+    [Tooltip("Slerp factor to smooth the per-joint correction frame to frame (0=snap, 1=frozen).")]
+    [Range(0f, 0.95f)] public float smoothing = 0.4f;
+
+    const string T_HandVisual = "Oculus.Interaction.HandVisual";
+    const string T_HandJointId = "Oculus.Interaction.Input.HandJointId";
+
+    // Per-finger joint chains (proximal -> tip), by enum member NAME so we stay
+    // decoupled from the assembly. Names from HandJointUtils.FingerToJointList.
+    static readonly string[][] FingerChains =
+    {
+        new[] { "HandThumb0", "HandThumb1", "HandThumb2", "HandThumb3", "HandThumbTip" },
+        new[] { "HandIndex1", "HandIndex2", "HandIndex3", "HandIndexTip" },
+        new[] { "HandMiddle1", "HandMiddle2", "HandMiddle3", "HandMiddleTip" },
+        new[] { "HandRing1", "HandRing2", "HandRing3", "HandRingTip" },
+        new[] { "HandPinky0", "HandPinky1", "HandPinky2", "HandPinky3", "HandPinkyTip" },
+    };
+
+    // Resolved per HandVisual instance.
+    class HandRig
+    {
+        public Component handVisual;
+        public MethodInfo getTransform;        // Transform GetTransformByHandJointId(HandJointId)
+        public object wristJointId;            // boxed HandJointId.HandWristRoot
+        public object[][] fingerJointIds;      // boxed enum values per finger chain
+        public Dictionary<Transform, Quaternion> lastWorld = new Dictionary<Transform, Quaternion>();
+    }
+
+    readonly List<HandRig> _rigs = new List<HandRig>();
+    Type _handJointIdType;
+    bool _ready;
+    readonly RaycastHit[] _hitScratch = new RaycastHit[1]; // reserved; SphereCast(out) is already GC-free
+
+    void Start()
+    {
+        try { Resolve(); }
+        catch (Exception e) { Debug.LogError($"[DynamicFingerCollisionDraft] resolve failed: {e.Message}"); enabled = false; }
+        if (!_ready) { enabled = false; }
+    }
+
+    void Resolve()
+    {
+        var hvType = ResolveType(T_HandVisual);
+        _handJointIdType = ResolveType(T_HandJointId);
+        if (hvType == null || _handJointIdType == null)
+        {
+            Debug.LogError("[DynamicFingerCollisionDraft] Oculus.Interaction types not found in loaded assemblies.");
+            return;
+        }
+
+        var getT = hvType.GetMethod("GetTransformByHandJointId",
+            BindingFlags.Instance | BindingFlags.Public, null, new[] { _handJointIdType }, null);
+        if (getT == null) { Debug.LogError("[DynamicFingerCollisionDraft] GetTransformByHandJointId not found."); return; }
+
+        object wrist = EnumVal("HandWristRoot");
+
+        // Pre-box the enum values for each finger chain.
+        var chains = new object[FingerChains.Length][];
+        for (int f = 0; f < FingerChains.Length; f++)
+        {
+            var ids = new List<object>();
+            foreach (var name in FingerChains[f])
+            {
+                var v = EnumVal(name);
+                if (v != null) ids.Add(v);   // skip any member missing in this skeleton variant
+            }
+            chains[f] = ids.ToArray();
+        }
+
+        // VERIFY: FindObjectsOfType(Type) is fine in Unity 6 (deprecation warning only).
+        // In the OVRComprehensiveInteractionRig there may be several HandVisuals (raw/synthetic/
+        // grab-visual) -- this drives ALL of them. Narrow to the rendered ones if needed.
+        foreach (var obj in UnityEngine.Object.FindObjectsOfType(hvType, true).Cast<Component>())
+        {
+            _rigs.Add(new HandRig
+            {
+                handVisual = obj,
+                getTransform = getT,
+                wristJointId = wrist,
+                fingerJointIds = chains,
+            });
+        }
+
+        _ready = _rigs.Count > 0;
+        Debug.Log($"[DynamicFingerCollisionDraft] ready={_ready} handVisuals={_rigs.Count}");
+    }
+
+    // Visual-only: run AFTER HandVisual.UpdateSkeleton (which runs on WhenHandUpdated during
+    // Update). LateUpdate overwrites the rendered joints for this frame.
+    // VERIFY on-device: if an ISDK component writes joints in a LATER LateUpdate, raise this
+    // component's Script Execution Order so it runs last.
+    void LateUpdate()
+    {
+        if (!_ready) return;
+        foreach (var rig in _rigs) SolveHand(rig);
+    }
+
+    void SolveHand(HandRig rig)
+    {
+        Transform wrist = GetJoint(rig, rig.wristJointId);
+        if (wrist == null) return;
+
+        // Cheap proximity gate: skip the whole hand when no grabbable is near.
+        if (proximityGate > 0f && !Physics.CheckSphere(wrist.position, proximityGate, grabbableMask, QueryTriggerInteraction.Ignore))
+            return;
+
+        foreach (var jointIds in rig.fingerJointIds)
+        {
+            if (jointIds.Length < 2) continue;
+
+            for (int k = 0; k < jointIds.Length - 1; k++)
+            {
+                Transform j0 = GetJoint(rig, jointIds[k]);
+                Transform j1 = GetJoint(rig, jointIds[k + 1]);
+                if (j0 == null || j1 == null) continue;
+
+                Vector3 p0 = j0.position;
+                Vector3 p1 = j1.position;
+                Vector3 delta = p1 - p0;
+                float len = delta.magnitude;
+                if (len < 1e-5f) continue;
+                Vector3 dir = delta / len;
+
+                // Sweep this bone segment against the grabbable colliders.
+                if (Physics.SphereCast(p0, boneRadius, dir, out RaycastHit hit, len, grabbableMask, QueryTriggerInteraction.Ignore))
+                {
+                    // Desired bone endpoint: rest the bone tip ON the surface (offset by radius along normal).
+                    Vector3 desiredEnd = hit.point + hit.normal * boneRadius;   // TUNE: normal*radius offset
+                    Vector3 desiredDir = (desiredEnd - p0);
+                    if (desiredDir.sqrMagnitude < 1e-8f) break;
+                    desiredDir.Normalize();
+
+                    // Rotate joint k so the bone points at the surface instead of through it.
+                    // Rotating the parent rigidly lifts the remaining (frozen) finger off the object.
+                    Quaternion correction = Quaternion.FromToRotation(dir, desiredDir);
+                    Quaternion target = correction * j0.rotation;
+
+                    // Frame-to-frame smoothing to kill jitter.
+                    if (smoothing > 0f && rig.lastWorld.TryGetValue(j0, out Quaternion prev))
+                        target = Quaternion.Slerp(target, prev, smoothing);
+
+                    j0.rotation = target;
+                    rig.lastWorld[j0] = target;
+
+                    break; // first contact along the finger wins; deeper joints stay frozen
+                }
+            }
+        }
+    }
+
+    Transform GetJoint(HandRig rig, object boxedJointId)
+    {
+        if (boxedJointId == null) return null;
+        return rig.getTransform.Invoke(rig.handVisual, new[] { boxedJointId }) as Transform;
+    }
+
+    object EnumVal(string member)
+    {
+        try { return Enum.Parse(_handJointIdType, member); }
+        catch { return null; }   // member not present in this skeleton variant
+    }
+
+    static Type ResolveType(string fullName)
+    {
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var t = asm.GetType(fullName, false);
+            if (t != null) return t;
+        }
+        return null;
+    }
+}
+
+
 // =============================================================================
+// PART I (COMPLEMENTARY, optional):  GrabPosesDraft  -- surface-based GRIP/WRIST snap
+// -----------------------------------------------------------------------------
+// This is the earlier surface-based builder. It does NOT curl fingers (see Part I of
+// the .md, section 0). It is kept because it fixes a DIFFERENT problem: where the grip
+// lands and how the WRIST aligns to the object's outside (no pinch-point snap). It
+// pairs well with DynamicFingerCollisionDraft above (surface = grip/wrist, solver =
+// fingers). Run it only if you also want the grip-snap behaviour.
+//
+// Adds one HandGrabInteractable HandGrabPose with _usesHandPose=false + an IGrabSurface
+// (ColliderGrabSurface / BoxGrabSurface / CylinderGrabSurface). Real ISDK 209 names,
+// all via reflection. See docs/DYNAMIC_GRAB_POSES.md sections 1-3 for the API citations.
+// Editor-only (UnityEditor APIs), so it is guarded so the file still compiles into a
+// player build that carries the runtime DynamicFingerCollisionDraft above.
+// =============================================================================
+#if UNITY_EDITOR
 public static class GrabPosesDraft
 {
-    // Full type names confirmed in the installed package.
     const string T_Interactable = "Oculus.Interaction.HandGrab.HandGrabInteractable";
     const string T_HandGrabPose = "Oculus.Interaction.HandGrab.HandGrabPose";
     const string T_IGrabSurface = "Oculus.Interaction.Grab.GrabSurfaces.IGrabSurface";
@@ -44,8 +255,6 @@ public static class GrabPosesDraft
 
     enum Shape { Collider, Box, Cylinder }
 
-    // Known grabbables in the MuseDesk scene (names from existing AgentScripts).
-    // Add/adjust as the scene evolves. Shape picks the surface kind.
     static readonly (string name, Shape shape)[] Targets = new[]
     {
         ("[BuildingBlock] Grabbable Item", Shape.Box),      // orange cube
@@ -53,7 +262,6 @@ public static class GrabPosesDraft
         ("Mug",                            Shape.Cylinder),  // VERIFY: mug/cylinder may not exist yet
     };
 
-    /// <summary>Process every known target. Returns a human-readable log.</summary>
     public static string Run()
     {
         var sb = new StringBuilder();
@@ -69,14 +277,8 @@ public static class GrabPosesDraft
                   ?? all.FirstOrDefault(g => g.name.Contains(name));
             if (go == null) { sb.AppendLine($"SKIP  {name}: not in scene"); continue; }
             sb.AppendLine($"=== {go.name}  ({shape}) ===");
-            try
-            {
-                if (AddSurfacePose(go, shape, sb)) touched++;
-            }
-            catch (Exception e)
-            {
-                sb.AppendLine($"  ERROR: {e.GetType().Name}: {e.Message}");
-            }
+            try { if (AddSurfacePose(go, shape, sb)) touched++; }
+            catch (Exception e) { sb.AppendLine($"  ERROR: {e.GetType().Name}: {e.Message}"); }
             sb.AppendLine();
         }
 
@@ -96,11 +298,9 @@ public static class GrabPosesDraft
             .FirstOrDefault(c => c != null && c.GetType().FullName == T_Interactable);
         if (interactable == null) { sb.AppendLine("  no HandGrabInteractable"); return false; }
 
-        // Reference transform every pose/surface measures against (= _rigidbody.transform).
         var relativeTo = GetProp(interactable, "RelativeTo") as Transform;
         if (relativeTo == null) { sb.AppendLine("  RelativeTo is null (no Rigidbody?)"); return false; }
 
-        // Don't double-add if a surface pose already exists.
         var listField = FindField(interactable.GetType(), "_handGrabPoses");
         var poseList = listField?.GetValue(interactable) as IList;
         if (poseList == null) { sb.AppendLine("  ERROR: _handGrabPoses not found"); return false; }
@@ -110,24 +310,18 @@ public static class GrabPosesDraft
             return false;
         }
 
-        // ---- 1. Create the HandGrabPose child --------------------------------
         var poseType = ResolveType(T_HandGrabPose);
         if (poseType == null) { sb.AppendLine("  ERROR: HandGrabPose type unresolved"); return false; }
 
         var poseGO = new GameObject("HandGrabPose_Surface");
         poseGO.transform.SetParent(go.transform, false);
-        // TUNE: start at object centre. For the cylinder this point's distance from the
-        // axis becomes the radius; nudge it out to the mug wall in the Scene view.
-        poseGO.transform.position = relativeTo.position;
+        poseGO.transform.position = relativeTo.position;   // TUNE (cylinder: slide out to the wall)
         poseGO.transform.rotation = relativeTo.rotation;
 
         var pose = poseGO.AddComponent(poseType);
-
-        // relativeTo + surface-only (no recorded fingers)
         Invoke(pose, "InjectRelativeTo", new[] { typeof(Transform) }, new object[] { relativeTo });
-        SetField(pose, "_usesHandPose", false);   // surface-only path (see .md section 0)
+        SetField(pose, "_usesHandPose", false);   // surface-only path (no finger curl here)
 
-        // ---- 2. Build the surface component ----------------------------------
         object surface = shape switch
         {
             Shape.Cylinder => BuildCylinder(poseGO, relativeTo, sb),
@@ -136,22 +330,16 @@ public static class GrabPosesDraft
         };
         if (surface == null) { sb.AppendLine("  ERROR: surface build failed"); return false; }
 
-        // ---- 3. Wire surface into the pose -----------------------------------
-        // InjectOptionalSurface(IGrabSurface) sets both _surface and runtime _snapSurface.
         if (!Invoke(pose, "InjectOptionalSurface", new[] { ResolveType(T_IGrabSurface) }, new object[] { surface }))
         {
-            // Fallback: set the serialized field directly (SnapSurface getter falls back to _surface).
             SetField(pose, "_surface", surface as UnityEngine.Object);
             sb.AppendLine("  (used _surface field fallback)");
         }
 
-        // ---- 4. Add the pose to the interactable's list ----------------------
-        poseList.Add(pose);   // live List<HandGrabPose>; cast is implicit via reflection
+        poseList.Add(pose);
 
-        // ---- 5. Engage on approach (optional but recommended) ----------------
-        // AttractOnHover = wrist+fingers conform during hover; closest to Alyx.
         var attract = EnumValue(T_HandAlignType, "AttractOnHover");
-        if (attract != null) SetProp(interactable, "HandAlignment", attract);  // public setter exists
+        if (attract != null) SetProp(interactable, "HandAlignment", attract);
 
         EditorUtility.SetDirty(interactable);
         EditorUtility.SetDirty(pose);
@@ -159,15 +347,11 @@ public static class GrabPosesDraft
         return true;
     }
 
-    // ---- surface builders ----------------------------------------------------
-
-    // Simplest, geometry-free: snap grip to nearest point on an existing collider.
     static object BuildCollider(GameObject poseGO, GameObject target, StringBuilder sb)
     {
         var type = ResolveType(T_ColliderSurface);
         if (type == null) { sb.AppendLine("  ColliderGrabSurface unresolved"); return null; }
         var surface = poseGO.AddComponent(type);
-        // VERIFY: first non-trigger collider may be a visual collider, not the grab volume.
         var col = target.GetComponentsInChildren<Collider>(true).FirstOrDefault(c => !c.isTrigger)
                ?? target.GetComponentInChildren<Collider>(true);
         if (col == null) { sb.AppendLine("  no Collider to snap to"); return null; }
@@ -175,7 +359,6 @@ public static class GrabPosesDraft
         return surface;
     }
 
-    // Flat rectangle: good for paper and for face-grabbing the cube.
     static object BuildBox(GameObject poseGO, Transform relativeTo, StringBuilder sb)
     {
         var sType = ResolveType(T_BoxSurface);
@@ -184,8 +367,6 @@ public static class GrabPosesDraft
         var surface = poseGO.AddComponent(sType);
 
         var data = Activator.CreateInstance(dType);
-        // Public fields on BoxGrabSurfaceData: widthOffset(0..1), snapOffset(Vector4),
-        // size(Vector3, Y ignored), eulerAngles(Vector3).
         SetPublicField(data, "widthOffset", 0.5f);
         SetPublicField(data, "size", new Vector3(0.1f, 0f, 0.1f)); // TUNE to object footprint
         SetPublicField(data, "eulerAngles", Vector3.zero);          // TUNE orientation
@@ -195,7 +376,6 @@ public static class GrabPosesDraft
         return surface;
     }
 
-    // Cylinder wall: mug/can. Radius is derived from the pose transform offset (TUNE above).
     static object BuildCylinder(GameObject poseGO, Transform relativeTo, StringBuilder sb)
     {
         var sType = ResolveType(T_CylinderSurface);
@@ -204,22 +384,17 @@ public static class GrabPosesDraft
         var surface = poseGO.AddComponent(sType);
 
         var data = Activator.CreateInstance(dType);
-        // Public fields on CylinderSurfaceData: startPoint, endPoint (axis caps, local to
-        // relativeTo), arcOffset, arcLength (degrees).
         SetPublicField(data, "startPoint", new Vector3(0f, 0.06f, 0f));  // TUNE: +half height
         SetPublicField(data, "endPoint",   new Vector3(0f, -0.06f, 0f)); // TUNE: -half height
         SetPublicField(data, "arcOffset", 0f);
-        SetPublicField(data, "arcLength", 360f);  // full wall; try ~200 to bias outward
+        SetPublicField(data, "arcLength", 360f);
 
         Invoke(surface, "InjectData", new[] { dType }, new object[] { data });
         Invoke(surface, "InjectRelativeTo", new[] { typeof(Transform) }, new object[] { relativeTo });
-        // NOTE: radius = distance from axis to poseGO.transform. Because poseGO sits at the
-        // centre by default the radius ~0; the engineer must slide poseGO out to the wall. // TUNE
-        return surface;
+        return surface; // TUNE: radius = distance from axis to poseGO.transform (slide out to wall)
     }
 
-    // ---- reflection helpers (mirrors FixGrabWire.cs / GrabColliders.cs) -------
-
+    // ---- reflection helpers ----
     static Type ResolveType(string fullName)
     {
         foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -254,7 +429,6 @@ public static class GrabPosesDraft
         if (f != null) f.SetValue(obj, value);
     }
 
-    // For the [Serializable] *Data classes whose fields are plain public instance fields.
     static void SetPublicField(object obj, string name, object value)
     {
         var f = obj.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public);
@@ -275,7 +449,6 @@ public static class GrabPosesDraft
         if (p != null && p.CanWrite) p.SetValue(obj, value);
     }
 
-    // Invoke a method with an explicit signature; returns true on success.
     static bool Invoke(object obj, string method, Type[] sig, object[] args)
     {
         if (sig.Any(t => t == null)) return false;
@@ -287,3 +460,4 @@ public static class GrabPosesDraft
         return true;
     }
 }
+#endif
