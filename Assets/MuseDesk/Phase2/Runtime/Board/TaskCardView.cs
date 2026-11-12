@@ -149,6 +149,8 @@ namespace MuseDesk.Phase2.Board
             if (statusMarker) ApplyStateTint();
         }
 
+        MaterialPropertyBlock _tintBlock;
+
         void ApplyStateTint()
         {
             // Non-authoritative color hint; never a substitute for the text marker.
@@ -162,7 +164,12 @@ namespace MuseDesk.Phase2.Board
                 TaskStates.Paused or TaskStates.PauseRequested => new Color(0.65f, 0.60f, 0.35f),
                 _ => new Color(0.75f, 0.75f, 0.78f),
             };
-            if (statusMarker.material != null) statusMarker.material.color = c;
+            // Property block, not renderer.material: that created a material instance per card.
+            if (_tintBlock == null) _tintBlock = new MaterialPropertyBlock();
+            statusMarker.GetPropertyBlock(_tintBlock);
+            _tintBlock.SetColor("_BaseColor", c);
+            _tintBlock.SetColor("_Color", c);
+            statusMarker.SetPropertyBlock(_tintBlock);
         }
 
         public void SetExpanded(bool expanded)
