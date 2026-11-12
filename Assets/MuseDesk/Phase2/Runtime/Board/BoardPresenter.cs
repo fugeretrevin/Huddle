@@ -43,6 +43,10 @@ namespace MuseDesk.Phase2.Board
         public Phase2Reducer Reducer { get; private set; }
         public bool Ready { get; private set; }
 
+        /// <summary>The card views currently on the board (one per live task). Read-only view for
+        /// helpers such as the desk card-action console; do not mutate.</summary>
+        public Dictionary<string, TaskCardView>.ValueCollection ActiveViews => _views.Values;
+
         readonly Dictionary<string, TaskCardView> _views = new Dictionary<string, TaskCardView>();
         readonly Stack<TaskCardView> _pool = new Stack<TaskCardView>();
         CancellationTokenSource _cts;

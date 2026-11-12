@@ -48,6 +48,7 @@ namespace MuseDesk.Networking
             var created = JsonConvert.DeserializeObject<SessionCreatedDto>(
                 await _rest.PostJsonAsync("/v1/sessions", body, ct));
             _sessionId = created.SessionId;
+            _token = created.Token;   // exposed via Token so the v2 board gateway can share this session
             _rest.BearerToken = created.Token;
 
             var snap = await GetSnapshotAsync(ct);

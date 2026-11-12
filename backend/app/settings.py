@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     # real workers will emit "live" only for actually executed work.
     producer_source_mode: str = "demo"
 
+    @property
+    def state_source_mode(self) -> str:
+        """Mode stamped on backend-AUTHORITATIVE state the API itself records: the
+        session, a human decision resolution, and the v2 board (task cards, focus).
+
+        ``producer_source_mode`` describes the scripted producer's output and defaults
+        to "demo". Using it for API-level state meant a live run (MUSEDESK_PRODUCER=live)
+        carried mixed labels — worker events said "live" while session.ready,
+        decision.resolved and every v2 card said "demo". Real state recorded during a
+        live run is "live"; anything scripted or canned keeps its own explicit label.
+        """
+        return "live" if self.producer == "live" else self.producer_source_mode
+
     # Optional provider config lives here, injected via env only — never shipped in the APK.
     model_provider: str | None = None
     provider_api_key: str | None = None

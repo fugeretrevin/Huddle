@@ -71,8 +71,10 @@ namespace MuseDesk.Documents
 
         void Awake()
         {
-            _homePos = transform.position;
-            _homeRot = transform.rotation;
+            // Home is PARENT-RELATIVE: WorkspacePlacement moves WorkspaceRoot after Awake, so a world
+            // pose captured here would drag the stamp back to the authored spot, off the desk.
+            _homePos = transform.localPosition;
+            _homeRot = transform.localRotation;
             _homeCaptured = true;
             if (headRenderer != null) _headBaseScale = headRenderer.transform.localScale;
 
@@ -108,8 +110,8 @@ namespace MuseDesk.Documents
                 if (returnHome && _homeCaptured)
                 {
                     float k = 1f - Mathf.Exp(-returnLerp * Time.deltaTime);
-                    transform.position = Vector3.Lerp(transform.position, _homePos, k);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, _homeRot, k);
+                    transform.localPosition = Vector3.Lerp(transform.localPosition, _homePos, k);
+                    transform.localRotation = Quaternion.Slerp(transform.localRotation, _homeRot, k);
                 }
                 return;
             }

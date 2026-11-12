@@ -46,6 +46,21 @@ class TaskGraphService:
                                    priority, dependencies, role_lock, self._mode, now)
         return _card(self._store.get_task_v2(task_id))
 
+    async def announce_created(self, session_id: str, card: TaskCardV2) -> None:
+        """Emit ``task.created`` for a freshly created card. The Unity board does not
+        synthesize a card from the POST response; it waits for this event (exactly as
+        its offline demo gateway emits one), so without it a created task never
+        appears until the next snapshot resync. Kept separate from ``create_task`` so
+        the route emits it once inside the idempotent command (a replayed key does
+        not re-emit)."""
+        await self._bus.publish(
+            session_id, EventTypeV2.task_created,
+            {"title": card.title, "task_state": card.task_state.value,
+             "priority": card.priority, "revision": card.revision,
+             "dependencies": card.dependencies, "source_mode": card.source_mode},
+            task_id=card.task_id, agent_id=card.agent_id,
+        )
+
     def dependencies_ready(self, session_id: str, task_row: dict) -> bool:
         deps = json.loads(task_row["dependency_json"])
         if not deps:
@@ -56,9 +71,12 @@ class TaskGraphService:
                 return False
         return True
 
-    def _require(self, task_id: str) -> dict:
+    def _require(self, session_id: str, task_id: str) -> dict:
+        # tasks_v2.id is a GLOBAL primary key, so the lookup must also be scoped to the
+        # authenticated session: otherwise a valid token for session B could mutate a
+        # task that belongs to session A just by naming its id in B's URL.
         row = self._store.get_task_v2(task_id)
-        if row is None:
+        if row is None or row["session_id"] != session_id:
             raise NotFoundError(f"unknown task {task_id}")
         return row
 
@@ -73,7 +91,7 @@ class TaskGraphService:
     # ─────────────────────── commands ───────────────────────
     async def assign(self, session_id: str, task_id: str, target_agent: str,
                     expected_revision: int) -> TaskCardV2:
-        row = self._require(task_id)
+        row = self._require(session_id, task_id)
         self._guard_revision(row, expected_revision)
         state = TaskStateV2(row["task_state"])
         if state in TERMINAL_STATES:
@@ -102,7 +120,7 @@ class TaskGraphService:
 
     async def set_priority(self, session_id: str, task_id: str, priority: int,
                           expected_revision: int) -> TaskCardV2:
-        row = self._require(task_id)
+        row = self._require(session_id, task_id)
         self._guard_revision(row, expected_revision)
         if TaskStateV2(row["task_state"]) in TERMINAL_STATES:
             raise CommandError("TASK_NOT_ASSIGNABLE", "task is terminal; cannot reprioritize",
@@ -115,7 +133,7 @@ class TaskGraphService:
         return card
 
     async def pause(self, session_id: str, task_id: str, expected_revision: int) -> TaskCardV2:
-        row = self._require(task_id)
+        row = self._require(session_id, task_id)
         self._guard_revision(row, expected_revision)
         state = TaskStateV2(row["task_state"])
         if state in TERMINAL_STATES:
@@ -145,7 +163,7 @@ class TaskGraphService:
         """Cooperative pause checkpoint: a task in ``pause_requested`` reaches a safe
         point and becomes ``paused``. Emitted by the orchestrator, never by a client
         collision."""
-        row = self._require(task_id)
+        row = self._require(session_id, task_id)
         if TaskStateV2(row["task_state"]) != TaskStateV2.pause_requested:
             return _card(row)
         updated = self._store.update_task_v2(task_id, task_state=TaskStateV2.paused.value,
@@ -157,7 +175,7 @@ class TaskGraphService:
         return card
 
     async def resume(self, session_id: str, task_id: str, expected_revision: int) -> TaskCardV2:
-        row = self._require(task_id)
+        row = self._require(session_id, task_id)
         self._guard_revision(row, expected_revision)
         state = TaskStateV2(row["task_state"])
         if state not in (TaskStateV2.paused, TaskStateV2.pause_requested):

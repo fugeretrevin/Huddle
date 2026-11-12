@@ -41,6 +41,11 @@ namespace MuseDesk.Workspace
         public float offDeskDepth = 0.1f;
         [Tooltip("Metres below eye level (approximates desk-side / floor-adjacent).")]
         public float offDeskDrop = 0.55f;
+        [Tooltip("Longest to wait for the headset to be worn and steady before placing anyway, seconds.")]
+        [Range(2f, 20f)] public float settleTimeout = 10f;
+
+        bool _placing;
+        bool _hooksSubscribed;
 
         public PlacementState State { get; private set; } = PlacementState.WaitingForScene;
         public Transform WorkspaceRootTransform => workspaceRoot;
@@ -78,17 +83,35 @@ namespace MuseDesk.Workspace
         /// </summary>
         IEnumerator PlaceOffDeskRoutine()
         {
-            // wait for valid head tracking
-            float t = 0f;
-            while (t < 1.0f)
+            if (_placing) yield break;
+            _placing = true;
+
+            // Place only once the headset is actually WORN and the head is level and steady. The old
+            // version sampled the head ~1 s after launch and locked ~2.5 s later; if the headset was
+            // still being put on (or the user was looking around) the diorama locked to a stale pose,
+            // so the user ended up beside or behind it instead of in front of it.
+            float waited = 0f, steady = 0f;
+            Quaternion lastRot = Quaternion.identity;
+            bool hasLast = false;
+            while (waited < settleTimeout)
             {
-                t += Time.deltaTime;
+                waited += Time.deltaTime;
                 EnsureHead();
-                if (_head != null && _head.position.sqrMagnitude > 0.0004f) break;
+                if (_head != null && _head.position.sqrMagnitude > 0.0004f && UserPresent() && HeadLevel(_head))
+                {
+                    float degPerSec = hasLast
+                        ? Quaternion.Angle(lastRot, _head.rotation) / Mathf.Max(Time.deltaTime, 1e-4f)
+                        : float.MaxValue;
+                    lastRot = _head.rotation;
+                    hasLast = true;
+                    steady = degPerSec < 45f ? steady + Time.deltaTime : 0f;
+                    if (steady >= 0.6f) break;
+                }
+                else { steady = 0f; hasLast = false; }
                 yield return null;
             }
             EnsureHead();
-            if (workspaceRoot == null) yield break;
+            if (workspaceRoot == null) { _placing = false; yield break; }
 
             Vector3 pos = OffDeskPosition();
             workspaceRoot.position = pos;
@@ -98,8 +121,49 @@ namespace MuseDesk.Workspace
             _sceneHandled = true;
             State = PlacementState.PlacedManual;
             Placed?.Invoke(State);
-            StartCoroutine(RefaceUser());
-            Debug.Log("[MuseDesk] Workspace placed off-desk (side/low).");
+            Debug.Log($"[MuseDesk] Workspace placed in front of user (settled after {waited:F1}s, " +
+                      $"steady={steady:F1}s, head={(_head != null ? _head.position : Vector3.zero)}, root={pos}).");
+            SubscribeReplaceHooks();
+            _placing = false;
+        }
+
+        /// <summary>Head pitched no more than ~40° up or down (not staring at the floor or ceiling).</summary>
+        static bool HeadLevel(Transform head)
+        {
+            Vector3 flat = head.forward; flat.y = 0f;
+            return flat.sqrMagnitude > 1e-4f && Vector3.Angle(head.forward, flat) < 40f;
+        }
+
+        /// <summary>True when the proximity sensor says the headset is on a head. In the Editor (no
+        /// device) this is false, so placement simply falls through after settleTimeout.</summary>
+        static bool UserPresent()
+        {
+            try { return OVRPlugin.userPresent; }
+            catch { return true; }   // API unavailable on this platform: don't block placement
+        }
+
+        // Bring the diorama back in front of the user whenever they put the headset back on or use
+        // the system recenter gesture — the "it isn't in front of me" recovery path.
+        void SubscribeReplaceHooks()
+        {
+            if (_hooksSubscribed) return;
+            OVRManager.HMDMounted += OnReplaceRequested;
+            if (OVRManager.display != null) OVRManager.display.RecenteredPose += OnReplaceRequested;
+            _hooksSubscribed = true;
+        }
+
+        void UnsubscribeReplaceHooks()
+        {
+            if (!_hooksSubscribed) return;
+            OVRManager.HMDMounted -= OnReplaceRequested;
+            if (OVRManager.display != null) OVRManager.display.RecenteredPose -= OnReplaceRequested;
+            _hooksSubscribed = false;
+        }
+
+        void OnReplaceRequested()
+        {
+            if (!offDeskMode || !isActiveAndEnabled) return;
+            StartCoroutine(PlaceOffDeskRoutine());
         }
 
         Vector3 OffDeskPosition()
@@ -122,6 +186,8 @@ namespace MuseDesk.Workspace
 
         void OnDisable()
         {
+            UnsubscribeReplaceHooks();
+            _placing = false;   // a disabled component's coroutines are stopped; don't stay latched
             if (MRUK.Instance != null)
                 MRUK.Instance.SceneLoadedEvent.RemoveListener(OnSceneLoaded);
         }
@@ -273,11 +339,11 @@ namespace MuseDesk.Workspace
             Vector3 toUser = _head.position - fromPos;
             toUser.y = 0f;
             if (toUser.sqrMagnitude < 0.0001f) return Quaternion.identity;
-            // The content under WorkspaceRoot was authored with its FRONTS on local -Z (at author time
-            // the user sat on the -Z side of the content). So point WorkspaceRoot's +Z AWAY from the
-            // user; its -Z — the agents' faces, prop fronts, readable text — then turns toward the user.
-            // (Billboarded FaceUser objects override their own rotation and are unaffected.)
-            return Quaternion.LookRotation(-toUser.normalized, Vector3.up);
+            // The diorama's FRONT is local +Z: the agents face +Z across their desks, and the factory,
+            // trays and controls sit on the +Z side. So WorkspaceRoot's +Z must point AT the user.
+            // (Verified in Scene View 2026-11-12: from +Z you see faces, from -Z you see backs. A brief
+            // experiment that pointed -Z at the user was wrong and was reverted.)
+            return Quaternion.LookRotation(toUser.normalized, Vector3.up);
         }
     }
 }

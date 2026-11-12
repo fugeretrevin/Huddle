@@ -72,9 +72,53 @@ class LiveOrchestrator:
             fut.set_result(action)
 
     def start_auth_demo(self, session_id: str, parent_task_id: str) -> None:
-        task = asyncio.create_task(self._run(session_id, parent_task_id))
+        task = asyncio.create_task(self._run_guarded(session_id, parent_task_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+    async def _run_guarded(self, session_id: str, parent_task_id: str) -> None:
+        """Run the pipeline; if it raises, REPORT it instead of dying silently.
+
+        Previously an exception in a worker (missing template, a failed file write,
+        a subprocess error) just ended the background task: no event was emitted, so
+        the client showed agents "working" forever with nothing to explain it."""
+        try:
+            await self._run(session_id, parent_task_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - reported to the client below
+            await self._report_run_failure(session_id, parent_task_id, exc)
+
+    async def _report_run_failure(self, session_id: str, parent_task_id: str,
+                                  exc: Exception) -> None:
+        from .phase2.sanitize import sanitize_text
+        reason = sanitize_text(f"{type(exc).__name__}: {exc}",
+                               self._settings.workspace_root)[:300]
+        try:
+            now = utcnow_iso()
+            terminal = {TaskState.completed.value, TaskState.failed.value,
+                        TaskState.cancelled.value}
+            for t in self._storage.list_tasks(session_id):
+                if t["status"] in terminal:
+                    continue
+                if t["id"] == parent_task_id or t["parent_task_id"] == parent_task_id:
+                    self._storage.set_task_status(t["id"], TaskState.failed.value, now)
+            settled = {AgentState.idle.value, AgentState.complete.value,
+                       AgentState.error.value}
+            for a in self._storage.list_agents(session_id):
+                if a["state"] not in settled:
+                    await self._set_agent(session_id, AgentId(a["agent_id"]), AgentState.error,
+                                          TaskState.failed, "Run stopped: internal error", "live")
+            await self._bus.publish(session_id, EventType.system_warning,
+                                    {"code": "RUN_FAILED", "message": reason,
+                                     "task_id": parent_task_id, "source_mode": "live"},
+                                    task_id=parent_task_id)
+            await self._bus.publish(session_id, EventType.task_failed,
+                                    {"task_id": parent_task_id,
+                                     "result_summary": f"Run stopped: {reason}",
+                                     "source_mode": "live"}, task_id=parent_task_id)
+        except Exception:  # noqa: BLE001 - reporting must never raise out of the task
+            pass
 
     async def shutdown(self) -> None:
         for t in list(self._tasks):
@@ -129,10 +173,17 @@ class LiveOrchestrator:
         # Tester does REAL independent work up front.
         baseline = await asyncio.to_thread(self._tester.run, self._guard, ws,
                                            self._settings.task_timeout_seconds)
-        self._storage.set_task_status(test_task, TaskState.completed.value, utcnow_iso())
-        await self._set_agent(session_id, AgentId.tester, AgentState.complete, TaskState.completed,
+        # Same honesty rule as the post-approval run: only a clean pytest exit is a pass.
+        baseline_ok = (baseline.returncode == 0 and baseline.failed == 0
+                       and not baseline.timed_out)
+        baseline_state = TaskState.completed if baseline_ok else TaskState.failed
+        self._storage.set_task_status(test_task, baseline_state.value, utcnow_iso())
+        await self._set_agent(session_id, AgentId.tester,
+                              AgentState.complete if baseline_ok else AgentState.error,
+                              baseline_state,
                               f"Baseline tests: {baseline.passed} passed / {baseline.failed} failed", "live")
-        await self._bus.publish(session_id, EventType.task_completed,
+        await self._bus.publish(session_id,
+                                EventType.task_completed if baseline_ok else EventType.task_failed,
                                 {"task_id": test_task, "source_mode": "live",
                                  "result_summary": f"Baseline {baseline.passed} passed, {baseline.failed} failed"},
                                 task_id=test_task, agent_id="tester")
@@ -167,6 +218,7 @@ class LiveOrchestrator:
         await self._set_agent(session_id, AgentId.researcher, AgentState.complete,
                               TaskState.completed, "Decision delivered", "live")
 
+        parent_final = TaskState.completed
         if action == DecisionAction.approve.value:
             await self._set_agent(session_id, AgentId.developer, AgentState.coding,
                                   TaskState.running, "Implementing OAuth scaffold", "live")
@@ -176,8 +228,21 @@ class LiveOrchestrator:
                                   TaskState.running, "Running tests on new code", "live")
             result = await asyncio.to_thread(self._tester.run, self._guard, ws,
                                              self._settings.task_timeout_seconds)
+            # pytest's exit code is the authority: 0 means every collected test passed.
+            # (Counting only "N failed" treated a crashed/empty run — non-zero exit with
+            # no parsable summary — as a success.)
+            passed_ok = (result.returncode == 0 and result.failed == 0
+                         and not result.timed_out)
+            counts = f"{result.passed} passed / {result.failed} failed"
+            # The tester's own run is over: without this it stayed in "testing" forever.
+            await self._set_agent(session_id, AgentId.tester,
+                                  AgentState.complete if passed_ok else AgentState.error,
+                                  TaskState.completed if passed_ok else TaskState.failed,
+                                  f"Tests on new code: {counts}"
+                                  + (" (timed out)" if result.timed_out else ""), "live")
             art = ArtifactData(
-                summary=f"OAuth login scaffold complete; {result.passed} passed / {result.failed} failed",
+                summary=(f"OAuth login scaffold complete; {counts}" if passed_ok
+                         else f"OAuth login scaffold written but tests did not pass; {counts}"),
                 files_changed=dev.files_changed, diff_excerpt=dev.diff_excerpt,
                 tests_passed=result.passed, tests_failed=result.failed, timed_out=result.timed_out,
             )
@@ -191,12 +256,17 @@ class LiveOrchestrator:
             # (source_mode=live) — only here, after genuine execution behind the gate.
             await self._emit_live_artifacts(session_id, oauth_task, ws, dev.files_changed,
                                             result.output)
-            final = TaskState.completed if result.failed == 0 and not result.timed_out else TaskState.failed
+            final = TaskState.completed if passed_ok else TaskState.failed
+            parent_final = final
             self._storage.set_task_status(oauth_task, final.value, utcnow_iso())
             await self._set_agent(session_id, AgentId.developer,
                                   AgentState.complete if final == TaskState.completed else AgentState.error,
                                   final, art.summary, "live")
-            await self._bus.publish(session_id, EventType.task_completed,
+            # A failed run is reported as task.failed, never task.completed: the client
+            # counts task.completed as finished work (shelf token, success cues).
+            await self._bus.publish(session_id,
+                                    EventType.task_completed if final == TaskState.completed
+                                    else EventType.task_failed,
                                     {"task_id": oauth_task, "result_summary": art.summary,
                                      "artifact_id": artifact_id, "source_mode": "live"},
                                     task_id=oauth_task, agent_id="developer")
@@ -210,4 +280,4 @@ class LiveOrchestrator:
                                     {"task_id": oauth_task, "result_summary": msg, "source_mode": "live"},
                                     task_id=oauth_task, agent_id="developer")
 
-        self._storage.set_task_status(parent_task_id, TaskState.completed.value, utcnow_iso())
+        self._storage.set_task_status(parent_task_id, parent_final.value, utcnow_iso())

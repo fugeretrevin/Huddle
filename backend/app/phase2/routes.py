@@ -36,7 +36,9 @@ from .task_graph import TaskGraphService
 
 
 def _source_mode(request: Request) -> str:
-    return request.app.state.settings.producer_source_mode
+    # Backend-authoritative board state: "live" under the live producer, otherwise the
+    # scripted producer's configured mode. See Settings.state_source_mode.
+    return request.app.state.settings.state_source_mode
 
 
 def _store(request: Request) -> Phase2Store:
@@ -147,6 +149,8 @@ def register_phase2_routes(app: FastAPI) -> None:
                 body.priority, body.dependencies,
                 body.role_lock.value if body.role_lock else None,
             )
+            # Inside the idempotent command: emitted once, never on a replayed key.
+            await svc.announce_created(session_id, card)
             return card.model_dump(mode="json")
 
         return await _idempotent_command(request, session_id, "tasks.create",

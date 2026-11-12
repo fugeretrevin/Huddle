@@ -100,7 +100,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return request.app.state.orchestrator
 
     def _mode(request: Request) -> str:
-        return request.app.state.settings.producer_source_mode
+        # Label for state the API itself records (session, decision resolution).
+        return request.app.state.settings.state_source_mode
 
     async def require_session(
         session_id: str,
@@ -181,9 +182,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         parent_task_id = f"task-{uuid.uuid4().hex[:10]}"
         storage.upsert_task(parent_task_id, session_id, None, None,
                            TaskState.running.value, body.task_template, [], now, now)
+        # ``template`` duplicates ``task_template`` under the key the client's TaskView
+        # (and the snapshot/list rows) use, so the response deserializes fully.
         result = {"schema_version": 1, "task_id": parent_task_id,
                   "status": TaskState.running.value, "session_id": session_id,
-                  "task_template": body.task_template}
+                  "task_template": body.task_template, "template": body.task_template}
         storage.save_idempotent(session_id, body.idempotency_key, "POST", "tasks", result)
         _orch(request).start_auth_demo(session_id, parent_task_id)
         return result
@@ -212,6 +215,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Exact replay of the same idempotency key → canonical prior result, no re-exec.
         prior = storage.get_idempotent(session_id, body.idempotency_key)
         if prior is not None:
+            # The key store is shared per session across routes. Only a record for THIS
+            # decision is a replay; the same key seen on another decision or another
+            # route (e.g. a task create) must not be echoed back as this decision's
+            # result (it previously returned the other decision's outcome, or crashed
+            # with a 500 on a task-create record).
+            if prior.get("decision_id") != decision_id:
+                raise HTTPException(status_code=409, detail={
+                    "error_code": "IDEMPOTENCY_KEY_REUSE",
+                    "user_message": "This idempotency key was already used for a "
+                                    "different request."})
             return DecisionResolution(**{**prior, "applied": False})
 
         state_map = {
@@ -253,8 +266,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def ask_question(session_id: str, body: QuestionRequest, request: Request,
                           session=Depends(require_session)) -> QuestionAnswer:
         answer, evidence = QUESTION_ANSWERS["default"]
-        return QuestionAnswer(answer=answer, evidence=evidence,
-                             source_mode=_mode(request))
+        # This answer is a fixed, canned string (no model, no task lookup), so it is
+        # ALWAYS labelled "demo" — never "live", even when the producer is live.
+        return QuestionAnswer(answer=answer, evidence=evidence, source_mode="demo")
 
     # ─────────────────────── artifacts ───────────────────────
     @app.get("/v1/sessions/{session_id}/artifacts/{artifact_id}")

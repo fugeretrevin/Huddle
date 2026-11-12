@@ -117,7 +117,7 @@ def test_ws_reconnect_replay_is_identical(client):
                 json={"schema_version": 2, "priority": 3, "expected_revision": 1,
                       "idempotency_key": "k-prio-ws01"})
     last = client.get(f"/v2/sessions/{sid}/snapshot", headers=headers).json()["last_seq"]
-    assert last == 2  # task.assigned + task.priority_changed
+    assert last == 3  # task.created + task.assigned + task.priority_changed
 
     def read_all():
         with client.websocket_connect(
@@ -126,9 +126,10 @@ def test_ws_reconnect_replay_is_identical(client):
 
     first = read_all()
     second = read_all()
-    assert [e["seq"] for e in first] == [1, 2]
+    assert [e["seq"] for e in first] == [1, 2, 3]
     assert first == second  # byte-identical replay → identical reconstructed state
-    assert {e["type"] for e in first} == {"task.assigned", "task.priority_changed"}
+    assert [e["type"] for e in first] == ["task.created", "task.assigned",
+                                          "task.priority_changed"]
 
 
 def test_v1_ws_never_receives_v2_events(client):
