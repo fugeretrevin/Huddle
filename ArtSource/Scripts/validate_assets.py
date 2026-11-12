@@ -115,3 +115,4 @@ def build_and_validate_manifest():
 
 if __name__ == "__main__":
     build_and_validate_manifest()
+

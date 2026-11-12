@@ -119,3 +119,4 @@ def render_complete_office_diorama():
 
 if __name__ == "__main__":
     render_complete_office_diorama()
+

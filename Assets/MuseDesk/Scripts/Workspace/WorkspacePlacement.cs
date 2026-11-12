@@ -273,7 +273,11 @@ namespace MuseDesk.Workspace
             Vector3 toUser = _head.position - fromPos;
             toUser.y = 0f;
             if (toUser.sqrMagnitude < 0.0001f) return Quaternion.identity;
-            return Quaternion.LookRotation(toUser.normalized, Vector3.up);
+            // The content under WorkspaceRoot was authored with its FRONTS on local -Z (at author time
+            // the user sat on the -Z side of the content). So point WorkspaceRoot's +Z AWAY from the
+            // user; its -Z — the agents' faces, prop fronts, readable text — then turns toward the user.
+            // (Billboarded FaceUser objects override their own rotation and are unaffected.)
+            return Quaternion.LookRotation(-toUser.normalized, Vector3.up);
         }
     }
 }

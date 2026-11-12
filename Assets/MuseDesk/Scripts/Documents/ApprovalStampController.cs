@@ -80,7 +80,13 @@ namespace MuseDesk.Documents
 
         IEnumerator Press(Color c, string txt)
         {
-            if (stamp == null) yield break;
+            if (stamp == null)
+            {
+                // No agent stamp prop (the USER stamps physically via StampTool): still reveal the
+                // authoritative mark — it is driven by the backend's decision.resolved, not the tool.
+                if (mark != null) { mark.gameObject.SetActive(true); mark.text = txt; mark.color = c; }
+                yield break;
+            }
             if (!_capturedHome) { _stampHome = stamp.localPosition; _capturedHome = true; }
             stamp.gameObject.SetActive(true);
             stamp.localPosition = _stampHome;

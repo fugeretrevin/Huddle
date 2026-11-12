@@ -147,3 +147,4 @@ Each workstation prefab (`Workstation_Research`, `Workstation_Developer`, `Works
   - User Side (`x = -0.22m, z = -0.25m`): `UserDocumentInbox_Zone` (`Doc_InboxTray`, `Doc_ApprovalPaper`, `Doc_ApprovalStamp`, `Doc_SignaturePen`, `Doc_ExpandedFrame`)
   - Back-Right (`x = +0.36m, z = +0.24m`): `CompletedProjectShelf_Zone` (`Decor_ProjectDisplayShelf`, `Decor_Trophy`, `Decor_ProgressAward`, `Doc_DocumentArchive`)
   - Front-Right (`x = +0.30m, z = -0.26m`): `SpatialDiagram_Demo_Layout` (`Frontend → API Gateway → Auth → Database`)
+
