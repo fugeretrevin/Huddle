@@ -1,7 +1,8 @@
 """Truthful worker roles for the live orchestrator.
 
-- ResearchWorker: deterministic evaluation (no external LLM here) — disclosed via
-  ``provenance="deterministic"`` so it is never passed off as model reasoning.
+- ResearchWorker: returns a fixed TEMPLATE recommendation (no model call, no web
+  research) — disclosed via ``provenance="deterministic"`` and
+  ``research_provenance="template"`` so it is never passed off as research.
 - DeveloperWorker: writes REAL files into the isolated workspace after approval.
 - TesterWorker: runs REAL pytest in the workspace and reports actual counts.
 
@@ -14,6 +15,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .workspace_guard import WorkspaceGuard, TestResult
+
+# The research step is a fixed template (no model call, no web research, no citations).
+# These travel on ``decision.requested`` so a client can label the recommendation
+# without inferring anything from ``source_mode``.
+RESEARCH_PROVENANCE = "template"
+RESEARCH_PROVENANCE_LABEL = "Template recommendation. Not live AI research."
+RESEARCH_PROGRESS_MESSAGE = "Preparing a template recommendation"
+# Developer/tester output in live mode comes from real execution in the sandbox.
+WORK_PROVENANCE_SANDBOX = "sandbox_execution"
+# Nothing produces a revised proposal after "request changes", so none is promised.
+CHANGES_REQUESTED_MESSAGE = ("Changes requested: run stopped. "
+                             "Start the task again after revising it.")
 
 _SECRET = re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*\S+")
 
@@ -32,6 +45,8 @@ class DecisionProposal:
     risk_level: str
     alternatives: list[dict]
     provenance: str = "deterministic"
+    research_provenance: str = RESEARCH_PROVENANCE
+    research_provenance_label: str = RESEARCH_PROVENANCE_LABEL
 
 
 @dataclass
@@ -59,6 +74,7 @@ class ArtifactData:
             "tests_passed": self.tests_passed,
             "tests_failed": self.tests_failed,
             "timed_out": self.timed_out,
+            "work_provenance": WORK_PROVENANCE_SANDBOX,
             "source_mode": "live",
         }
 

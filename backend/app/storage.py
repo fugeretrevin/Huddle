@@ -180,6 +180,11 @@ class Storage:
             )
             self._conn.commit()
 
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        return dict(row) if row else None
+
     def list_tasks(self, session_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(

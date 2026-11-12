@@ -43,6 +43,7 @@ namespace MuseDesk.Agents
                 _reducer.DecisionRequested -= OnDecisionRequested;
                 _reducer.DecisionResolved -= OnDecisionResolved;
                 _reducer.SnapshotLoaded -= ProjectSnapshot;
+                _reducer.SessionReset -= OnSessionReset;
             }
             _reducer = null;
         }
@@ -108,6 +109,7 @@ namespace MuseDesk.Agents
             _reducer.DecisionRequested += OnDecisionRequested;
             _reducer.DecisionResolved += OnDecisionResolved;
             _reducer.SnapshotLoaded += ProjectSnapshot;
+            _reducer.SessionReset += OnSessionReset;
             ProjectSnapshot();
         }
 
@@ -120,6 +122,15 @@ namespace MuseDesk.Agents
             var pending = _reducer.FirstPendingDecision();
             if (pending != null && pending.DecisionId != _deliveredDecisionId)
                 OnDecisionRequested(pending.DecisionId, null);
+        }
+
+        // Replay: no alert, nobody mid-delivery, and the next decision is delivered afresh.
+        void OnSessionReset()
+        {
+            StopAllCoroutines();
+            _deliveredDecisionId = null;
+            foreach (var a in agents) if (a != null) a.SetAlert(false);
+            if (_researcherMove != null && !_researcherMove.AtHome) _researcherMove.ReturnHome();
         }
 
         void OnAgentChanged(AgentDto view)

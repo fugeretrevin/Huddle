@@ -21,18 +21,18 @@ namespace MuseDesk.Demo
     ///      <see cref="SessionController.ApprovePending"/> path — the identical code a hand-poke runs,
     ///      so nothing is faked or short-circuited.
     ///
-    ///   2. NEVER PRESENT DEMO AS LIVE. This component stands down completely in live mode
-    ///      (<see cref="SessionController.IsLive"/> == true): it disables itself and does nothing, so
-    ///      it can never auto-drive or auto-answer real backend work. Every event the judge sees still
-    ///      comes from <see cref="DemoAgentGateway"/>, honestly stamped source_mode="demo".
+    ///   2. NEVER PRESENT DEMO AS LIVE. This component does nothing while the session is live
+    ///      (<see cref="SessionController.IsLive"/>), including when the session switches to live
+    ///      after launch: every timer re-checks the mode before it acts. Every event the judge sees
+    ///      still comes from <see cref="DemoAgentGateway"/>, honestly stamped source_mode="demo".
     ///
-    /// It also does NOT fabricate any events itself: it only calls SessionController's public command
-    /// methods (<see cref="SessionController.StartSampleTask"/>, <see cref="SessionController.ApprovePending"/>),
-    /// so the demo presentation path is byte-for-byte the same one live mode uses.
+    /// It does NOT fabricate any events itself: it only calls SessionController's public command
+    /// methods (<see cref="SessionController.StartDemo"/>, <see cref="SessionController.ApprovePending"/>).
     ///
-    /// Start behavior: <see cref="SessionController"/> already auto-starts the sample task when its own
-    /// <c>autoStartSampleTask</c> is on, so this director detects that and does NOT double-start. It only
-    /// issues a start itself when the controller's auto-start is OFF (or to begin a new loop cycle).
+    /// Start behavior: nothing starts by itself at launch — the user is guided to start the run
+    /// (drop the executable card on the Researcher, or poke a Start key). Only if NO run has been
+    /// started after <see cref="idleAutoStartSeconds"/> does the director start the scripted run,
+    /// through the same <see cref="SessionController.StartDemo"/> a Start key calls.
     ///
     /// Everything runs on the Unity main thread, mirroring SessionController's async pattern (async void
     /// Start, a CancellationTokenSource cancelled in OnDestroy). It is safe to leave in the scene: with
@@ -49,10 +49,13 @@ namespace MuseDesk.Demo
         public SessionController sessionController;
 
         [Header("Start")]
-        [Tooltip("Seconds to wait before this director starts the sample task ITSELF. Only used when the " +
-                 "SessionController's own autoStartSampleTask is OFF; otherwise the controller owns the start " +
-                 "and this director never double-starts.")]
-        [Range(0f, 15f)] public float startDelaySeconds = 4f;
+        [Tooltip("Start the scripted run automatically if the user has not started anything after " +
+                 "idleAutoStartSeconds. Offline demo only.")]
+        public bool autoStartIfIdle = true;
+
+        [Tooltip("Seconds after the session is ready during which nothing starts by itself (the user is " +
+                 "being guided to start it). If no run has been started by then, the scripted run starts.")]
+        [Range(0f, 300f)] public float idleAutoStartSeconds = 40f;
 
         [Header("Unattended kiosk (opt-in, OFF by default)")]
         [Tooltip("DANGER TO THE THESIS IF MISUSED. When false (default) a pending decision waits forever " +
@@ -70,8 +73,10 @@ namespace MuseDesk.Demo
         public string autoResolveAction = "approve";
 
         [Header("Loop (opt-in, OFF by default)")]
-        [Tooltip("When true, the director restarts a fresh cycle a few seconds after each task completes, " +
-                 "for an unattended booth. Default false so a single visit is not surprised by a restart.")]
+        [Tooltip("When true, the director replays a fresh cycle a few seconds after each run ends, " +
+                 "for an unattended booth (SessionController.StartDemo resets the demo first when the " +
+                 "board's executable card has already run). Default false so a single visit is not " +
+                 "surprised by a restart.")]
         public bool loop = false;
 
         [Tooltip("Seconds to pause after a cycle completes before starting the next (loop only).")]
@@ -81,8 +86,10 @@ namespace MuseDesk.Demo
         CancellationTokenSource _idleCts;      // per-decision idle-resolve timer
         SessionReducer _reducer;
         bool _subscribed;
-        bool _standingDown;
-        bool _cycleInFlight;
+        bool _loopPending;
+
+        /// <summary>True when this director must not act: no session, or the session is live.</summary>
+        bool StandingDown => sessionController == null || sessionController.IsLive;
 
         async void Start()
         {
@@ -103,7 +110,7 @@ namespace MuseDesk.Demo
                 return;
             }
 
-            // Wait (bounded) for the live/demo choice to be made and the session hydrated.
+            // Wait (bounded) for the session to be adopted and hydrated (immediate for the demo).
             float waited = 0f;
             while (!sessionController.Initialized && waited < 20f && !ct.IsCancellationRequested)
             {
@@ -116,37 +123,29 @@ namespace MuseDesk.Demo
                 return;
             }
 
-            // LINE #2: never run against live. Stand down completely.
-            if (sessionController.IsLive)
+            Subscribe();
+            sessionController.ModeChanged += OnModeChanged;
+
+            // LINE #2: never run against live.
+            if (StandingDown)
             {
-                _standingDown = true;
                 Debug.Log("[MuseDesk.Demo] live mode — DemoDirector standing down (no auto-drive).");
-                enabled = false;
                 return;
             }
 
             Debug.Log($"[MuseDesk.Demo] demo mode ({sessionController.Gateway.ModeLabel}); " +
+                      $"autoStartIfIdle={autoStartIfIdle} after {idleAutoStartSeconds:0}s, " +
                       $"autoResolveIfIdle={autoResolveIfIdle}, loop={loop}.");
 
-            Subscribe();
-
-            // Start: the controller auto-starts the sample task itself when autoStartSampleTask is on, so
-            // only start here when it is OFF — detect-and-no-op to avoid a double task.
-            if (!sessionController.autoStartSampleTask)
-            {
-                try { await Task.Delay(TimeSpan.FromSeconds(startDelaySeconds), ct); }
-                catch (OperationCanceledException) { return; }
-                if (string.IsNullOrEmpty(sessionController.PendingDecisionId))
-                {
-                    _cycleInFlight = true;
-                    sessionController.StartSampleTask();
-                }
-            }
-            else
-            {
-                Debug.Log("[MuseDesk.Demo] SessionController owns the start (autoStartSampleTask on); not double-starting.");
-                _cycleInFlight = true; // the controller's auto-started cycle is now in flight
-            }
+            // Nothing starts by itself while the user is being guided to start it. Only an untouched
+            // demo starts on its own, after the idle window.
+            if (!autoStartIfIdle) return;
+            try { await Task.Delay(TimeSpan.FromSeconds(Mathf.Max(0f, idleAutoStartSeconds)), ct); }
+            catch (OperationCanceledException) { return; }
+            if (this == null || StandingDown) return;
+            if (sessionController.HasStartedRun || sessionController.RunInProgress) return;   // the user started it
+            Debug.Log($"[MuseDesk.Demo] nothing started after {idleAutoStartSeconds:0}s — starting the scripted run.");
+            sessionController.StartDemo();
         }
 
         void Subscribe()
@@ -156,7 +155,8 @@ namespace MuseDesk.Demo
             if (_reducer == null) return;
             _reducer.DecisionRequested += OnDecisionRequested;
             _reducer.DecisionResolved += OnDecisionResolved;
-            _reducer.TaskCompleted += OnTaskCompleted;
+            _reducer.WorkDelivered += OnWorkDelivered;
+            _reducer.SessionReset += OnSessionReset;
             _subscribed = true;
         }
 
@@ -165,15 +165,26 @@ namespace MuseDesk.Demo
             if (!_subscribed || _reducer == null) return;
             _reducer.DecisionRequested -= OnDecisionRequested;
             _reducer.DecisionResolved -= OnDecisionResolved;
-            _reducer.TaskCompleted -= OnTaskCompleted;
+            _reducer.WorkDelivered -= OnWorkDelivered;
+            _reducer.SessionReset -= OnSessionReset;
             _subscribed = false;
         }
 
-        // ── reducer event handlers (raised on the main thread) ──
+        // ── session / reducer event handlers (raised on the main thread) ──
+
+        void OnModeChanged()
+        {
+            // The session went live after launch: drop every unattended timer.
+            if (StandingDown)
+            {
+                CancelIdleTimer();
+                Debug.Log("[MuseDesk.Demo] session is now live — DemoDirector standing down.");
+            }
+        }
 
         void OnDecisionRequested(string decisionId, EventEnvelope _evt)
         {
-            if (_standingDown) return;
+            if (StandingDown) return;
             // Arm the OPT-IN idle auto-resolve. With autoResolveIfIdle false (default), the decision simply
             // waits for a real human — which is the whole point of the demo.
             if (autoResolveIfIdle && !string.IsNullOrEmpty(decisionId))
@@ -185,20 +196,20 @@ namespace MuseDesk.Demo
             // A human (or the kiosk timer) answered — cancel any pending idle timer immediately.
             CancelIdleTimer();
             // A rejected / changes-requested decision ends the scripted cycle without a completion
-            // (nothing was built), so the loop restarts from here instead of from task.completed.
+            // (nothing was built), so the loop restarts from here instead of from the delivery.
             string s = (state ?? "").ToLowerInvariant();
-            if (!s.Contains("approv"))
-            {
-                _cycleInFlight = false;
-                if (loop && !_standingDown) _ = LoopRestartAsync();
-            }
+            if (!s.Contains("approv") && loop && !StandingDown) _ = LoopRestartAsync();
         }
 
-        void OnTaskCompleted(EventEnvelope _evt)
+        void OnWorkDelivered(EventEnvelope _evt)
         {
-            _cycleInFlight = false;
-            if (loop && !_standingDown)
-                _ = LoopRestartAsync();
+            if (loop && !StandingDown) _ = LoopRestartAsync();
+        }
+
+        void OnSessionReset()
+        {
+            // A reset withdraws the pending decision: its idle timer must not outlive it.
+            CancelIdleTimer();
         }
 
         // ── opt-in unattended behaviors ──
@@ -216,9 +227,8 @@ namespace MuseDesk.Demo
             try { await Task.Delay(TimeSpan.FromSeconds(idleResolveSeconds), token); }
             catch (OperationCanceledException) { return; }   // human answered, or we were cancelled
 
-            // Only act if this exact decision is still the one awaiting a human.
-            if (!token.IsCancellationRequested &&
-                sessionController != null &&
+            // Only act if this exact decision is still the one awaiting a human, and still in the demo.
+            if (!token.IsCancellationRequested && !StandingDown &&
                 sessionController.PendingDecisionId == decisionId)
             {
                 Debug.Log($"[MuseDesk.Demo] kiosk idle timeout — auto-resolving {decisionId} " +
@@ -240,13 +250,18 @@ namespace MuseDesk.Demo
 
         async Task LoopRestartAsync()
         {
-            if (_cycleInFlight) return;
-            try { await Task.Delay(TimeSpan.FromSeconds(loopPauseSeconds), _cts.Token); }
-            catch (OperationCanceledException) { return; }
-            if (_standingDown || sessionController == null) return;
-            if (!string.IsNullOrEmpty(sessionController.PendingDecisionId)) return; // still mid-cycle
-            _cycleInFlight = true;
-            sessionController.StartSampleTask();
+            if (_loopPending) return;
+            _loopPending = true;
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(loopPauseSeconds), _cts.Token);
+                if (this == null || StandingDown) return;
+                if (sessionController.RunInProgress) return;                             // someone already restarted it
+                if (!string.IsNullOrEmpty(sessionController.PendingDecisionId)) return;  // still mid-cycle
+                sessionController.StartDemo();
+            }
+            catch (OperationCanceledException) { }
+            finally { _loopPending = false; }
         }
 
         /// <summary>
@@ -267,6 +282,7 @@ namespace MuseDesk.Demo
         void OnDestroy()
         {
             Unsubscribe();
+            if (sessionController != null) sessionController.ModeChanged -= OnModeChanged;
             CancelIdleTimer();
             try { _cts?.Cancel(); } catch { }
             _cts?.Dispose();

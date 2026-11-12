@@ -66,6 +66,15 @@ public static class Preview
         return report + "\npreview cards: " + samples.Length + (doc != null ? "; paper is " + (doc.gameObject.activeSelf ? "active" : "inactive") : "");
     }
 
+    /// <summary>Regenerate every TextMeshPro mesh (a scene reloaded in the Editor keeps stale text until something redraws it).</summary>
+    public static string RefreshText()
+    {
+        int n = 0;
+        foreach (var tm in All().Where(t => t != null).Select(t => t.GetComponent<TMPro.TMP_Text>()).Where(t => t != null && t.gameObject.activeInHierarchy)) { tm.ForceMeshUpdate(true, true); n++; }
+        SceneView.RepaintAll();
+        return "refreshed " + n;
+    }
+
     public static string Hide()
     {
         int n = 0;
@@ -89,6 +98,9 @@ public static class Preview
         return "framed " + name;
     }
 
+    static bool s_details;
+    public static string ShowPaperDetails() { s_details = true; try { return ShowPaper(); } finally { s_details = false; } }
+
     /// <summary>Show the decision paper where the researcher would hand it over (never saved).</summary>
     public static string ShowPaper()
     {
@@ -97,7 +109,25 @@ public static class Preview
         var ws = all.First(t => t.name == "WorkspaceRoot");
         if (doc == null) return "no DecisionDocument";
         doc.gameObject.SetActive(true);
-        foreach (Transform c in doc) if (c.name != "ApprovalStamp") c.gameObject.SetActive(true);
+        foreach (Transform c in doc)
+            c.gameObject.SetActive(c.name != "ApprovalStamp" && c.name != "StampMark" && c.name != "HoverFrame" && (c.name != "Details" || s_details));
+        var panel = doc.GetComponentInChildren<MuseDesk.Documents.DecisionPanel>(true);
+        if (panel != null)
+        {
+            var content = new MuseDesk.Models.DecisionContent
+            {
+                Title = "Use OAuth for sign-in?",
+                Summary = "OAuth with an existing provider is less code to own than local passwords, and the baseline tests already pass.",
+                Recommendation = "approve",
+                Rationale = "No password storage or reset flow to build and secure. The provider handles MFA.",
+                RiskLevel = "Low. Adds a dependency on the identity provider.",
+                Impact = "The Developer is blocked on this decision.",
+                SourceMode = "demo",
+            };
+            content.Alternatives.Add(new MuseDesk.Models.DecisionAlternative { Label = "Local passwords", Tradeoff = "more code to secure" });
+            panel.Bind(content, "demo", "Template recommendation. Not live AI research.");
+            if (s_details) { panel.Expand(); panel.SetAnswer("OAuth removes the password database, which is the part most often breached."); }
+        }
         Vector3 eye = ws.TransformPoint(new Vector3(0f, 0.30f, 0.62f));
         doc.position = ws.TransformPoint(new Vector3(-0.05f, 0.24f, 0.30f));
         doc.rotation = Quaternion.LookRotation(doc.position - eye, Vector3.up);

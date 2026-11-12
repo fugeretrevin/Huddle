@@ -41,9 +41,11 @@ from .models import (
 )
 from .orchestrator import Orchestrator
 from .live_orchestrator import LiveOrchestrator
+from .phase2.board_bridge import BoardRunBridge
 from .phase2.events import Phase2EventBus
 from .phase2.routes import install_phase2_exception_handlers, register_phase2_routes
 from .phase2.store import Phase2Store
+from .run_launcher import RunLauncher
 from .run_recovery import reconcile_interrupted_runs
 from .settings import Settings, get_settings
 from .storage import Storage
@@ -74,20 +76,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bus = EventBus(storage)
         phase2_store = Phase2Store(storage)
         phase2_bus = Phase2EventBus(phase2_store)
-        orchestrator = (LiveOrchestrator(storage, bus, settings, phase2_store, phase2_bus)
+        # Projects a run's milestones onto the task card that launched it (v2 stream).
+        board = BoardRunBridge(phase2_store, phase2_bus)
+        orchestrator = (LiveOrchestrator(storage, bus, settings, phase2_store, phase2_bus,
+                                         board=board)
                         if settings.producer == "live"
-                        else Orchestrator(storage, bus, settings))
+                        else Orchestrator(storage, bus, settings, board=board))
         app.state.settings = settings
         app.state.storage = storage
         app.state.bus = bus
         app.state.orchestrator = orchestrator
         app.state.phase2_store = phase2_store
         app.state.phase2_bus = phase2_bus
+        # One launcher for both entry points (v1 task create, v2 card assign), so both
+        # start the same run through the same producer.
+        app.state.run_launcher = RunLauncher(storage, orchestrator)
         # Runs are driven by in-memory asyncio tasks + decision waiters. Anything the
         # database still shows as in flight was cut off by the previous process; report
         # it as failed (and expire its pending decision) instead of leaving agents
         # "working"/"waiting" on a run nobody is driving.
-        await reconcile_interrupted_runs(storage, bus, settings.state_source_mode)
+        await reconcile_interrupted_runs(storage, bus, settings.state_source_mode,
+                                         board=board)
         try:
             yield
         finally:
@@ -109,6 +118,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def _mode(request: Request) -> str:
         # Label for state the API itself records (session, decision resolution).
         return request.app.state.settings.state_source_mode
+
+    def _task_views(request: Request, session_id: str) -> list[dict[str, Any]]:
+        """v1 task rows. ``board_task_id`` (additive) is the v2 task card that launched
+        the run a task belongs to, or null for a card-less run."""
+        import json as _json
+        cards = {c["run_task_id"]: c["id"]
+                 for c in request.app.state.phase2_store.list_tasks_v2(session_id)
+                 if c.get("run_task_id")}
+        return [{"task_id": t["id"], "agent_id": t["agent_id"],
+                 "parent_task_id": t["parent_task_id"], "status": t["status"],
+                 "template": t["template"],
+                 "dependencies": _json.loads(t["dependency_json"]),
+                 "board_task_id": cards.get(t["parent_task_id"] or t["id"])}
+                for t in _storage(request).list_tasks(session_id)]
 
     async def require_session(
         session_id: str,
@@ -162,13 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         agents = [{"agent_id": a["agent_id"], "role": a["role"],
                    "display_name": a["display_name"], "state": a["state"]}
                   for a in storage.list_agents(session_id)]
-        tasks = []
-        import json as _json
-        for t in storage.list_tasks(session_id):
-            tasks.append({"task_id": t["id"], "agent_id": t["agent_id"],
-                          "parent_task_id": t["parent_task_id"], "status": t["status"],
-                          "template": t["template"],
-                          "dependencies": _json.loads(t["dependency_json"])})
+        tasks = _task_views(request, session_id)
         decisions = [{"decision_id": d["id"], "task_id": d["task_id"],
                       "agent_id": d["agent_id"], "state": d["status"],
                       "summary": d["summary"], "recommendation": d["recommendation"]}
@@ -195,33 +212,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # One run per session at a time. A second concurrent run shared (and wiped) the
         # first run's sandbox workspace mid-execution and interleaved both runs' states
         # on the same three agents, so its outcome could not be trusted.
-        if storage.list_unfinished_runs(session_id):
+        launcher: RunLauncher = request.app.state.run_launcher
+        if launcher.run_in_progress(session_id):
             raise HTTPException(status_code=409, detail={
                 "error_code": "RUN_IN_PROGRESS",
                 "user_message": "A task is already running in this session. Wait for it "
                                 "to finish (or answer its pending decision) first."})
-        now = utcnow_iso()
-        parent_task_id = f"task-{uuid.uuid4().hex[:10]}"
-        storage.upsert_task(parent_task_id, session_id, None, None,
-                           TaskState.running.value, body.task_template, [], now, now)
+        parent_task_id = launcher.create_run(session_id, body.task_template)
         # ``template`` duplicates ``task_template`` under the key the client's TaskView
         # (and the snapshot/list rows) use, so the response deserializes fully.
         result = {"schema_version": 1, "task_id": parent_task_id,
                   "status": TaskState.running.value, "session_id": session_id,
                   "task_template": body.task_template, "template": body.task_template}
         storage.save_idempotent(session_id, body.idempotency_key, "POST", "tasks", result)
-        _orch(request).start_auth_demo(session_id, parent_task_id)
+        launcher.start(session_id, parent_task_id, body.task_template)
         return result
 
     @app.get("/v1/sessions/{session_id}/tasks")
     async def list_tasks(session_id: str, request: Request,
                         session=Depends(require_session)) -> dict[str, Any]:
-        import json as _json
-        tasks = [{"task_id": t["id"], "agent_id": t["agent_id"],
-                  "parent_task_id": t["parent_task_id"], "status": t["status"],
-                  "template": t["template"], "dependencies": _json.loads(t["dependency_json"])}
-                 for t in _storage(request).list_tasks(session_id)]
-        return {"schema_version": 1, "tasks": tasks}
+        return {"schema_version": 1, "tasks": _task_views(request, session_id)}
 
     # ─────────────────────── decisions ───────────────────────
     @app.post("/v1/sessions/{session_id}/decisions/{decision_id}/respond",

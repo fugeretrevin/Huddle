@@ -276,23 +276,37 @@ namespace MuseDesk.Phase2.Board
         // Short, plain-language outcome lines for the card (never a claim the backend didn't make).
         static string Confirmation(string label, TaskCardV2 c) => label switch
         {
-            "assign" => c != null && !string.IsNullOrEmpty(c.AgentId)
-                ? "Assigned to " + char.ToUpperInvariant(c.AgentId[0]) + c.AgentId.Substring(1) : "Assigned",
+            "assign" => AssignLine(c),
             "priority" => c != null ? $"Priority P{Mathf.Clamp(c.Priority, 0, 3)}" : "Priority set",
-            "pause" => "Pause requested",
-            "resume" => "Resumed",
+            "pause" => "Paused",
+            "resume" => "Back in the queue",
             _ => "Done",
         };
+
+        // An executable card that the backend has started says so. A planned card says plainly that
+        // it was only assigned: no agent runs it (never imply work began when it did not).
+        static string AssignLine(TaskCardV2 c)
+        {
+            if (c == null || string.IsNullOrEmpty(c.AgentId)) return "Assigned";
+            string who = char.ToUpperInvariant(c.AgentId[0]) + c.AgentId.Substring(1);
+            if (c.Executable && c.TaskState == TaskStates.Running) return who + " started it";
+            return c.Executable ? "Assigned to " + who : "Planned for " + who + ". Not run yet";
+        }
 
         static string Reason(CommandErrorBody e)
         {
             if (e == null) return "Not accepted";
             return e.Code switch
             {
-                CommandErrorCodes.TaskRunning => "Running: pause it first",
+                CommandErrorCodes.TaskRunning => "Already running",
                 CommandErrorCodes.TaskNotAssignable => "Finished tasks can't move",
                 CommandErrorCodes.UnsafeTransfer => "Can't move it right now",
-                CommandErrorCodes.TaskNotPausable => "Can't pause a finished task",
+                CommandErrorCodes.TaskNotPausable => "Can't pause this now",
+                CommandErrorCodes.RoleIncompatible => "Starts with the Researcher",
+                CommandErrorCodes.RunInProgress => "Another task is running",
+                CommandErrorCodes.TaskPaused => "Paused: resume it first",
+                CommandErrorCodes.DependenciesNotReady => "Waiting on another task",
+                CommandErrorCodes.ExecutorUnavailable => "Nothing can run it right now",
                 CommandErrorCodes.TaskNotPaused => "It isn't paused",
                 "CLIENT_NOT_READY" => "Board is still loading",
                 _ => string.IsNullOrEmpty(e.Message) ? "Not accepted" : e.Message,

@@ -60,6 +60,8 @@ namespace MuseDesk.Documents
             _expandedWhileHeld = false;
             _taken = false;
             _scaleLocked = false;
+            _filing = false;
+            _readableSince = float.MaxValue;
             if (agentHoldPoint != null)
             {
                 // Carried in the agent's hand: a small blank paper (no content/buttons), parented,
@@ -77,6 +79,10 @@ namespace MuseDesk.Documents
                 if (face) face.enabled = true;
                 if (placer) placer.enabled = true;
                 SetContent(true);
+                // No agent hand-over configured: the paper is shown full size and readable at once.
+                transform.localScale = _fullScale;
+                _scaleLocked = true;
+                _readableSince = Time.time;
             }
         }
 
@@ -86,10 +92,43 @@ namespace MuseDesk.Documents
             foreach (var go in hideWhileHeld) if (go != null) go.SetActive(on);
         }
 
+        /// <summary>True once the user has taken the paper out of the agent's hand (or there is no
+        /// agent hand-over configured).</summary>
+        public bool IsTaken => _taken || agentHoldPoint == null;
+
+        /// <summary>True while a hand is holding the paper.</summary>
+        public bool IsHeld => _held;
+
+        /// <summary>
+        /// The paper can be decided on: it has been taken, has finished expanding, and its content has
+        /// been in front of the user for a moment. The physical stamps require this, so brushing a
+        /// stamp past the blank paper in the agent's hand can never authorise anything.
+        /// </summary>
+        public bool ReadyForDecision => IsTaken && _scaleLocked && Time.time - _readableSince >= minReadSeconds;
+
+        [Tooltip("Seconds the expanded paper must have been readable before a stamp counts.")]
+        public float minReadSeconds = 0.8f;
+        float _readableSince = float.MaxValue;
+        bool _filing;
+
+        /// <summary>Hand the transform over to the filing animation: stop billboarding, stop holding
+        /// the scale, and ignore grabs until the paper is next shown.</summary>
+        public void BeginFiling()
+        {
+            _filing = true;
+            _scaleLocked = false;
+            StopAllCoroutines();
+            if (face) face.enabled = false;
+            if (placer) placer.enabled = false;
+        }
+
+        /// <summary>Full (expanded) local scale, for restoring after a filing animation.</summary>
+        public Vector3 FullScale => _fullScale;
+
         void LateUpdate()
         {
             // Once fully taken, keep it at full size so nothing shrinks it back.
-            if (_scaleLocked) transform.localScale = _fullScale;
+            if (_scaleLocked && !_filing) transform.localScale = _fullScale;
         }
 
         void Update()
@@ -106,7 +145,7 @@ namespace MuseDesk.Documents
                 }
             }
 
-            bool nowHeld = _selCount() > 0;
+            bool nowHeld = !_filing && _selCount() > 0;
 
             if (nowHeld && !_held) OnGrabbed();
             else if (!nowHeld && _held) OnReleased();
@@ -129,12 +168,9 @@ namespace MuseDesk.Documents
             // Stop fighting the hand.
             if (face) face.enabled = false;
             if (placer) placer.enabled = false;
-            // Pulling the paper up to read is the natural "show me the details" gesture.
-            if (!_expandedWhileHeld && delivery != null)
-            {
-                delivery.OnExpand();
-                _expandedWhileHeld = true;
-            }
+            // The paper opens on its summary (one line, the recommendation, the keys). The longer
+            // explanation stays behind the Details key: summary first, detail on demand.
+            _expandedWhileHeld = true;
         }
 
         IEnumerator ScaleTo(Vector3 target, float seconds)
@@ -144,11 +180,16 @@ namespace MuseDesk.Documents
             while (t < seconds)
             {
                 t += Time.deltaTime;
-                transform.localScale = Vector3.Lerp(from, target, t / seconds);
+                // Ease out with a slight overshoot so the paper "unfolds" instead of inflating linearly.
+                float k = Mathf.Clamp01(t / seconds);
+                float e = 1f - Mathf.Pow(1f - k, 3f);
+                float overshoot = Mathf.Sin(k * Mathf.PI) * 0.04f;
+                transform.localScale = Vector3.LerpUnclamped(from, target, e + overshoot);
                 yield return null;
             }
             transform.localScale = target;
             _scaleLocked = true;   // from here on, hold it at full size (LateUpdate enforces)
+            _readableSince = Time.time;
 
         }
 

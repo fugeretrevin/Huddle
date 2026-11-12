@@ -32,6 +32,7 @@ namespace MuseDesk.Art
             controller.Reducer.AgentChanged += OnAgentChanged;
             controller.Reducer.DecisionResolved += OnDecisionResolved;
             controller.Reducer.Applied += OnApplied;
+            controller.Reducer.SessionReset += OnSessionReset;
             _bound = true;
             if (testingStation != null) testingStation.SetTestingVisualState(WorkstationVisualController.TestingVisualState.Idle);
         }
@@ -42,6 +43,7 @@ namespace MuseDesk.Art
             controller.Reducer.AgentChanged -= OnAgentChanged;
             controller.Reducer.DecisionResolved -= OnDecisionResolved;
             controller.Reducer.Applied -= OnApplied;
+            controller.Reducer.SessionReset -= OnSessionReset;
             _bound = false;
         }
 
@@ -67,6 +69,13 @@ namespace MuseDesk.Art
                 PulseThenSettle(WorkstationVisualController.TestingVisualState.Failed);
             else if (s.Contains("idle") && _settle == null)
                 Set(WorkstationVisualController.TestingVisualState.Idle);
+        }
+
+        // Replay: lamps back to idle, and forget the last tester state so the next run reads fresh.
+        void OnSessionReset()
+        {
+            _lastTesterState = "";
+            Set(WorkstationVisualController.TestingVisualState.Idle);
         }
 
         void OnApplied(EventEnvelope e)

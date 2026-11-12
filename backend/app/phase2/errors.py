@@ -23,7 +23,10 @@ class CommandError(Exception):
         self.canonical = canonical
 
     def body(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"code": self.code, "message": self.message}
+        # ``code``/``message`` are the v2 keys; ``error_code``/``user_message`` repeat
+        # them under the v1 error-body names (additive) so one client parser fits both.
+        out: dict[str, Any] = {"code": self.code, "message": self.message,
+                               "error_code": self.code, "user_message": self.message}
         if self.canonical is not None:
             out["canonical_task"] = self.canonical
         return out

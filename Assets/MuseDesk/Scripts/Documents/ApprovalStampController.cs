@@ -51,6 +51,7 @@ namespace MuseDesk.Documents
             {
                 controller.Reducer.DecisionResolved -= OnResolved;
                 controller.Reducer.DecisionRequested -= OnRequested;
+                controller.Reducer.SessionReset -= HideAll;
             }
             _bound = false;
         }
@@ -59,6 +60,7 @@ namespace MuseDesk.Documents
         {
             controller.Reducer.DecisionResolved += OnResolved;
             controller.Reducer.DecisionRequested += OnRequested;
+            controller.Reducer.SessionReset += HideAll;
             _bound = true;
         }
 

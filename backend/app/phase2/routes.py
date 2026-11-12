@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from ..auth import verify_token
 from ..ws_stream import pump_events
 from .artifacts import ArtifactService
+from .board_bridge import card_from_row
 from .diagrams import DiagramService
 from .errors import CommandError, NotFoundError
 from .events import Phase2EventBus
@@ -29,7 +30,6 @@ from .models import (
     PriorityCommand,
     ResumeCommand,
     SnapshotV2,
-    TaskCardV2,
     TaskCreateV2,
 )
 from .store import Phase2Store, body_hash
@@ -56,7 +56,8 @@ def _services(request: Request) -> dict[str, Any]:
     mode = _source_mode(request)
     ws_root = getattr(request.app.state.settings, "workspace_root", None)
     return {
-        "graph": TaskGraphService(store, bus, mode),
+        "graph": TaskGraphService(store, bus, mode,
+                                  launcher=getattr(request.app.state, "run_launcher", None)),
         "handoffs": HandoffService(store, bus, mode),
         "artifacts": ArtifactService(store, bus, mode, ws_root),
         "focus": FocusService(store, bus, mode),
@@ -68,13 +69,7 @@ def _build_snapshot(request: Request, session_row: dict) -> SnapshotV2:
     store = _store(request)
     sid = session_row["id"]
     focus = FocusService(store, _bus(request), _source_mode(request))
-    import json as _json
-    tasks = [
-        TaskCardV2(task_id=t["id"], title=t["title"], task_state=t["task_state"],
-                   agent_id=t["agent_id"], priority=t["priority"], revision=t["revision"],
-                   dependencies=_json.loads(t["dependency_json"]), source_mode=t["source_mode"])
-        for t in store.list_tasks_v2(sid)
-    ]
+    tasks = [card_from_row(t) for t in store.list_tasks_v2(sid)]
     handoffs = [
         HandoffV2(handoff_id=h["id"], from_agent_id=h["from_agent_id"],
                   to_agent_id=h["to_agent_id"], task_id=h["task_id"], artifact_id=h["artifact_id"],
@@ -149,6 +144,7 @@ def register_phase2_routes(app: FastAPI) -> None:
                 body.agent_id.value if body.agent_id else None,
                 body.priority, body.dependencies,
                 body.role_lock.value if body.role_lock else None,
+                task_template=body.task_template,
             )
             # Inside the idempotent command: emitted once, never on a replayed key.
             await svc.announce_created(session_id, card)

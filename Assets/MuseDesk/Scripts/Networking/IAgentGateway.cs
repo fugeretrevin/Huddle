@@ -27,4 +27,22 @@ namespace MuseDesk.Networking
         /// <summary>Raised on the Unity main thread, in strict seq order, by the dispatcher.</summary>
         event Action<EventEnvelope> EventReceived;
     }
+
+    /// <summary>
+    /// The task board as the session controller sees it, so "Start" can begin the run THROUGH the
+    /// board's executable card (keeping card and session consistent) without the session layer
+    /// depending on the Phase 2 board types. Implemented by MuseDesk.Phase2.Phase2Bootstrap and
+    /// attached with SessionController.AttachBoard.
+    /// </summary>
+    public interface IRunBoardLink
+    {
+        /// <summary>If the board has an executable card that has not been started, issue the normal
+        /// assign-to-Researcher command for it (the same command a card drop sends) and return true.
+        /// Returns false when there is no such card or the board is not ready; nothing is sent then.</summary>
+        bool TryStartThroughCard();
+
+        /// <summary>True when the board has executable cards and every one of them has already run
+        /// to a terminal state — i.e. starting again needs a reset first.</summary>
+        bool ExecutableCardSpent { get; }
+    }
 }

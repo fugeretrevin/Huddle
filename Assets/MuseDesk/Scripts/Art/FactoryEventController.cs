@@ -35,6 +35,7 @@ namespace MuseDesk.Art
             controller.Reducer.WorkDelivered += OnTaskCompleted;
             controller.Reducer.ArtifactCreated += OnArtifactCreated;
             controller.Reducer.DecisionResolved += OnDecisionResolved;
+            controller.Reducer.SessionReset += OnSessionReset;
             _bound = true;
         }
 
@@ -46,6 +47,7 @@ namespace MuseDesk.Art
             controller.Reducer.WorkDelivered -= OnTaskCompleted;
             controller.Reducer.ArtifactCreated -= OnArtifactCreated;
             controller.Reducer.DecisionResolved -= OnDecisionResolved;
+            controller.Reducer.SessionReset -= OnSessionReset;
             _bound = false;
         }
 
@@ -105,6 +107,14 @@ namespace MuseDesk.Art
             }
             factory.PlayCompletedDelivery();
             _delivery = null;
+        }
+
+        // Replay: forget per-agent state and pending test evidence so stages fire again next run.
+        void OnSessionReset()
+        {
+            _lastState.Clear();
+            _testsPassedSeen = false;
+            if (_delivery != null) { StopCoroutine(_delivery); _delivery = null; }
         }
 
         // task.failed → the red reject lamp/chute fires (routed off the generic Applied stream).

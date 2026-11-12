@@ -161,6 +161,8 @@ class TaskView(BaseModel):
     status: TaskState
     template: str | None = None
     dependencies: list[str] = Field(default_factory=list)
+    # Additive: the v2 task card that launched this task's run (null if card-less).
+    board_task_id: str | None = None
 
 
 class DecisionView(BaseModel):

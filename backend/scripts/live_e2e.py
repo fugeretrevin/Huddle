@@ -13,10 +13,10 @@ def check(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (f"  [{detail}]" if detail else ""))
 
 
-async def collect(sid, token, until, timeout=120.0, after=0):
-    """Read the event socket until `until(events)` is true."""
+async def collect(sid, token, until, timeout=120.0, after=0, ver="v1"):
+    """Read the event socket (v1, or the v2 board stream) until `until(events)` is true."""
     events = []
-    url = f"{WS}/v1/sessions/{sid}/events?after_seq={after}&token={token}"
+    url = f"{WS}/{ver}/sessions/{sid}/events?after_seq={after}&token={token}"
     async with websockets.connect(url) as ws:
         end = time.time() + timeout
         while time.time() < end:
@@ -117,12 +117,125 @@ async def run(action):
         check(f"[{action}] another session's token is refused", x.status_code == 401, str(x.status_code))
 
 
+async def run_card():
+    """Third run: the same pipeline, launched from a task-board CARD (v2) instead of the
+    card-less v1 start. The card must reflect the run and own its artifacts."""
+    T = "[card]"
+    async with httpx.AsyncClient(base_url=BASE, timeout=30) as c:
+        r = await c.post("/v1/sessions", json={"schema_version": 1, "mode": "live_local", "client": "quest"})
+        check(f"{T} session created", r.status_code == 201, str(r.status_code))
+        body = r.json(); sid, token = body["session_id"], body["token"]
+        h = {"Authorization": f"Bearer {token}"}
+
+        r = await c.post(f"/v2/sessions/{sid}/tasks", headers=h,
+                         json={"schema_version": 2, "title": "Add OAuth login", "priority": 2,
+                               "task_template": "auth_demo", "idempotency_key": "e2e-card-create-01"})
+        card = r.json() if r.status_code == 201 else {}
+        check(f"{T} executable card created", r.status_code == 201 and card.get("executable") is True
+              and card.get("task_template") == "auth_demo" and card.get("task_state") == "queued", r.text[:160])
+        if not card:
+            return
+        cid = card["task_id"]
+
+        async def assign(agent, key, rev):
+            return await c.post(f"/v2/sessions/{sid}/tasks/{cid}/assign", headers=h,
+                                json={"schema_version": 2, "target_agent_id": agent,
+                                      "expected_revision": rev, "idempotency_key": key})
+
+        async def snap_card():
+            snap = (await c.get(f"/v2/sessions/{sid}/snapshot", headers=h)).json()
+            return next(t for t in snap["tasks"] if t["task_id"] == cid), snap
+
+        r = await assign("developer", "e2e-card-assign-dev1", 0)
+        check(f"{T} assigning to the developer is refused", r.status_code == 409
+              and r.json().get("error_code") == "ROLE_INCOMPATIBLE", r.text[:140])
+        r = await assign("researcher", "e2e-card-assign-res1", 0)
+        started = r.json() if r.status_code == 200 else {}
+        check(f"{T} assigning to the researcher starts the run", r.status_code == 200
+              and started.get("task_state") == "running" and bool(started.get("run_task_id")), r.text[:200])
+        r = await assign("researcher", "e2e-card-assign-res1", 0)
+        tasks = (await c.get(f"/v1/sessions/{sid}/tasks", headers=h)).json()["tasks"]
+        runs = [t for t in tasks if t["parent_task_id"] is None]
+        check(f"{T} replayed assign starts no second run", r.status_code == 200 and r.json() == started
+              and len(runs) == 1 and runs[0].get("board_task_id") == cid, f"runs={len(runs)}")
+        r = await c.post(f"/v1/sessions/{sid}/tasks", headers=h,
+                         json={"schema_version": 1, "task_template": "auth_demo", "idempotency_key": "e2e-card-v1-start-1"})
+        check(f"{T} v1 start refused while the card's run is in progress", r.status_code == 409
+              and r.json().get("error_code") == "RUN_IN_PROGRESS", r.text[:80])
+
+        ev = await collect(sid, token, lambda es: any(e["type"] == "decision.requested" for e in es))
+        dec = next((e for e in ev if e["type"] == "decision.requested"), None)
+        check(f"{T} decision requested, linked to the card, labelled a template", dec is not None
+              and dec["payload"].get("board_task_id") == cid
+              and dec["payload"].get("research_provenance") == "template",
+              json.dumps({k: dec["payload"].get(k) for k in ("board_task_id", "research_provenance", "research_provenance_label")}) if dec else "none")
+        if dec is None:
+            return
+        did = dec["decision_id"]
+
+        waiting = None
+        for _ in range(100):
+            waiting, _snap = await snap_card()
+            if waiting["task_state"] == "awaiting_approval":
+                break
+            await asyncio.sleep(0.1)
+        check(f"{T} card is awaiting approval", waiting["task_state"] == "awaiting_approval", json.dumps(waiting))
+        r = await c.post(f"/v2/sessions/{sid}/tasks/{cid}/pause", headers=h,
+                         json={"schema_version": 2, "expected_revision": waiting["revision"], "idempotency_key": "e2e-card-pause-0001"})
+        check(f"{T} pause refused mid-run (never pause_requested)", r.status_code == 409
+              and r.json().get("error_code") == "TASK_NOT_PAUSABLE", r.text[:140])
+
+        r = await c.post(f"/v1/sessions/{sid}/decisions/{did}/respond", headers=h,
+                         json={"schema_version": 1, "action": "approve", "idempotency_key": "e2e-card-resp-0001"})
+        check(f"{T} approval applied", r.status_code == 200 and r.json().get("applied") is True, r.text[:90])
+
+        is_end = lambda e: e.get("task_id") == cid and e["type"] in ("task.completed", "task.failed")
+        ev2 = await collect(sid, token, lambda es: any(is_end(e) for e in es), ver="v2")
+        seqs = [e["seq"] for e in ev2]
+        check(f"{T} v2 seq dense from 1", seqs == list(range(1, len(seqs) + 1)), f"{seqs[:3]}..{seqs[-1] if seqs else ''}")
+        mine = [e for e in ev2 if e.get("task_id") == cid and e["type"] != "artifact.created"]
+        order = [(e["type"], e["payload"].get("task_state")) for e in mine]
+        check(f"{T} card events in order", order == [
+            ("task.created", "queued"), ("task.assigned", None), ("task.started", "running"),
+            ("decision.requested", "awaiting_approval"), ("task.resumed", "running"),
+            ("task.completed", "completed")], str(order))
+        check(f"{T} card revisions increase by one per event",
+              [e["payload"].get("revision") for e in mine] == list(range(len(mine))),
+              str([e["payload"].get("revision") for e in mine]))
+        check(f"{T} card's decision event names the decision",
+              any(e["type"] == "decision.requested" and e["payload"].get("decision_id") == did for e in mine))
+
+        final, snap = await snap_card()
+        check(f"{T} card completed in the snapshot", final["task_state"] == "completed", json.dumps(final))
+        arts = [e for e in ev2 if e["type"] == "artifact.created"]
+        check(f"{T} artifacts reference the card and are real sandbox output", len(arts) >= 2
+              and all(a.get("task_id") == cid and a["payload"].get("source_mode") == "live"
+                      and a["payload"].get("work_provenance") == "sandbox_execution" for a in arts),
+              str([(a.get("task_id"), a["payload"].get("kind"), a["payload"].get("source_mode")) for a in arts]))
+        if arts:
+            a = await c.get(f"/v2/sessions/{sid}/artifacts/{arts[0]['artifact_id']}", headers=h)
+            check(f"{T} card-linked artifact retrievable", a.status_code == 200 and a.json().get("task_id") == cid,
+                  f"{a.status_code} kind={a.json().get('kind') if a.status_code == 200 else ''}")
+        check(f"{T} snapshot lists the card's artifacts", len(snap.get("artifacts", [])) == len(arts),
+              str(len(snap.get("artifacts", []))))
+
+        ev1 = await collect(sid, token, lambda es: any(e["type"] in ("task.completed", "task.failed")
+                                                       and (e.get("task_id") or "").endswith("-oauth") for e in es))
+        fin = next((e for e in ev1 if e["type"] in ("task.completed", "task.failed") and (e.get("task_id") or "").endswith("-oauth")), None)
+        check(f"{T} v1 completion carries board_task_id and real test counts", fin is not None
+              and fin["type"] == "task.completed" and fin["payload"].get("board_task_id") == cid,
+              json.dumps(fin["payload"])[:200] if fin else "none")
+        r = await assign("researcher", "e2e-card-assign-res2", final["revision"])
+        check(f"{T} a finished card cannot start another run", r.status_code == 409, r.text[:100])
+
+
 async def main():
     async with httpx.AsyncClient(base_url=BASE, timeout=10) as c:
         r = await c.get("/health")
         check("health", r.status_code == 200, r.text[:80])
     await run("approve")
     await run("reject")
+    await run_card()
     print(f"TOTAL {sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)
 

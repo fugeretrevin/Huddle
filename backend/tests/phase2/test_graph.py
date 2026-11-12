@@ -94,25 +94,46 @@ def test_priority_bump_and_bounds():
     asyncio.run(body())
 
 
-def test_cooperative_pause_then_checkpoint_then_resume():
+def test_pause_is_immediate_and_resume_returns_to_queued():
+    """Was ``test_cooperative_pause_then_checkpoint_then_resume``. A plain board card has
+    no executor, so the old expectations were dishonest: pause of a 'running' card
+    parked it in ``pause_requested`` forever (nothing ever reached a checkpoint), and
+    resume of a card with an agent claimed ``running`` although nothing ran it."""
     async def body():
         store, bus, svc = p2_fresh()
         g = svc["graph"]
         t = g.create_task(SID, "t", "developer", 1, [], None)
         store.update_task_v2(t.task_id, task_state="running", bump_revision=False, now="now")
-        # pause of a running task is a REQUEST, not immediate paused
+        # no executor to wait for: pause goes straight to paused, never pause_requested
         card = await g.pause(SID, t.task_id, 0)
-        assert card.task_state.value == "pause_requested"
-        # cooperative checkpoint transitions to paused
+        assert card.task_state.value == "paused"
+        # resume returns the card to queued even though an agent is assigned
+        card = await g.resume(SID, t.task_id, card.revision)
+        assert card.task_state.value == "queued" and card.agent_id == "developer"
+        events = store.events_after_v2(SID, 0)
+        types = [e["type"] for e in events]
+        assert "task.pause_requested" not in types
+        assert types == ["task.paused", "task.resumed"]
+        assert events[-1]["payload"]["task_state"] == "queued"
+    asyncio.run(body())
+
+
+def test_legacy_pause_requested_row_can_still_be_settled():
+    async def body():
+        store, bus, svc = p2_fresh()
+        g = svc["graph"]
+        t = g.create_task(SID, "t", "developer", 1, [], None)
+        # a row written by an older build
+        store.update_task_v2(t.task_id, task_state="pause_requested", bump_revision=False,
+                             now="now")
         card = await g.reach_checkpoint(SID, t.task_id)
         assert card.task_state.value == "paused"
-        # resume from paused (agent assigned → running)
+        store.update_task_v2(t.task_id, task_state="pause_requested", bump_revision=False,
+                             now="now")
+        card = await g.pause(SID, t.task_id, card.revision)   # pause also settles it
+        assert card.task_state.value == "paused"
         card = await g.resume(SID, t.task_id, card.revision)
-        assert card.task_state.value == "running"
-        types = [e["type"] for e in store.events_after_v2(SID, 0)]
-        assert "task.pause_requested" in types
-        assert "task.paused" in types
-        assert "task.resumed" in types
+        assert card.task_state.value == "queued"
     asyncio.run(body())
 
 

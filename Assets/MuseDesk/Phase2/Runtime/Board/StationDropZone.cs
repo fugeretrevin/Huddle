@@ -33,6 +33,11 @@ namespace MuseDesk.Phase2.Board
 
         Collider _collider;
         Renderer _haloRenderer;
+        MaterialPropertyBlock _block;
+        bool _wasOn, _wasValid = true;
+
+        /// <summary>Raised when the halo turns on/off or changes validity (zone, on, valid).</summary>
+        public static event System.Action<StationDropZone, bool, bool> HighlightChanged;
 
         /// <summary>All enabled zones, for the nearest-valid resolver. Registered in OnEnable.</summary>
         public static readonly List<StationDropZone> Active = new List<StationDropZone>();
@@ -67,6 +72,9 @@ namespace MuseDesk.Phase2.Board
             if (TaskStateSets.IsTerminal(card.TaskState)) return false;
             if (TaskStateSets.IsRunning(card.TaskState)) return false;
             if (!TaskStateSets.IsSafeAssignCheckpoint(card.TaskState)) return false;
+            // A runnable card's pipeline starts with the Researcher, so only that zone is a valid
+            // target (the others show the red halo). The backend enforces the same rule.
+            if (card.Executable && agentId != Phase2AgentIds.Researcher) return false;
             return true;
         }
 
@@ -80,8 +88,22 @@ namespace MuseDesk.Phase2.Board
         {
             if (halo == null) return;
             halo.SetActive(on);
-            if (on && _haloRenderer != null && _haloRenderer.material != null)
-                _haloRenderer.material.color = valid ? validColor : invalidColor;
+            if (on && _haloRenderer != null)
+            {
+                // Property block (no per-zone material instance). Green = a drop here assigns;
+                // red = it would be refused. The card's own status line states the reason in words.
+                if (_block == null) _block = new MaterialPropertyBlock();
+                Color c = valid ? validColor : invalidColor;
+                _haloRenderer.GetPropertyBlock(_block);
+                _block.SetColor("_BaseColor", c);
+                _block.SetColor("_Color", c);
+                _haloRenderer.SetPropertyBlock(_block);
+            }
+            if (on != _wasOn || valid != _wasValid)
+            {
+                _wasOn = on; _wasValid = valid;
+                HighlightChanged?.Invoke(this, on, valid);
+            }
         }
 
         /// <summary>

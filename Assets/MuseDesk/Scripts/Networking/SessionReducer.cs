@@ -29,6 +29,8 @@ namespace MuseDesk.Networking
         /// as task.completed but carry no artifact, so success visuals (shelf token, completion chime,
         /// factory delivery) listen to THIS instead of TaskCompleted.</summary>
         public event Action<EventEnvelope> WorkDelivered;
+        /// <summary>A task.failed was applied (the run ended without delivering work).</summary>
+        public event Action<EventEnvelope> TaskFailed;
         /// <summary>Raised after LoadSnapshot so views can project state that predates the event
         /// stream (app restart / resume against a backend with work already in flight).</summary>
         public event Action SnapshotLoaded;
@@ -98,6 +100,7 @@ namespace MuseDesk.Networking
                 case EventTypes.TaskFailed:
                     if (e.TaskId != null && _tasks.TryGetValue(e.TaskId, out var tf))
                         tf.Status = "failed";
+                    TaskFailed?.Invoke(e);
                     break;
                 case EventTypes.SessionReset:
                     Reset();

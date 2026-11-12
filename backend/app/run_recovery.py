@@ -22,8 +22,14 @@ _SETTLED_AGENT = {AgentState.idle.value, AgentState.complete.value, AgentState.e
 
 
 async def fail_run(storage: Storage, bus: EventBus, session_id: str, parent_task_id: str, *,
-                   code: str, reason: str, agent_message: str, mode: str) -> None:
+                   code: str, reason: str, agent_message: str, mode: str,
+                   board=None) -> None:
+    """``board`` is the optional ``BoardRunBridge``: when the run was launched from a
+    task card, the card is failed too (with a v2 event) instead of staying
+    ``running`` / ``awaiting_approval`` with nothing driving it."""
     now = utcnow_iso()
+    board_task_id = board.card_id_for_run(parent_task_id) if board is not None else None
+    link = {"board_task_id": board_task_id} if board_task_id else {}
     run_tasks = [t for t in storage.list_tasks(session_id)
                  if t["id"] == parent_task_id or t["parent_task_id"] == parent_task_id]
     run_task_ids = {t["id"] for t in run_tasks}
@@ -55,16 +61,19 @@ async def fail_run(storage: Storage, bus: EventBus, session_id: str, parent_task
 
     await bus.publish(session_id, EventType.system_warning,
                       {"code": code, "message": reason, "task_id": parent_task_id,
-                       "source_mode": mode}, task_id=parent_task_id)
+                       **link, "source_mode": mode}, task_id=parent_task_id)
     for t in to_fail:
         await bus.publish(session_id, EventType.task_failed,
                           {"task_id": t["id"], "task_state": TaskState.failed.value,
                            "result_summary": f"Run stopped: {reason}",
-                           "source_mode": mode},
+                           **link, "source_mode": mode},
                           task_id=t["id"], agent_id=t["agent_id"])
+    if board_task_id:
+        await board.run_failed(parent_task_id, code, reason)
 
 
-async def reconcile_interrupted_runs(storage: Storage, bus: EventBus, mode: str) -> int:
+async def reconcile_interrupted_runs(storage: Storage, bus: EventBus, mode: str,
+                                     board=None) -> int:
     """Called once at startup. A run's driver lives only in process memory, so any run
     the database still shows as in flight was cut off by the previous shutdown/crash.
     It cannot be resumed (the waiter and, for live runs, the workspace are gone), so it
@@ -75,5 +84,10 @@ async def reconcile_interrupted_runs(storage: Storage, bus: EventBus, mode: str)
                        code="RUN_INTERRUPTED",
                        reason="the backend restarted while this run was in progress; "
                               "start the task again",
-                       agent_message="Run interrupted: backend restarted", mode=mode)
+                       agent_message="Run interrupted: backend restarted", mode=mode,
+                       board=board)
+    if board is not None:
+        # A card whose run is already terminal (or gone) but which still shows a run in
+        # progress: nothing will ever move it, so settle it as failed too.
+        await board.fail_orphaned_cards(storage)
     return len(runs)

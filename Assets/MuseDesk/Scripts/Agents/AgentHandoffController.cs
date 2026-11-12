@@ -54,6 +54,7 @@ namespace MuseDesk.Agents
 
             controller.Reducer.DecisionResolved += OnDecisionResolved;
             controller.Reducer.ArtifactCreated += OnArtifactCreated;
+            controller.Reducer.SessionReset += OnSessionReset;
             _bound = true;
         }
 
@@ -63,6 +64,7 @@ namespace MuseDesk.Agents
             {
                 controller.Reducer.DecisionResolved -= OnDecisionResolved;
                 controller.Reducer.ArtifactCreated -= OnArtifactCreated;
+                controller.Reducer.SessionReset -= OnSessionReset;
             }
             _bound = false;
             // A disabled component's coroutines stop; don't stay latched busy or leak the marker.
@@ -70,6 +72,22 @@ namespace MuseDesk.Agents
             if (_busy) AnyBusy = false;
             _busy = false;
             if (_destGo != null) { Destroy(_destGo); _destGo = null; }
+        }
+
+        // Replay: abandon any hand-off in flight, send couriers home, put the token away.
+        void OnSessionReset()
+        {
+            StopAllCoroutines();
+            _queue.Clear();
+            if (_busy) AnyBusy = false;
+            _busy = false;
+            if (_destGo != null) { Destroy(_destGo); _destGo = null; }
+            if (artifactProp != null) artifactProp.gameObject.SetActive(false);
+            foreach (var a in _byId.Values)
+            {
+                var m = a != null ? a.GetComponent<AgentMovement>() : null;
+                if (m != null && !m.AtHome) m.ReturnHome();
+            }
         }
 
         void OnDecisionResolved(string decisionId, string state)

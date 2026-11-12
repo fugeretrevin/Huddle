@@ -95,7 +95,7 @@ namespace MuseDesk.Phase2.Board
             if (stateLabel != null)
             {
                 if (_stateColorCaptured) stateLabel.color = _stateBaseColor;
-                stateLabel.text = Data != null ? PrettyState(Data.TaskState) : "";
+                stateLabel.text = Data != null ? StateLine(Data) : "";
             }
         }
 
@@ -144,7 +144,7 @@ namespace MuseDesk.Phase2.Board
             if (idRevisionLabel) idRevisionLabel.text = $"{ShortId(Data.TaskId)} · r{Data.Revision}";
             if (roleLabel) roleLabel.text = string.IsNullOrEmpty(Data.AgentId) ? "Unassigned" : Capitalize(Data.AgentId);
             if (priorityLabel) priorityLabel.text = $"P{Mathf.Clamp(Data.Priority, 0, 3)}";
-            if (stateLabel && !_noticeActive) stateLabel.text = PrettyState(Data.TaskState);
+            if (stateLabel && !_noticeActive) stateLabel.text = StateLine(Data);
             if (sourceLabel) sourceLabel.text = Data.SourceMode == SourceModes.Demo ? "SCRIPTED DEMO" : "LIVE";
             if (statusMarker) ApplyStateTint();
         }
@@ -218,6 +218,15 @@ namespace MuseDesk.Phase2.Board
             => string.IsNullOrEmpty(id) ? "?" : (id.Length <= 10 ? id : id.Substring(0, 10));
         static string Capitalize(string s)
             => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
+        // What the card can honestly say about itself. A queued card that a pipeline can run reads
+        // "Ready: drop on Researcher"; one that nothing runs yet reads "Planned".
+        static string StateLine(TaskCardV2 d)
+        {
+            if (d.TaskState == TaskStates.Queued)
+                return d.Executable ? "Ready: drop on Researcher" : "Planned";
+            return PrettyState(d.TaskState);
+        }
+
         static string PrettyState(string s) => s switch
         {
             TaskStates.AwaitingApproval => "Needs me",

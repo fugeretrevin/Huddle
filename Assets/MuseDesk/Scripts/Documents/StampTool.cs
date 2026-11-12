@@ -36,6 +36,10 @@ namespace MuseDesk.Documents
         public Transform stampZone;
         public SessionController controller;
         public StampAction action = StampAction.Approve;
+        [Tooltip("The decision paper. Auto-found from the stamp zone if empty. The stamp only works once the paper is ready (taken and readable).")]
+        public HeldPaperController paper;
+        bool _paperResolved;
+        DocumentDeliveryController _delivery;
 
         [Header("Press detection")]
         [Tooltip("Ink head must come within this distance of the zone to count as contact (metres).")]
@@ -133,6 +137,15 @@ namespace MuseDesk.Documents
 
             if (!contact) { _dwell = 0f; return; }
 
+            // A stamp only counts on a paper the user has taken and had in front of them: never on
+            // the blank sheet still in the agent's hand, and never in the instant it is unfolding.
+            if (!_paperResolved)
+            {
+                if (paper == null) paper = stampZone.GetComponentInParent<HeldPaperController>(true);
+                _paperResolved = true;
+            }
+            if (paper != null && !paper.ReadyForDecision) { _dwell = 0f; return; }
+
             string pending = controller.PendingDecisionId;
             if (string.IsNullOrEmpty(pending))
             {
@@ -156,8 +169,16 @@ namespace MuseDesk.Documents
             _cooldownUntil = Time.time + cooldownSeconds;
             _dwell = 0f;
 
-            // The ONLY state change: the real approval path. Never fabricate a result.
-            if (action == StampAction.Approve) controller.ApprovePending();
+            // The ONLY state change: the real approval path. Never fabricate a result. Go through the
+            // paper's own response hooks when there is one, so a stamp and a button press share a
+            // single in-flight response (no double submission) and the paper shows "Saving…".
+            if (_delivery == null) _delivery = FindAnyObjectByType<DocumentDeliveryController>();
+            if (_delivery != null)
+            {
+                if (_delivery.ResponseInFlight) return;
+                if (action == StampAction.Approve) _delivery.OnApprove(); else _delivery.OnReject();
+            }
+            else if (action == StampAction.Approve) controller.ApprovePending();
             else controller.RejectPending();
 
             Play(_thunk);
