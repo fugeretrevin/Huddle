@@ -20,7 +20,9 @@ namespace MuseDesk.Workspace
     [DefaultExecutionOrder(2000)]   // run LateUpdate after ISDK's own joint writers
     public class DynamicFingerCollision : MonoBehaviour
     {
-        public static bool GloballyEnabled = true;   // one-line kill switch for on-head testing
+        // DEFERRED (user parked it): the solver runs but ISDK overwrites the joints so it only
+        // flickers. Off by default — clean hands — until the WhenHandVisualUpdated hook fix lands.
+        public static bool GloballyEnabled = false;
 
         [Tooltip("Layer(s) the grabbable colliders live on. Keep narrow so casts are cheap and never hit the desk.")]
         public LayerMask grabbableMask = ~0;
