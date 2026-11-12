@@ -22378,7 +22378,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1998025116}
         m_TargetAssemblyTypeName: MuseDesk.Phase2.Phase2Bootstrap, Assembly-CSharp
-        m_MethodName: CreateSampleTask
+        m_MethodName: CreateExecutableTask
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -53185,7 +53185,6 @@ MonoBehaviour:
   - {fileID: 1158861919}
   - {fileID: 1331353864}
   - {fileID: 1345443435}
-  - {fileID: 629208910}
   - {fileID: 2004319951}
   - {fileID: 259077136}
   - {fileID: 1275147668}

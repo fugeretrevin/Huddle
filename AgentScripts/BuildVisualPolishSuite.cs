@@ -9,16 +9,22 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using TMPro;
+using MuseDesk.Agents;
+using MuseDesk.Art;
 using MuseDesk.Art.VisualPolish;
 using MuseDesk.Documents;
+using MuseDesk.Models;
+using MuseDesk.Networking;
 using MuseDesk.Phase2.Board;
 using MuseDesk.Phase2.Contracts;
+using MuseDesk.Workspace;
 
 public static class BuildVisualPolishSuite
 {
     const string MainScenePath = "Assets/MuseDesk/Scenes/MainMRScene.unity";
     const string PreviewScenePath = "Assets/MuseDesk/Scenes/VisualPolishPreviewScene.unity";
     const string PrefabDir = "Assets/MuseDesk/Art/Prefabs/VisualPolish";
+    const string MatsRoot = "Assets/MuseDesk/Art/Materials";
     const string ScreenshotDir = "Screenshots/VisualPolish";
 
     public static string RunAll()
@@ -28,36 +34,45 @@ public static class BuildVisualPolishSuite
         EnsureFolder(PrefabDir);
 
         AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        var matMap = LoadAllMaterials();
 
         // 1. Verify mesh bounds on all newly generated FBX models
         sb.AppendLine("=== 1. MESH BOUNDS VERIFICATION ===");
         VerifyNewModelBounds(sb);
 
-        // 2. Build Reusable Visual Polish Prefabs
+        // 2. Build Reusable Visual Polish Prefabs (with URP materials applied)
         sb.AppendLine("\n=== 2. PREFAB GENERATION ===");
-        BuildReusablePrefabs(sb);
+        BuildReusablePrefabs(matMap, sb);
 
         // 3. Measure Baseline Renderer Count in MainMRScene (Read-Only) then copy to VisualPolishPreviewScene
         EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
-        int beforeRenderers = CountSceneRenderers();
+        int beforeTotalRenderers = CountSceneRenderers(includeInactive: true);
+        int beforeActiveRenderers = CountSceneRenderers(includeInactive: false);
         sb.AppendLine($"\n=== 3. SCENE UPGRADE ({PreviewScenePath}) ===");
-        sb.AppendLine($"Baseline MainMRScene total renderers: {beforeRenderers}");
+        sb.AppendLine($"Baseline MainMRScene renderers: {beforeTotalRenderers} total ({beforeActiveRenderers} active)");
 
         // Copy MainMRScene.unity on disk to PreviewScenePath so MainMRScene.unity is NEVER saved or modified!
         File.Copy(MainScenePath, PreviewScenePath, true);
         AssetDatabase.ImportAsset(PreviewScenePath, ImportAssetOptions.ForceSynchronousImport);
         var previewScene = EditorSceneManager.OpenScene(PreviewScenePath, OpenSceneMode.Single);
 
-        ApplyDecisionPaperPolish(sb);
-        ApplyTaskBoardAndCardPolish(sb);
-        ApplySingleMeshPokeButtons(sb);
-        ApplyStampsAndClutterReduction(sb);
-        ApplyStationAffordancesAndOptimizedWorkstations(sb);
-        ApplyMascotFeedbackBadges(sb);
-        BuildAffordanceAndFeedbackShowcaseStrip(sb);
+        ApplyDecisionPaperPolish(matMap, sb);
+        ApplyTaskBoardAndCardPolish(matMap, sb);
+        ApplySingleMeshPokeButtons(matMap, sb);
+        ApplyStampsAndClutterReduction(matMap, sb);
+        ApplyStationAffordancesAndOptimizedWorkstations(matMap, sb);
+        ApplyMascotFeedbackBadges(matMap, sb);
+        BuildAffordanceAndFeedbackShowcaseStrip(matMap, sb);
 
-        int afterRenderers = CountSceneRenderers();
-        sb.AppendLine($"Polished VisualPolishPreviewScene total renderers: {afterRenderers} (Saved {beforeRenderers - afterRenderers} renderers, {(1f - (float)afterRenderers / Mathf.Max(1, beforeRenderers)) * 100f:F1}% reduction!)");
+        // Ensure all URP materials are bound across the scene
+        foreach (var root in previewScene.GetRootGameObjects())
+            ApplyMaterialsRecursively(root, matMap);
+
+        int afterTotalRenderers = CountSceneRenderers(includeInactive: true);
+        int afterActiveRenderers = CountSceneRenderers(includeInactive: false);
+        int totalSaved = beforeTotalRenderers - afterTotalRenderers;
+        int activeSaved = beforeActiveRenderers - afterActiveRenderers;
+        sb.AppendLine($"Polished VisualPolishPreviewScene renderers: {afterTotalRenderers} total (saved {totalSaved}, {(1f - (float)afterTotalRenderers / Mathf.Max(1, beforeTotalRenderers)) * 100f:F1}% reduction), {afterActiveRenderers} active (saved {activeSaved})");
 
         EditorSceneManager.MarkSceneDirty(previewScene);
         EditorSceneManager.SaveScene(previewScene);
@@ -74,11 +89,49 @@ public static class BuildVisualPolishSuite
         return sb.ToString();
     }
 
-    static int CountSceneRenderers()
+    static int CountSceneRenderers(bool includeInactive)
     {
         return EditorSceneManager.GetActiveScene().GetRootGameObjects()
-            .SelectMany(r => r.GetComponentsInChildren<Renderer>(true))
-            .Count(r => !(r is ParticleSystemRenderer));
+            .SelectMany(r => r.GetComponentsInChildren<Renderer>(includeInactive))
+            .Count(r => !(r is ParticleSystemRenderer) && r.enabled);
+    }
+
+    static Dictionary<string, Material> LoadAllMaterials()
+    {
+        var map = new Dictionary<string, Material>(StringComparer.OrdinalIgnoreCase);
+        var guids = AssetDatabase.FindAssets("t:Material", new[] { MatsRoot });
+        foreach (var g in guids)
+        {
+            string p = AssetDatabase.GUIDToAssetPath(g);
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m != null) map[m.name] = m;
+        }
+        return map;
+    }
+
+    static void ApplyMaterialsRecursively(GameObject root, Dictionary<string, Material> matMap)
+    {
+        if (root == null) return;
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r.GetComponent<TMP_Text>() != null) continue;
+            var shared = r.sharedMaterials;
+            bool changed = false;
+            for (int i = 0; i < shared.Length; i++)
+            {
+                if (shared[i] == null) continue;
+                string raw = shared[i].name;
+                int dot = raw.IndexOf('.');
+                if (dot > 0) raw = raw.Substring(0, dot);
+                raw = raw.Replace(" (Instance)", "");
+                if (matMap.TryGetValue(raw, out var urpMat) && shared[i] != urpMat)
+                {
+                    shared[i] = urpMat;
+                    changed = true;
+                }
+            }
+            if (changed) r.sharedMaterials = shared;
+        }
     }
 
     static void VerifyNewModelBounds(StringBuilder sb)
@@ -122,7 +175,7 @@ public static class BuildVisualPolishSuite
         }
     }
 
-    static void BuildReusablePrefabs(StringBuilder sb)
+    static void BuildReusablePrefabs(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         // 1. Small Decision Paper Prefab
         var smallFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Documents/Doc_DecisionPaper_Small.fbx");
@@ -130,18 +183,27 @@ public static class BuildVisualPolishSuite
         {
             var inst = (GameObject)PrefabUtility.InstantiatePrefab(smallFbx);
             inst.name = "DecisionPaper_Small_Polished";
-            CreateDarkTMP(inst.transform, "Badge",   new Vector3(0f,  0.046f, -0.0042f), 2.2f, new Vector2(7.6f, 1.2f), TextAlignmentOptions.Center, new Color(0.96f, 0.94f, 0.88f), FontStyles.Bold);
-            CreateDarkTMP(inst.transform, "Title",   new Vector3(0f,  0.022f, -0.0042f), 2.8f, new Vector2(7.6f, 1.8f), TextAlignmentOptions.Center, new Color(0.10f, 0.11f, 0.14f), FontStyles.Bold);
-            CreateDarkTMP(inst.transform, "Summary", new Vector3(0f, -0.002f, -0.0042f), 2.1f, new Vector2(7.4f, 2.6f), TextAlignmentOptions.Center, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal);
-            CreateDarkTMP(inst.transform, "Reco",    new Vector3(-0.012f, -0.030f, -0.0042f), 1.9f, new Vector2(5.0f, 1.0f), TextAlignmentOptions.Center, new Color(0.14f, 0.44f, 0.26f), FontStyles.Bold);
+            ApplyMaterialsRecursively(inst, matMap);
+            var b = CreateDarkTMP(inst.transform, "Badge",   new Vector3(0f,  0.046f, 0.0042f), 2.0f, new Vector2(7.6f, 1.2f), TextAlignmentOptions.Center, new Color(0.96f, 0.94f, 0.88f), FontStyles.Bold);
+            b.text = "DECISION";
+            b.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            var t = CreateDarkTMP(inst.transform, "Title",   new Vector3(0f,  0.020f, 0.0042f), 2.5f, new Vector2(7.4f, 1.8f), TextAlignmentOptions.Center, new Color(0.10f, 0.11f, 0.14f), FontStyles.Bold);
+            t.text = "Use OAuth for sign-in?";
+            t.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            var s = CreateDarkTMP(inst.transform, "Summary", new Vector3(0f, -0.004f, 0.0042f), 1.8f, new Vector2(7.2f, 2.4f), TextAlignmentOptions.Center, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal);
+            s.text = "Baseline tests pass.";
+            s.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            var r = CreateDarkTMP(inst.transform, "Reco",    new Vector3(0.012f, -0.030f, 0.0042f), 1.8f, new Vector2(4.8f, 1.0f), TextAlignmentOptions.Center, new Color(0.12f, 0.44f, 0.26f), FontStyles.Bold);
+            r.text = "APPROVE";
+            r.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             SavePrefab(inst, $"{PrefabDir}/DecisionPaper_Small_Polished.prefab", sb);
         }
 
         // 2. Affordance Prefabs
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_AgentHaloRing.fbx", $"{PrefabDir}/Affordance_AgentHaloRing.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_DeskReceivePad.fbx", $"{PrefabDir}/Affordance_DeskReceivePad.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_CardSocket.fbx", $"{PrefabDir}/Affordance_CardSocket.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_StatePuck.fbx", $"{PrefabDir}/Affordance_StatePuck.prefab", sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_AgentHaloRing.fbx", $"{PrefabDir}/Affordance_AgentHaloRing.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_DeskReceivePad.fbx", $"{PrefabDir}/Affordance_DeskReceivePad.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_CardSocket.fbx", $"{PrefabDir}/Affordance_CardSocket.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Affordances/Affordance_StatePuck.fbx", $"{PrefabDir}/Affordance_StatePuck.prefab", matMap, sb);
 
         // Combined Station Assignment Affordance Kit Prefab
         var kitGo = new GameObject("Affordance_StationAssignment_Kit");
@@ -171,25 +233,26 @@ public static class BuildVisualPolishSuite
             pk.transform.localPosition = new Vector3(-0.095f, 0.092f, -0.040f);
             view.statePuckCoreRenderer = pk.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("GlowCore"));
         }
+        ApplyMaterialsRecursively(kitGo, matMap);
         SavePrefab(kitGo, $"{PrefabDir}/Affordance_StationAssignment_Kit.prefab", sb);
 
         // 3. Stamps & Rest Pad Prefabs
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Approve.fbx", $"{PrefabDir}/Doc_Stamp_Approve_Polished.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Reject.fbx",  $"{PrefabDir}/Doc_Stamp_Reject_Polished.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Documents/Doc_StampRestPad.fbx",  $"{PrefabDir}/Doc_StampRestPad.prefab", sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Approve.fbx", $"{PrefabDir}/Doc_Stamp_Approve_Polished.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Reject.fbx",  $"{PrefabDir}/Doc_Stamp_Reject_Polished.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Documents/Doc_StampRestPad.fbx",  $"{PrefabDir}/Doc_StampRestPad.prefab", matMap, sb);
 
         // 4. Mascot Feedback Badge Group Prefab
-        var fbGroupGo = BuildMascotFeedbackGroupObject("Mascot_FeedbackBadgeGroup");
+        var fbGroupGo = BuildMascotFeedbackGroupObject("Mascot_FeedbackBadgeGroup", matMap);
         SavePrefab(fbGroupGo, $"{PrefabDir}/Mascot_FeedbackBadgeGroup.prefab", sb);
 
         // 5. Optimized Workstation & Board Prefabs
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/Workstation_Research_Optimized.fbx",  $"{PrefabDir}/Workstation_Research_Optimized.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/Workstation_Developer_Optimized.fbx", $"{PrefabDir}/Workstation_Developer_Optimized.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/Workstation_Testing_Optimized.fbx",   $"{PrefabDir}/Workstation_Testing_Optimized.prefab", sb);
-        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/TaskBoard_KanbanFrame_Optimized.fbx", $"{PrefabDir}/TaskBoard_KanbanFrame_Optimized.prefab", sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/Workstation_Research_Optimized.fbx",  $"{PrefabDir}/Workstation_Research_Optimized.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/Workstation_Developer_Optimized.fbx", $"{PrefabDir}/Workstation_Developer_Optimized.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/Workstation_Testing_Optimized.fbx",   $"{PrefabDir}/Workstation_Testing_Optimized.prefab", matMap, sb);
+        SaveModelAsPrefab("Assets/MuseDesk/Art/Models/Optimized/TaskBoard_KanbanFrame_Optimized.fbx", $"{PrefabDir}/TaskBoard_KanbanFrame_Optimized.prefab", matMap, sb);
     }
 
-    static GameObject BuildMascotFeedbackGroupObject(string name)
+    static GameObject BuildMascotFeedbackGroupObject(string name, Dictionary<string, Material> matMap)
     {
         var root = new GameObject(name);
         var group = root.AddComponent<MascotFeedbackBadgeGroup>();
@@ -203,6 +266,7 @@ public static class BuildVisualPolishSuite
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
             go.transform.localScale = Vector3.one * 1.15f;
+            ApplyMaterialsRecursively(go, matMap);
             go.SetActive(false);
             return go;
         }
@@ -220,7 +284,7 @@ public static class BuildVisualPolishSuite
     // PRIORITY 1: DECISION PAPER REDESIGN IN SCENE + PREFAB
     // =========================================================================
 
-    static void ApplyDecisionPaperPolish(StringBuilder sb)
+    static void ApplyDecisionPaperPolish(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var roots = EditorSceneManager.GetActiveScene().GetRootGameObjects();
         var doc = roots.FirstOrDefault(r => r.name == "DecisionDocument");
@@ -244,54 +308,60 @@ public static class BuildVisualPolishSuite
             var folio = (GameObject)PrefabUtility.InstantiatePrefab(folioFbx, doc.transform);
             folio.name = "Doc_DecisionPaper_Expanded";
             folio.transform.SetAsFirstSibling();
-            // Orient front of folio (-Z in Unity) toward the user (-Z of DecisionDocument is front face)
+            // DecisionDocument's readable face is -Z; rotate 180 deg around Y so the folio's front faces -Z!
             folio.transform.localPosition = new Vector3(0f, 0f, 0.005f);
-            folio.transform.localRotation = Quaternion.identity;
+            folio.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             folio.transform.localScale = Vector3.one;
+            ApplyMaterialsRecursively(folio, matMap);
+
+            // Wire DecisionPanel.modeBand to the folio's TopHeaderBar renderer if desired, or keep TopHeaderBar dark charcoal
+            var panel = doc.GetComponentInChildren<DecisionPanel>(true);
+            if (panel != null)
+            {
+                var headerRend = folio.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("TopHeaderBar"));
+                if (headerRend != null) panel.modeBand = headerRend;
+            }
         }
 
         // Re-layout all TMP text fields for crisp contrast, clear hierarchy, and zero overlap!
-        // Note: On DecisionDocument, front face is -Z (`z = -0.004f`).
-        // Notice in `03_decision_paper.png`:
-        //   - Region 1 (Top Dark Header Bar, y = +0.118): `Badge` ("[BLOCKING] [DEMO]") in crisp cream/amber text!
-        //   - Above Top Clip (y = +0.168): `Status` ("Approved. The developer is continuing.")
+        // Note: On DecisionDocument, front face is -Z (`z = -0.0045f`).
+        //   - Above Top Brass Clip (y = +0.168): `Status`
+        //   - Region 1 (Top Header Band, y = +0.118): `Badge` ("SCRIPTED DEMO    needs your decision")
         //   - Region 2 (Upper Cream Summary Card, y = +0.020 to +0.092):
-        //       `Title` at y = +0.078 (Large bold dark charcoal: "Deploy auth service to staging?")
-        //       `Summary` at y = +0.048 (Dark readable body text: "OAuth login flow passed 12/12 tests.")
-        //       `Reco` at y = +0.024 (Bold emerald/amber pill text: "Recommended: APPROVE")
-        //   - Region 3 (Lower-Left Details Card, x = -0.044, y = -0.032, width = 18.0 cm):
-        //       `Details` root containing `Body` (y = -0.022) and `Answer` (y = -0.058)
+        //       `Title` at y = +0.078 ("Use OAuth for sign-in?")
+        //       `Summary` at y = +0.048 ("OAuth with an existing provider is less code to own...")
+        //       `Reco` at y = +0.024 ("Recommended: Approve")
+        //       `Provenance` at y = +0.008 ("Template recommendation. Not live AI research.")
+        //   - Region 3 (Lower-Left Details Card, x = -0.044, y = -0.032, width = 17.6 cm):
+        //       `Details` root containing `Body` (y = -0.024) and `Answer` (y = -0.058)
         //   - Region 4 (Lower-Right Dedicated Stamp Target Pad, x = +0.096, y = -0.032):
         //       `StampZone` and `StampMark` centered at `(0.096, -0.032, -0.006)`!
         //   - Region 5 (Bottom Single-Row Action Deck, y = -0.114, inside the frame bottom at -0.150):
-        //       All 4 buttons in ONE row:
-        //         `Btn_Approve` at `(-0.105, -0.114, -0.004)`
-        //         `Btn_Ask_why` at `(-0.035, -0.114, -0.004)`
-        //         `Btn_Details` at `(+0.035, -0.114, -0.004)`
-        //         `Btn_Reject`  at `(+0.105, -0.114, -0.004)`
+        //       All 4 buttons in ONE row (`Btn_Approve`, `Btn_Ask_why`, `Btn_Details`, `Btn_Reject`)!
 
-        StyleDocText(doc.transform, "Status",  new Vector3(0.000f,  0.168f, -0.005f), new Vector2(28f, 2.4f), 2.4f, 3.2f, new Color(0.98f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleDocText(doc.transform, "Badge",   new Vector3(0.000f,  0.118f, -0.005f), new Vector2(26f, 2.0f), 2.2f, 2.8f, new Color(0.98f, 0.95f, 0.86f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleDocText(doc.transform, "Title",   new Vector3(0.000f,  0.078f, -0.005f), new Vector2(26f, 2.6f), 2.8f, 3.8f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
-        StyleDocText(doc.transform, "Summary", new Vector3(0.000f,  0.048f, -0.005f), new Vector2(26f, 2.6f), 2.2f, 2.9f, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal, TextAlignmentOptions.Center, true);
-        StyleDocText(doc.transform, "Reco",    new Vector3(0.000f,  0.024f, -0.005f), new Vector2(16f, 1.5f), 2.0f, 2.5f, new Color(0.14f, 0.46f, 0.28f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Status",     new Vector3(0.000f,  0.168f, -0.005f), new Vector2(28f, 2.2f), 2.0f, 2.8f, new Color(0.98f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Badge",      new Vector3(0.000f,  0.118f, -0.005f), new Vector2(26f, 2.0f), 1.9f, 2.5f, new Color(0.99f, 0.97f, 0.90f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Title",      new Vector3(0.000f,  0.078f, -0.005f), new Vector2(26f, 2.4f), 2.4f, 3.4f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
+        StyleDocText(doc.transform, "Summary",    new Vector3(0.000f,  0.048f, -0.005f), new Vector2(26f, 2.5f), 1.8f, 2.4f, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal, TextAlignmentOptions.Center, true);
+        StyleDocText(doc.transform, "Reco",       new Vector3(0.000f,  0.024f, -0.005f), new Vector2(16f, 1.4f), 1.8f, 2.3f, new Color(0.12f, 0.44f, 0.26f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Provenance", new Vector3(0.000f,  0.008f, -0.005f), new Vector2(26f, 1.2f), 1.3f, 1.7f, new Color(0.32f, 0.34f, 0.38f), FontStyles.Italic, TextAlignmentOptions.Center, false);
 
         // Details region on the left side (x = -0.044) so the right side (x = +0.096) is 100% dedicated to the Stamp Target!
         var details = doc.transform.Find("Details");
         if (details != null)
         {
             details.localPosition = Vector3.zero;
-            StyleDocText(details, "Body",   new Vector3(-0.044f, -0.024f, -0.005f), new Vector2(17.8f, 5.0f), 1.6f, 2.2f, new Color(0.14f, 0.15f, 0.19f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
-            StyleDocText(details, "Answer", new Vector3(-0.044f, -0.058f, -0.005f), new Vector2(17.8f, 2.0f), 1.6f, 2.1f, new Color(0.20f, 0.34f, 0.56f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
+            StyleDocText(details, "Body",   new Vector3(-0.044f, -0.025f, -0.005f), new Vector2(17.4f, 4.8f), 1.45f, 1.95f, new Color(0.14f, 0.15f, 0.19f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
+            StyleDocText(details, "Answer", new Vector3(-0.044f, -0.058f, -0.005f), new Vector2(17.4f, 1.8f), 1.40f, 1.85f, new Color(0.18f, 0.32f, 0.54f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
         }
         else
         {
-            StyleDocText(doc.transform, "Body",   new Vector3(-0.044f, -0.024f, -0.005f), new Vector2(17.8f, 5.0f), 1.6f, 2.2f, new Color(0.14f, 0.15f, 0.19f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
-            StyleDocText(doc.transform, "Answer", new Vector3(-0.044f, -0.058f, -0.005f), new Vector2(17.8f, 2.0f), 1.6f, 2.1f, new Color(0.20f, 0.34f, 0.56f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
+            StyleDocText(doc.transform, "Body",   new Vector3(-0.044f, -0.025f, -0.005f), new Vector2(17.4f, 4.8f), 1.45f, 1.95f, new Color(0.14f, 0.15f, 0.19f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
+            StyleDocText(doc.transform, "Answer", new Vector3(-0.044f, -0.058f, -0.005f), new Vector2(17.4f, 1.8f), 1.40f, 1.85f, new Color(0.18f, 0.32f, 0.54f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
         }
 
         // Move StampZone to the dedicated Stamp Target pad on the right (x = +0.096, y = -0.032)
-        // and remove the giant ugly primitive cylinder ZoneMarker that overlapped Ask Why!
+        // and remove the giant primitive cylinder ZoneMarker that overlapped Ask Why!
         var stampZone = doc.transform.Find("StampZone");
         if (stampZone != null)
         {
@@ -310,10 +380,10 @@ public static class BuildVisualPolishSuite
             var tm = stampMark.GetComponent<TMP_Text>();
             if (tm != null)
             {
-                tm.fontSize = 2.6f;
+                tm.fontSize = 2.4f;
                 tm.enableAutoSizing = false;
                 tm.rectTransform.sizeDelta = new Vector2(7.5f, 2.2f);
-                tm.color = new Color(0.16f, 0.64f, 0.36f);
+                tm.color = new Color(0.14f, 0.58f, 0.32f);
             }
         }
         var appStamp = doc.transform.Find("ApprovalStamp");
@@ -325,16 +395,19 @@ public static class BuildVisualPolishSuite
 
         // Arrange all 4 action buttons (`Btn_Approve`, `Btn_Ask_why`, `Btn_Details`, `Btn_Reject`)
         // into ONE single horizontal row inside the lower frame deck (`y = -0.114`)!
+        // Note: each Btn_* contains `[BuildingBlock] ISDK_PokeInteraction` whose localScale is (0.14, 0.05, 0.10).
+        // Setting Btn_* localScale to (0.44, 0.56, 0.50) makes each key 6.16 cm wide x 2.8 cm tall!
         var actions = doc.transform.Find("Actions");
         if (actions != null)
         {
             actions.localPosition = Vector3.zero;
         }
 
-        PlaceDocButton(doc.transform, "Btn_Approve", new Vector3(-0.105f, -0.114f, -0.004f), new Vector3(0.048f, 0.036f, 0.040f));
-        PlaceDocButton(doc.transform, "Btn_Ask_why", new Vector3(-0.035f, -0.114f, -0.004f), new Vector3(0.048f, 0.036f, 0.040f));
-        PlaceDocButton(doc.transform, "Btn_Details", new Vector3( 0.035f, -0.114f, -0.004f), new Vector3(0.048f, 0.036f, 0.040f));
-        PlaceDocButton(doc.transform, "Btn_Reject",  new Vector3( 0.105f, -0.114f, -0.004f), new Vector3(0.048f, 0.036f, 0.040f));
+        var btnScale = new Vector3(0.44f, 0.56f, 0.50f);
+        PlaceDocButton(doc.transform, "Btn_Approve", new Vector3(-0.105f, -0.114f, -0.004f), btnScale);
+        PlaceDocButton(doc.transform, "Btn_Ask_why", new Vector3(-0.035f, -0.114f, -0.004f), btnScale);
+        PlaceDocButton(doc.transform, "Btn_Details", new Vector3( 0.035f, -0.114f, -0.004f), btnScale);
+        PlaceDocButton(doc.transform, "Btn_Reject",  new Vector3( 0.105f, -0.114f, -0.004f), btnScale);
 
         // Update BoxCollider on DecisionDocument to match the 32cm x 30cm folio
         var bc = doc.GetComponent<BoxCollider>();
@@ -389,26 +462,36 @@ public static class BuildVisualPolishSuite
     // PRIORITY 3: TASK BOARD & TASK CARD READABILITY IMPROVEMENTS
     // =========================================================================
 
-    static void ApplyTaskBoardAndCardPolish(StringBuilder sb)
+    static void ApplyTaskBoardAndCardPolish(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var all = EditorSceneManager.GetActiveScene().GetRootGameObjects()
             .SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
 
-        var tb = all.FirstOrDefault(t => t.name == "TaskBoard");
+        var tb = all.FirstOrDefault(t => t != null && t.name == "TaskBoard");
         if (tb != null)
         {
-            // Swap KanbanFrame visual to TaskBoard_KanbanFrame_Optimized (which has the dedicated top Title Pediment!)
-            var oldFrame = tb.Find("TaskBoard_KanbanFrame") ?? tb.Find("KanbanFrameVisual");
-            if (oldFrame != null) UnityEngine.Object.DestroyImmediate(oldFrame.gameObject);
+            // Remove old KanbanFrame_Visual and deactivated fake PreviewCard_* / DependencyLink_* objects
+            var toRemove = new List<GameObject>();
+            foreach (Transform child in tb)
+            {
+                if (child.name == "KanbanFrame_Visual" || child.name == "TaskBoard_KanbanFrame" ||
+                    child.name == "KanbanFrameVisual" || child.name == "TaskBoard_KanbanFrame_Optimized" ||
+                    child.name.StartsWith("PreviewCard_") || child.name.StartsWith("DependencyLink_"))
+                {
+                    toRemove.Add(child.gameObject);
+                }
+            }
+            foreach (var go in toRemove) UnityEngine.Object.DestroyImmediate(go);
 
             var optBoardFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Optimized/TaskBoard_KanbanFrame_Optimized.fbx");
             if (optBoardFbx != null)
             {
                 var frame = (GameObject)PrefabUtility.InstantiatePrefab(optBoardFbx, tb);
-                frame.name = "TaskBoard_KanbanFrame_Optimized";
-                frame.transform.localPosition = new Vector3(0f, -0.22f, 0.015f);
+                frame.name = "KanbanFrame_Visual";
+                frame.transform.localPosition = new Vector3(0f, -0.21f, 0.018f);
                 frame.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-                frame.transform.localScale = new Vector3(1.55f, 1.55f, 1.55f);
+                frame.transform.localScale = new Vector3(1.61f, 1.52f, 1.20f);
+                ApplyMaterialsRecursively(frame, matMap);
             }
 
             // Raise the "TASK BOARD" header label onto the new top Title Pediment so it NEVER overlaps "Working" or "Needs me"!
@@ -416,7 +499,7 @@ public static class BuildVisualPolishSuite
             {
                 if (tmp.text != null && tmp.text.ToUpperInvariant().Contains("TASK BOARD"))
                 {
-                    tmp.transform.localPosition = new Vector3(0f, 0.236f, -0.008f);
+                    tmp.transform.localPosition = new Vector3(0f, 0.242f, -0.010f);
                     tmp.fontSize = 3.2f;
                     tmp.enableAutoSizing = false;
                     tmp.color = new Color(0.98f, 0.95f, 0.88f);
@@ -426,14 +509,28 @@ public static class BuildVisualPolishSuite
         }
 
         // Clean up CardTemplate and any active cards so corner sub-props don't overlap text!
-        var cardTemplate = all.FirstOrDefault(t => t.name == "CardTemplate");
+        var cardTemplate = all.FirstOrDefault(t => t != null && t.name == "CardTemplate");
         if (cardTemplate != null)
         {
+            // Also swap TaskCard_Visual on CardTemplate with our newly exported TaskCard_Grabbable.fbx (with tucked corner indicators)
+            var oldVis = cardTemplate.Find("TaskCard_Visual");
+            if (oldVis != null) UnityEngine.Object.DestroyImmediate(oldVis.gameObject);
+            var cardFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/TaskBoard/TaskCard_Grabbable.fbx");
+            if (cardFbx != null)
+            {
+                var cVis = (GameObject)PrefabUtility.InstantiatePrefab(cardFbx, cardTemplate);
+                cVis.name = "TaskCard_Visual";
+                cVis.transform.localPosition = new Vector3(0f, 0f, 0.003f);
+                cVis.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                cVis.transform.localScale = new Vector3(1.12f, 1.12f, 1.0f);
+                ApplyMaterialsRecursively(cVis, matMap);
+            }
+
             CleanCardHierarchy(cardTemplate);
             SavePrefabCopy(cardTemplate.gameObject, $"{PrefabDir}/TaskCard_Grabbable_Polished.prefab", sb);
         }
 
-        foreach (var cardView in UnityEngine.Object.FindObjectsByType<TaskCardView>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        foreach (var cardView in UnityEngine.Object.FindObjectsByType<TaskCardView>(FindObjectsInactive.Include))
         {
             CleanCardHierarchy(cardView.transform);
         }
@@ -442,22 +539,23 @@ public static class BuildVisualPolishSuite
 
     static void CleanCardHierarchy(Transform card)
     {
-        // Remove the oversized secondary badge sub-objects (`TaskBoard_OwnerIcon`, `TaskBoard_PriorityBadge`, `TaskBoard_StatusMarker`)
+        // Remove the oversized secondary badge sub-objects (`OwnerIcon_Visual`, `PriorityBadge_Visual`, `StatusMarker_Visual`)
         // that were overlapping `SH_Role`, `SH_Priority`, and `SCRIPTED DEMO` in `02_task_board.png`!
-        // `TaskCard_Grabbable` already has clean tucked corner indicators built into its bezel!
-        foreach (var extraName in new[] { "OwnerIcon", "PriorityBadge", "StatusMarker", "TaskBoard_OwnerIcon", "TaskBoard_PriorityBadge", "TaskBoard_StatusMarker" })
+        var toDestroy = new List<GameObject>();
+        foreach (Transform ch in card)
         {
-            var extra = card.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t != card && t.name.Contains(extraName));
-            if (extra != null) UnityEngine.Object.DestroyImmediate(extra.gameObject);
+            if (ch.name.Contains("OwnerIcon") || ch.name.Contains("PriorityBadge") || ch.name.Contains("StatusMarker"))
+                toDestroy.Add(ch.gameObject);
         }
+        foreach (var go in toDestroy) UnityEngine.Object.DestroyImmediate(go);
 
         // Ensure high-contrast dark typography on the card labels
         const float z = -0.0055f;
-        StyleCardLabel(card, "SH_Role",     new Vector3(-0.010f,  0.0185f, z), new Vector2(4.4f, 0.85f), 3.4f, 4.6f, new Color(0.98f, 0.96f, 0.92f), FontStyles.Bold,   TextAlignmentOptions.Left,   false);
-        StyleCardLabel(card, "SH_Priority", new Vector3( 0.018f,  0.0185f, z), new Vector2(1.6f, 0.85f), 3.6f, 4.6f, new Color(0.99f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Right,  false);
-        StyleCardLabel(card, "Title",       new Vector3( 0.000f,  0.0035f, z), new Vector2(6.8f, 1.65f), 4.4f, 6.8f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
-        StyleCardLabel(card, "SH_State",    new Vector3( 0.000f, -0.0100f, z), new Vector2(5.4f, 0.80f), 3.2f, 4.8f, new Color(0.22f, 0.25f, 0.30f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleCardLabel(card, "SH_Source",   new Vector3( 0.000f, -0.0180f, z), new Vector2(5.4f, 0.65f), 2.6f, 3.6f, new Color(0.72f, 0.30f, 0.24f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleCardLabel(card, "SH_Role",     new Vector3(-0.011f,  0.0180f, z), new Vector2(4.4f, 0.85f), 3.4f, 4.6f, new Color(0.98f, 0.96f, 0.92f), FontStyles.Bold,   TextAlignmentOptions.Left,   false);
+        StyleCardLabel(card, "SH_Priority", new Vector3( 0.016f,  0.0180f, z), new Vector2(1.6f, 0.85f), 3.6f, 4.6f, new Color(0.99f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Right,  false);
+        StyleCardLabel(card, "Title",       new Vector3( 0.000f,  0.0032f, z), new Vector2(6.8f, 1.65f), 4.4f, 6.8f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
+        StyleCardLabel(card, "SH_State",    new Vector3( 0.000f, -0.0102f, z), new Vector2(5.2f, 0.80f), 3.2f, 4.8f, new Color(0.20f, 0.23f, 0.28f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleCardLabel(card, "SH_Source",   new Vector3( 0.000f, -0.0182f, z), new Vector2(5.2f, 0.65f), 2.6f, 3.6f, new Color(0.68f, 0.28f, 0.22f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
     }
 
     static void StyleCardLabel(Transform card, string name, Vector3 lp, Vector2 box, float minF, float maxF,
@@ -482,10 +580,10 @@ public static class BuildVisualPolishSuite
     }
 
     // =========================================================================
-    // PRIORITY 4: SINGLE-MESH 3D POKE BUTTONS (CUTS ~64+ RENDERERS!)
+    // PRIORITY 4: SINGLE-MESH 3D POKE BUTTONS (CUTS ~100 RENDERERS!)
     // =========================================================================
 
-    static void ApplySingleMeshPokeButtons(StringBuilder sb)
+    static void ApplySingleMeshPokeButtons(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var housingFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/UI/UI_PokeKey_Housing.fbx");
         var capFbx     = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/UI/UI_PokeKey_Cap.fbx");
@@ -525,7 +623,6 @@ public static class BuildVisualPolishSuite
                 renderersSaved += oldCap.GetComponentsInChildren<Renderer>(true).Length;
                 UnityEngine.Object.DestroyImmediate(oldCap.gameObject);
             }
-            // Also disable the legacy flat quad MeshRenderer directly on ButtonVisual if present (saves 1 more renderer per key!)
             var legacyQuadRenderer = visual.GetComponent<MeshRenderer>();
             if (legacyQuadRenderer != null && legacyQuadRenderer.enabled)
             {
@@ -533,11 +630,11 @@ public static class BuildVisualPolishSuite
                 renderersSaved += 1;
             }
 
-            // Create 1 single-mesh Housing3D
+            // Create 1 single-mesh Housing3D (rotated 180 deg around Y so Blender -Y front rim faces Unity -Z!)
             var hGo = new GameObject("Housing3D");
             hGo.transform.SetParent(btn, false);
             hGo.transform.localPosition = Vector3.zero;
-            hGo.transform.localRotation = Quaternion.identity;
+            hGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             hGo.transform.localScale = Vector3.one;
             hGo.AddComponent<MeshFilter>().sharedMesh = housingMesh;
             var hr = hGo.AddComponent<MeshRenderer>();
@@ -545,20 +642,30 @@ public static class BuildVisualPolishSuite
             hr.shadowCastingMode = ShadowCastingMode.Off;
             hr.receiveShadows = false;
 
-            // Create 1 single-mesh Cap3D
+            // Create 1 single-mesh Cap3D (rotated 180 deg around Y so cap sits from +0.004 to +0.280 behind ButtonVisual's -0.035 label!)
             string path = (btn.parent != null ? btn.parent.name + "/" : "") + btn.name;
-            Material capMat = GetButtonCapMaterial(path);
+            Material capMat = GetButtonCapMaterial(path, out bool darkCap);
 
             var cGo = new GameObject("Cap3D");
             cGo.transform.SetParent(visual, false);
             cGo.transform.localPosition = Vector3.zero;
-            cGo.transform.localRotation = Quaternion.identity;
+            cGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             cGo.transform.localScale = Vector3.one;
             cGo.AddComponent<MeshFilter>().sharedMesh = capMesh;
             var cr = cGo.AddComponent<MeshRenderer>();
             cr.sharedMaterial = capMat;
             cr.shadowCastingMode = ShadowCastingMode.Off;
             cr.receiveShadows = false;
+
+            // Ensure label rides in front of Cap3D at z = -0.035f with high contrast
+            foreach (var tmp in visual.GetComponentsInChildren<TMP_Text>(true))
+            {
+                var lp = tmp.transform.localPosition;
+                tmp.transform.localPosition = new Vector3(0f, 0f, -0.038f);
+                tmp.color = darkCap ? new Color(0.98f, 0.97f, 0.94f) : new Color(0.10f, 0.11f, 0.15f);
+                tmp.fontStyle = FontStyles.Bold;
+                EditorUtility.SetDirty(tmp);
+            }
 
             renderersSaved -= 2; // +2 new renderers (1 housing + 1 cap)
             buttonsUpgraded++;
@@ -567,16 +674,17 @@ public static class BuildVisualPolishSuite
         sb.AppendLine($"3D Poke Keys: upgraded {buttonsUpgraded} buttons to single-mesh UI_PokeKey_Housing + UI_PokeKey_Cap (net {renderersSaved} renderers eliminated!)");
     }
 
-    static Material GetButtonCapMaterial(string buttonPath)
+    static Material GetButtonCapMaterial(string buttonPath, out bool darkCap)
     {
         string p = buttonPath.ToLowerInvariant().Replace("taskboard/", "").Replace("root/", "").Replace("phase6/", "");
         string matName = "Mat_CreamCeramic";
-        if (p.Contains("approve")) matName = "Mat_Tester_Mint";
-        else if (p.Contains("reject") || p.Contains("close")) matName = "Mat_Developer_Coral";
-        else if (p.Contains("ask") || p.Contains("explain") || p.Contains("new")) matName = "Mat_Tester_SlateBlue";
-        else if (p.Contains("focus")) matName = "Mat_Researcher_Lavender";
-        else if (p.Contains("voice") || p.Contains("priority")) matName = "Mat_Developer_Amber";
-        else if (p.Contains("details") || p.Contains("pause")) matName = "Mat_WarmBeige";
+        darkCap = false;
+        if (p.Contains("approve")) { matName = "Mat_StatusGreen"; darkCap = false; }
+        else if (p.Contains("reject") || p.Contains("close")) { matName = "Mat_Developer_Coral"; darkCap = true; }
+        else if (p.Contains("ask") || p.Contains("explain") || p.Contains("new")) { matName = "Mat_Tester_SlateBlue"; darkCap = true; }
+        else if (p.Contains("focus")) { matName = "Mat_Researcher_Lavender"; darkCap = true; }
+        else if (p.Contains("voice") || p.Contains("priority")) { matName = "Mat_Developer_Amber"; darkCap = false; }
+        else if (p.Contains("details") || p.Contains("pause")) { matName = "Mat_CreamCeramic"; darkCap = false; }
 
         return AssetDatabase.LoadAssetAtPath<Material>($"Assets/MuseDesk/Art/Materials/{matName}.mat")
             ?? AssetDatabase.LoadAssetAtPath<Material>("Assets/MuseDesk/Art/Materials/Mat_CreamCeramic.mat");
@@ -586,28 +694,28 @@ public static class BuildVisualPolishSuite
     // PRIORITY 4 & 6: REFINED STAMPS & CLUTTER REDUCTION (PHYSICS TRAY REMOVAL)
     // =========================================================================
 
-    static void ApplyStampsAndClutterReduction(StringBuilder sb)
+    static void ApplyStampsAndClutterReduction(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var all = EditorSceneManager.GetActiveScene().GetRootGameObjects()
             .SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
-        var ws = all.FirstOrDefault(t => t.name == "WorkspaceRoot");
+        var ws = all.FirstOrDefault(t => t != null && t.name == "WorkspaceRoot");
         if (ws == null) return;
 
         // 1. Clutter Reduction (REMAINING_ISSUES.md #57):
-        // Deactivate the oversized gray `PhysicsTray` and giant primitive `Prop_Mug` / `Prop_Block`
-        // that cluttered the user's front-left next to the TaskBoard!
+        // Remove the oversized gray `PhysicsTray` and giant primitive `Prop_Mug` / `Prop_Block`
+        // that cluttered the user's front-left next to the TaskBoard in the preview scene!
         foreach (var clutterName in new[] { "PhysicsTray", "Prop_Mug", "Prop_Block" })
         {
             var obj = all.FirstOrDefault(t => t != null && t.name == clutterName);
             if (obj != null)
             {
-                obj.gameObject.SetActive(false);
-                sb.AppendLine($"Clutter reduction: deactivated oversized '{clutterName}' on front-left desk");
+                UnityEngine.Object.DestroyImmediate(obj.gameObject);
+                sb.AppendLine($"Clutter reduction: removed oversized '{clutterName}' on front-left desk");
             }
         }
 
-        // 2. Place `Doc_StampRestPad` neatly on the right-front of the desk and reskin `StampApprove` & `StampReject`
-        // with our ergonomic color-crowned `Doc_Stamp_Approve` and `Doc_Stamp_Reject` models!
+        // 2. Place `Doc_StampRestPad` neatly at front-and-center of the desk (`(0f, 0.002f, 0.40f)`)
+        // and reskin `StampApprove` & `StampReject` with our ergonomic color-crowned models!
         var restPadFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Documents/Doc_StampRestPad.fbx");
         if (restPadFbx != null)
         {
@@ -615,24 +723,25 @@ public static class BuildVisualPolishSuite
             if (oldPad != null) UnityEngine.Object.DestroyImmediate(oldPad.gameObject);
             var pad = (GameObject)PrefabUtility.InstantiatePrefab(restPadFbx, ws);
             pad.name = "Doc_StampRestPad";
-            pad.transform.localPosition = new Vector3(-0.20f, 0.002f, 0.38f);
-            pad.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            pad.transform.localScale = Vector3.one;
+            pad.transform.localPosition = new Vector3(0.00f, 0.002f, 0.40f);
+            pad.transform.localRotation = Quaternion.identity;
+            pad.transform.localScale = Vector3.one * 1.15f;
+            ApplyMaterialsRecursively(pad, matMap);
         }
 
-        ReskinStampTool(ws, "StampApprove", "Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Approve.fbx", new Vector3(-0.228f, 0.011f, 0.38f));
-        ReskinStampTool(ws, "StampReject",  "Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Reject.fbx",  new Vector3(-0.172f, 0.011f, 0.38f));
+        ReskinStampTool(ws, "StampApprove", "Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Approve.fbx", new Vector3(-0.032f, 0.012f, 0.40f), matMap);
+        ReskinStampTool(ws, "StampReject",  "Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Reject.fbx",  new Vector3( 0.032f, 0.012f, 0.40f), matMap);
         sb.AppendLine("Stamps: reskinned StampApprove & StampReject with color-crowned models + front orientation marks on Doc_StampRestPad");
     }
 
-    static void ReskinStampTool(Transform ws, string stampName, string fbxPath, Vector3 restPos)
+    static void ReskinStampTool(Transform ws, string stampName, string fbxPath, Vector3 restPos, Dictionary<string, Material> matMap)
     {
         var stampRoot = ws.Find(stampName);
         var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
         if (stampRoot == null || fbx == null) return;
 
         stampRoot.localPosition = restPos;
-        stampRoot.localRotation = Quaternion.Euler(0f, 180f, 0f);
+        stampRoot.localRotation = Quaternion.identity;
 
         foreach (var oldPart in new[] { "Handle", "Head", "StampVisual" })
         {
@@ -644,7 +753,8 @@ public static class BuildVisualPolishSuite
         vis.name = "StampVisual";
         vis.transform.localPosition = Vector3.zero;
         vis.transform.localRotation = Quaternion.identity;
-        vis.transform.localScale = Vector3.one;
+        vis.transform.localScale = Vector3.one * 1.15f;
+        ApplyMaterialsRecursively(vis, matMap);
 
         var tool = stampRoot.GetComponent<StampTool>();
         if (tool != null)
@@ -657,25 +767,27 @@ public static class BuildVisualPolishSuite
     // PRIORITY 2, 5 & 8: STATION DROP-ZONE HALOS & OPTIMIZED WORKSTATIONS
     // =========================================================================
 
-    static void ApplyStationAffordancesAndOptimizedWorkstations(StringBuilder sb)
+    static void ApplyStationAffordancesAndOptimizedWorkstations(Dictionary<string, Material> matMap, StringBuilder sb)
     {
-        var all = EditorSceneManager.GetActiveScene().GetRootGameObjects()
-            .SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
+        var ws = GameObject.Find("WorkspaceRoot")?.transform;
+        if (ws == null) return;
 
         var haloFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Affordances/Affordance_AgentHaloRing.fbx");
         var padFbx  = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Affordances/Affordance_DeskReceivePad.fbx");
 
-        var stationSpecs = new (string role, string optFbxPath, AssignmentVisualState demoState)[]
+        var stationSpecs = new (string stationName, string role, string optFbxPath, AssignmentVisualState demoState)[]
         {
-            ("researcher", "Assets/MuseDesk/Art/Models/Optimized/Workstation_Research_Optimized.fbx",  AssignmentVisualState.ValidTarget),
-            ("developer",  "Assets/MuseDesk/Art/Models/Optimized/Workstation_Developer_Optimized.fbx", AssignmentVisualState.ConfirmedAssignment),
-            ("tester",     "Assets/MuseDesk/Art/Models/Optimized/Workstation_Testing_Optimized.fbx",   AssignmentVisualState.HoveredWorkstation),
+            ("ResearchStation", "researcher", "Assets/MuseDesk/Art/Models/Optimized/Workstation_Research_Optimized.fbx",  AssignmentVisualState.ValidTarget),
+            ("DevStation",      "developer",  "Assets/MuseDesk/Art/Models/Optimized/Workstation_Developer_Optimized.fbx", AssignmentVisualState.ConfirmedAssignment),
+            ("QAStation",       "tester",     "Assets/MuseDesk/Art/Models/Optimized/Workstation_Testing_Optimized.fbx",   AssignmentVisualState.HoveredWorkstation),
         };
 
-        foreach (var (role, optFbxPath, demoState) in stationSpecs)
+        var app = GameObject.Find("AppServices");
+
+        foreach (var (stationName, role, optFbxPath, demoState) in stationSpecs)
         {
             // 1. Wire StationDropZone.halo (fixes REMAINING_ISSUES.md #47!)
-            var dz = UnityEngine.Object.FindObjectsByType<StationDropZone>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+            var dz = UnityEngine.Object.FindObjectsByType<StationDropZone>(FindObjectsInactive.Include)
                 .FirstOrDefault(z => z.agentId == role);
 
             if (dz != null && haloFbx != null)
@@ -688,6 +800,7 @@ public static class BuildVisualPolishSuite
                 haloGo.transform.localPosition = new Vector3(0f, 0.003f, 0f);
                 haloGo.transform.localRotation = Quaternion.identity;
                 haloGo.transform.localScale = Vector3.one;
+                ApplyMaterialsRecursively(haloGo, matMap);
 
                 dz.halo = haloGo;
                 var affView = dz.GetComponent<AssignmentAffordanceView>() ?? dz.gameObject.AddComponent<AssignmentAffordanceView>();
@@ -706,6 +819,7 @@ public static class BuildVisualPolishSuite
                     padGo.transform.localPosition = new Vector3(0.088f, 0.089f, 0.042f);
                     padGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
                     padGo.transform.localScale = Vector3.one * 0.85f;
+                    ApplyMaterialsRecursively(padGo, matMap);
                     affView.receivePadStatusRenderer = padGo.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("StatusBar"));
                 }
 
@@ -715,34 +829,46 @@ public static class BuildVisualPolishSuite
             }
 
             // 2. Swap Workstation multi-part mesh (53-56 renderers) with Reversible Material-Welded Optimized Workstation (16-24 renderers!)
+            var st = ws.Find(stationName);
+            var wsNode = st != null ? st.Find("Workstation") : null;
             var optFbx = AssetDatabase.LoadAssetAtPath<GameObject>(optFbxPath);
-            if (optFbx == null) continue;
-
-            foreach (var wsNode in all.Where(t => t != null && t.name == "Workstation" && t.parent != null && t.parent.name.ToLowerInvariant().Contains(role)).ToList())
+            if (st != null && wsNode != null && optFbx != null)
             {
-                var parent = wsNode.parent;
                 var pos = wsNode.localPosition;
                 var rot = wsNode.localRotation;
                 var scl = wsNode.localScale;
 
-                // Preserve any runtime children like Monitor TMP or FurnitureCollider
+                // Preserve any runtime children like FurnitureCollider
                 var keepChildren = new List<Transform>();
                 foreach (Transform ch in wsNode)
                 {
-                    if (ch.name == "Monitor" || ch.name == "FurnitureCollider" || ch.GetComponent<TMP_Text>() != null)
+                    if (ch.name == "FurnitureCollider" || ch.name == "Monitor" || ch.GetComponent<TMP_Text>() != null)
                         keepChildren.Add(ch);
                 }
-                foreach (var kc in keepChildren) kc.SetParent(parent, true);
+                foreach (var kc in keepChildren) kc.SetParent(st, true);
 
+                int beforeWsRends = wsNode.GetComponentsInChildren<Renderer>(true).Length;
                 UnityEngine.Object.DestroyImmediate(wsNode.gameObject);
 
-                var newWs = (GameObject)PrefabUtility.InstantiatePrefab(optFbx, parent);
+                var newWs = (GameObject)PrefabUtility.InstantiatePrefab(optFbx, st);
                 newWs.name = "Workstation";
                 newWs.transform.localPosition = pos;
                 newWs.transform.localRotation = rot;
                 newWs.transform.localScale = scl;
+                ApplyMaterialsRecursively(newWs, matMap);
 
                 foreach (var kc in keepChildren) kc.SetParent(newWs.transform, true);
+
+                var vis = newWs.GetComponent<WorkstationVisualController>() ?? newWs.AddComponent<WorkstationVisualController>();
+                vis.ResolveAnchorsAndParts();
+                if (stationName == "QAStation" && app != null)
+                {
+                    var tsc = app.GetComponent<TestingStationController>();
+                    if (tsc != null) { tsc.testingStation = vis; EditorUtility.SetDirty(tsc); }
+                }
+
+                int afterWsRends = newWs.GetComponentsInChildren<Renderer>(true).Length;
+                sb.AppendLine($"  {stationName}/Workstation: swapped to {Path.GetFileName(optFbxPath)} ({beforeWsRends} -> {afterWsRends} renderers)");
             }
         }
 
@@ -753,7 +879,7 @@ public static class BuildVisualPolishSuite
     // PRIORITY 7: OPTIONAL MASCOT FEEDBACK BADGES ABOVE AGENTS
     // =========================================================================
 
-    static void ApplyMascotFeedbackBadges(StringBuilder sb)
+    static void ApplyMascotFeedbackBadges(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var all = EditorSceneManager.GetActiveScene().GetRootGameObjects()
             .SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
@@ -773,12 +899,12 @@ public static class BuildVisualPolishSuite
             var old = agent.Find("MascotFeedbackBadges");
             if (old != null) UnityEngine.Object.DestroyImmediate(old.gameObject);
 
-            var groupGo = BuildMascotFeedbackGroupObject("MascotFeedbackBadges");
+            var groupGo = BuildMascotFeedbackGroupObject("MascotFeedbackBadges", matMap);
             groupGo.transform.SetParent(agent, false);
-            // Position above the mascot's head (+0.285m local Y) without touching the rig or obstructing the face
+            // Position above the mascot's head (+0.235m local Y) without touching the rig or obstructing the face
             groupGo.transform.localPosition = new Vector3(0.055f, 0.235f, -0.02f);
             groupGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            groupGo.transform.localScale = Vector3.one * 1.1f;
+            groupGo.transform.localScale = Vector3.one * 1.15f;
 
             var comp = groupGo.GetComponent<MascotFeedbackBadgeGroup>();
             comp.agentId = role;
@@ -788,11 +914,11 @@ public static class BuildVisualPolishSuite
         sb.AppendLine("Mascot Feedback: attached optional 3D MascotFeedbackBadges above Researcher, Developer, and Tester without modifying character rigs");
     }
 
-    static void BuildAffordanceAndFeedbackShowcaseStrip(StringBuilder sb)
+    static void BuildAffordanceAndFeedbackShowcaseStrip(Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var ws = EditorSceneManager.GetActiveScene().GetRootGameObjects()
             .SelectMany(r => r.GetComponentsInChildren<Transform>(true))
-            .FirstOrDefault(t => t.name == "WorkspaceRoot");
+            .FirstOrDefault(t => t != null && t.name == "WorkspaceRoot");
         if (ws == null) return;
 
         var oldStrip = ws.Find("VisualPolish_GalleryStrip");
@@ -800,18 +926,19 @@ public static class BuildVisualPolishSuite
 
         var strip = new GameObject("VisualPolish_GalleryStrip");
         strip.transform.SetParent(ws, false);
-        strip.transform.localPosition = new Vector3(-0.38f, 0.002f, 0.36f);
-        strip.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+        strip.transform.localPosition = new Vector3(-0.20f, 0.012f, 0.39f);
+        strip.transform.localRotation = Quaternion.identity;
 
-        // Place a Small Decision Paper next to the Stamp Rest Pad so both Small and Expanded Decision Papers are visible in the preview scene!
+        // Place a Small Decision Paper next to the Stamp Rest Pad & Focus/Explain buttons so both Small and Expanded Decision Papers are visible!
         var smallPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PrefabDir}/DecisionPaper_Small_Polished.prefab");
         if (smallPrefab != null)
         {
             var sm = (GameObject)PrefabUtility.InstantiatePrefab(smallPrefab, strip.transform);
             sm.name = "DecisionPaper_Small_Showcase";
-            sm.transform.localPosition = new Vector3(0f, 0.004f, 0f);
-            sm.transform.localRotation = Quaternion.Euler(78f, 0f, -8f);
+            sm.transform.localPosition = new Vector3(0f, 0.008f, 0f);
+            sm.transform.localRotation = Quaternion.Euler(-65f, 0f, 0f);
             sm.transform.localScale = Vector3.one;
+            ApplyMaterialsRecursively(sm, matMap);
         }
 
         sb.AppendLine("Showcase: placed DecisionPaper_Small_Polished on right-front desk reading spot");
@@ -826,129 +953,173 @@ public static class BuildVisualPolishSuite
         var all = EditorSceneManager.GetActiveScene().GetRootGameObjects()
             .SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
 
-        var ws = all.FirstOrDefault(t => t.name == "WorkspaceRoot");
-        var doc = all.FirstOrDefault(t => t.name == "DecisionDocument");
-        var tb = all.FirstOrDefault(t => t.name == "TaskBoard");
+        var ws = all.FirstOrDefault(t => t != null && t.name == "WorkspaceRoot");
+        var doc = all.FirstOrDefault(t => t != null && t.name == "DecisionDocument");
+        var tb = all.FirstOrDefault(t => t != null && t.name == "TaskBoard");
 
-        // Ensure WorkspaceRoot and DecisionDocument are active for visual inspection captures
+        // Add temporary studio lighting for Game-view renders (since QuestRenderSetup disabled scene lights)
+        var lightRoot = new GameObject("__TempPreviewStudioLights");
+        var keyLight = new GameObject("KeyLight").AddComponent<Light>();
+        keyLight.transform.SetParent(lightRoot.transform, false);
+        keyLight.type = LightType.Directional;
+        keyLight.color = new Color(1.0f, 0.97f, 0.92f);
+        keyLight.intensity = 1.25f;
+        keyLight.transform.rotation = Quaternion.Euler(42f, -155f, 0f); // Shining from user's +Z side toward -Z workspace!
+
+        var fillLight = new GameObject("FillLight").AddComponent<Light>();
+        fillLight.transform.SetParent(lightRoot.transform, false);
+        fillLight.type = LightType.Directional;
+        fillLight.color = new Color(0.78f, 0.86f, 0.98f);
+        fillLight.intensity = 0.55f;
+        fillLight.transform.rotation = Quaternion.Euler(28f, 145f, 0f);
+
+        var prevAmbientMode = RenderSettings.ambientMode;
+        var prevAmbientLight = RenderSettings.ambientLight;
+        RenderSettings.ambientMode = AmbientMode.Flat;
+        RenderSettings.ambientLight = new Color(0.62f, 0.64f, 0.68f);
+
         bool docWasActive = doc != null && doc.gameObject.activeSelf;
-        if (doc != null)
-        {
-            doc.gameObject.SetActive(true);
-            // Populate sample decision content so the screenshot shows real typography & stamp mark
-            var panel = doc.GetComponentInChildren<DecisionPanel>(true);
-            if (panel != null)
-            {
-                if (panel.badge) panel.badge.text = "[BLOCKING]  [DEMO]";
-                if (panel.title) panel.title.text = "Deploy auth service to staging?";
-                if (panel.summary) panel.summary.text = "OAuth login flow passed 12/12 tests.";
-                if (panel.recommendation) panel.recommendation.text = "Recommended: APPROVE";
-                if (panel.body) panel.body.text = "Why: All 12 integration checks succeeded.\nOptions: Deploy now (fast) • Hold for load test (safe)\nRisk: Low (staging only)\nImpact: Unblocks QA verification.";
-                if (panel.answer) panel.answer.text = "“Staging matches prod config and rollback takes <10s.”";
-                if (panel.detailsRoot) panel.detailsRoot.SetActive(true);
-                if (panel.actionsRoot) panel.actionsRoot.SetActive(true);
-            }
-            var mark = doc.Find("StampMark");
-            if (mark != null) mark.gameObject.SetActive(true);
-        }
-
-        // Populate sample cards on the TaskBoard if Play mode isn't active so 02_task_board comparison has live cards!
         var tempCards = new List<GameObject>();
-        var cardTemplate = all.FirstOrDefault(t => t.name == "CardTemplate");
-        if (tb != null && cardTemplate != null)
+
+        try
         {
-            var sampleSpecs = new (string colName, int slot, string role, string prio, string title, string state, string src)[]
+            // 1. Populate sample cards on the TaskBoard (using Region_Backlog, Region_Working, Region_NeedsMe, Region_Completed as in Preview.cs)
+            var cardTemplate = tb != null ? tb.Find("CardTemplate") : null;
+            if (tb != null && cardTemplate != null)
             {
-                ("Col_Backlog",   0, "Unassigned", "P2", "Write the login tests",                "Queued",   "SCRIPTED DEMO"),
-                ("Col_Backlog",   1, "Researcher", "P1", "Investigate flaky token refresh",      "Blocked",  "SCRIPTED DEMO"),
-                ("Col_Working",   0, "Developer",  "P3", "Implement OAuth scaffold",             "Running",  "LIVE"),
-                ("Col_NeedsMe",   0, "Researcher", "P3", "Approve auth approach",                "Needs me", "LIVE"),
-                ("Col_Completed", 0, "Tester",     "P0", "Baseline test run",                    "Completed","SCRIPTED DEMO"),
-            };
-            foreach (var (colName, slot, role, prio, title, state, src) in sampleSpecs)
+                var samples = new (string region, TaskCardV2 data)[]
+                {
+                    ("Region_Backlog",   new TaskCardV2 { TaskId = "t2-ab12cd34", Title = "Write the login tests",                TaskState = TaskStates.Queued,           Priority = 2, Revision = 0, SourceMode = "demo" }),
+                    ("Region_Backlog",   new TaskCardV2 { TaskId = "t2-ef56ab78", Title = "Investigate flaky token refresh",      TaskState = TaskStates.Blocked,          AgentId = "researcher", Priority = 1, Revision = 3, SourceMode = "demo" }),
+                    ("Region_Working",   new TaskCardV2 { TaskId = "t2-0911aa22", Title = "Implement OAuth scaffold",             TaskState = TaskStates.Running,          AgentId = "developer",  Priority = 3, Revision = 5, SourceMode = "live" }),
+                    ("Region_NeedsMe",   new TaskCardV2 { TaskId = "t2-77c0de11", Title = "Approve auth approach",                TaskState = TaskStates.AwaitingApproval, AgentId = "researcher", Priority = 3, Revision = 2, SourceMode = "live" }),
+                    ("Region_Completed", new TaskCardV2 { TaskId = "t2-5150beef", Title = "Baseline test run",                    TaskState = TaskStates.Completed,        AgentId = "tester",     Priority = 0, Revision = 4, SourceMode = "demo" }),
+                };
+                var rows = new Dictionary<string, int>();
+                foreach (var (regionName, data) in samples)
+                {
+                    var region = tb.Find(regionName);
+                    if (region == null) continue;
+                    var go = UnityEngine.Object.Instantiate(cardTemplate.gameObject, region);
+                    go.name = "__PreviewCard";
+                    rows.TryGetValue(regionName, out int row);
+                    rows[regionName] = row + 1;
+                    go.transform.localPosition = new Vector3(0f, -row * 0.10f, 0f);
+                    go.transform.localRotation = Quaternion.identity;
+                    go.SetActive(true);
+                    var view = go.GetComponent<TaskCardView>();
+                    if (view != null) view.SetData(data);
+                    CleanCardHierarchy(go.transform);
+                    tempCards.Add(go);
+                }
+            }
+
+            // Force update all TMP texts in the scene
+            RefreshAllTmpText();
+
+            Vector3 wsPos = ws != null ? ws.position : new Vector3(0f, 0.70f, 0.62f);
+            Vector3 eye = ws != null ? ws.position + ws.forward * 0.62f + Vector3.up * 0.30f : wsPos + new Vector3(0f, 0.30f, 0.62f);
+
+            // Capture 1: Seated Overview (matches 01_seated_view.png — from user eye looking at workspace)
+            if (doc != null) doc.gameObject.SetActive(false);
+            RenderCameraToPng(
+                eye,
+                wsPos + Vector3.up * 0.12f,
+                72f, Path.Combine(ScreenshotDir, "After_01_SeatedOverview.png"), sb);
+
+            // Capture 2: Task Board Closeup (matches 02_task_board.png)
+            if (tb != null)
             {
-                var col = tb.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == colName);
-                if (col == null) continue;
-                var c = UnityEngine.Object.Instantiate(cardTemplate.gameObject, col);
-                c.SetActive(true);
-                c.transform.localPosition = new Vector3(0f, -slot * 0.088f, -0.006f);
-                c.transform.localRotation = Quaternion.identity;
-                c.transform.localScale = Vector3.one * 1.5f;
-                SetCardText(c.transform, "SH_Role", role);
-                SetCardText(c.transform, "SH_Priority", prio);
-                SetCardText(c.transform, "Title", title);
-                SetCardText(c.transform, "SH_State", state);
-                SetCardText(c.transform, "SH_Source", src);
-                tempCards.Add(c);
+                RenderCameraToPng(
+                    tb.position - tb.forward * 0.50f,
+                    tb.position,
+                    50f, Path.Combine(ScreenshotDir, "After_02_TaskBoard.png"), sb);
+
+                // Capture 4: Board 3D Buttons Closeup (matches 04_board_buttons_3d.png)
+                var pauseBtn = tb.GetComponentsInChildren<Transform>(true).FirstOrDefault(x => x.name == "PauseResumeButton") ?? tb;
+                RenderCameraToPng(
+                    pauseBtn.position - pauseBtn.forward * 0.22f,
+                    pauseBtn.position,
+                    45f, Path.Combine(ScreenshotDir, "After_04_BoardButtons3D.png"), sb);
+            }
+
+            // Capture 3: Decision Paper Closeup (matches 03_decision_paper.png)
+            if (doc != null)
+            {
+                doc.gameObject.SetActive(true);
+                foreach (Transform c in doc)
+                    c.gameObject.SetActive(c.name != "ApprovalStamp" && c.name != "HoverFrame");
+
+                var panel = doc.GetComponentInChildren<DecisionPanel>(true);
+                if (panel != null)
+                {
+                    var content = new DecisionContent
+                    {
+                        Title = "Use OAuth for sign-in?",
+                        Summary = "OAuth with an existing provider is less code to own than local passwords, and the baseline tests already pass.",
+                        Recommendation = "approve",
+                        Rationale = "No password storage or reset flow to build and secure. The provider handles MFA.",
+                        RiskLevel = "Low. Adds a dependency on the identity provider.",
+                        Impact = "The Developer is blocked on this decision.",
+                        SourceMode = "demo",
+                    };
+                    content.Alternatives.Add(new DecisionAlternative { Label = "Local passwords", Tradeoff = "more code to secure" });
+                    panel.Bind(content, "demo", "Template recommendation. Not live AI research.");
+                    panel.Expand();
+                    panel.SetAnswer("OAuth removes the password database, which is the part most often breached.");
+                }
+                var mark = doc.Find("StampMark");
+                if (mark != null) mark.gameObject.SetActive(true);
+
+                doc.position = ws != null ? ws.TransformPoint(new Vector3(-0.05f, 0.24f, 0.30f)) : wsPos + new Vector3(-0.05f, 0.24f, 0.30f);
+                doc.rotation = Quaternion.LookRotation(doc.position - eye, Vector3.up);
+                RefreshAllTmpText();
+
+                RenderCameraToPng(
+                    doc.position - doc.forward * 0.38f,
+                    doc.position,
+                    48f, Path.Combine(ScreenshotDir, "After_03_DecisionPaper.png"), sb);
+            }
+
+            // Capture 5: Desk Buttons, Stamps, Small Decision Paper & Affordances Closeup (matches 05_desk_buttons_3d.png)
+            if (doc != null) doc.gameObject.SetActive(false);
+            var focusBtn = ws != null ? ws.GetComponentsInChildren<Transform>(true).FirstOrDefault(x => x.name == "FocusToggle") : null;
+            if (focusBtn != null)
+            {
+                Vector3 camEye = ws.TransformPoint(new Vector3(-0.22f, 0.22f, 0.58f));
+                Vector3 target = ws.TransformPoint(new Vector3(-0.18f, 0.04f, 0.38f));
+                RenderCameraToPng(
+                    camEye,
+                    target,
+                    52f, Path.Combine(ScreenshotDir, "After_05_StampsAndAffordances.png"), sb);
             }
         }
-
-        Vector3 wsPos = ws != null ? ws.position : new Vector3(0f, 0.70f, 0.62f);
-
-        // 1. Seated Overview (matches 01_seated_view.png)
-        if (doc != null)
+        finally
         {
-            // Park DecisionDocument slightly to the upper-left for the seated overview so all 3 stations & halos are clear
-            doc.transform.position = wsPos + new Vector3(0.0f, 0.36f, 0.18f);
-            doc.transform.rotation = Quaternion.Euler(8f, 180f, 0f);
-        }
-        RenderCameraToPng(
-            wsPos + new Vector3(0.00f, 0.42f, 0.72f),
-            wsPos + new Vector3(0.00f, 0.10f, 0.02f),
-            48f, Path.Combine(ScreenshotDir, "After_01_SeatedOverview.png"), sb);
-
-        // 2. Task Board Closeup (matches 02_task_board.png)
-        if (tb != null)
-        {
-            Vector3 tbPos = tb.position;
-            Vector3 tbFwd = tb.forward; // Board front is -tb.forward (toward +Z)
-            RenderCameraToPng(
-                tbPos - tbFwd * 0.56f + Vector3.up * 0.01f,
-                tbPos + Vector3.up * 0.00f,
-                45f, Path.Combine(ScreenshotDir, "After_02_TaskBoard.png"), sb);
-
-            // 4. Board 3D Buttons Closeup (matches 04_board_buttons_3d.png)
-            Vector3 btnFocus = tbPos + new Vector3(-0.10f, -0.19f, 0.0f);
-            RenderCameraToPng(
-                btnFocus - tbFwd * 0.25f + Vector3.up * 0.01f,
-                btnFocus,
-                42f, Path.Combine(ScreenshotDir, "After_04_BoardButtons3D.png"), sb);
-        }
-
-        // 3. Decision Paper Closeup (matches 03_decision_paper.png)
-        if (doc != null)
-        {
-            doc.transform.position = wsPos + new Vector3(0.0f, 0.28f, 0.22f);
-            doc.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-            Vector3 docPos = doc.transform.position;
-            RenderCameraToPng(
-                docPos + new Vector3(0.0f, 0.005f, 0.44f),
-                docPos + new Vector3(0.0f, 0.005f, 0.0f),
-                44f, Path.Combine(ScreenshotDir, "After_03_DecisionPaper.png"), sb);
-        }
-
-        // 5. Desk Stamps, Small Decision Paper, Halo Rings & Mascot Feedback Closeup
-        RenderCameraToPng(
-            wsPos + new Vector3(-0.22f, 0.26f, 0.54f),
-            wsPos + new Vector3(-0.18f, 0.08f, 0.12f),
-            45f, Path.Combine(ScreenshotDir, "After_05_StampsAndAffordances.png"), sb);
-
-        // Clean up temporary preview cards and restore DecisionDocument state
-        foreach (var tc in tempCards)
-            if (tc != null) UnityEngine.Object.DestroyImmediate(tc);
-        if (doc != null)
-        {
-            var mark = doc.Find("StampMark");
-            if (mark != null) mark.gameObject.SetActive(false);
-            doc.gameObject.SetActive(docWasActive);
+            foreach (var tc in tempCards)
+                if (tc != null) UnityEngine.Object.DestroyImmediate(tc);
+            if (doc != null)
+            {
+                var mark = doc.Find("StampMark");
+                if (mark != null) mark.gameObject.SetActive(false);
+                doc.gameObject.SetActive(docWasActive);
+            }
+            if (lightRoot != null) UnityEngine.Object.DestroyImmediate(lightRoot);
+            RenderSettings.ambientMode = prevAmbientMode;
+            RenderSettings.ambientLight = prevAmbientLight;
         }
     }
 
-    static void SetCardText(Transform card, string childName, string text)
+    static void RefreshAllTmpText()
     {
-        var t = card.Find(childName);
-        var tmp = t != null ? t.GetComponent<TMP_Text>() : null;
-        if (tmp != null) tmp.text = text;
+        foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            foreach (var tmp in root.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (tmp != null && tmp.gameObject.activeInHierarchy)
+                    tmp.ForceMeshUpdate(true, true);
+            }
+        }
     }
 
     static void RenderCameraToPng(Vector3 camPos, Vector3 lookTarget, float fov, string outPath, StringBuilder sb)
@@ -965,9 +1136,10 @@ public static class BuildVisualPolishSuite
             camGo.transform.position = camPos;
             camGo.transform.rotation = Quaternion.LookRotation((lookTarget - camPos).normalized, Vector3.up);
 
+            // IMPORTANT: Do NOT set rt.antiAliasing > 1 for offscreen URP ReadPixels in Edit Mode (causes unresolved black readback)
             int w = 1440, h = 960;
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
-            rt.antiAliasing = 4;
+            var prevActive = RenderTexture.active;
             cam.targetTexture = rt;
             cam.Render();
 
@@ -976,9 +1148,11 @@ public static class BuildVisualPolishSuite
             tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
             tex.Apply();
 
-            File.WriteAllBytes(outPath, tex.EncodeToPNG());
-            RenderTexture.active = null;
             cam.targetTexture = null;
+            RenderTexture.active = prevActive;
+            byte[] png = ImageConversion.EncodeToPNG(tex);
+            File.WriteAllBytes(outPath, png);
+
             UnityEngine.Object.DestroyImmediate(rt);
             UnityEngine.Object.DestroyImmediate(tex);
             sb.AppendLine($"  Captured {outPath} ({w}x{h})");
@@ -1011,12 +1185,13 @@ public static class BuildVisualPolishSuite
         return tmp;
     }
 
-    static void SaveModelAsPrefab(string fbxPath, string prefabPath, StringBuilder sb)
+    static void SaveModelAsPrefab(string fbxPath, string prefabPath, Dictionary<string, Material> matMap, StringBuilder sb)
     {
         var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
         if (fbx == null) return;
         var inst = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
         inst.name = Path.GetFileNameWithoutExtension(prefabPath);
+        ApplyMaterialsRecursively(inst, matMap);
         SavePrefab(inst, prefabPath, sb);
     }
 

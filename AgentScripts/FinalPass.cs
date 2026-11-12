@@ -256,7 +256,9 @@ public static class FinalPass
         if (held != null)
         {
             Undo.RecordObject(held, "hide while held");
-            var list = (held.hideWhileHeld ?? new GameObject[0]).Where(g => g != null).ToList();
+            // "Details" is NOT in this list: the panel owns its visibility (collapsed until the user
+            // presses Details). Listing it here would pop the long explanation open on every take.
+            var list = (held.hideWhileHeld ?? new GameObject[0]).Where(g => g != null && g.name != "Details").ToList();
             foreach (var t in new[] { band, prov.transform, zone })
                 if (t != null && !list.Contains(t.gameObject)) list.Add(t.gameObject);
             held.hideWhileHeld = list.ToArray();
@@ -614,6 +616,15 @@ public static class FinalPass
             Undo.RecordObject(guide, "start hint");
             guide.startHint = ring.gameObject;
             EditorUtility.SetDirty(guide);
+        }
+        // "+ New" creates a card an agent can actually run (the supported auth-scaffold task), in the
+        // demo and against a live backend. It used to create a blank card that nothing runs.
+        var bootstrap = Object.FindAnyObjectByType<MuseDesk.Phase2.Phase2Bootstrap>(FindObjectsInactive.Include);
+        var newTask = Find(all, "NewTaskButton");
+        if (bootstrap != null && newTask != null && bootstrap.GetType().GetMethod("CreateExecutableTask") != null)
+        {
+            Rewire(newTask, bootstrap, "CreateExecutableTask");
+            sb.AppendLine("+ New now creates a runnable card (Phase2Bootstrap.CreateExecutableTask)");
         }
         sb.AppendLine("Start, Replay and Hide-tips keys built and wired");
         return Save(sb);
