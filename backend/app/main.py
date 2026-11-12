@@ -70,11 +70,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         storage = Storage(settings.db_path)
         bus = EventBus(storage)
-        orchestrator = (LiveOrchestrator(storage, bus, settings)
-                        if settings.producer == "live"
-                        else Orchestrator(storage, bus, settings))
         phase2_store = Phase2Store(storage)
         phase2_bus = Phase2EventBus(phase2_store)
+        orchestrator = (LiveOrchestrator(storage, bus, settings, phase2_store, phase2_bus)
+                        if settings.producer == "live"
+                        else Orchestrator(storage, bus, settings))
         app.state.settings = settings
         app.state.storage = storage
         app.state.bus = bus

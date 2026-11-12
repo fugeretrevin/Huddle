@@ -20,7 +20,8 @@ from .workspace_guard import WorkspaceGuard
 
 
 class LiveOrchestrator:
-    def __init__(self, storage: Storage, bus: EventBus, settings: Settings) -> None:
+    def __init__(self, storage: Storage, bus: EventBus, settings: Settings,
+                 phase2_store=None, phase2_bus=None) -> None:
         self._storage = storage
         self._bus = bus
         self._settings = settings
@@ -31,6 +32,39 @@ class LiveOrchestrator:
         self._waiters: dict[str, asyncio.Future[str]] = {}
         self._tasks: set[asyncio.Task] = set()
         self._workspaces: dict[str, object] = {}
+        # Optional v2 artifact sink. When present, genuinely executed diff/test
+        # output is also captured as sanitized v2 artifacts stamped source_mode=live.
+        self._p2_artifacts = None
+        if phase2_store is not None and phase2_bus is not None:
+            from .phase2.artifacts import ArtifactService
+            self._p2_artifacts = ArtifactService(
+                phase2_store, phase2_bus, "live", settings.workspace_root)
+
+    async def _emit_live_artifacts(self, session_id: str, task_id: str, ws,
+                                   files_changed, test_output: str,
+                                   duration: float | None = None) -> None:
+        """Capture the REAL changed files as a unified diff + the REAL pytest output
+        as sanitized v2 artifacts (source_mode=live). Behind the approval gate: this
+        only runs in the approve branch after real execution. Never fatal."""
+        if self._p2_artifacts is None:
+            return
+        try:
+            from .phase2.diffing import compute_unified_diff
+            parts = []
+            for rel in files_changed:
+                try:
+                    new_text = self._guard.read_file(ws, rel)
+                except Exception:  # noqa: BLE001
+                    continue
+                # Workers write brand-new files, so the "before" is empty.
+                parts.append(compute_unified_diff("", new_text, rel))
+            diff_text = "\n".join(p for p in parts if p)
+            await self._p2_artifacts.ingest_code_diff(session_id, task_id, diff_text,
+                                                       source_mode="live")
+            await self._p2_artifacts.ingest_test_report(session_id, task_id, test_output,
+                                                        duration=duration, source_mode="live")
+        except Exception:  # noqa: BLE001 - artifact capture must never break the run
+            pass
 
     def notify_resolved(self, decision_id: str, action: str) -> None:
         fut = self._waiters.get(decision_id)
@@ -153,6 +187,10 @@ class LiveOrchestrator:
             await self._bus.publish(session_id, EventType.artifact_created,
                                     {"artifact_id": artifact_id, "artifact_type": "code_change",
                                      **art.to_payload()}, task_id=oauth_task, agent_id="developer")
+            # Also capture the REAL diff + REAL pytest output as sanitized v2 artifacts
+            # (source_mode=live) — only here, after genuine execution behind the gate.
+            await self._emit_live_artifacts(session_id, oauth_task, ws, dev.files_changed,
+                                            result.output)
             final = TaskState.completed if result.failed == 0 and not result.timed_out else TaskState.failed
             self._storage.set_task_status(oauth_task, final.value, utcnow_iso())
             await self._set_agent(session_id, AgentId.developer,
