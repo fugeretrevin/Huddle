@@ -103,7 +103,7 @@ namespace MuseDesk.Phase2.Board
                 // Prefer inside-bounds zones; among equals, nearest center then stable id.
                 float score = inside ? d : d + snapRadius;   // inside ranks ahead of merely-near
                 if (score < bestDist - 1e-4f ||
-                    (Mathf.Abs(score - bestDist) <= 1e-4f && (best == null || z.GetInstanceID() < best.GetInstanceID())))
+                    (Mathf.Abs(score - bestDist) <= 1e-4f && (best == null || z.GetHashCode() < best.GetHashCode())))
                 {
                     bestDist = score;
                     best = z;
