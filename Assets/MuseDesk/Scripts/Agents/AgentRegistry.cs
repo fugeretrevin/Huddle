@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using MuseDesk.Networking;
@@ -19,6 +20,7 @@ namespace MuseDesk.Agents
         readonly Dictionary<string, AgentView> _byId = new Dictionary<string, AgentView>();
         SessionReducer _reducer;
         AgentMovement _researcherMove;
+        AgentAnimatorBridge _researcherBridge;
 
         void Awake()
         {
@@ -26,7 +28,10 @@ namespace MuseDesk.Agents
             foreach (var a in agents)
                 if (a != null && !string.IsNullOrEmpty(a.agentId)) _byId[a.agentId] = a;
             if (_byId.TryGetValue("researcher", out var r))
+            {
                 _researcherMove = r.GetComponent<AgentMovement>();
+                _researcherBridge = r.GetComponent<AgentAnimatorBridge>();
+            }
         }
 
         void OnDisable()
@@ -46,12 +51,36 @@ namespace MuseDesk.Agents
             // on the far/monitor side after orientation.
             if (_researcherMove != null) _researcherMove.DeliverInFrontOfUser(0.4f);
             if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(true);
+            // Play the Offer_Document reaction once the agent has actually walked up (not mid-stride).
+            if (_researcherBridge != null) StartCoroutine(OfferWhenArrived());
+        }
+
+        IEnumerator OfferWhenArrived()
+        {
+            // Wait for the delivery walk to finish, then present the paper.
+            float guard = 0f;
+            while (_researcherMove != null && _researcherMove.IsMoving && guard < 5f)
+            { guard += Time.deltaTime; yield return null; }
+            if (_researcherBridge != null) _researcherBridge.PlayOffer();
         }
 
         void OnDecisionResolved(string decisionId, string state)
         {
-            if (_researcherMove != null) _researcherMove.ReturnHome();
             if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(false);
+            // Agent visibly reacts to the REAL backend outcome, then walks home.
+            StartCoroutine(ReactAndReturn(state));
+        }
+
+        IEnumerator ReactAndReturn(string state)
+        {
+            string s = (state ?? "").ToLowerInvariant();
+            if (_researcherBridge != null)
+            {
+                if (s.Contains("approv")) _researcherBridge.PlaySuccess();
+                else _researcherBridge.PlayFailure();   // rejected / changes_requested
+            }
+            yield return new WaitForSeconds(1.2f);       // let the reaction read before walking back
+            if (_researcherMove != null) _researcherMove.ReturnHome();
         }
 
         void Update()
