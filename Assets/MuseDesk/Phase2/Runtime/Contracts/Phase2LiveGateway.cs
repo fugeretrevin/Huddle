@@ -47,6 +47,16 @@ namespace MuseDesk.Phase2.Contracts
         }
 
         /// <summary>
+        /// Attach the already-authenticated session WITHOUT opening the socket, so the caller can
+        /// fetch the snapshot first and then Connect at its last_seq (avoids a from-zero WS replay).
+        /// </summary>
+        public void SetSession(string sessionId, string bearerToken)
+        {
+            _sessionId = sessionId;
+            _rest.BearerToken = bearerToken;
+        }
+
+        /// <summary>
         /// Attach the already-authenticated session and open the v2 event socket resuming at
         /// afterSeq (the snapshot's last_seq on first connect). Reuses the v1 bearer token.
         /// </summary>

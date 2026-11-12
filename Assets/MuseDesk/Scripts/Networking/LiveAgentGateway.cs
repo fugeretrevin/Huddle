@@ -23,8 +23,11 @@ namespace MuseDesk.Networking
         readonly string _mode;
 
         string _sessionId;
+        string _token;
 
         public string SessionId => _sessionId;
+        /// <summary>The per-session bearer token (so the additive v2 surface can reuse the same auth).</summary>
+        public string Token => _token;
 
         public LiveAgentGateway(string apiBaseUrl, string wsBaseUrl, EventDispatcher dispatcher,
                                 string mode = "live_local")

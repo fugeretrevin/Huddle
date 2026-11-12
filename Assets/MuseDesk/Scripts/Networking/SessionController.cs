@@ -30,6 +30,17 @@ namespace MuseDesk.Networking
         public bool IsLive { get; private set; }
         public string PendingDecisionId { get; private set; }
 
+        /// <summary>True once the live/demo gateway choice has been made and the session hydrated.
+        /// The additive Phase 2 bootstrap waits on this before deciding live vs demo.</summary>
+        public bool Initialized { get; private set; }
+
+        // Live-session credentials, exposed so the additive v2 (Phase 2) surface reuses the SAME
+        // session + bearer token instead of creating a second session (master §3). Null in demo mode.
+        public string LiveSessionId => (Gateway as LiveAgentGateway)?.SessionId;
+        public string LiveToken => (Gateway as LiveAgentGateway)?.Token;
+        public string ApiBaseUrl => settings != null ? settings.apiBaseUrl : null;
+        public string WebSocketBaseUrl => settings != null ? settings.webSocketBaseUrl : null;
+
         CancellationTokenSource _cts;
         int _idemCounter;
 
@@ -84,6 +95,7 @@ namespace MuseDesk.Networking
                 diagnostics.SetMode(gateway.ModeLabel, endpoint);
                 diagnostics.SetEvent(Reducer.LastSeq, "snapshot");
             }
+            Initialized = true;
             Debug.Log($"[MuseDesk] session ready ({gateway.ModeLabel}); agents={snap?.Agents?.Count}");
             if (autoStartSampleTask) _ = AutoStartAsync(_cts.Token);
         }
