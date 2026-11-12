@@ -51,11 +51,15 @@ namespace MuseDesk.Workspace
             public object wristJointId;
             public object[][] fingerJointIds;
             public Dictionary<Transform, Quaternion> lastWorld = new Dictionary<Transform, Quaternion>();
+            public Delegate handler;
         }
 
         readonly List<HandRig> _rigs = new List<HandRig>();
         Type _handJointIdType;
         bool _ready;
+        bool _usedEvent;
+        int _hits;
+        float _logT;
 
         void Start()
         {
