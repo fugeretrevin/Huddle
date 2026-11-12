@@ -20,7 +20,7 @@ This is the inventory and findings record. What was changed in response is in `R
 - Unity compiled with 0 errors. `MainMRScene` is the only scene in the build list.
 - Scene: 2,625 GameObjects, **0 missing scripts**, one XR rig, one enabled camera, one audio listener.
 - Backend: 93 tests passing.
-- Unity NUnit suite: 54 tests passing, but they test *mirrors* of the runtime constants. The suite that exercises the real types (`Phase2RuntimeTests.cs`) is compiled out, because a test assembly cannot reference `Assembly-CSharp`.
+- Unity NUnit suite: 33 tests passing, but they test *mirrors* of the runtime constants. The suite that exercises the real types (`Phase2RuntimeTests.cs`) is compiled out, because a test assembly cannot reference `Assembly-CSharp`.
 - Quest 3 `2G97C5ZHCK037K` connected over USB.
 - Restore point: commit `c7b31e8`. Uncommitted work recovered from an orphaned git stash and committed as `1b0d9f0` before anything else was touched.
 

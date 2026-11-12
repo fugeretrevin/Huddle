@@ -19,7 +19,8 @@ Nothing here is claimed as verified on the headset unless it says so.
 | `1b0d9f0` | Work recovered after the shutdown: backend audit fixes, stamp home pose, live token, settled placement, card console script |
 | `41e1429` | Unity repair pass (sections 1 to 3 below) and the runtime smoke tests |
 | `61576ce` | Layout for the settled facing, button and board polish, backend repair pass |
-| later commits | Performance quick wins and these documents (see `git log`) |
+| `9413929` | Device-log fixes (section 7) and the first three engineering documents |
+| `fa98477`, `51169b8` | On-head feedback pass (section 8): pushable props, 3D keys, card text layout |
 
 ## 1. Approval workflow
 
@@ -120,7 +121,56 @@ All in `backend/`. New tests are in `tests/test_audit_repair.py` (17), `tests/te
 
 Additive payload changes the Unity client now reads: `task_state` on `task.completed` / `task.failed`; `decision.resolved` with state `expired`. No fields were renamed and no event types were added.
 
-## 7. Test tooling added
+## 7. Device-log fixes
+
+Found by reading `adb logcat` while the first build of the day ran on the Quest.
+
+| Problem | Root cause | Change | Check |
+|---|---|---|---|
+| A warning with a stack trace was logged every frame (241 times in about a minute) | MRUK `EnableWorldLock` was on and fighting the tracking space; off-desk placement never uses scene anchors | World lock turned off (`AgentScripts/PerfQuickWins.cs`) | To be confirmed in the next device log |
+| Check mark rendered as a box | `✓`, `✗`, `↻` are not in the TMP font | Replaced with words on the paper and the monitors | compile |
+| Per-frame boxing in three scripts | `PropertyInfo.GetValue` on `SelectingPointsCount` every frame | Shared `GrabState.BindSelectingPoints` binds a typed delegate once; used by `StampTool`, `HeldPaperController`, `GrabbableRigidbody`, `TaskCardView` | compile |
+| Debug logging in the grab path | `MDGRAB` logs left in `HeldPaperController` | Removed | compile |
+| Card status tint created a material per card | `renderer.material` | Property block | compile |
+| Physics at 50 Hz, pushable props with no interpolation | Project defaults | Fixed timestep 1/72 s, maximum step 0.1 s, interpolation on | not measured |
+| Miniatures clip when leaning in | Near clip 0.1 m | 0.05 m | not checked on head |
+
+## 8. On-head feedback pass (`AgentScripts/PolishPass2.cs`)
+
+The developer reported three things from the headset on 2026-11-12: hands pass straight through objects, text overflows on the task board, and the buttons are flat squares. All three changes below are **not yet re-checked on head**.
+
+### Hands and objects
+
+A real hand cannot be stopped, so the goal is that things react to it.
+
+- New `PushableProp` component. Thirteen small desk objects (mug, plant, books, clock, toolbox, package box, decor stamp, pen, rolled blueprint, lamp, award, and the two toy props) are now dynamic rigid bodies with box colliders fitted to their meshes. The hand-tracking physics capsules, which were already in the scene, push and topple them.
+- They cannot be flung: depenetration and linear speed are capped. They stay kinematic for 3.5 s after launch and whenever the workspace is re-placed, so moving the office does not scatter them.
+- They tidy themselves: a prop left still and out of place for 4 s glides home with a small hop; one that strays more than 45 cm goes home at once.
+- The three desks and the factory have static box colliders, so pushed props stop against them.
+- The toy-prop tray moved from behind the desks (0.75 m away, and inside the QA desk) to the user's left front.
+- Check: starting overlaps computed in the Editor. One remains (coffee mug and rolled blueprint, 2 cm) and will resolve itself with a nudge at start-up.
+
+Unchanged: the desks, board and agent bodies do not move, and the rendered hand is not held at surfaces. Agents still lean away from a fingertip.
+
+### Task board text
+
+- Root cause: the title was a 2.4 cm glyph in a 7.5 cm box with wrapping and no clipping, and five more 1.0 to 1.3 cm lines shared a 5 cm tall card.
+- Cards are now 12 x 7.5 cm (template scale 1.5). Layout: owner and priority in the header, title (two lines, shrinks, then ellipsis), state, the LIVE / SCRIPTED DEMO label, and the id as small reference text. Every label has a box and an overflow mode.
+- A second cause surfaced while fixing it: TextMeshPro auto-sizing does not work at font sizes like 0.05 (labels authored at unit scale); the text vanishes. Such labels are now at 1/100 scale with 100x the font size.
+- Same treatment for the artifact panel (the body was a 2.6 cm glyph, about 17 characters per line), the decision paper, the monitors, the inbox and the status sign: text shrinks to fit, then truncates, and can no longer spill out of its panel.
+- Check: capture with five sample cards, including one long title (`docs/review_screenshots/02_task_board.png`).
+
+### 3D buttons
+
+- All 16 poke buttons are now keys: a dark housing fixed to the surface (back plate and four walls) and a coloured cap that rides on the Interaction SDK press visual, so it travels into the housing under the finger. One travel distance for every key.
+- Cap colours by function: approve green, reject red, ask / explain blue, focus violet, new task teal, close muted red, others neutral.
+- Labels ride on the cap face (a label left on the surface plane would be hidden by the cap), are dark for contrast, bold, and auto-sized to the key.
+- Materials: `Assets/MuseDesk/Art/Materials/Buttons/` (URP Simple Lit, GPU instancing on). This adds about 6 renderers per button.
+- Check: captures (`04_board_buttons_3d.png`, `05_desk_buttons_3d.png`).
+
+## 9. Test tooling added
 
 - `AgentScripts/RuntimeSmokeTests.cs`: 54 checks against the real `SessionReducer`, `DemoAgentGateway`, `Phase2DemoGateway`, `Phase2Reducer`, `WitVoiceSource.Classify` and `VoiceDecisionController.AgentFor`. It exists because the NUnit runtime suite cannot reference `Assembly-CSharp`.
-- `AgentScripts/SceneHealth.cs`, `SceneProbe.cs`, `ButtonProbe.cs`, `LayoutBounds.cs`, `ViewFrom.cs`: read-only scene reports and eye-point captures.
+- `AgentScripts/SceneHealth.cs`, `SceneProbe.cs`, `ButtonProbe.cs`, `LayoutBounds.cs`, `TextProbe.cs`, `ViewFrom.cs`: read-only scene reports and eye-point captures.
+- `AgentScripts/Preview.cs`: puts sample cards on the board and shows the decision paper for captures, then reloads the scene from disk so nothing is saved.
+- `backend/scripts/live_e2e.py`: drives a real running backend (live producer) through an approve run and a reject run over HTTP and WebSocket. Start the backend on a spare port, then `backend\.venv\Scripts\python.exe backend\scripts\live_e2e.py http://127.0.0.1:<port>`. Its 36 checks are listed in `END_TO_END_TEST_RESULTS.md`.

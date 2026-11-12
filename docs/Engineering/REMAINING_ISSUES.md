@@ -18,6 +18,9 @@ These are implemented and pass every check available without a headset. None of 
 | 6 | After approving: Researcher walks to the Developer, then Developer to Tester, with the token carried and no agent left facing the wrong way | Handoff queueing and return rotation are new |
 | 7 | After rejecting: no shelf token, no completion chime, no PASSED lamp | Previously all three fired |
 | 8 | Frame rate holds; no visible stutter | Never measured (section 4) |
+| 9 | Small desk props move when your hand pushes them, do not fly off, and put themselves back after a few seconds | New on 2026-11-12; thirteen dynamic bodies plus the hand capsules is also a frame-rate question |
+| 10 | Card text stays inside the cards and is readable at the board's distance; a long title wraps, shrinks, then truncates | New layout; only checked in an Editor capture |
+| 11 | Keys look three-dimensional and the cap sinks into its housing under your finger; labels are readable | New; the cap rides on the SDK press visual, which only moves on device |
 
 One piece of device evidence exists: during the 14:42 session on the Quest, with hands tracked, the log recorded `self-stamp Approve` followed by `decision demo-auth-approval-1 -> approved (applied=True)`. That shows the physical stamp reaching the approval path on device. It was read from the log; nobody reported what it looked like.
 
@@ -49,7 +52,11 @@ One piece of device evidence exists: during the 14:42 session on the Quest, with
 | P3 | Agents have no listening or speaking visual; thinking, blocked and failed share other states' visuals | Voice has no on-character feedback | |
 | P3 | `RuntimeSettings.preferOfflineDemo` is off, so every launch waits up to 5 s for a backend before starting the demo | Slower start for a judge with no PC | Turn it on for the standalone submission build |
 | P3 | MRUK still loads the room and asks for scene permission at launch although off-desk placement never uses the table | An unnecessary permission prompt | Disable load-on-startup, or use the table height for placement |
-| P3 | The two pushable props and the agents themselves are 0.64 to 0.77 m from the eye | Beyond comfortable seated reach | Move the prop tray forward; consider a closer placement depth after an on-head check |
+| P2 | Hands still pass through the desks, the board and the agents' bodies, and the rendered hand is not held at a surface | Only small props, keys and (by leaning) agents react to a hand | Options: limit the rendered hand at surfaces (the parked `DynamicFingerCollision` needs the `WhenHandVisualUpdated` hook), and let agents be pushed further |
+| P3 | Decision paper: small body text with weak contrast, the stamp target overlaps the "Ask why" key, and "Details" hangs below the paper's edge | The flagship document is the least polished surface | Re-lay out the paper: larger dark text, keys in one row inside the frame, stamp target in its own area |
+| P3 | The toy-prop tray is large and close on the user's left front | Visually heavy next to the task board | Shrink or remove the tray; the props can sit on the desk directly |
+| P3 | The agents themselves are 0.64 to 0.77 m from the eye | Beyond comfortable seated reach for dragging a card onto the far agent | Consider a closer placement depth after an on-head check |
+| P3 | 3D keys add about 6 renderers each (16 keys) | Adds to the draw-call concern in section 4 | Merge each housing into one mesh |
 | P4 | `Scripts/Art/AgentAnimatorBridge.cs` duplicates `Scripts/Agents/AgentAnimatorBridge.cs` and allocates per frame; only the latter is used in the scene | Dead code | Delete or merge |
 | P4 | The NUnit runtime suite (`Phase2RuntimeTests.cs`) is compiled out | Real-type tests run only through `RuntimeSmokeTests.cs` | Move the runtime into an assembly definition |
 | P4 | `[BuildingBlock] Grabbable Item` (test cube) and `GrabReadout` are deactivated, not deleted | None at runtime | Delete before submission |
