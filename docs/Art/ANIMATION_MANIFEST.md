@@ -74,3 +74,4 @@ Driven deterministically by canonical backend state via `FactoryController` and 
 - `Test_Chamber_Scan`: Tester inspection ring sweeps vertically with diagnostic pulse.
 - `Test_Pass`: Green beacon illuminates and gate routes artifact to Completion Shelf.
 - `Test_Fail`: Red warning lamp pulses and reject chute routes failure report back toward Developer.
+

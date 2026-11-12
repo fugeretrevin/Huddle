@@ -64,3 +64,4 @@ All assets share a cohesive, Quest-optimizedURP Lit material palette with subtle
 - **Workstations**: ~3,500–7,500 triangles per assembled station.
 - **Props & Documents**: ~150–1,200 triangles per prop; crisp beveled edges with smooth normals for readable specular highlights without high-res textures.
 - **Coordinate System**: Meter scale (`1.0 unit = 1 meter`), Y-up, +Z forward in Unity.
+

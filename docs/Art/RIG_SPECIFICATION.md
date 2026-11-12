@@ -59,3 +59,4 @@ To preserve 100% compatibility with existing Phase 1 and Phase 2 scripts without
 1. **`AgentView.bob`**: Points to the `VisualRoot` / `Bob` container holding the character's `Armature` and `SkinnedMeshRenderer`, allowing `AgentTilt` and subtle procedural layering to compose cleanly.
 2. **`AgentAnimatorBridge`**: Reads `AgentView`'s state (`idle`, `researching`, `coding`, `testing`, `reporting`, `approaching`, `waiting`, `complete`, `error`), `AgentMovement.IsMoving`, and `HeldPaperController` / handoff state to drive the Unity `Animator` parameters (`StateId`, `IsMoving`, `IsCarrying`, `IsOffering`, `TriggerSuccess`, `TriggerFailure`, `TriggerHandoff`, etc.) while keeping `AgentView` as the single reducer subscriber.
 3. **`PaperHoldPoint` & `Document_Attach`**: Both exist on the character so `HeldPaperController.agentHoldPoint` can bind to `Document_Attach` (or `PaperHoldPoint` aliased at the same pose).
+
