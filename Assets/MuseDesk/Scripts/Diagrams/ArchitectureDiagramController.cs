@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
+using MuseDesk.Phase2;
+using MuseDesk.Phase2.Contracts;
 
 namespace MuseDesk.Diagrams
 {
@@ -49,6 +53,14 @@ namespace MuseDesk.Diagrams
         GameObject _highlight;
         DiagramSpec _current;
         int _selected = -1;
+        Phase2Bootstrap _phase2;
+        CancellationTokenSource _cts;
+        int _idem;
+
+        void OnDestroy()
+        {
+            try { _cts?.Cancel(); _cts?.Dispose(); } catch { }
+        }
 
         Transform Root => contentRoot != null ? contentRoot : transform;
 
@@ -64,12 +76,83 @@ namespace MuseDesk.Diagrams
 
         public void Dismiss() { Clear(); gameObject.SetActive(false); }
 
-        /// <summary>Poke hook: show the example diagram, or dismiss it if already shown.</summary>
+        /// <summary>Poke hook: show the diagram (from the backend when available, else the built-in
+        /// example), or dismiss it if already shown.</summary>
         public void ToggleExample()
         {
-            if (gameObject.activeSelf && _spawned.Count > 0) Dismiss();
-            else ShowExample();
+            if (gameObject.activeSelf && _spawned.Count > 0) { Dismiss(); return; }
+            gameObject.SetActive(true);
+            _ = ShowFromBackendOrExampleAsync();
         }
+
+        async Task ShowFromBackendOrExampleAsync()
+        {
+            bool built = false;
+            try { built = await BuildFromBackendAsync(DiagramTemplates.AuthFlow); }
+            catch (Exception ex) { Debug.LogWarning($"[MuseDesk] diagram backend fetch failed: {ex.Message}"); }
+            if (!built && this != null) ShowExample();   // offline / no backend → deterministic example
+        }
+
+        /// <summary>
+        /// Fetch a STRUCTURED diagram from the backend (Phase 2 CreateDiagram) and build it from the
+        /// real nodes/edges. Returns false when no board/backend is available or the graph is empty,
+        /// so the caller can fall back. Never invents a graph.
+        /// </summary>
+        public async Task<bool> BuildFromBackendAsync(string template)
+        {
+            var gw = ResolveGateway();
+            if (gw == null) return false;
+            _cts ??= new CancellationTokenSource();
+            var dv2 = await gw.CreateDiagramAsync(new DiagramCommand
+            {
+                Template = template,
+                IdempotencyKey = $"diagram-{SystemInfo.deviceUniqueIdentifier[..6]}-{++_idem:D4}",
+            }, _cts.Token);
+            if (this == null) return false;
+            if (dv2 == null || dv2.Nodes == null || dv2.Nodes.Count == 0) return false;
+            gameObject.SetActive(true);
+            Build(ToSpec(dv2));
+            return true;
+        }
+
+        IPhase2Gateway ResolveGateway()
+        {
+            if (_phase2 == null) _phase2 = UnityEngine.Object.FindAnyObjectByType<Phase2Bootstrap>();
+            return _phase2 != null ? _phase2.Gateway : null;
+        }
+
+        static DiagramSpec ToSpec(DiagramV2 d)
+        {
+            var spec = new DiagramSpec { title = PrettyTemplate(d.Template) };
+            foreach (var n in d.Nodes)
+                spec.nodes.Add(new NodeSpec { id = n.Id, label = n.Label, type = IconToType(n.Icon), details = n.EvidenceRef });
+            if (d.Edges != null)
+                foreach (var e in d.Edges)
+                    spec.edges.Add(new EdgeSpec { from = e.Source, to = e.Target });
+            return spec;
+        }
+
+        // Backend node icons -> the node-prefab type keys this controller instances.
+        static string IconToType(string icon) => (icon ?? "").ToLowerInvariant() switch
+        {
+            "user" => "frontend",
+            "shield" => "auth",
+            "database" => "database",
+            "service" => "apigateway",
+            "queue" => "queue",
+            "code" => "server",
+            "file" => "process",
+            "test" => "process",
+            _ => "process",
+        };
+
+        static string PrettyTemplate(string t) => t switch
+        {
+            DiagramTemplates.AuthFlow => "Authentication Flow",
+            DiagramTemplates.TaskDependencyGraph => "Task Dependencies",
+            DiagramTemplates.ModuleDependencyGraph => "Module Dependencies",
+            _ => "Architecture",
+        };
 
         public void ShowExample()
         {

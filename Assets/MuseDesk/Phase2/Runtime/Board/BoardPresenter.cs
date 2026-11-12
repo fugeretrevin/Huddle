@@ -120,6 +120,10 @@ namespace MuseDesk.Phase2.Board
                 if (drag != null) drag.Bind(this, view);
                 view.AssignRequested -= OnPokeAssign;   // avoid double subscription on reuse
                 view.AssignRequested += OnPokeAssign;
+                view.PauseResumeRequested -= OnPokePauseResume;
+                view.PauseResumeRequested += OnPokePauseResume;
+                view.PriorityCycleRequested -= OnPokeCyclePriority;
+                view.PriorityCycleRequested += OnPokeCyclePriority;
             }
             view.SetData(card);
             var region = RegionFor(card.TaskState);
@@ -139,6 +143,8 @@ namespace MuseDesk.Phase2.Board
         {
             if (v == null) return;
             v.AssignRequested -= OnPokeAssign;
+            v.PauseResumeRequested -= OnPokePauseResume;
+            v.PriorityCycleRequested -= OnPokeCyclePriority;
             v.SetExpanded(false);
             v.gameObject.SetActive(false);
             _pool.Push(v);
@@ -198,6 +204,117 @@ namespace MuseDesk.Phase2.Board
         void OnPokeAssign(TaskCardView card, string targetAgentId)
         {
             _ = RequestAssignAsync(card, targetAgentId, NextIdemKey("assign"));
+        }
+
+        void OnPokePauseResume(TaskCardView card)
+        {
+            if (card?.Data == null) return;
+            bool paused = card.Data.TaskState == TaskStates.Paused ||
+                          card.Data.TaskState == TaskStates.PauseRequested;
+            _ = paused ? RequestResumeAsync(card, NextIdemKey("resume"))
+                       : RequestPauseAsync(card, NextIdemKey("pause"));
+        }
+
+        void OnPokeCyclePriority(TaskCardView card)
+        {
+            if (card?.Data == null) return;
+            int next = (Mathf.Clamp(card.Data.Priority, 0, 3) + 1) % 4;
+            _ = RequestPriorityAsync(card, next, NextIdemKey("priority"));
+        }
+
+        /// <summary>Set a task's priority (0..3), reconciling to canonical truth; same idempotency +
+        /// 409 contract as assign. Reuse the SAME key on retry.</summary>
+        public Task<Phase2CommandResult<TaskCardV2>> RequestPriorityAsync(TaskCardView card, int priority, string idempotencyKey)
+        {
+            if (card?.Data == null || Gateway == null) return Task.FromResult(NotReady());
+            var cmd = new PriorityCommand
+            {
+                Priority = Mathf.Clamp(priority, 0, 3),
+                ExpectedRevision = card.Data.Revision,
+                IdempotencyKey = idempotencyKey,
+            };
+            return RunCardCommandAsync(card, ct => Gateway.SetPriorityAsync(card.Data.TaskId, cmd, ct), "priority");
+        }
+
+        /// <summary>Pause a running task (canonical-reconciled).</summary>
+        public Task<Phase2CommandResult<TaskCardV2>> RequestPauseAsync(TaskCardView card, string idempotencyKey)
+        {
+            if (card?.Data == null || Gateway == null) return Task.FromResult(NotReady());
+            var cmd = new PauseCommand { ExpectedRevision = card.Data.Revision, IdempotencyKey = idempotencyKey };
+            return RunCardCommandAsync(card, ct => Gateway.PauseAsync(card.Data.TaskId, cmd, ct), "pause");
+        }
+
+        /// <summary>Resume a paused task (canonical-reconciled).</summary>
+        public Task<Phase2CommandResult<TaskCardV2>> RequestResumeAsync(TaskCardView card, string idempotencyKey)
+        {
+            if (card?.Data == null || Gateway == null) return Task.FromResult(NotReady());
+            var cmd = new ResumeCommand { ExpectedRevision = card.Data.Revision, IdempotencyKey = idempotencyKey };
+            return RunCardCommandAsync(card, ct => Gateway.ResumeAsync(card.Data.TaskId, cmd, ct), "resume");
+        }
+
+        /// <summary>Create a new backlog task. The server's task.created event adds the card to the
+        /// board, so we don't synthesize it locally. Returns the canonical card (or null on error).</summary>
+        public async Task<TaskCardV2> RequestCreateTaskAsync(string title, string agentId, int priority, string idempotencyKey)
+        {
+            if (Gateway == null) return null;
+            var cmd = new TaskCreateV2
+            {
+                Title = string.IsNullOrEmpty(title) ? "New task" : title,
+                AgentId = string.IsNullOrEmpty(agentId) ? null : agentId,
+                Priority = Mathf.Clamp(priority, 0, 3),
+                IdempotencyKey = idempotencyKey,
+            };
+            try { return await Gateway.CreateTaskAsync(cmd, _cts.Token); }
+            catch (OperationCanceledException) { return null; }
+            catch (Exception ex) { Debug.LogWarning($"[MuseDesk.P2] create task failed: {ex.Message}"); return null; }
+        }
+
+        static Phase2CommandResult<TaskCardV2> NotReady() =>
+            Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
+            { Code = "CLIENT_NOT_READY", Message = "board not initialized" });
+
+        /// <summary>Shared command runner: issue, reconcile the view to canonical truth (success card
+        /// or the 409's canonical_task), keep the reducer coherent, and surface the result — never
+        /// fabricating success. Mirrors RequestAssignAsync's contract for the other task commands.</summary>
+        async Task<Phase2CommandResult<TaskCardV2>> RunCardCommandAsync(
+            TaskCardView card, Func<CancellationToken, Task<Phase2CommandResult<TaskCardV2>>> invoke, string label)
+        {
+            Phase2CommandResult<TaskCardV2> result;
+            try
+            {
+                result = await invoke(_cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
+                { Code = "CANCELLED", Message = "command cancelled" });
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MuseDesk.P2] {label} transport error: {ex.Message}");
+                _ = ResyncAsync();
+                return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
+                { Code = "TRANSPORT_ERROR", Message = ex.Message });
+            }
+
+            var canonical = result.Ok ? result.Value : result.Error?.CanonicalTask;
+            if (canonical != null)
+            {
+                card.SetData(canonical);
+                if (Reducer != null && Reducer.Tasks.TryGetValue(canonical.TaskId, out var existing))
+                {
+                    existing.AgentId = canonical.AgentId;
+                    existing.Revision = canonical.Revision;
+                    existing.TaskState = canonical.TaskState;
+                    existing.Priority = canonical.Priority;
+                }
+                LayoutAllRegions();
+            }
+            if (!result.Ok)
+                Debug.Log($"[MuseDesk.P2] {label} rejected: {result.Error?.Code} — {result.Error?.Message}");
+
+            AssignResolved?.Invoke(card, result);
+            return result;
         }
 
         /// <summary>

@@ -189,6 +189,19 @@ namespace MuseDesk.Phase2
             Reducer.Apply(e);   // bool result intentionally ignored (dup/gap handled inside the reducer)
         }
 
+        // ── Poke/voice-friendly entry points (wire a world-space button's OnClick to these) ──
+
+        /// <summary>Create a new backlog task from the headset. The server's task.created event
+        /// populates the board card, so nothing is fabricated locally.</summary>
+        public void CreateTask(string title)
+        {
+            if (boardPresenter == null) return;
+            _ = boardPresenter.RequestCreateTaskAsync(title, null, 1, boardPresenter.NextIdemKey("create"));
+        }
+
+        /// <summary>Create a default-titled task (for a single "＋ New task" poke button).</summary>
+        public void CreateSampleTask() => CreateTask("New task");
+
         void OnDestroy()
         {
             if (Gateway != null) Gateway.EventReceived -= OnPhase2Event;

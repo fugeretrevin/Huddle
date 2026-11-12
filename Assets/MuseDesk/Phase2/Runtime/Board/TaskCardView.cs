@@ -50,6 +50,12 @@ namespace MuseDesk.Phase2.Board
         /// turns this into an idempotent assign command exactly like a physical drop would.</summary>
         public event Action<TaskCardView, string> AssignRequested;   // (card, targetAgentId)
 
+        /// <summary>Poke the pause/resume control: the presenter pauses a running task or resumes a
+        /// paused one (idempotent, canonical-reconciled, exactly like assign).</summary>
+        public event Action<TaskCardView> PauseResumeRequested;
+        /// <summary>Poke the priority chip: the presenter cycles the task priority 0→1→2→3→0.</summary>
+        public event Action<TaskCardView> PriorityCycleRequested;
+
         public TaskCardV2 Data { get; private set; }
         public string TaskId => Data?.TaskId;
         public bool IsExpanded { get; private set; }
@@ -145,6 +151,11 @@ namespace MuseDesk.Phase2.Board
         public void PokeAssignResearcher() => AssignRequested?.Invoke(this, Phase2AgentIds.Researcher);
         public void PokeAssignDeveloper() => AssignRequested?.Invoke(this, Phase2AgentIds.Developer);
         public void PokeAssignTester() => AssignRequested?.Invoke(this, Phase2AgentIds.Tester);
+
+        /// <summary>Poke target: pause a running task / resume a paused one (presenter decides which).</summary>
+        public void PokePauseResume() => PauseResumeRequested?.Invoke(this);
+        /// <summary>Poke target: cycle this task's priority.</summary>
+        public void PokeCyclePriority() => PriorityCycleRequested?.Invoke(this);
 
         // ─── helpers ───
         static string Truncate(string s, int max)
