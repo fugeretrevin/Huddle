@@ -11,6 +11,7 @@ import hashlib
 import json
 import uuid
 
+from .diffing import TestSummary, parse_pytest_output, parse_unified_diff
 from .errors import NotFoundError
 from .events import Phase2EventBus, utcnow_iso
 from .models import (
@@ -22,6 +23,10 @@ from .models import (
 )
 from .sanitize import sanitize_text
 from .store import Phase2Store
+
+# A single artifact page is capped at 12000 chars by the schema; keep real diff
+# bodies well under that and paginate by file.
+_PAGE_CHAR_CAP = 11000
 
 
 def _hash_pages(pages: list[dict]) -> str:
@@ -43,7 +48,11 @@ class ArtifactService:
         self._ws_root = workspace_root
 
     async def create_artifact(self, session_id: str, task_id: str, kind: str, summary: str,
-                            raw_pages: list[dict]) -> ArtifactV2:
+                            raw_pages: list[dict], *, source_mode: str | None = None) -> ArtifactV2:
+        # ``source_mode`` is explicit: it is NEVER inferred from the connection. The
+        # caller must pass "live" only for genuinely executed output; otherwise the
+        # service's configured mode (demo) is used.
+        mode = source_mode or self._mode
         clean_pages: list[dict] = []
         for i, p in enumerate(raw_pages):
             content = sanitize_text(p.get("content", ""), self._ws_root)[:12000]
@@ -61,13 +70,81 @@ class ArtifactService:
         artifact_id = f"a2-{uuid.uuid4().hex[:10]}"
         now = utcnow_iso()
         self._store.create_artifact_v2(artifact_id, session_id, task_id, kind, clean_summary,
-                                       self._mode, content_hash, clean_pages, now)
+                                       mode, content_hash, clean_pages, now)
         await self._bus.publish(session_id, EventTypeV2.artifact_created,
-                                {"kind": kind, "summary": clean_summary, "source_mode": self._mode},
+                                {"kind": kind, "summary": clean_summary, "source_mode": mode},
                                 task_id=task_id, artifact_id=artifact_id)
         return ArtifactV2(artifact_id=artifact_id, task_id=task_id, kind=ArtifactKind(kind),
-                          summary=clean_summary, source_mode=self._mode, content_hash=content_hash,
+                          summary=clean_summary, source_mode=mode, content_hash=content_hash,
                           created_at=now, pages=[ArtifactPage(**p) for p in clean_pages])
+
+    # ─────────────────────── real sandboxed-worker ingest (P2-02) ───────────────────────
+    async def ingest_code_diff(self, session_id: str, task_id: str, diff_text: str,
+                             *, summary: str | None = None,
+                             source_mode: str = "live") -> ArtifactV2:
+        """Turn a REAL unified diff produced inside the sandbox into a ``code_diff``
+        artifact: one page per changed file, with accurate add/delete counts, run
+        through the sanitizer so no absolute host path or secret survives. Default
+        ``source_mode="live"`` because this is called from the genuinely-live path."""
+        files = parse_unified_diff(diff_text or "")
+        raw_pages: list[dict] = []
+        total_add = total_del = 0
+        for i, f in enumerate(files):
+            total_add += f.additions
+            total_del += f.deletions
+            raw_pages.append({
+                "page": i,
+                "title": f.path,
+                "content": (f.body or diff_text)[:_PAGE_CHAR_CAP],
+                "line_refs": [f"file:{f.path}",
+                              f"stat:{f.path}:+{f.additions}/-{f.deletions}"],
+            })
+        if not raw_pages:
+            raw_pages = [{"page": 0, "title": "no changes",
+                          "content": sanitize_text(diff_text or "", self._ws_root)[:_PAGE_CHAR_CAP],
+                          "line_refs": []}]
+        auto = (f"{len(files)} file(s) changed, +{total_add} / -{total_del}"
+                if files else "no file changes detected")
+        return await self.create_artifact(
+            session_id, task_id, ArtifactKind.code_diff.value, summary or auto,
+            raw_pages, source_mode=source_mode,
+        )
+
+    async def ingest_test_report(self, session_id: str, task_id: str, output: str,
+                               *, summary: str | None = None, runner: str = "pytest -q",
+                               duration: float | None = None,
+                               source_mode: str = "live") -> ArtifactV2:
+        """Turn REAL pytest output into a ``test_report`` artifact. Parses
+        passed/failed/skipped counts and failing test node ids, and makes the
+        *0-tests-collected* case explicit (so it is never shown as 'passing')."""
+        s: TestSummary = parse_pytest_output(output or "")
+        if not s.ran:
+            headline = "0 tests ran (collected 0 items)"
+        else:
+            parts = [f"{s.passed} passed", f"{s.failed} failed"]
+            if s.skipped:
+                parts.append(f"{s.skipped} skipped")
+            if s.errors:
+                parts.append(f"{s.errors} error")
+            headline = ", ".join(parts)
+        if duration is not None:
+            headline += f" in {duration:.2f}s"
+        header = (f"runner: {runner}\nresult: {headline}\n"
+                  f"collected: {s.collected if s.collected is not None else 'unknown'}\n"
+                  f"tests_ran: {str(s.ran).lower()}\n")
+        if s.failed_tests:
+            header += "failing:\n" + "\n".join(f"  - {t}" for t in s.failed_tests) + "\n"
+        content = header + "\n--- raw output ---\n" + (output or "")
+        raw_pages = [{
+            "page": 0,
+            "title": f"Test run ({runner})",
+            "content": content[:_PAGE_CHAR_CAP],
+            "line_refs": [f"test:{t}" for t in s.failed_tests],
+        }]
+        return await self.create_artifact(
+            session_id, task_id, ArtifactKind.test_report.value, summary or headline,
+            raw_pages, source_mode=source_mode,
+        )
 
     def get_page(self, session_id: str, artifact_id: str, page: int,
                  page_size: int) -> ArtifactPageResponse:

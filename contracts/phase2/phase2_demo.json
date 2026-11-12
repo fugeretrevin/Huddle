@@ -1,0 +1,129 @@
+{
+  "schema_version": 2,
+  "scenario_id": "auth-feature-full-loop",
+  "source_mode": "demo",
+  "label": "SCRIPTED DEMO",
+  "description": "Offline replay of the MuseDesk Phase 2 demonstration sequence (MASTER_PHASE2_IMPLEMENTATION.md §14): task card drag -> researcher artifact + gated decision -> approval -> Researcher->Developer blueprint handoff -> developer diff -> Developer->Tester test request -> FAILED test report -> Tester->Developer failure handoff -> developer fix -> passing test -> completion. Every entity is stamped source_mode=demo and is content-driven by this fixture; the backend/app/phase2/demo.py DemoGatewayV2 replays it through the real Phase2EventBus + Phase2Store so a Unity client sees the whole story over the v2 snapshot + websocket with zero live tools and no PC.",
+  "agents": {
+    "researcher": {"display_name": "Rhea"},
+    "developer": {"display_name": "Dev"},
+    "tester": {"display_name": "Tess"}
+  },
+  "tasks": {
+    "research-auth": {
+      "title": "Compare auth options",
+      "role_lock": "researcher",
+      "priority": 2
+    },
+    "develop-auth": {
+      "title": "Build OAuth scaffold",
+      "agent_id": "developer",
+      "role_lock": "developer",
+      "priority": 2,
+      "dependencies": ["research-auth"]
+    },
+    "test-auth": {
+      "title": "Run login tests",
+      "agent_id": "tester",
+      "role_lock": "tester",
+      "priority": 2,
+      "dependencies": ["develop-auth"]
+    }
+  },
+  "decision": {
+    "decision_id": "dec-demo-auth-01",
+    "title": "Choose authentication approach",
+    "summary": "Use OAuth instead of storing passwords?",
+    "recommendation": "approve",
+    "rationale": "A managed identity provider avoids building and securing custom password storage in the first version.",
+    "risk_level": "medium",
+    "priority": "blocking",
+    "allowed_actions": ["approve", "reject", "request_changes"],
+    "provenance": "scripted",
+    "alternatives": [
+      {"id": "oauth", "label": "OAuth", "tradeoff": "External identity dependency"},
+      {"id": "passwords", "label": "Email/password", "tradeoff": "More security maintenance"}
+    ],
+    "resolution": "approve"
+  },
+  "artifacts": {
+    "research_report": {
+      "kind": "research_report",
+      "task": "research-auth",
+      "summary": "SCRIPTED DEMO: Recommend OAuth over password storage (confidence medium).",
+      "pages": [
+        {
+          "page": 0,
+          "title": "Recommendation",
+          "content": "Recommendation: adopt OAuth via a managed identity provider.\nConfidence: medium. Uncertainty: provider availability and token refresh ergonomics.\nAlternatives considered:\n- OAuth (managed): external identity dependency, no password storage to secure.\n- Email/password: full control, but ongoing security maintenance and breach surface.\nThis is scripted demo data (source_mode=demo).",
+          "line_refs": ["evidence:oauth_vs_passwords", "evidence:risk_assessment_medium"]
+        }
+      ]
+    },
+    "code_diff_v1": {
+      "kind": "code_diff",
+      "task": "develop-auth",
+      "summary": "SCRIPTED DEMO: add oauth_login scaffold (+18 / -1 across 2 files).",
+      "pages": [
+        {
+          "page": 0,
+          "title": "oauth_login.py",
+          "content": "--- a/oauth_login.py\n+++ b/oauth_login.py\n@@ -0,0 +1,9 @@\n+\"\"\"OAuth login scaffold.\"\"\"\n+\n+def authorize_url(provider, redirect_uri):\n+    return f\"https://auth.example.com/{provider}/authorize?redirect_uri={redirect_uri}\"\n+\n+def start_oauth_login(provider):\n+    return {\"provider\": provider, \"url\": authorize_url(provider, \"app://callback\")}\n",
+          "line_refs": ["file:oauth_login.py", "hunk:oauth_login.py#1"]
+        }
+      ]
+    },
+    "test_report_failed": {
+      "kind": "test_report",
+      "task": "test-auth",
+      "summary": "SCRIPTED DEMO: 2 passed, 1 failed in 0.11s.",
+      "pages": [
+        {
+          "page": 0,
+          "title": "Test run #1 (pytest -q)",
+          "content": "runner: pytest -q\ncollected 3 items\n\ntest_oauth_login.py ..F\n\n=================================== FAILURES ===================================\n____________________ test_login_redirect_uses_app_callback ____________________\n    def test_login_redirect_uses_app_callback():\n        r = start_oauth_login(\"github\")\n>       assert r[\"url\"].endswith(\"app://callback\")\nE       AssertionError: redirect_uri was dropped from the authorize url\n\nFAILED test_oauth_login.py::test_login_redirect_uses_app_callback\n2 passed, 1 failed in 0.11s\nThis is scripted demo data (source_mode=demo).",
+          "line_refs": ["test:test_oauth_login.py::test_login_redirect_uses_app_callback"]
+        }
+      ]
+    },
+    "code_diff_fix": {
+      "kind": "code_diff",
+      "task": "develop-auth",
+      "summary": "SCRIPTED DEMO: carry redirect_uri through start_oauth_login (+3 / -2).",
+      "pages": [
+        {
+          "page": 0,
+          "title": "oauth_login.py (fix)",
+          "content": "--- a/oauth_login.py\n+++ b/oauth_login.py\n@@ -6,3 +6,4 @@\n-def start_oauth_login(provider):\n-    return {\"provider\": provider, \"url\": authorize_url(provider, \"app://callback\")}\n+def start_oauth_login(provider, redirect_uri=\"app://callback\"):\n+    url = authorize_url(provider, redirect_uri)\n+    return {\"provider\": provider, \"url\": url, \"redirect_uri\": redirect_uri}\n",
+          "line_refs": ["file:oauth_login.py", "hunk:oauth_login.py#2"]
+        }
+      ]
+    },
+    "test_report_passed": {
+      "kind": "test_report",
+      "task": "test-auth",
+      "summary": "SCRIPTED DEMO: 3 passed, 0 failed in 0.09s.",
+      "pages": [
+        {
+          "page": 0,
+          "title": "Test run #2 (pytest -q)",
+          "content": "runner: pytest -q\ncollected 3 items\n\ntest_oauth_login.py ...\n\n3 passed in 0.09s\nThis is scripted demo data (source_mode=demo).",
+          "line_refs": ["test:test_oauth_login.py"]
+        }
+      ]
+    },
+    "completion": {
+      "kind": "completion",
+      "task": "develop-auth",
+      "summary": "SCRIPTED DEMO: OAuth login feature complete; verified by passing tests.",
+      "pages": [
+        {
+          "page": 0,
+          "title": "Completion",
+          "content": "OAuth login scaffold complete and verified.\nFinal test result: 3 passed, 0 failed.\nArtifacts: research_report -> code_diff -> failed test_report -> code_diff (fix) -> passing test_report.\nThis is scripted demo data (source_mode=demo).",
+          "line_refs": []
+        }
+      ]
+    }
+  }
+}
