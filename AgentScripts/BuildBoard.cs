@@ -197,18 +197,41 @@ public static class BuildBoard
         card.transform.SetParent(boardRoot, false);
         card.transform.localPosition = new Vector3(0f, -0.3f, 0f); // parked off the panel; it stays inactive anyway
 
-        // Visible card face (~0.08 x 0.05).
+        // ── cute layering (readable face is -Z; "behind" the reader is +Z) ──
+        // 1) Soft drop-shadow / border backing: a slightly larger dark quad just BEHIND the face,
+        //    exactly like AgentScripts/PaperLook.cs does for the decision paper.
+        var shadow = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        shadow.name = "Shadow";
+        shadow.transform.SetParent(card.transform, false);
+        shadow.transform.localPosition = new Vector3(0.0015f, -0.0015f, 0.004f); // offset down-right + behind
+        shadow.transform.localScale = new Vector3(0.090f, 0.058f, 1f);           // ~12% larger than the face
+        StripCollider(shadow);
+        shadow.GetComponent<Renderer>().sharedMaterial = LitMat(new Color(0.16f, 0.15f, 0.14f));
+
+        // 2) Cream card face (~0.08 x 0.05) with a touch of emission so it glows gently in passthrough.
         var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
         face.name = "Face";
         face.transform.SetParent(card.transform, false);
         face.transform.localScale = new Vector3(0.08f, 0.05f, 1f);
         StripCollider(face);
-        face.GetComponent<Renderer>().sharedMaterial = cardMat;
+        // VERIFY: true rounded corners need a rounded sprite / 9-slice; the soft shadow + warm cream
+        // reads as a friendly card with plain quads. Swap the face mesh for a rounded sprite to curve it.
+        face.GetComponent<Renderer>().sharedMaterial = LitMat(new Color(0.98f, 0.97f, 0.93f), 0.10f);
 
-        // Title label on the readable (-Z) face.
-        var title = MakeLabel(card.transform, "Title", "Task", new Vector3(0f, 0.004f, -0.002f), 0.22f);
-        // keep the title within the small card
-        title.rectTransform.sizeDelta = new Vector2(0.075f, 0.045f);
+        // 3) Role-colored header strip across the top of the face (tinted per card by CardRoleTint).
+        var header = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        header.name = "HeaderStrip";
+        header.transform.SetParent(card.transform, false);
+        header.transform.localPosition = new Vector3(0f, 0.018f, -0.002f);   // top band, in front of the face
+        header.transform.localScale = new Vector3(0.08f, 0.012f, 1f);
+        StripCollider(header);
+        var headerMat = LitMat(new Color(0.93f, 0.88f, 0.78f), 0.25f);        // neutral cream = unassigned default
+        header.GetComponent<Renderer>().sharedMaterial = headerMat;
+
+        // Bold, readable title on the face (below the header strip).
+        var title = MakeLabel(card.transform, "Title", "Task", new Vector3(0f, -0.004f, -0.003f), 0.24f);
+        title.rectTransform.sizeDelta = new Vector2(0.075f, 0.040f);
+        title.fontStyle = FontStyles.Bold;
 
         // kinematic body (card never falls; moved by the hand grab).
         var rb = card.AddComponent<Rigidbody>();
@@ -245,6 +268,12 @@ public static class BuildBoard
         view.grabbable = newGrab;
         EditorUtility.SetDirty(view);
 
+        // Cute per-card role tint: colors the header strip blue/green/amber by the card's assigned
+        // agent (cream while unassigned). Clones inherit this (header is in the same hierarchy).
+        var roleTint = card.AddComponent<CardRoleTint>();
+        roleTint.headerStrip = header.GetComponent<Renderer>();
+        EditorUtility.SetDirty(roleTint);
+
         // Re-register ISDK interactables after each runtime activation. On a clone, Unity remaps these
         // references (same hierarchy) to the clone's own components, so every pooled card re-registers.
         var rereg = card.AddComponent<ReRegisterInteractable>();
@@ -274,12 +303,19 @@ public static class BuildBoard
         if (c != null) UnityEngine.Object.DestroyImmediate(c);
     }
 
-    static Material LitMat(Color c)
+    static Material LitMat(Color c, float emission = 0f)
     {
         var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
         var m = new Material(shader);
         m.color = c;
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+        // A touch of emission keeps the card readable in passthrough / low light.
+        if (emission > 0f && m.HasProperty("_EmissionColor"))
+        {
+            m.EnableKeyword("_EMISSION");
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            m.SetColor("_EmissionColor", c * emission);
+        }
         return m;
     }
 
