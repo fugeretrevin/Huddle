@@ -10015,6 +10015,18 @@ PrefabInstance:
     m_TransformParent: {fileID: 2010085040}
     m_Modifications:
     - target: {fileID: 4818342398999638956, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      propertyPath: m_Height
+      value: 0.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 4818342398999638956, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      propertyPath: m_Radius
+      value: 0.08
+      objectReference: {fileID: 0}
+    - target: {fileID: 4818342398999638956, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      propertyPath: m_Center.y
+      value: 0.125
+      objectReference: {fileID: 0}
+    - target: {fileID: 4818342398999638956, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       propertyPath: m_IsTrigger
       value: 1
       objectReference: {fileID: 0}
@@ -10148,10 +10160,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d70183a034718c044a5c61b7e26c9a0f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.RubberBandReturn
-  maxOffset: 0.04
+  maxOffset: 0.05
   springback: 7
-  pushStrength: 0.6
+  pushStrength: 0.9
   movement: {fileID: 913268391}
+  handPoints:
+  - {fileID: 1579804614}
+  - {fileID: 688713023}
+  pushRadius: 0.09
 --- !u!54 &913268395
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -15459,6 +15475,18 @@ PrefabInstance:
     m_TransformParent: {fileID: 1623325230}
     m_Modifications:
     - target: {fileID: 1321623031511644829, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      propertyPath: m_Height
+      value: 0.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 1321623031511644829, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      propertyPath: m_Radius
+      value: 0.08
+      objectReference: {fileID: 0}
+    - target: {fileID: 1321623031511644829, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      propertyPath: m_Center.y
+      value: 0.125
+      objectReference: {fileID: 0}
+    - target: {fileID: 1321623031511644829, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       propertyPath: m_IsTrigger
       value: 1
       objectReference: {fileID: 0}
@@ -15584,10 +15612,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d70183a034718c044a5c61b7e26c9a0f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.RubberBandReturn
-  maxOffset: 0.04
+  maxOffset: 0.05
   springback: 7
-  pushStrength: 0.6
+  pushStrength: 0.9
   movement: {fileID: 1515650342}
+  handPoints:
+  - {fileID: 1579804614}
+  - {fileID: 688713023}
+  pushRadius: 0.09
 --- !u!54 &1515650346
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -19250,6 +19282,18 @@ PrefabInstance:
     m_TransformParent: {fileID: 1543507059}
     m_Modifications:
     - target: {fileID: 215809024396943261, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      propertyPath: m_Height
+      value: 0.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 215809024396943261, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      propertyPath: m_Radius
+      value: 0.08
+      objectReference: {fileID: 0}
+    - target: {fileID: 215809024396943261, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      propertyPath: m_Center.y
+      value: 0.125
+      objectReference: {fileID: 0}
+    - target: {fileID: 215809024396943261, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
       propertyPath: m_IsTrigger
       value: 1
       objectReference: {fileID: 0}
@@ -19375,10 +19419,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d70183a034718c044a5c61b7e26c9a0f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Agents.RubberBandReturn
-  maxOffset: 0.04
+  maxOffset: 0.05
   springback: 7
-  pushStrength: 0.6
+  pushStrength: 0.9
   movement: {fileID: 1905904051}
+  handPoints:
+  - {fileID: 1579804614}
+  - {fileID: 688713023}
+  pushRadius: 0.09
 --- !u!54 &1905904055
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -21913,6 +21961,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2132201909}
   - component: {fileID: 2132201910}
+  - component: {fileID: 2132201911}
   m_Layer: 0
   m_Name: TaskBoard
   m_TagString: Untagged
@@ -21965,6 +22014,20 @@ MonoBehaviour:
   completedRegion: {fileID: 1351505297}
   cardSpacing: {x: 0.09, y: 0.06}
   columns: 1
+--- !u!114 &2132201911
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2132201908}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 43d46d97f311b2742993aa1e0278c772, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.FaceUser
+  forward: 0
+  turnSpeed: 6
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
