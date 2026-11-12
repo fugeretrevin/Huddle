@@ -75,6 +75,9 @@ namespace MuseDesk.Agents
         void TryHandoff(string sourceId, string targetId)
         {
             if (_busy) return;
+            // Focus mode suppresses routine handoff choreography (the backend transfer already
+            // happened; this is presentation only, so skipping it changes no task state).
+            if (MuseDesk.Workspace.FocusModeController.Active) return;
             if (!_byId.TryGetValue(sourceId, out var source) || source == null) return;
             if (!_byId.TryGetValue(targetId, out var target) || target == null) return;
             StartCoroutine(HandoffRoutine(source, target));
