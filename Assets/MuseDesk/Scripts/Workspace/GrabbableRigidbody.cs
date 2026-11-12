@@ -20,10 +20,9 @@ namespace MuseDesk.Workspace
         Rigidbody _rb;
         PropertyInfo _sel;
         bool _held;
-        Vector3 _lastPos;
-        Vector3 _vel;
+        float _settle = -1f;   // after release: stay kinematic briefly so the hand can withdraw
 
-        void Awake() { _rb = GetComponent<Rigidbody>(); _lastPos = transform.position; }
+        void Awake() { _rb = GetComponent<Rigidbody>(); }
 
         void Update()
         {
@@ -39,19 +38,21 @@ namespace MuseDesk.Workspace
             try { held = (int)_sel.GetValue(grabbable) > 0; }
             catch { return; }
 
-            if (held && !_held) { _rb.isKinematic = true; }
-            else if (!held && _held)
-            {
-                _rb.isKinematic = false;
-                _rb.linearVelocity = Vector3.ClampMagnitude(_vel, 2.5f);
-            }
+            if (held && !_held) { _rb.isKinematic = true; _settle = -1f; }     // grab: freeze, follow the hand
+            else if (!held && _held) { _settle = 0.25f; }                       // release: hold kinematic a beat
 
-            if (held)
+            // After release, wait for the hand to pull away, THEN re-enable physics with NO imparted
+            // velocity — so the prop settles in place instead of getting flung/ejected.
+            if (_settle > 0f)
             {
-                float dt = Mathf.Max(Time.deltaTime, 1e-4f);
-                _vel = (transform.position - _lastPos) / dt;
+                _settle -= Time.deltaTime;
+                if (_settle <= 0f)
+                {
+                    _rb.isKinematic = false;
+                    _rb.linearVelocity = Vector3.zero;
+                    _rb.angularVelocity = Vector3.zero;
+                }
             }
-            _lastPos = transform.position;
             _held = held;
         }
     }
