@@ -41,6 +41,11 @@ namespace MuseDesk.Agents
 
         enum Motion { Calm, Read, Type, Examine, Hop, Shake }
 
+        /// <summary>Current backend-driven state (set only via SetState). Rigged visuals read this.</summary>
+        public string State => _state;
+        /// <summary>Raised whenever SetState changes/sets the state, so an Animator bridge can react.</summary>
+        public event System.Action<string> StateChanged;
+
         string _state = AgentStates.Idle;
         float _bobAmp;
         float _bobSpeed;
@@ -174,6 +179,7 @@ namespace MuseDesk.Agents
             _motion = newMotion;
             if (label != null)
                 label.text = $"{displayName}\n<size=60%>{Pretty(_state)}</size>";
+            StateChanged?.Invoke(_state);
         }
 
         // state -> (color, busyFactor 0..~2)
