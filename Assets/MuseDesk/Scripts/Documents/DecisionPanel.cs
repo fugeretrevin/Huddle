@@ -82,9 +82,9 @@ namespace MuseDesk.Documents
             if (status)
                 status.text = s switch
                 {
-                    "approved" => "✓ Approved. Developer is continuing.",
-                    "rejected" => "✗ Rejected. Agent will reconsider.",
-                    "changes_requested" => "↻ Changes requested.",
+                    "approved" => "Approved. The developer is continuing.",
+                    "rejected" => "Rejected. Nothing was changed.",
+                    "changes_requested" => "Changes requested.",
                     "expired" => "This request expired (the desktop restarted). Nothing was run.",
                     _ => $"Resolved: {state}",
                 };

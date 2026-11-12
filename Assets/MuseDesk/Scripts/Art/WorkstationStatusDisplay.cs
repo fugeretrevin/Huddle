@@ -72,7 +72,7 @@ namespace MuseDesk.Art
             else if (s.Contains("report") || s.Contains("review")) { line = "Reporting…"; c = Working; }
             else if (s.Contains("approach") || s.Contains("deliver")) { line = "Delivering…"; c = Alert; }
             else if (s.Contains("wait") || s.Contains("block")) { line = "Waiting"; c = Alert; }
-            else if (s.Contains("complete") || s.Contains("done") || s.Contains("pass")) { line = "Complete ✓"; c = Done; }
+            else if (s.Contains("complete") || s.Contains("done") || s.Contains("pass")) { line = "Complete"; c = Done; }
             else if (s.Contains("error") || s.Contains("fail")) { line = "Error"; c = Alert; }
             else { line = "Idle"; c = Idle; }
 

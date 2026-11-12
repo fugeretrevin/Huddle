@@ -18,7 +18,8 @@ namespace MuseDesk.Workspace
         public Component grabbable;
 
         Rigidbody _rb;
-        PropertyInfo _sel;
+        System.Func<int> _sel;
+        bool _selResolved;
         bool _held;
 
         void Awake() { _rb = GetComponent<Rigidbody>(); }
@@ -26,16 +27,14 @@ namespace MuseDesk.Workspace
         void Update()
         {
             if (grabbable == null || _rb == null) return;
-            if (_sel == null)
+            if (!_selResolved)
             {
-                _sel = grabbable.GetType().GetProperty("SelectingPointsCount",
-                    BindingFlags.Instance | BindingFlags.Public);
+                _sel = GrabState.BindSelectingPoints(grabbable);
+                _selResolved = true;
                 if (_sel == null) { enabled = false; return; }
             }
 
-            bool held;
-            try { held = (int)_sel.GetValue(grabbable) > 0; }
-            catch { return; }
+            bool held = _sel() > 0;
 
             if (held && !_held)
             {

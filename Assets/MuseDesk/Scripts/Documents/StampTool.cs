@@ -58,7 +58,7 @@ namespace MuseDesk.Documents
         // One decision = one stamp, across BOTH stamps (main-thread only, so a static is safe).
         static string s_handledDecision;
 
-        PropertyInfo _selCount;
+        System.Func<int> _selCount;
         bool _selResolved;
         float _dwell;
         float _cooldownUntil;
@@ -101,13 +101,10 @@ namespace MuseDesk.Documents
             if (grabbable == null) return false;
             if (!_selResolved)
             {
-                _selCount = grabbable.GetType().GetProperty("SelectingPointsCount",
-                    BindingFlags.Instance | BindingFlags.Public);
+                _selCount = MuseDesk.Workspace.GrabState.BindSelectingPoints(grabbable);
                 _selResolved = true;
             }
-            if (_selCount == null) return false;
-            try { return (int)_selCount.GetValue(grabbable) > 0; }
-            catch { return false; }
+            return _selCount != null && _selCount() > 0;
         }
 
         void Update()

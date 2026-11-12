@@ -39,7 +39,8 @@ namespace MuseDesk.Documents
                  "paper, revealed when the user takes it.")]
         public GameObject[] hideWhileHeld;
 
-        PropertyInfo _selCount;
+        System.Func<int> _selCount;
+        bool _selResolved;
         bool _held;
         bool _expandedWhileHeld;
         bool _taken;
@@ -91,26 +92,21 @@ namespace MuseDesk.Documents
             if (_scaleLocked) transform.localScale = _fullScale;
         }
 
-        bool _loggedOnce;
-
         void Update()
         {
-            if (!_loggedOnce)
-            {
-                _loggedOnce = true;
-                Debug.Log($"MDGRAB HeldPaperController wired: grabbable={(grabbable != null ? grabbable.GetType().Name : "NULL")} face={(face != null)} placer={(placer != null)} delivery={(delivery != null)}");
-            }
             if (grabbable == null) return;
-            if (_selCount == null)
+            if (!_selResolved)
             {
-                _selCount = grabbable.GetType().GetProperty("SelectingPointsCount",
-                    BindingFlags.Instance | BindingFlags.Public);
-                if (_selCount == null) { enabled = false; return; }
+                _selCount = MuseDesk.Workspace.GrabState.BindSelectingPoints(grabbable);
+                _selResolved = true;
+                if (_selCount == null)
+                {
+                    Debug.LogWarning("[MuseDesk] decision paper: grabbable has no SelectingPointsCount; grab-to-expand disabled.");
+                    enabled = false; return;
+                }
             }
 
-            bool nowHeld;
-            try { nowHeld = (int)_selCount.GetValue(grabbable) > 0; }
-            catch { return; }
+            bool nowHeld = _selCount() > 0;
 
             if (nowHeld && !_held) OnGrabbed();
             else if (!nowHeld && _held) OnReleased();
@@ -119,7 +115,7 @@ namespace MuseDesk.Documents
 
         void OnGrabbed()
         {
-            Debug.Log("MDGRAB HeldPaperController.OnGrabbed -> expanding");
+
             // Taken from the agent's hand: detach to the world (keep world pose) and grow to full size
             // as the user lifts it to read — the physical "pick it up and hold it up" gesture.
             if (agentHoldPoint != null && !_taken)
@@ -153,7 +149,7 @@ namespace MuseDesk.Documents
             }
             transform.localScale = target;
             _scaleLocked = true;   // from here on, hold it at full size (LateUpdate enforces)
-            Debug.Log($"MDGRAB paper taken+expanded, locked at scale {target}");
+
         }
 
         void OnReleased()
