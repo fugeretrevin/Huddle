@@ -21,6 +21,7 @@ namespace MuseDesk.Agents
         SessionReducer _reducer;
         AgentMovement _researcherMove;
         AgentAnimatorBridge _researcherBridge;
+        string _deliveredDecisionId;
 
         void Awake()
         {
@@ -41,12 +42,15 @@ namespace MuseDesk.Agents
                 _reducer.AgentChanged -= OnAgentChanged;
                 _reducer.DecisionRequested -= OnDecisionRequested;
                 _reducer.DecisionResolved -= OnDecisionResolved;
+                _reducer.SnapshotLoaded -= ProjectSnapshot;
             }
             _reducer = null;
         }
 
         void OnDecisionRequested(string decisionId, MuseDesk.Models.EventEnvelope e)
         {
+            if (decisionId == _deliveredDecisionId) return;   // already walked up for this one
+            _deliveredDecisionId = decisionId;
             // Walk toward the user (reachable), not to a fixed desk anchor that may sit
             // on the far/monitor side after orientation.
             if (_researcherMove != null) _researcherMove.DeliverInFrontOfUser(0.4f);
@@ -80,6 +84,9 @@ namespace MuseDesk.Agents
                 else _researcherBridge.PlayFailure();   // rejected / changes_requested
             }
             yield return new WaitForSeconds(1.2f);       // let the reaction read before walking back
+            // An approved decision starts a researcher→developer handoff, which owns the walk and
+            // returns the courier home itself; sending it home here would cut that walk short.
+            if (AgentHandoffController.AnyBusy) yield break;
             if (_researcherMove != null) _researcherMove.ReturnHome();
         }
 
@@ -95,13 +102,25 @@ namespace MuseDesk.Agents
             _reducer.AgentChanged += OnAgentChanged;
             _reducer.DecisionRequested += OnDecisionRequested;
             _reducer.DecisionResolved += OnDecisionResolved;
+            _reducer.SnapshotLoaded += ProjectSnapshot;
+            ProjectSnapshot();
+        }
+
+        // Project the authoritative snapshot onto the views. Runs at bind time and again whenever a
+        // snapshot is (re)loaded, so a restart or resume shows what the agents are really doing and
+        // re-delivers a decision that was already waiting for the user.
+        void ProjectSnapshot()
+        {
             foreach (var a in _reducer.Snapshot.Agents) OnAgentChanged(a);
+            var pending = _reducer.FirstPendingDecision();
+            if (pending != null && pending.DecisionId != _deliveredDecisionId)
+                OnDecisionRequested(pending.DecisionId, null);
         }
 
         void OnAgentChanged(AgentDto view)
         {
-            if (view == null) return;
-            if (_byId.TryGetValue(view.AgentId, out var v)) v.SetState(view.State);
+            if (view == null || string.IsNullOrEmpty(view.AgentId)) return;
+            if (_byId.TryGetValue(view.AgentId, out var v)) v.SetState(view.State, view.Progress);
         }
     }
 }

@@ -39,7 +39,7 @@ namespace MuseDesk.Feedback
             {
                 _reducer.DecisionRequested -= OnRequested;
                 _reducer.DecisionResolved -= OnResolved;
-                _reducer.TaskCompleted -= OnCompleted;
+                _reducer.WorkDelivered -= OnCompleted;
             }
             _reducer = null; _bound = false;
         }
@@ -49,7 +49,7 @@ namespace MuseDesk.Feedback
             _reducer = controller.Reducer;
             _reducer.DecisionRequested += OnRequested;
             _reducer.DecisionResolved += OnResolved;
-            _reducer.TaskCompleted += OnCompleted;
+            _reducer.WorkDelivered += OnCompleted;
             _bound = true;
         }
 

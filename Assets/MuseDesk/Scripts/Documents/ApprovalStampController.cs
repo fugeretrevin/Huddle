@@ -39,6 +39,10 @@ namespace MuseDesk.Documents
             HideAll();
         }
 
+        // The paper is deactivated between decisions, so this component misses the decision.requested
+        // that re-activates it; clear the previous decision's mark whenever the paper comes back.
+        void OnEnable() { HideAll(); }
+
         void Update() { if (!_bound && controller != null) Bind(); }
 
         void OnDisable()

@@ -23,6 +23,7 @@ namespace MuseDesk.Workspace
         [Serializable] class LayoutDoc
         {
             public int version = CurrentVersion;
+            public string build;   // layouts are per-build: a new build's authored layout wins
             public List<ItemState> items = new List<ItemState>();
         }
 
@@ -81,11 +82,15 @@ namespace MuseDesk.Workspace
             }
         }
 
+        // Nothing else calls Save for a moved item, so persist when the app is backgrounded or the
+        // headset comes off (the reliable "about to exit" signal on Quest).
+        void OnApplicationPause(bool paused) { if (paused) Save(); }
+
         public void Save()
         {
             try
             {
-                var doc = new LayoutDoc();
+                var doc = new LayoutDoc { build = Application.buildGUID };
                 foreach (var kv in _byId) doc.items.Add(Snapshot(kv.Key, kv.Value));
                 PlayerPrefs.SetString(prefsKey, JsonUtility.ToJson(doc));
                 PlayerPrefs.Save();
@@ -101,6 +106,10 @@ namespace MuseDesk.Workspace
 
             LayoutDoc doc = null;
             try { doc = JsonUtility.FromJson<LayoutDoc>(raw); } catch { doc = null; }
+
+            // A layout saved by a different build is ignored (not an error): the scene's authored
+            // positions may have changed, and stale saved transforms would silently undo them.
+            if (doc != null && doc.build != Application.buildGUID) return;
 
             if (doc == null || doc.version != CurrentVersion || doc.items == null)
             {

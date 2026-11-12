@@ -15,6 +15,7 @@ namespace MuseDesk.Agents
         public float walkBobSpeed = 10f;
 
         Vector3 _homeLocal;
+        Quaternion _homeLocalRot;
         Transform _parent;
         Transform _dest;
         Vector3 _destPos;
@@ -34,6 +35,7 @@ namespace MuseDesk.Agents
         {
             _parent = transform.parent;
             _homeLocal = transform.localPosition;
+            _homeLocalRot = transform.localRotation;
         }
 
         public void DeliverTo(Transform destination, Action onArrived = null)
@@ -79,7 +81,13 @@ namespace MuseDesk.Agents
             transform.position = flat;
 
             Vector3 dir = targetWorld - _startWorld; dir.y = 0f;
-            if (dir.sqrMagnitude > 1e-5f)
+            if (_returning && k > 0.75f)
+            {
+                // Last stretch of the walk home: turn back to the station pose (toward the desk).
+                Quaternion homeRot = _parent != null ? _parent.rotation * _homeLocalRot : _homeLocalRot;
+                transform.rotation = Quaternion.Slerp(transform.rotation, homeRot, Time.deltaTime * 10f);
+            }
+            else if (dir.sqrMagnitude > 1e-5f)
                 transform.rotation = Quaternion.Slerp(transform.rotation,
                     Quaternion.LookRotation(dir.normalized, Vector3.up), Time.deltaTime * 6f);
 
@@ -87,7 +95,12 @@ namespace MuseDesk.Agents
             {
                 transform.position = targetWorld;
                 _moving = false;
-                if (_returning) { if (_parent != null) transform.localPosition = _homeLocal; AtHome = true; }
+                if (_returning)
+                {
+                    if (_parent != null) transform.localPosition = _homeLocal;
+                    transform.localRotation = _homeLocalRot;
+                    AtHome = true;
+                }
                 var cb = _onArrived; _onArrived = null; cb?.Invoke();
             }
         }

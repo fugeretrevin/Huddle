@@ -162,7 +162,11 @@ namespace MuseDesk.Phase2.Contracts
                 SourceMode = SourceModes.Demo,
             };
             _tasks[card.TaskId] = card;
-            EmitTask(Phase2EventTypes.TaskCreated, card, new JObject { ["source_mode"] = SourceModes.Demo });
+            // Same card fields the live backend sends on task.created, so the new card is not blank.
+            EmitTask(Phase2EventTypes.TaskCreated, card, new JObject {
+                ["title"] = card.Title, ["task_state"] = card.TaskState, ["priority"] = card.Priority,
+                ["revision"] = card.Revision, ["source_mode"] = SourceModes.Demo
+            }, agentId: card.AgentId);
             Remember(cmd.IdempotencyKey, card.Clone());
             return Task.FromResult(card.Clone());
         }

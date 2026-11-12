@@ -25,6 +25,8 @@ namespace MuseDesk.Networking
         readonly float _step;
         long _seq;
         string _resolvedAction;
+        string _decisionId;
+        int _cycle;
 
         public DemoAgentGateway(DemoFixture fixture, float stepSeconds = 1.2f)
         {
@@ -58,6 +60,12 @@ namespace MuseDesk.Networking
         public async Task<TaskView> StartTaskAsync(string templateId, string idempotencyKey,
                                                    CancellationToken ct)
         {
+            // A new cycle (DemoDirector loop / restart) is a NEW decision: clear the previous answer and
+            // give it its own id, otherwise the second run could be neither stamped nor resolved.
+            _cycle++;
+            _resolvedAction = null;
+            _decisionId = _cycle == 1 ? _fx.Decision.DecisionId : $"{_fx.Decision.DecisionId}-c{_cycle}";
+
             await Step(ct);
             EmitAgent("researcher", "researching", "Comparing OAuth vs local passwords");
             EmitAgent("developer", "coding", "Scaffolding login UI");
@@ -74,7 +82,7 @@ namespace MuseDesk.Networking
                 ["recommendation"] = "approve", ["risk_level"] = d.RiskLevel,
                 ["priority"] = d.Priority, ["source_mode"] = "demo",
                 ["allowed_actions"] = JArray.FromObject(d.AllowedActions)
-            }, agentId: "researcher", decisionId: d.DecisionId, taskId: "task-demo-research");
+            }, agentId: "researcher", decisionId: _decisionId, taskId: "task-demo-research");
 
             return new TaskView { TaskId = "task-demo-auth", Status = "running", Template = templateId };
         }
@@ -115,19 +123,24 @@ namespace MuseDesk.Networking
                     ["source_mode"] = "demo", ["tests_passed"] = passed, ["tests_failed"] = 0,
                     ["files_changed"] = new JArray("app/auth/oauth_login.py", "tests/test_oauth_login.py")
                 }, taskId: "task-demo-oauth", agentId: "developer");
-                EmitAgent("developer", "complete", $"OAuth scaffold complete; {passed}/{passed} tests passed");
+                EmitAgent("developer", "complete", "OAuth scaffold handed to the tester");
+                // The scripted tester verifies the artifact before the task is reported done, in the
+                // same order the live pipeline uses (develop → test → complete).
+                EmitAgent("tester", "testing", $"Running {passed} OAuth tests");
+                await Step(ct);
+                EmitAgent("tester", "complete", $"{passed}/{passed} tests passed");
                 Emit("task.completed", new JObject {
                     ["task_id"] = "task-demo-oauth", ["source_mode"] = "demo",
+                    ["artifact_id"] = "art-demo-1",
                     ["result_summary"] = branch?.Result ?? "Simulated OAuth scaffold complete"
                 }, taskId: "task-demo-oauth", agentId: "developer");
             }
             else
             {
+                // Rejected / changes requested: nothing was built, so NO task.completed is emitted —
+                // a completion here would light the shelf, the PASSED lamp and the completion chime
+                // for work that never happened.
                 EmitAgent("developer", "waiting", branch?.Result ?? "No OAuth changes made");
-                Emit("task.completed", new JObject {
-                    ["task_id"] = "task-demo-oauth", ["source_mode"] = "demo",
-                    ["result_summary"] = branch?.Result ?? "Rejected; developer will reconsider"
-                }, taskId: "task-demo-oauth", agentId: "developer");
             }
         }
 

@@ -86,6 +86,16 @@ namespace MuseDesk.Documents
             _nope = Nope();
         }
 
+        void OnEnable() { if (controller != null) controller.RespondFailed += OnRespondFailed; }
+        void OnDisable() { if (controller != null) controller.RespondFailed -= OnRespondFailed; }
+
+        // The stamped response never reached the backend: re-arm so the user can stamp again.
+        void OnRespondFailed(string decisionId, string message)
+        {
+            if (s_handledDecision == decisionId) s_handledDecision = null;
+            Play(_nope);
+        }
+
         bool IsHeld()
         {
             if (grabbable == null) return false;

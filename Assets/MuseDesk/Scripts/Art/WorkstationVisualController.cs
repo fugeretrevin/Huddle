@@ -144,10 +144,37 @@ namespace MuseDesk.Art
             SetLightActive(lightBlocked, state == TestingVisualState.Blocked);
         }
 
-        private static void SetLightActive(Renderer r, bool active)
+        private readonly Dictionary<Renderer, Vector3> _lampBaseScale = new Dictionary<Renderer, Vector3>();
+        private readonly Dictionary<Renderer, Color> _lampBaseColor = new Dictionary<Renderer, Color>();
+        private MaterialPropertyBlock _lampMpb;
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int ColorId = Shader.PropertyToID("_Color");
+        private static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
+
+        // The active lamp is larger AND bright; the others shrink slightly and dim, so the state
+        // reads at a glance instead of by size alone. Scale is relative to the lamp's authored size.
+        private void SetLightActive(Renderer r, bool active)
         {
             if (r == null) return;
-            r.transform.localScale = active ? Vector3.one * 1.25f : Vector3.one * 0.85f;
+            if (!_lampBaseScale.TryGetValue(r, out var baseScale))
+            {
+                baseScale = r.transform.localScale;
+                _lampBaseScale[r] = baseScale;
+                var m = r.sharedMaterial;
+                _lampBaseColor[r] = m == null ? Color.white
+                    : m.HasProperty(BaseColorId) ? m.GetColor(BaseColorId)
+                    : m.HasProperty(ColorId) ? m.GetColor(ColorId) : Color.white;
+            }
+            r.transform.localScale = baseScale * (active ? 1.25f : 0.85f);
+
+            if (_lampMpb == null) _lampMpb = new MaterialPropertyBlock();
+            Color c = _lampBaseColor[r];
+            Color shown = active ? c : Color.Lerp(c, new Color(0.18f, 0.18f, 0.2f), 0.7f);
+            r.GetPropertyBlock(_lampMpb);
+            _lampMpb.SetColor(BaseColorId, shown);
+            _lampMpb.SetColor(ColorId, shown);
+            _lampMpb.SetColor(EmissionId, active ? c * 1.6f : Color.black);
+            r.SetPropertyBlock(_lampMpb);
         }
 
         private void Update()

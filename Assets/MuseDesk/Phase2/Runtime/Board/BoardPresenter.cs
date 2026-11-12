@@ -273,6 +273,32 @@ namespace MuseDesk.Phase2.Board
             catch (Exception ex) { Debug.LogWarning($"[MuseDesk.P2] create task failed: {ex.Message}"); return null; }
         }
 
+        // Short, plain-language outcome lines for the card (never a claim the backend didn't make).
+        static string Confirmation(string label, TaskCardV2 c) => label switch
+        {
+            "assign" => c != null && !string.IsNullOrEmpty(c.AgentId)
+                ? "Assigned to " + char.ToUpperInvariant(c.AgentId[0]) + c.AgentId.Substring(1) : "Assigned",
+            "priority" => c != null ? $"Priority P{Mathf.Clamp(c.Priority, 0, 3)}" : "Priority set",
+            "pause" => "Pause requested",
+            "resume" => "Resumed",
+            _ => "Done",
+        };
+
+        static string Reason(CommandErrorBody e)
+        {
+            if (e == null) return "Not accepted";
+            return e.Code switch
+            {
+                CommandErrorCodes.TaskRunning => "Running: pause it first",
+                CommandErrorCodes.TaskNotAssignable => "Finished tasks can't move",
+                CommandErrorCodes.UnsafeTransfer => "Can't move it right now",
+                CommandErrorCodes.TaskNotPausable => "Can't pause a finished task",
+                CommandErrorCodes.TaskNotPaused => "It isn't paused",
+                "CLIENT_NOT_READY" => "Board is still loading",
+                _ => string.IsNullOrEmpty(e.Message) ? "Not accepted" : e.Message,
+            };
+        }
+
         static Phase2CommandResult<TaskCardV2> NotReady() =>
             Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
             { Code = "CLIENT_NOT_READY", Message = "board not initialized" });
@@ -284,6 +310,7 @@ namespace MuseDesk.Phase2.Board
             TaskCardView card, Func<CancellationToken, Task<Phase2CommandResult<TaskCardV2>>> invoke, string label)
         {
             Phase2CommandResult<TaskCardV2> result;
+            card.ShowPending();
             try
             {
                 result = await invoke(_cts.Token);
@@ -296,6 +323,7 @@ namespace MuseDesk.Phase2.Board
             catch (Exception ex)
             {
                 Debug.LogWarning($"[MuseDesk.P2] {label} transport error: {ex.Message}");
+                card.ShowResult(false, "Couldn't reach the desktop");
                 _ = ResyncAsync();
                 return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
                 { Code = "TRANSPORT_ERROR", Message = ex.Message });
@@ -316,6 +344,7 @@ namespace MuseDesk.Phase2.Board
             }
             if (!result.Ok)
                 Debug.Log($"[MuseDesk.P2] {label} rejected: {result.Error?.Code} — {result.Error?.Message}");
+            card.ShowResult(result.Ok, result.Ok ? Confirmation(label, canonical) : Reason(result.Error));
 
             AssignResolved?.Invoke(card, result);
             return result;
@@ -342,6 +371,7 @@ namespace MuseDesk.Phase2.Board
             };
 
             Phase2CommandResult<TaskCardV2> result;
+            card.ShowPending();
             try
             {
                 result = await Gateway.AssignAsync(card.Data.TaskId, cmd, _cts.Token);
@@ -354,6 +384,7 @@ namespace MuseDesk.Phase2.Board
             catch (Exception ex)
             {
                 Debug.LogWarning($"[MuseDesk.P2] assign transport error: {ex.Message}");
+                card.ShowResult(false, "Couldn't reach the desktop");
                 // Unknown canonical state: do NOT fabricate success. Reconcile from a fresh snapshot.
                 _ = ResyncAsync();
                 return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
@@ -378,6 +409,7 @@ namespace MuseDesk.Phase2.Board
 
             if (!result.Ok)
                 Debug.Log($"[MuseDesk.P2] assign rejected: {result.Error?.Code} — {result.Error?.Message}");
+            card.ShowResult(result.Ok, result.Ok ? Confirmation("assign", canonical) : Reason(result.Error));
 
             AssignResolved?.Invoke(card, result);
             return result;

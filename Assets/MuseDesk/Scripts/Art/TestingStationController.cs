@@ -7,7 +7,7 @@ namespace MuseDesk.Art
 {
     /// <summary>
     /// Drives the testing workstation's pass/fail lamps + scanner ring from REAL backend events,
-    /// never a simulated timer. Tester enters a working state -> Testing; TaskCompleted -> Passed;
+    /// never a simulated timer. Tester enters a working state -> Testing; its run completing -> Passed;
     /// TaskFailed -> Failed; a rejected/changes decision -> Blocked. After a pass/fail pulse the
     /// lamp settles back to Idle. The backend remains authoritative: if a visual is missed, task
     /// state is unaffected (presentation only).
@@ -23,13 +23,13 @@ namespace MuseDesk.Art
 
         bool _bound;
         Coroutine _settle;
+        string _lastTesterState = "";
 
         void Update() { if (!_bound && controller != null) Bind(); }
 
         void Bind()
         {
             controller.Reducer.AgentChanged += OnAgentChanged;
-            controller.Reducer.TaskCompleted += OnTaskCompleted;
             controller.Reducer.DecisionResolved += OnDecisionResolved;
             controller.Reducer.Applied += OnApplied;
             _bound = true;
@@ -40,7 +40,6 @@ namespace MuseDesk.Art
         {
             if (!_bound || controller == null) return;
             controller.Reducer.AgentChanged -= OnAgentChanged;
-            controller.Reducer.TaskCompleted -= OnTaskCompleted;
             controller.Reducer.DecisionResolved -= OnDecisionResolved;
             controller.Reducer.Applied -= OnApplied;
             _bound = false;
@@ -50,9 +49,24 @@ namespace MuseDesk.Art
         {
             if (a == null || a.AgentId != testerAgentId || testingStation == null) return;
             string s = (a.State ?? "").ToLowerInvariant();
+            bool wasTesting = _lastTesterState.Contains("test");
+            if (s == _lastTesterState) return;          // progress-only update, same state
+            _lastTesterState = s;
+
             if (s.Contains("test")) Set(WorkstationVisualController.TestingVisualState.Testing);
             else if (s.Contains("block") || s.Contains("wait")) Set(WorkstationVisualController.TestingVisualState.Blocked);
-            else if (s.Contains("idle")) Set(WorkstationVisualController.TestingVisualState.Idle);
+            // The tester's OWN run finishing is the test result: testing → complete is a real pass,
+            // testing → error a real failure. (task.completed is not used: it also fires for
+            // non-test work and for a cancelled branch.)
+            else if (s.Contains("complete"))
+            {
+                if (wasTesting) PulseThenSettle(WorkstationVisualController.TestingVisualState.Passed);
+                else if (_settle == null) Set(WorkstationVisualController.TestingVisualState.Idle);
+            }
+            else if (s.Contains("error") || s.Contains("fail"))
+                PulseThenSettle(WorkstationVisualController.TestingVisualState.Failed);
+            else if (s.Contains("idle") && _settle == null)
+                Set(WorkstationVisualController.TestingVisualState.Idle);
         }
 
         void OnApplied(EventEnvelope e)
@@ -62,7 +76,6 @@ namespace MuseDesk.Art
                 PulseThenSettle(WorkstationVisualController.TestingVisualState.Failed);
         }
 
-        void OnTaskCompleted(EventEnvelope e) => PulseThenSettle(WorkstationVisualController.TestingVisualState.Passed);
 
         void OnDecisionResolved(string decisionId, string state)
         {

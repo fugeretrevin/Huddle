@@ -211,6 +211,7 @@ namespace MuseDesk.Phase2.Contracts
                     var st = e.PayloadString("task_state");
                     if (!string.IsNullOrEmpty(st)) t.TaskState = st;
                     if (e.AgentId != null) t.AgentId = e.AgentId;
+                    if (e.TryPayloadInt("priority", out var cp)) t.Priority = cp;
                     break;
             }
 

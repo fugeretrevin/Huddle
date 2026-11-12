@@ -43,6 +43,8 @@ namespace MuseDesk.Agents
 
         /// <summary>Current backend-driven state (set only via SetState). Rigged visuals read this.</summary>
         public string State => _state;
+        /// <summary>The agent's own latest progress line from the backend, or null if none was sent.</summary>
+        public string Progress { get; private set; }
         /// <summary>Raised whenever SetState changes/sets the state, so an Animator bridge can react.</summary>
         public event System.Action<string> StateChanged;
 
@@ -165,6 +167,7 @@ namespace MuseDesk.Agents
         public void SetState(string state, string progress = null)
         {
             _state = string.IsNullOrEmpty(state) ? _state : state;
+            Progress = progress;
             var (color, busy) = Style(_state);
             if (bodyRenderer != null)
             {

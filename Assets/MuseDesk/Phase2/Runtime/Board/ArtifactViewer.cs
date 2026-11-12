@@ -9,7 +9,7 @@ namespace MuseDesk.Phase2.Board
 {
     /// <summary>
     /// Shows REAL artifact content paged from the backend (GET /v2/.../artifacts/{id}). When the
-    /// board gateway reports an artifact.created (or artifact.page_ready), this fetches page 1 and
+    /// board gateway reports an artifact.created (or artifact.page_ready), this fetches the first page and
     /// displays it; Next/Prev page through the rest. Content is never synthesized — a missing/empty
     /// response just shows nothing. The display surfaces (TMP labels, root) are optional and wired in
     /// the scene; without them it still fetches and logs, so the backend path is exercised either way.
@@ -32,7 +32,7 @@ namespace MuseDesk.Phase2.Board
         IPhase2Gateway _gw;
         CancellationTokenSource _cts;
         string _artifactId;
-        int _page = 1;
+        int _page;            // 0-based, matching the backend route and the demo gateway
         int _totalPages = 1;
         bool _bound;
 
@@ -68,16 +68,16 @@ namespace MuseDesk.Phase2.Board
                 Open(e.ArtifactId);
         }
 
-        /// <summary>Open an artifact at page 1.</summary>
+        /// <summary>Open an artifact at its first page.</summary>
         public void Open(string artifactId)
         {
             _artifactId = artifactId;
-            _page = 1;
+            _page = 0;
             _ = LoadAsync();
         }
 
-        public void NextPage() { if (_page < _totalPages) { _page++; _ = LoadAsync(); } }
-        public void PrevPage() { if (_page > 1) { _page--; _ = LoadAsync(); } }
+        public void NextPage() { if (_page < _totalPages - 1) { _page++; _ = LoadAsync(); } }
+        public void PrevPage() { if (_page > 0) { _page--; _ = LoadAsync(); } }
         public void Close() { _artifactId = null; if (root != null) root.SetActive(false); }
 
         async Task LoadAsync()
@@ -93,7 +93,7 @@ namespace MuseDesk.Phase2.Board
             if (this == null || resp == null) return;
 
             _totalPages = Mathf.Max(1, resp.TotalPages);
-            _page = Mathf.Clamp(resp.Page <= 0 ? _page : resp.Page, 1, _totalPages);
+            _page = Mathf.Clamp(resp.Page, 0, _totalPages - 1);
 
             string title = resp.Summary ?? resp.Kind ?? "Artifact";
             string body = "";
@@ -107,8 +107,8 @@ namespace MuseDesk.Phase2.Board
             if (root != null) root.SetActive(true);
             if (titleLabel != null) titleLabel.text = title;
             if (bodyText != null) bodyText.text = body;
-            if (pageLabel != null) pageLabel.text = $"{_page} / {_totalPages}";
-            Debug.Log($"[MuseDesk.P2] artifact {_artifactId} page {_page}/{_totalPages}: {title}");
+            if (pageLabel != null) pageLabel.text = $"{_page + 1} / {_totalPages}";
+            Debug.Log($"[MuseDesk.P2] artifact {_artifactId} page {_page + 1}/{_totalPages}: {title}");
         }
     }
 }

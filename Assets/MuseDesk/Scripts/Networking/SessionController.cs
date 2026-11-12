@@ -44,16 +44,48 @@ namespace MuseDesk.Networking
         CancellationTokenSource _cts;
         int _idemCounter;
 
+        /// <summary>A decision response could not be delivered (decisionId, human-readable reason).
+        /// The paper restores its buttons and the stamps re-arm, so the user can retry.</summary>
+        public event Action<string, string> RespondFailed;
+
+        string _endpoint = "(offline)";
+
         async void Start()
         {
             _cts = new CancellationTokenSource();
-            await InitializeAsync(_cts.Token);
+            try { await InitializeAsync(_cts.Token); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                // Without this an exception here is swallowed by async void and every dependent
+                // system waits on Initialized forever with nothing in the log.
+                Debug.LogError($"[MuseDesk] session initialization failed: {ex}");
+                if (diagnostics != null) diagnostics.SetMode("ERROR · Could not start a session", "(none)");
+            }
         }
+
+        void Update()
+        {
+            // The socket raises ConnectionChanged on a background thread; reflect it here.
+            int dirty = System.Threading.Interlocked.Exchange(ref _connectionDirtyBacking, 0);
+            if (dirty == 0 || !IsLive || Gateway == null || diagnostics == null) return;
+            diagnostics.SetMode(dirty == 1 ? Gateway.ModeLabel : "LIVE · Reconnecting to desktop…", _endpoint);
+            if (dirty == 2) diagnostics.note = "connection lost; nothing is being simulated";
+        }
+
+        int _connectionDirtyBacking;
+        void OnConnectionChanged(bool connected) =>
+            System.Threading.Interlocked.Exchange(ref _connectionDirtyBacking, connected ? 1 : 2);
 
         void OnDestroy()
         {
             try { _cts?.Cancel(); } catch { }
-            if (dispatcher != null) dispatcher.Disconnect();
+            if (Gateway != null) Gateway.EventReceived -= OnEvent;
+            if (dispatcher != null)
+            {
+                dispatcher.ConnectionChanged -= OnConnectionChanged;
+                dispatcher.Disconnect();
+            }
         }
 
         async Task InitializeAsync(CancellationToken ct)
@@ -86,10 +118,14 @@ namespace MuseDesk.Networking
         {
             Gateway = gateway;
             IsLive = isLive;
-            Reducer.LoadSnapshot(snap);
-            Reducer.DecisionRequested += (id, _) => PendingDecisionId = id;
+            _endpoint = endpoint;
             Reducer.DecisionResolved += (id, _) => { if (id == PendingDecisionId) PendingDecisionId = null; };
+            Reducer.LoadSnapshot(snap);
+            // Resume: a decision that was already awaiting a human when we (re)connected has no
+            // decision.requested event coming, so adopt it from the snapshot.
+            PendingDecisionId = Reducer.FirstPendingDecision()?.DecisionId;
             gateway.EventReceived += OnEvent;
+            if (isLive && dispatcher != null) dispatcher.ConnectionChanged += OnConnectionChanged;
             if (diagnostics != null)
             {
                 diagnostics.SetMode(gateway.ModeLabel, endpoint);
@@ -121,7 +157,7 @@ namespace MuseDesk.Networking
         }
 
         /// <summary>Ask a contextual question about the pending decision; answer returned via callback.</summary>
-        public async void AskPending(string question, Action<string> onAnswer)
+        public async void AskPending(string question, Action<string> onAnswer, string agentId = "researcher")
         {
             if (Gateway == null || string.IsNullOrEmpty(PendingDecisionId))
             {
@@ -130,7 +166,7 @@ namespace MuseDesk.Networking
             }
             try
             {
-                var ans = await Gateway.AskAsync("researcher", PendingDecisionId, question, _cts.Token);
+                var ans = await Gateway.AskAsync(string.IsNullOrEmpty(agentId) ? "researcher" : agentId, PendingDecisionId, question, _cts.Token);
                 onAnswer?.Invoke(ans?.Answer ?? "(no answer)");
             }
             catch (Exception ex)
@@ -142,6 +178,11 @@ namespace MuseDesk.Networking
 
         void OnEvent(EventEnvelope e)
         {
+            // Set before Apply so any handler reading PendingDecisionId during decision.requested
+            // sees the new decision, whatever order the subscribers were added in.
+            if (e != null && e.Type == EventTypes.DecisionRequested && e.Seq > Reducer.LastSeq
+                && !string.IsNullOrEmpty(e.DecisionId))
+                PendingDecisionId = e.DecisionId;
             if (!Reducer.Apply(e)) return;
             if (diagnostics == null) return;
             diagnostics.SetEvent(e.Seq, e.EventId);
@@ -183,7 +224,14 @@ namespace MuseDesk.Networking
                     NextKey($"resolve-{decisionId}"), comment, _cts.Token);
                 Debug.Log($"[MuseDesk] decision {decisionId} -> {res.State} (applied={res.Applied})");
             }
-            catch (Exception ex) { Debug.LogError($"[MuseDesk] respond failed: {ex.Message}"); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MuseDesk] respond failed: {ex.Message}");
+                RespondFailed?.Invoke(decisionId, IsLive
+                    ? "Couldn't reach the desktop. Your decision was NOT saved. Try again."
+                    : "Couldn't save the decision. Try again.");
+            }
         }
 
         string NextKey(string prefix) => $"{prefix}-{SystemInfo.deviceUniqueIdentifier[..6]}-{++_idemCounter:D4}";

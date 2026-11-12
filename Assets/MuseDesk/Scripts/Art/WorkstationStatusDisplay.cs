@@ -78,6 +78,14 @@ namespace MuseDesk.Art
 
             if (statusText != null)
             {
+                // Under the generic state line, show what the backend says the agent is actually
+                // doing ("Running tests on new code", "Baseline tests: 3 passed / 0 failed", …).
+                string progress = agent != null ? agent.Progress : null;
+                if (!string.IsNullOrEmpty(progress))
+                {
+                    if (progress.Length > 60) progress = progress.Substring(0, 59) + "…";
+                    line += $"\n<size=80%><color=#D8DEE6>{progress}</color></size>";
+                }
                 statusText.text = $"<b>{stationLabel}</b>\n<size=70%>{line}</size>";
                 statusText.color = c;
             }

@@ -184,6 +184,14 @@ namespace MuseDesk.Demo
         {
             // A human (or the kiosk timer) answered — cancel any pending idle timer immediately.
             CancelIdleTimer();
+            // A rejected / changes-requested decision ends the scripted cycle without a completion
+            // (nothing was built), so the loop restarts from here instead of from task.completed.
+            string s = (state ?? "").ToLowerInvariant();
+            if (!s.Contains("approv"))
+            {
+                _cycleInFlight = false;
+                if (loop && !_standingDown) _ = LoopRestartAsync();
+            }
         }
 
         void OnTaskCompleted(EventEnvelope _evt)

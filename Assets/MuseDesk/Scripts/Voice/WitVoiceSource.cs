@@ -82,14 +82,55 @@ namespace MuseDesk.Voice
             string intent = SafeIntent(node);
             string text = (node.GetTranscription() ?? "").Trim().ToLowerInvariant();
 
-            // Intent first (if the Wit app has built-in confirmation/negation), else keyword on the text.
-            if (intent.Contains("confirm") || (string.IsNullOrEmpty(intent) && MatchesAny(text, YesWords)))
-                Approve?.Invoke();
-            else if (intent.Contains("reject") || intent.Contains("negat") || (string.IsNullOrEmpty(intent) && MatchesAny(text, NoWords)))
-                Reject?.Invoke();
-            else if (MatchesAny(text, WhyWords))
-                AskWhy?.Invoke(node.GetTranscription());
-            // else: unrecognized — intentionally do nothing (no action without a clear command).
+            switch (Classify(text, intent))
+            {
+                case VoiceCommand.Approve: Approve?.Invoke(); break;
+                case VoiceCommand.Reject:  Reject?.Invoke(); break;
+                case VoiceCommand.Ask:     AskWhy?.Invoke(node.GetTranscription()); break;
+                // None: unrecognized or ambiguous. Intentionally do nothing.
+            }
+        }
+
+        public enum VoiceCommand { None, Approve, Reject, Ask }
+
+        /// <summary>
+        /// Map a transcript (lower-case) and optional Wit intent to a command. Approval is the
+        /// consequential action, so it is the HARDEST to trigger: questions are checked first, then
+        /// any negation ("don't approve", "not sure") rejects or does nothing, and only a short,
+        /// unambiguous affirmative approves. Whole-word matching, never substrings.
+        /// </summary>
+        public static VoiceCommand Classify(string text, string intent)
+        {
+            text = (text ?? "").Trim().ToLowerInvariant();
+            intent = (intent ?? "").ToLowerInvariant();
+            if (text.Length == 0 && intent.Length == 0) return VoiceCommand.None;
+
+            bool question = HasAny(text, WhyWords) || text.EndsWith("?");
+            bool negated = HasAny(text, NegationWords);
+            bool no = HasAny(text, NoWords);
+            bool yes = HasAny(text, YesWords);
+
+            if (question) return VoiceCommand.Ask;
+            if (no && !yes) return VoiceCommand.Reject;
+            if (intent.Contains("reject") || intent.Contains("negat")) return VoiceCommand.Reject;
+            // "don't approve", "not sure", "no, approve it": contradictory or hedged. Do nothing
+            // rather than guess; the user can repeat a clear command or use their hands.
+            if (negated || (no && yes)) return VoiceCommand.None;
+            int words = text.Length == 0 ? 0 : text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
+            if ((yes || intent.Contains("confirm")) && words <= 6) return VoiceCommand.Approve;
+            return VoiceCommand.None;
+        }
+
+        static readonly string[] NegationWords = { "don't", "dont", "do not", "not", "never", "no", "isn't", "wait", "hold on", "unsure", "maybe" };
+
+        static bool HasAny(string text, string[] phrases)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            string padded = " " + System.Text.RegularExpressions.Regex.Replace(text, @"[^\w' ]+", " ") + " ";
+            padded = System.Text.RegularExpressions.Regex.Replace(padded, @"\s+", " ");
+            foreach (var p in phrases)
+                if (padded.Contains(" " + p + " ")) return true;
+            return false;
         }
 
         void OnError(string error, string message)
@@ -104,12 +145,5 @@ namespace MuseDesk.Voice
             catch { return ""; }
         }
 
-        static bool MatchesAny(string text, string[] words)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            foreach (var w in words)
-                if (text == w || text.Contains(" " + w) || text.StartsWith(w) || text.EndsWith(w)) return true;
-            return false;
-        }
     }
 }

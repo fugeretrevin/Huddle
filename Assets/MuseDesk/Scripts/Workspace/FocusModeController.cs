@@ -108,8 +108,18 @@ namespace MuseDesk.Workspace
             finally { _applyingFromBackend = false; }
         }
 
-        void OnArtifact(EventEnvelope e) { if (Active) Collect("New artifact produced"); }
-        void OnTaskCompleted(EventEnvelope e) { if (Active) Collect("Task completed"); }
+        void OnArtifact(EventEnvelope e)
+        {
+            if (!Active) return;
+            string summary = e != null ? e.PayloadString("summary", null) : null;
+            Collect(string.IsNullOrEmpty(summary) ? "New artifact produced" : "Artifact: " + summary);
+        }
+        void OnTaskCompleted(EventEnvelope e)
+        {
+            if (!Active) return;
+            string summary = e != null ? e.PayloadString("result_summary", null) : null;
+            Collect(string.IsNullOrEmpty(summary) ? "Task completed" : "Done: " + summary);
+        }
 
         void OnReset()
         {
@@ -129,9 +139,12 @@ namespace MuseDesk.Workspace
 
         public void SetFocus(bool on)
         {
+            bool was = Active;
             Active = on;
             if (focusIndicator != null) focusIndicator.SetActive(on);
-            if (!on) { _pending = 0; _log.Clear(); }   // catching up clears the queue
+            // Entering focus starts a fresh queue. Leaving focus KEEPS it, so the updates that were
+            // held back can be reviewed afterwards; it is cleared the next time focus is enabled.
+            if (on && !was) { _pending = 0; _log.Clear(); }
             RefreshInbox();
 
             // Tell the real backend (unless this change CAME from the backend). The server/demo is
@@ -158,9 +171,10 @@ namespace MuseDesk.Workspace
         void RefreshInbox()
         {
             if (inboxBadge != null)
-                inboxBadge.text = Active ? (_pending > 0 ? _pending.ToString() : "0") : "";
+                inboxBadge.text = Active ? _pending.ToString() : (_pending > 0 ? _pending.ToString() : "");
             if (inboxLog != null)
-                inboxLog.text = Active && _log.Count > 0 ? string.Join("\n", _log) : "";
+                inboxLog.text = _log.Count == 0 ? ""
+                    : (Active ? "" : "While you were focused:\n") + string.Join("\n", _log);
         }
     }
 }

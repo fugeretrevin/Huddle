@@ -39,7 +39,7 @@ namespace MuseDesk.Workspace
 
         void Bind()
         {
-            controller.Reducer.TaskCompleted += OnTaskCompleted;
+            controller.Reducer.WorkDelivered += OnTaskCompleted;
             controller.Reducer.SessionReset += OnReset;
             _bound = true;
         }
@@ -48,7 +48,7 @@ namespace MuseDesk.Workspace
         {
             if (_bound && controller != null)
             {
-                controller.Reducer.TaskCompleted -= OnTaskCompleted;
+                controller.Reducer.WorkDelivered -= OnTaskCompleted;
                 controller.Reducer.SessionReset -= OnReset;
             }
             _bound = false;

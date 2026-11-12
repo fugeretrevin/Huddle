@@ -60,8 +60,51 @@ namespace MuseDesk.Phase2.Board
         public string TaskId => Data?.TaskId;
         public bool IsExpanded { get; private set; }
 
-        PropertyInfo _selProp;
+        Func<int> _selCount;
         bool _selResolved;
+
+        // Transient command feedback shown in the state line ("Sending…", "Assigned to Developer",
+        // "Running: pause it first"), then the canonical state text returns.
+        float _noticeUntil;
+        bool _noticeActive;
+        Color _stateBaseColor;
+        bool _stateColorCaptured;
+        static readonly Color NoticePending = new Color(0.95f, 0.78f, 0.25f);
+        static readonly Color NoticeOk = new Color(0.25f, 0.62f, 0.32f);
+        static readonly Color NoticeError = new Color(0.85f, 0.25f, 0.22f);
+
+        /// <summary>The command was sent and the backend has not answered yet.</summary>
+        public void ShowPending(string text = "Sending…") => Notice(text, NoticePending, 8f);
+        /// <summary>The backend answered: confirmed (ok) or rejected with a reason.</summary>
+        public void ShowResult(bool ok, string text) => Notice(text, ok ? NoticeOk : NoticeError, ok ? 2f : 4f);
+
+        void Notice(string text, Color color, float seconds)
+        {
+            if (stateLabel == null || string.IsNullOrEmpty(text)) return;
+            if (!_stateColorCaptured) { _stateBaseColor = stateLabel.color; _stateColorCaptured = true; }
+            stateLabel.text = Truncate(text, 40);
+            stateLabel.color = color;
+            _noticeUntil = Time.unscaledTime + seconds;
+            _noticeActive = true;
+        }
+
+        void Update()
+        {
+            if (!_noticeActive || Time.unscaledTime < _noticeUntil) return;
+            _noticeActive = false;
+            if (stateLabel != null)
+            {
+                if (_stateColorCaptured) stateLabel.color = _stateBaseColor;
+                stateLabel.text = Data != null ? PrettyState(Data.TaskState) : "";
+            }
+        }
+
+        void OnDisable()
+        {
+            // Pooled cards must not come back showing another task's notice.
+            _noticeActive = false;
+            if (stateLabel != null && _stateColorCaptured) stateLabel.color = _stateBaseColor;
+        }
 
         /// <summary>True while at least one hand is selecting (grabbing) this card. Reflection read of
         /// Grabbable.SelectingPointsCount &gt; 0 — the same property the existing workspace scripts use.</summary>
@@ -74,12 +117,16 @@ namespace MuseDesk.Phase2.Board
                 {
                     // VERIFY: property name 'SelectingPointsCount' matches the installed
                     // Oculus.Interaction.Grabbable (confirmed in use by GrabbableRigidbody.cs / GrabReadout.cs).
-                    _selProp = grabbable.GetType().GetProperty("SelectingPointsCount",
+                    // Bound once to a typed delegate: PropertyInfo.GetValue boxed an int per card per frame.
+                    var prop = grabbable.GetType().GetProperty("SelectingPointsCount",
                         BindingFlags.Instance | BindingFlags.Public);
+                    var getter = prop != null ? prop.GetGetMethod() : null;
+                    if (getter != null && prop.PropertyType == typeof(int))
+                        _selCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), grabbable, getter);
                     _selResolved = true;
                 }
-                if (_selProp == null) return false;
-                try { return (int)_selProp.GetValue(grabbable) > 0; }
+                if (_selCount == null) return false;
+                try { return _selCount() > 0; }
                 catch { return false; }
             }
         }
@@ -97,7 +144,7 @@ namespace MuseDesk.Phase2.Board
             if (idRevisionLabel) idRevisionLabel.text = $"{ShortId(Data.TaskId)} · r{Data.Revision}";
             if (roleLabel) roleLabel.text = string.IsNullOrEmpty(Data.AgentId) ? "Unassigned" : Capitalize(Data.AgentId);
             if (priorityLabel) priorityLabel.text = $"P{Mathf.Clamp(Data.Priority, 0, 3)}";
-            if (stateLabel) stateLabel.text = PrettyState(Data.TaskState);
+            if (stateLabel && !_noticeActive) stateLabel.text = PrettyState(Data.TaskState);
             if (sourceLabel) sourceLabel.text = Data.SourceMode == SourceModes.Demo ? "SCRIPTED DEMO" : "LIVE";
             if (statusMarker) ApplyStateTint();
         }

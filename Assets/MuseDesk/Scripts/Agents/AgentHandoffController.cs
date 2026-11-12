@@ -28,8 +28,16 @@ namespace MuseDesk.Agents
         public float exchangeHold = 1.0f;
 
         readonly Dictionary<string, AgentView> _byId = new Dictionary<string, AgentView>();
+        readonly Queue<(string src, string dst)> _queue = new Queue<(string, string)>();
         bool _bound;
         bool _busy;
+        GameObject _destGo;
+        Vector3 _propWorldScale = Vector3.one;
+        bool _propScaleCaptured;
+
+        /// <summary>True while a handoff owns an agent's movement. AgentRegistry reads this so its
+        /// own "react, then walk home" does not cut a handoff walk short.</summary>
+        public static bool AnyBusy { get; private set; }
 
         void Update()
         {
@@ -57,6 +65,11 @@ namespace MuseDesk.Agents
                 controller.Reducer.ArtifactCreated -= OnArtifactCreated;
             }
             _bound = false;
+            // A disabled component's coroutines stop; don't stay latched busy or leak the marker.
+            _queue.Clear();
+            if (_busy) AnyBusy = false;
+            _busy = false;
+            if (_destGo != null) { Destroy(_destGo); _destGo = null; }
         }
 
         void OnDecisionResolved(string decisionId, string state)
@@ -74,27 +87,47 @@ namespace MuseDesk.Agents
 
         void TryHandoff(string sourceId, string targetId)
         {
-            if (_busy) return;
             // Focus mode suppresses routine handoff choreography (the backend transfer already
             // happened; this is presentation only, so skipping it changes no task state).
             if (MuseDesk.Workspace.FocusModeController.Active) return;
-            if (!_byId.TryGetValue(sourceId, out var source) || source == null) return;
-            if (!_byId.TryGetValue(targetId, out var target) || target == null) return;
-            StartCoroutine(HandoffRoutine(source, target));
+            if (!_byId.ContainsKey(sourceId) || !_byId.ContainsKey(targetId)) return;
+            // Queue rather than drop: the developer→tester handoff routinely arrives while the
+            // researcher→developer one is still walking. Bounded so a burst can't back up forever.
+            if (_queue.Count >= 4) return;
+            _queue.Enqueue((sourceId, targetId));
+            if (!_busy) StartCoroutine(Drain());
+        }
+
+        IEnumerator Drain()
+        {
+            _busy = AnyBusy = true;
+            while (_queue.Count > 0)
+            {
+                var (s, t) = _queue.Dequeue();
+                if (_byId.TryGetValue(s, out var a) && a != null && _byId.TryGetValue(t, out var b) && b != null)
+                    yield return HandoffRoutine(a, b);
+            }
+            _busy = AnyBusy = false;
         }
 
         IEnumerator HandoffRoutine(AgentView source, AgentView target)
         {
-            _busy = true;
-
             var srcMove = source.GetComponent<AgentMovement>();
             var srcBridge = source.GetComponent<AgentAnimatorBridge>();
             var dstBridge = target.GetComponent<AgentAnimatorBridge>();
 
-            if (srcMove == null) { _busy = false; yield break; }
+            if (srcMove == null) yield break;
+
+            // The courier carries the token for the whole walk (not just at the give beat).
+            if (artifactProp != null)
+            {
+                var srcHand = FindChild(source.transform, "RightHand_Attach");
+                AttachProp(srcHand != null ? srcHand : source.transform);
+            }
 
             // Destination a short stop-distance in front of the receiver (kept alive for the whole move).
-            var destGo = new GameObject("HandoffDest");
+            if (_destGo != null) Destroy(_destGo);
+            var destGo = _destGo = new GameObject("HandoffDest");
             var dest = destGo.transform;
             Vector3 toward = source.transform.position - target.transform.position;
             toward.y = 0f;
@@ -116,14 +149,13 @@ namespace MuseDesk.Agents
             if (artifactProp != null)
             {
                 var targetHand = FindChild(target.transform, "RightHand_Attach");
-                if (targetHand == null) targetHand = target.transform;
-                artifactProp.gameObject.SetActive(true);
-                artifactProp.SetParent(targetHand, false);
-                artifactProp.localPosition = Vector3.zero;
-                artifactProp.localRotation = Quaternion.identity;
+                AttachProp(targetHand != null ? targetHand : target.transform);
             }
 
             yield return new WaitForSeconds(exchangeHold);
+
+            // The receiver has the work now; put the token away so it doesn't hang in its hand forever.
+            if (artifactProp != null) artifactProp.gameObject.SetActive(false);
 
             srcMove.ReturnHome();
             guard = 0f;
@@ -131,7 +163,22 @@ namespace MuseDesk.Agents
             while (srcMove.IsMoving && guard < 6f) { guard += Time.deltaTime; yield return null; }
 
             if (destGo != null) Destroy(destGo);
-            _busy = false;
+            if (_destGo == destGo) _destGo = null;
+        }
+
+        // Parent the token to a hand while keeping its authored WORLD size (rig bones are not unit scale).
+        void AttachProp(Transform hand)
+        {
+            if (!_propScaleCaptured) { _propWorldScale = artifactProp.lossyScale; _propScaleCaptured = true; }
+            artifactProp.gameObject.SetActive(true);
+            artifactProp.SetParent(hand, false);
+            artifactProp.localPosition = Vector3.zero;
+            artifactProp.localRotation = Quaternion.identity;
+            Vector3 p = hand.lossyScale;
+            artifactProp.localScale = new Vector3(
+                _propWorldScale.x / Mathf.Max(1e-5f, Mathf.Abs(p.x)),
+                _propWorldScale.y / Mathf.Max(1e-5f, Mathf.Abs(p.y)),
+                _propWorldScale.z / Mathf.Max(1e-5f, Mathf.Abs(p.z)));
         }
 
         static Transform FindChild(Transform root, string childName)

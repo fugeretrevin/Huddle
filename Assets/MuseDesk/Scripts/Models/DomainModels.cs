@@ -9,6 +9,8 @@ namespace MuseDesk.Models
         [JsonProperty("role")] public string Role;
         [JsonProperty("display_name")] public string DisplayName;
         [JsonProperty("state")] public string State;
+        /// <summary>The agent's own latest progress line (agent.status_changed.progress_message).</summary>
+        [JsonProperty("progress_message")] public string Progress;
     }
 
     public class TaskView
