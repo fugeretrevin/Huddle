@@ -1,5 +1,7 @@
 # MuseDesk: project summary for expert review
 
+> **Superseded in part.** After this summary was reviewed, a further pass changed several things it describes (the task board now starts real work for one card type; the decision paper was rebuilt; the agents' state animation, described below as working, was found never to have played and was fixed). Current state: `docs/Engineering/FINAL_POLISH_CHANGELOG.md` and `FINAL_COMPETITION_READINESS.md`.
+
 Written 2026-11-12. Purpose: give a reviewer who has never seen the project enough to say what we should work on next. Screenshots are in `docs/review_screenshots/` and referenced inline.
 
 ## 1. What it is

@@ -1,6 +1,8 @@
 # MuseDesk remaining issues
 
-Date: 2026-11-12. Everything known to be open after the repair pass, with impact and the work left. Severity uses P0 (blocker) to P4 (optional).
+Date: 2026-11-12. Everything known to be open after the repair pass, with impact and the work left.
+
+> **Update, 2026-11-12 evening.** A later pass closed several items below: the task board now launches the real pipeline for one card type, cards no longer stick in `pause_requested`, dependencies are validated, artifacts attach to cards, the research template is labelled, the standalone demo opens the artifact viewer, drop zones highlight, the stamp is gated on a taken paper, the decision paper was re-laid out, and agents now play a clip per state. See `FINAL_POLISH_CHANGELOG.md`. What is still open, and the on-head checklist for the current build, are in `FINAL_XR_VALIDATION.md` and `FINAL_COMPETITION_READINESS.md`. The tables below are kept as the record of the earlier state. Severity uses P0 (blocker) to P4 (optional).
 
 No P0 is known. The largest open risk is that most of the repair pass has not been seen on the headset (section 1).
 
