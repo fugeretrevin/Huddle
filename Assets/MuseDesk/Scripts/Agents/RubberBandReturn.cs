@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MuseDesk.Agents
@@ -22,12 +23,14 @@ namespace MuseDesk.Agents
         public AgentMovement movement;
 
         [Header("Hand push (deterministic)")]
-        [Tooltip("Tracked hand points (e.g. Left/RightHandAnchor). When set, push is driven by their " +
-                 "proximity instead of physics trigger events, which don't fire reliably against the " +
-                 "kinematic agent on-device.")]
+        [Tooltip("Prefer the real tracked FINGERTIPS (resolved at runtime) so fingers — not the wrist — " +
+                 "push the agent. Falls back to handPoints, then to the physics trigger.")]
+        public bool useFingertips = true;
+        [Tooltip("Fallback tracked hand points (e.g. Left/RightHandAnchor) if fingertips can't resolve.")]
         public Transform[] handPoints;
-        [Tooltip("Horizontal distance (m) within which a hand nudges the agent.")]
-        public float pushRadius = 0.09f;
+        [Tooltip("Distance (m) from a fingertip within which the agent is nudged. Small so the finger " +
+                 "must actually reach the body.")]
+        public float pushRadius = 0.06f;
 
         Vector3 _home;
         Vector3 _offset;
@@ -63,18 +66,33 @@ namespace MuseDesk.Agents
                 return;
             }
 
-            // Primary path: deterministic proximity from tracked hands.
-            if (handPoints != null && handPoints.Length > 0)
+            // Primary path: deterministic proximity from tracked hands. Prefer real fingertips so
+            // fingers push the agent, not the wrist; fall back to the wired hand points.
+            IReadOnlyList<Transform> points = null;
+            if (useFingertips)
             {
+                var tips = HandFingertips.Get();
+                if (tips != null && tips.Count > 0) points = tips;
+            }
+            if (points == null && handPoints != null && handPoints.Length > 0) points = handPoints;
+
+            if (points != null)
+            {
+                // Measure from the agent's chest, not its feet, so a fingertip at body height contacts.
+                Vector3 body = transform.position + Vector3.up * 0.12f;
                 Vector3 pushWorld = Vector3.zero;
-                for (int i = 0; i < handPoints.Length; i++)
+                for (int i = 0; i < points.Count; i++)
                 {
-                    var h = handPoints[i];
+                    var h = points[i];
                     if (h == null) continue;
-                    Vector3 d = transform.position - h.position; d.y = 0f;
+                    Vector3 d = body - h.position;
                     float dist = d.magnitude;
                     if (dist < pushRadius && dist > 1e-4f)
-                        pushWorld += d / dist * ((pushRadius - dist) / pushRadius) * maxOffset;
+                    {
+                        d.y = 0f;
+                        if (d.sqrMagnitude < 1e-6f) continue;
+                        pushWorld += d.normalized * ((pushRadius - dist) / pushRadius) * maxOffset;
+                    }
                 }
                 Vector3 pushLocal = transform.parent ? transform.parent.InverseTransformDirection(pushWorld) : pushWorld;
                 pushLocal = Vector3.ClampMagnitude(pushLocal, maxOffset);
