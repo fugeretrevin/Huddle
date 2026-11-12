@@ -174,7 +174,11 @@ namespace MuseDesk.Phase2
             }
 
             if (eventChannel == null)
-                eventChannel = GetComponent<Phase2EventChannel>() ?? gameObject.AddComponent<Phase2EventChannel>();
+            {
+                // Explicit null check: '??' bypasses Unity's destroyed/missing-object null.
+                eventChannel = GetComponent<Phase2EventChannel>();
+                if (eventChannel == null) eventChannel = gameObject.AddComponent<Phase2EventChannel>();
+            }
 
             var live = new Phase2LiveGateway(sessionController.ApiBaseUrl,
                                              sessionController.WebSocketBaseUrl, eventChannel);

@@ -88,8 +88,10 @@ namespace MuseDesk.Networking
                     ArtifactCreated?.Invoke(e);
                     break;
                 case EventTypes.TaskCompleted:
+                    // The backend reports a cancelled branch (rejected decision) as task.completed
+                    // with task_state "cancelled"; keep the real state so it matches the snapshot.
                     if (e.TaskId != null && _tasks.TryGetValue(e.TaskId, out var tc))
-                        tc.Status = "completed";
+                        tc.Status = e.PayloadString("task_state", "completed");
                     TaskCompleted?.Invoke(e);
                     if (!string.IsNullOrEmpty(e.PayloadString("artifact_id"))) WorkDelivered?.Invoke(e);
                     break;

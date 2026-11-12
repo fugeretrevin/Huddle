@@ -51,9 +51,14 @@ namespace MuseDesk.Agents
         {
             if (decisionId == _deliveredDecisionId) return;   // already walked up for this one
             _deliveredDecisionId = decisionId;
-            // Walk toward the user (reachable), not to a fixed desk anchor that may sit
-            // on the far/monitor side after orientation.
-            if (_researcherMove != null) _researcherMove.DeliverInFrontOfUser(0.4f);
+            // Walk to the hand-over spot: a fixed point on the USER's side of the desks, clear of the
+            // factory line (the workspace always faces the user, so this is reachable). Without an
+            // anchor, fall back to a point straight in front of the head.
+            if (_researcherMove != null)
+            {
+                if (deliveryAnchor != null) _researcherMove.DeliverTo(deliveryAnchor);
+                else _researcherMove.DeliverInFrontOfUser(0.4f);
+            }
             if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(true);
             // Play the Offer_Document reaction once the agent has actually walked up (not mid-stride).
             if (_researcherBridge != null) StartCoroutine(OfferWhenArrived());

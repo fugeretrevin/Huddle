@@ -64,7 +64,11 @@ class WorkspaceGuard:
         if os.path.isabs(rel) or rel.startswith(("/", "\\")):
             raise WorkspaceError(f"absolute path not allowed: {rel}")
         target = (ws / rel).resolve()
-        if os.path.commonpath([str(target), str(ws)]) != str(ws):
+        try:
+            inside = os.path.commonpath([str(target), str(ws)]) == str(ws)
+        except ValueError:  # e.g. a drive-qualified path ("D:evil.py") on another drive
+            inside = False
+        if not inside:
             raise WorkspaceError(f"path escapes workspace: {rel}")
         return target
 
@@ -87,14 +91,29 @@ class WorkspaceGuard:
         try:
             proc = subprocess.run(
                 cmd, cwd=str(ws), capture_output=True, text=True, timeout=timeout,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                env=_child_env(),
             )
         except subprocess.TimeoutExpired as e:
-            return TestResult(0, 0, -1, (e.output or "") + "\n[timeout]", timed_out=True)
+            partial = e.output or ""
+            if isinstance(partial, bytes):  # TimeoutExpired can carry bytes even with text=True
+                partial = partial.decode("utf-8", errors="replace")
+            return TestResult(0, 0, -1, partial[-4000:] + "\n[timeout]", timed_out=True)
         out = (proc.stdout or "") + (proc.stderr or "")
         passed = _count(out, r"(\d+) passed")
         failed = _count(out, r"(\d+) failed") + _count(out, r"(\d+) error")
         return TestResult(passed, failed, proc.returncode, out[-4000:])
+
+
+_SECRET_ENV = re.compile(r"(?i)(^MUSEDESK_|KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)")
+
+
+def _child_env() -> dict[str, str]:
+    """Environment for the sandboxed test process: the host environment minus anything
+    that looks like a credential (and all MUSEDESK_* backend config, which includes the
+    provider API key). Code executed in the workspace must not be able to read them."""
+    env = {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
 
 
 def _count(text: str, pattern: str) -> int:

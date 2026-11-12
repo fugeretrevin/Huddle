@@ -21,6 +21,7 @@ from .models import (
     EventType,
     TaskState,
 )
+from .run_recovery import fail_run
 from .settings import Settings
 from .storage import Storage
 
@@ -48,9 +49,25 @@ class Orchestrator:
             fut.set_result(action)
 
     def start_auth_demo(self, session_id: str, parent_task_id: str) -> None:
-        task = asyncio.create_task(self._run_auth_demo(session_id, parent_task_id))
+        task = asyncio.create_task(self._run_guarded(session_id, parent_task_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+    async def _run_guarded(self, session_id: str, parent_task_id: str) -> None:
+        """Same rule as the live producer: a timeline that raises is REPORTED (tasks
+        failed, agents settled, pending decision expired) instead of dying silently and
+        leaving agents 'working' forever."""
+        try:
+            await self._run_auth_demo(session_id, parent_task_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - reported to the client below
+            try:
+                await fail_run(self._storage, self._bus, session_id, parent_task_id,
+                               code="RUN_FAILED", reason=type(exc).__name__,
+                               agent_message="Run stopped: internal error", mode=self._mode)
+            except Exception:  # noqa: BLE001 - reporting must never raise out of the task
+                pass
 
     async def shutdown(self) -> None:
         for t in list(self._tasks):
@@ -112,7 +129,8 @@ class Orchestrator:
                               TaskState.completed, "Baseline tests passed (3/3)")
         await self._bus.publish(session_id, EventType.task_completed,
                                 {"task_id": test_task, "result_summary":
-                                 "Baseline unit tests passed (3/3)", "source_mode": mode},
+                                 "Baseline unit tests passed (3/3)",
+                                 "task_state": TaskState.completed.value, "source_mode": mode},
                                 task_id=test_task, agent_id="tester")
 
         # Developer's independent scaffold done; the gated OAuth part waits.
@@ -195,15 +213,19 @@ class Orchestrator:
             await self._bus.publish(session_id, EventType.task_completed,
                                     {"task_id": oauth_task,
                                      "result_summary": "OAuth login scaffold complete; 5/5 tests passed",
+                                     "task_state": TaskState.completed.value,
                                      "artifact_id": artifact_id, "source_mode": mode},
                                     task_id=oauth_task, agent_id="developer")
         elif action == DecisionAction.reject.value:
             self._storage.set_task_status(oauth_task, TaskState.cancelled.value, utcnow_iso())
             await self._set_agent(session_id, AgentId.developer, AgentState.waiting,
                                   TaskState.cancelled, "OAuth branch not taken")
+            # Announced as task.completed (the contract has no cancel event) but carrying
+            # the real terminal state, matching what the snapshot reports for this task.
             await self._bus.publish(session_id, EventType.task_completed,
                                     {"task_id": oauth_task,
                                      "result_summary": "Rejected: no OAuth changes made; developer will reconsider",
+                                     "task_state": TaskState.cancelled.value,
                                      "source_mode": mode},
                                     task_id=oauth_task, agent_id="developer")
         else:  # request_changes

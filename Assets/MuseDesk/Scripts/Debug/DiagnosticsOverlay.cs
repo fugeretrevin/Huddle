@@ -26,6 +26,8 @@ namespace MuseDesk.DebugTools
 
         [Header("Display")]
         public bool visible = true;
+        [Tooltip("Off: a two-line status sign (mode + what is happening). On: the full developer HUD.")]
+        public bool verbose = false;
         [Range(0.1f, 1f)] public float refreshInterval = 0.5f;
 
         float _fps;
@@ -67,6 +69,14 @@ namespace MuseDesk.DebugTools
             if (placement != null) sceneStatus = placement.State.ToString();
 
             _sb.Clear();
+            if (!verbose)
+            {
+                // What a user needs: is this live or a scripted demo, and what is going on right now.
+                _sb.Append("<b>").Append(modeLabel).Append("</b>");
+                if (!string.IsNullOrEmpty(note)) _sb.Append('\n').Append(note);
+                text.text = _sb.ToString();
+                return;
+            }
             _sb.Append("MuseDesk diagnostics\n");
             _sb.Append("device : ").Append(SystemInfo.deviceModel).Append('\n');
             _sb.Append("mode   : ").Append(modeLabel).Append('\n');

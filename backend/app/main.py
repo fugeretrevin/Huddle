@@ -44,8 +44,10 @@ from .live_orchestrator import LiveOrchestrator
 from .phase2.events import Phase2EventBus
 from .phase2.routes import install_phase2_exception_handlers, register_phase2_routes
 from .phase2.store import Phase2Store
+from .run_recovery import reconcile_interrupted_runs
 from .settings import Settings, get_settings
 from .storage import Storage
+from .ws_stream import pump_events
 
 AGENT_DEFS = [
     (AgentId.researcher, "Researcher", "Rhea"),
@@ -81,6 +83,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.orchestrator = orchestrator
         app.state.phase2_store = phase2_store
         app.state.phase2_bus = phase2_bus
+        # Runs are driven by in-memory asyncio tasks + decision waiters. Anything the
+        # database still shows as in flight was cut off by the previous process; report
+        # it as failed (and expire its pending decision) instead of leaving agents
+        # "working"/"waiting" on a run nobody is driving.
+        await reconcile_interrupted_runs(storage, bus, settings.state_source_mode)
         try:
             yield
         finally:
@@ -177,7 +184,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         storage = _storage(request)
         prior = storage.get_idempotent(session_id, body.idempotency_key)
         if prior is not None:
+            # The key store is shared per session across routes: only a task-create
+            # record is a replay of this request (mirrors the check in respond_decision).
+            if "task_template" not in prior:
+                raise HTTPException(status_code=409, detail={
+                    "error_code": "IDEMPOTENCY_KEY_REUSE",
+                    "user_message": "This idempotency key was already used for a "
+                                    "different request."})
             return prior
+        # One run per session at a time. A second concurrent run shared (and wiped) the
+        # first run's sandbox workspace mid-execution and interleaved both runs' states
+        # on the same three agents, so its outcome could not be trusted.
+        if storage.list_unfinished_runs(session_id):
+            raise HTTPException(status_code=409, detail={
+                "error_code": "RUN_IN_PROGRESS",
+                "user_message": "A task is already running in this session. Wait for it "
+                                "to finish (or answer its pending decision) first."})
         now = utcnow_iso()
         parent_task_id = f"task-{uuid.uuid4().hex[:10]}"
         storage.upsert_task(parent_task_id, session_id, None, None,
@@ -299,18 +321,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await ws.accept()
         q = bus.subscribe(session_id)
         try:
-            sent = after_seq
-            for ev in bus.replay(session_id, after_seq):
-                if ev["seq"] > sent:
-                    await ws.send_json(ev)
-                    sent = ev["seq"]
-            while True:
-                env = await q.get()
-                if env.seq > sent:
-                    await ws.send_json(env.model_dump(mode="json"))
-                    sent = env.seq
-        except WebSocketDisconnect:
-            pass
+            await pump_events(ws, q, bus.replay(session_id, after_seq), after_seq,
+                              lambda env: env.model_dump(mode="json"))
         finally:
             bus.unsubscribe(session_id, q)
 

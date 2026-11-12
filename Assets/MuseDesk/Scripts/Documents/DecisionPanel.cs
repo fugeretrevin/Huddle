@@ -85,6 +85,7 @@ namespace MuseDesk.Documents
                     "approved" => "✓ Approved. Developer is continuing.",
                     "rejected" => "✗ Rejected. Agent will reconsider.",
                     "changes_requested" => "↻ Changes requested.",
+                    "expired" => "This request expired (the desktop restarted). Nothing was run.",
                     _ => $"Resolved: {state}",
                 };
             SetActionsVisible(false);

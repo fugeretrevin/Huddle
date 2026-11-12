@@ -189,20 +189,20 @@ namespace MuseDesk.Networking
             switch (e.Type)
             {
                 case EventTypes.DecisionRequested:
-                    diagnostics.note = "DECISION: " + e.PayloadString("summary", "approval needed") +
-                                       "  → poke button to approve";
+                    diagnostics.note = "Needs you: " + e.PayloadString("summary", "approval needed");
                     break;
                 case EventTypes.DecisionResolved:
-                    diagnostics.note = "decision " + e.PayloadString("action", "") + "d";
+                    diagnostics.note = "Decision " + e.PayloadString("state", "resolved").Replace('_', ' ');
                     break;
                 case EventTypes.ArtifactCreated:
-                    diagnostics.note = "ARTIFACT: " + e.PayloadString("summary", "result ready");
+                    diagnostics.note = "Result: " + e.PayloadString("summary", "result ready");
                     break;
                 case EventTypes.TaskCompleted:
-                    diagnostics.note = "DONE: " + e.PayloadString("result_summary", "task completed");
+                    diagnostics.note = (e.PayloadString("task_state", "completed") == "cancelled" ? "Stopped: " : "Done: ")
+                                       + e.PayloadString("result_summary", "task completed");
                     break;
                 case EventTypes.AgentStatusChanged:
-                    diagnostics.note = e.AgentId + " → " + e.PayloadString("state", "");
+                    diagnostics.note = e.AgentId + ": " + e.PayloadString("progress_message", e.PayloadString("state", ""));
                     break;
             }
         }

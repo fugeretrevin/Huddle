@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
 
 from ..auth import verify_token
+from ..ws_stream import pump_events
 from .artifacts import ArtifactService
 from .diagrams import DiagramService
 from .errors import CommandError, NotFoundError
@@ -263,18 +264,8 @@ def register_phase2_routes(app: FastAPI) -> None:
         await ws.accept()
         q = bus.subscribe(session_id)
         try:
-            sent = after_seq
-            for ev in bus.replay(session_id, after_seq):
-                if ev["seq"] > sent:
-                    await ws.send_json(ev)
-                    sent = ev["seq"]
-            while True:
-                env = await q.get()
-                if env.seq > sent:
-                    await ws.send_json(env.wire())
-                    sent = env.seq
-        except WebSocketDisconnect:
-            pass
+            await pump_events(ws, q, bus.replay(session_id, after_seq), after_seq,
+                              lambda env: env.wire())
         finally:
             bus.unsubscribe(session_id, q)
 

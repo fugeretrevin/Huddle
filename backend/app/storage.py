@@ -187,6 +187,20 @@ class Storage:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_unfinished_runs(self, session_id: str | None = None) -> list[dict[str, Any]]:
+        """Top-level (parent) tasks that have not reached a terminal status, i.e. runs
+        still in flight. Every run sets its parent terminal when it ends, so after a
+        restart anything returned here is a run whose in-memory driver is gone."""
+        sql = ("SELECT * FROM tasks WHERE parent_task_id IS NULL"
+               " AND status NOT IN ('completed','failed','cancelled')")
+        args: tuple = ()
+        if session_id is not None:
+            sql += " AND session_id=?"
+            args = (session_id,)
+        with self._lock:
+            rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [dict(r) for r in rows]
+
     # ─────────────────────── decisions ───────────────────────
     def create_decision(self, decision_id: str, session_id: str, task_id: str | None,
                         agent_id: str | None, summary: str, recommendation: str | None,
@@ -216,6 +230,18 @@ class Storage:
                 "UPDATE decisions SET status=?, resolved_action=?, resolved_at=?, response_key=?"
                 " WHERE id=? AND resolved_at IS NULL",
                 (state, action, resolved_at, response_key, decision_id),
+            )
+            self._conn.commit()
+            return cur.rowcount == 1
+
+    def expire_decision(self, decision_id: str, resolved_at: str) -> bool:
+        """Atomically mark a still-unresolved decision ``expired`` (its run is gone, so
+        no answer could ever be acted on). Returns False if it was already resolved."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE decisions SET status='expired', resolved_at=?"
+                " WHERE id=? AND resolved_at IS NULL",
+                (resolved_at, decision_id),
             )
             self._conn.commit()
             return cur.rowcount == 1

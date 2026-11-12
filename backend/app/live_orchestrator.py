@@ -13,6 +13,7 @@ import uuid
 
 from .events import EventBus, utcnow_iso
 from .models import AgentId, AgentState, DecisionAction, EventType, TaskState
+from .run_recovery import fail_run
 from .settings import Settings
 from .storage import Storage
 from .workers import ArtifactData, DeveloperWorker, ResearchWorker, TesterWorker
@@ -95,28 +96,9 @@ class LiveOrchestrator:
         reason = sanitize_text(f"{type(exc).__name__}: {exc}",
                                self._settings.workspace_root)[:300]
         try:
-            now = utcnow_iso()
-            terminal = {TaskState.completed.value, TaskState.failed.value,
-                        TaskState.cancelled.value}
-            for t in self._storage.list_tasks(session_id):
-                if t["status"] in terminal:
-                    continue
-                if t["id"] == parent_task_id or t["parent_task_id"] == parent_task_id:
-                    self._storage.set_task_status(t["id"], TaskState.failed.value, now)
-            settled = {AgentState.idle.value, AgentState.complete.value,
-                       AgentState.error.value}
-            for a in self._storage.list_agents(session_id):
-                if a["state"] not in settled:
-                    await self._set_agent(session_id, AgentId(a["agent_id"]), AgentState.error,
-                                          TaskState.failed, "Run stopped: internal error", "live")
-            await self._bus.publish(session_id, EventType.system_warning,
-                                    {"code": "RUN_FAILED", "message": reason,
-                                     "task_id": parent_task_id, "source_mode": "live"},
-                                    task_id=parent_task_id)
-            await self._bus.publish(session_id, EventType.task_failed,
-                                    {"task_id": parent_task_id,
-                                     "result_summary": f"Run stopped: {reason}",
-                                     "source_mode": "live"}, task_id=parent_task_id)
+            await fail_run(self._storage, self._bus, session_id, parent_task_id,
+                           code="RUN_FAILED", reason=reason,
+                           agent_message="Run stopped: internal error", mode="live")
         except Exception:  # noqa: BLE001 - reporting must never raise out of the task
             pass
 
@@ -185,6 +167,7 @@ class LiveOrchestrator:
         await self._bus.publish(session_id,
                                 EventType.task_completed if baseline_ok else EventType.task_failed,
                                 {"task_id": test_task, "source_mode": "live",
+                                 "task_state": baseline_state.value,
                                  "result_summary": f"Baseline {baseline.passed} passed, {baseline.failed} failed"},
                                 task_id=test_task, agent_id="tester")
 
@@ -268,6 +251,7 @@ class LiveOrchestrator:
                                     EventType.task_completed if final == TaskState.completed
                                     else EventType.task_failed,
                                     {"task_id": oauth_task, "result_summary": art.summary,
+                                     "task_state": final.value,
                                      "artifact_id": artifact_id, "source_mode": "live"},
                                     task_id=oauth_task, agent_id="developer")
         else:
@@ -276,8 +260,15 @@ class LiveOrchestrator:
                    else "Changes requested: revised proposal pending")
             await self._set_agent(session_id, AgentId.developer, AgentState.waiting,
                                   TaskState.cancelled, msg, "live")
+            # No "task.cancelled" event type exists in the frozen contract, so the end of
+            # this branch is still announced as task.completed — but the payload carries
+            # the task's REAL terminal state (``task_state: "cancelled"``, the same value
+            # the snapshot reports) and no artifact_id, so a consumer never has to infer
+            # "completed" from the event type alone.
             await self._bus.publish(session_id, EventType.task_completed,
-                                    {"task_id": oauth_task, "result_summary": msg, "source_mode": "live"},
+                                    {"task_id": oauth_task, "result_summary": msg,
+                                     "task_state": TaskState.cancelled.value,
+                                     "source_mode": "live"},
                                     task_id=oauth_task, agent_id="developer")
 
         self._storage.set_task_status(parent_task_id, parent_final.value, utcnow_iso())
