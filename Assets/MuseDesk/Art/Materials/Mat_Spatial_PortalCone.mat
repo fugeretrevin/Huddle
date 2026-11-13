@@ -25,7 +25,9 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
+    - _Cull: 0
     - _Intensity: 1.25
+    - _LiteMode: 0
     - _RingMode: 0
     - _ScanDirection: -1
     - _ScanSpeed: 1.25

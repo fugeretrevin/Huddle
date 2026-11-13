@@ -58,13 +58,13 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
 
     # 5. Subtle embedded perimeter status light strip (front & side arc, runtime MPB controllable)
     status_parts = []
-    strip_w = width * 0.56
-    sc.make_beveled_box(f"{name}_StatusLightStrip_Front", (strip_w, 0.005, 0.0035),
-                        (0, depth * 0.5 - 0.005, slab_cz + 0.002), "Mat_Researcher_Teal",
+    strip_w = width * 0.62
+    sc.make_beveled_box(f"{name}_StatusLightStrip_Front", (strip_w, 0.0055, 0.0045),
+                        (0, depth * 0.5 - 0.0045, slab_cz + 0.002), "Mat_Researcher_Teal",
                         bevel_width=0.0008, parent=root, parts_list=status_parts)
     for side_lbl, sx in [("R", -1.0), ("L", 1.0)]:
-        sc.make_beveled_box(f"{name}_StatusLightStrip_{side_lbl}", (0.005, depth * 0.42, 0.0035),
-                            (sx * (width * 0.5 - 0.005), 0.0, slab_cz + 0.002), "Mat_Researcher_Teal",
+        sc.make_beveled_box(f"{name}_StatusLightStrip_{side_lbl}", (0.0055, depth * 0.44, 0.0045),
+                            (sx * (width * 0.5 - 0.0045), 0.0, slab_cz + 0.002), "Mat_Researcher_Teal",
                             bevel_width=0.0008, parent=root, parts_list=status_parts)
     sc.join_static_parts(status_parts, f"{name}_StatusStrip", parent=root)
 
@@ -114,11 +114,13 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
         sc.make_rounded_slab(f"{name}_{pad_lbl}_Mat", pad_w - 0.010, pad_d - 0.010, 0.0026, 0.014,
                              (px, py, deck_z + 0.0007), "Mat_FeltSlate", bevel=0.0004, parent=root)
 
-    # 8. Integrated Dispatch Bay Pad + Beacon Pedestal Collar
+    # 8. Integrated Dispatch Bay Pad + Subtle Flush Beacon Emitting Medallion (no bulky orphan puck when beacon hovers)
     sc.make_cylinder(f"{name}_DispatchBayRing", 0.058 if not compact else 0.048, 0.0028,
                      (disp_bx, disp_y, deck_z + 0.0010), "Mat_Brass", vertices=24, parent=root)
-    sc.make_cylinder(f"{name}_BeaconPedestal", 0.030, 0.008,
-                     (beacon_bx, disp_y + 0.010, deck_z + 0.004), "Mat_CharcoalVisor", vertices=20, bevel_caps=0.0015, parent=root)
+    sc.make_cylinder(f"{name}_BeaconInlayRing", 0.024, 0.0016,
+                     (beacon_bx, disp_y + 0.010, deck_z + 0.0006), "Mat_Brass", vertices=20, parent=root)
+    sc.make_cylinder(f"{name}_BeaconInlayCore", 0.018, 0.0018,
+                     (beacon_bx, disp_y + 0.010, deck_z + 0.0008), "Mat_FeltSlate", vertices=18, parent=root)
 
     # 9. Low Sculpted Back & Side Corner Railings (keep front +Y completely open!)
     rail_z = deck_z + 0.018
@@ -169,7 +171,7 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
     sc.make_anchor("TesterStationSocket",           (tst_bx, st_y, deck_z), root)
     sc.make_anchor("FactorySocket",                 (0.0,    fac_y, deck_z), root)
     sc.make_anchor("DispatchStationSocket",         (disp_bx, disp_y, deck_z), root)
-    sc.make_anchor("StatusBeaconSocket",            (beacon_bx, disp_y + 0.010, deck_z + 0.008), root)
+    sc.make_anchor("StatusBeaconSocket",            (beacon_bx, disp_y + 0.010, deck_z + 0.002), root)
     sc.make_anchor("MailboxSocket",                 (beacon_bx + 0.090, disp_y + 0.035, deck_z), root)
     sc.make_anchor("NavigationBounds",              (0.0, 0.0, deck_z), root)
     sc.make_anchor("InteractionPresentationSocket", (0.0, depth * 0.5 + 0.04, deck_z + 0.22), root)

@@ -145,8 +145,11 @@ def build_ceiling_mount():
         arm_obj.pose.bones["Bone_CollarLatch_L"].rotation_euler = (0, math.radians(-32), 0)
         arm_obj.pose.bones["Bone_CollarLatch_R"].rotation_euler = (0, math.radians(32), 0)
         arm_obj.pose.bones["Bone_SuspCollar"].location = (0, 0, -0.015)
-        arm_obj.pose.bones["Bone_SpoolDrum"].rotation_euler = (math.radians(45), 0, 0)
+        arm_obj.pose.bones["Bone_SpoolDrum"].rotation_euler = (math.radians(35), 0, 0)
         pose_iris_open()
+        # Open shutters cleanly by frame 11 (~0.46s) so mast has unobstructed clearance before descent
+        key_all(11)
+        arm_obj.pose.bones["Bone_SpoolDrum"].rotation_euler = (math.radians(45), 0, 0)
         key_all(18)
 
     def kf_mount_spool():
@@ -215,8 +218,11 @@ def build_suspended_office_pod():
     b_yoke  = add_b("Bone_DockYoke",         (0.000, -0.120, 0.220), (0.000, -0.120, 0.260), b_pod)
     add_b("Bone_PodLatch_L",                 ( 0.055, -0.120, 0.245), ( 0.075, -0.120, 0.265), b_yoke)
     add_b("Bone_PodLatch_R",                 (-0.055, -0.120, 0.245), (-0.075, -0.120, 0.265), b_yoke)
-    add_b("Bone_Wing_L",                     ( 0.285, 0.000, 0.018), ( 0.335, 0.000, 0.028), b_pod)
-    add_b("Bone_Wing_R",                     (-0.285, 0.000, 0.018), (-0.335, 0.000, 0.028), b_pod)
+    # Both wing hinge bones point along +Y (depth) so local XYZ == world XYZ and Y rotation folds symmetrically upward!
+    b_wl = add_b("Bone_Wing_L",              ( 0.300, 0.000, 0.018), ( 0.300, 0.050, 0.018), b_pod)
+    b_wr = add_b("Bone_Wing_R",              (-0.300, 0.000, 0.018), (-0.300, 0.050, 0.018), b_pod)
+    b_wl.roll = 0.0
+    b_wr.roll = 0.0
     b_shelf = add_b("Bone_InspectionShelf",  ( 0.000, 0.145, 0.008), ( 0.000, 0.195, 0.008), b_pod)
     add_b("Bone_ShelfRail_L",                ( 0.105, 0.185, 0.014), ( 0.105, 0.185, 0.032), b_shelf)
     add_b("Bone_ShelfRail_R",                (-0.105, 0.185, 0.014), (-0.105, 0.185, 0.032), b_shelf)
@@ -228,7 +234,7 @@ def build_suspended_office_pod():
         pb.rotation_mode = 'XYZ'
 
     parts = []
-    w, d = 0.60, 0.38
+    w, d = 0.630, 0.390
     deck_z = 0.024
 
     # 1. Sleek rounded capsule hull base + lower acoustic/hover cradle ribs
@@ -287,20 +293,20 @@ def build_suspended_office_pod():
                             (sx, -0.120, 0.252), "Mat_Developer_Amber", bevel_width=0.002,
                             bone_name=bname, parts_list=parts)
 
-    # 4. Folding side stabilizer wings (tucked slightly in Docked/Transit, open in Deployed)
+    # 4. Folding side stabilizer wings (folded upward in Docked/Transit, open flush in Deployed)
     for side, sx, bname, mat_accent in [
         ("L",  1.0, "Bone_Wing_L", "Mat_Researcher_Lavender"),
         ("R", -1.0, "Bone_Wing_R", "Mat_Tester_Mint"),
     ]:
-        sc.make_rounded_slab(f"{name}_WingPlate_{side}", 0.058, 0.165, 0.008, 0.022,
-                             (sx * 0.312, 0.0, 0.018), "Mat_CreamCeramic", bevel=0.002,
+        sc.make_rounded_slab(f"{name}_WingPlate_{side}", 0.046, 0.155, 0.008, 0.020,
+                             (sx * 0.322, 0.0, 0.018), "Mat_CreamCeramic", bevel=0.002,
                              bone_name=bname, parts_list=parts)
-        sc.make_beveled_box(f"{name}_WingTrim_{side}", (0.008, 0.110, 0.005),
-                            (sx * 0.335, 0.0, 0.022), mat_accent, bevel_width=0.001,
+        sc.make_beveled_box(f"{name}_WingTrim_{side}", (0.007, 0.105, 0.005),
+                            (sx * 0.339, 0.0, 0.022), mat_accent, bevel_width=0.001,
                             bone_name=bname, parts_list=parts)
-        sc.make_cylinder(f"{name}_WingHinge_{side}", 0.007, 0.036,
-                         (sx * 0.285, 0.0, 0.018), "Mat_Brass", vertices=12, rot_deg=(90, 0, 0),
-                         bone_name=bname, parts_list=parts)
+        sc.make_cylinder(f"{name}_WingHinge_{side}", 0.0065, 0.034,
+                         (sx * 0.300, 0.0, 0.018), "Mat_Brass", vertices=12, rot_deg=(90, 0, 0),
+                         bone_name="Bone_PodRoot", parts_list=parts)
 
     # 5. Retractable front InspectionShelf (slides out from belly slot!)
     # Resting tucked position in edit pose: y = 0.135 (mostly tucked under front lip); Deployed slides to +0.105 in Y!
@@ -377,9 +383,9 @@ def build_suspended_office_pod():
 
     def pose_docked_closed():
         reset_bones()
-        # Wings folded gently upward/inward, shelf tucked, rails flat, display folded back slightly
-        set_bone("Bone_Wing_L", rot_deg=(0, -52, 0))
-        set_bone("Bone_Wing_R", rot_deg=(0,  52, 0))
+        # With +Y hinge bones: -Y rot folds +X wing UPWARD (-56 L) and +Y rot folds -X wing UPWARD (+56 R)
+        set_bone("Bone_Wing_L", rot_deg=(0, -56, 0))
+        set_bone("Bone_Wing_R", rot_deg=(0,  56, 0))
         set_bone("Bone_InspectionShelf", loc=(0, 0.0, 0.0))
         set_bone("Bone_ShelfRail_L", rot_deg=(0,  82, 0))
         set_bone("Bone_ShelfRail_R", rot_deg=(0, -82, 0))

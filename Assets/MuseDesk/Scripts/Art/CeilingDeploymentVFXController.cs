@@ -2,6 +2,14 @@ using UnityEngine;
 
 namespace MuseDesk.Art
 {
+    /// <summary>Reversible ceiling deployment VFX budget presets for Quest 3 profiling.</summary>
+    public enum CeilingVfxQualityPreset
+    {
+        Full = 0,
+        LowCostNoParticles = 1,
+        MinimalIrisHalo = 2
+    }
+
     /// <summary>
     /// Synchronizes ceiling portal projection glow, iris bay particles, directional tether flow motes,
     /// and air-cushion landing/docking ripples with <see cref="CeilingWorkspacePodController"/> transitions.
@@ -47,6 +55,11 @@ namespace MuseDesk.Art
         public bool particlesEnabled = true;
         public bool portalConeEnabled = true;
 
+        [Header("Reversible Quest 3 Optimization Variant")]
+        [SerializeField] private Material portalConeFullMaterial;
+        [SerializeField] private Material portalConeLiteMaterial;
+        [SerializeField] private CeilingVfxQualityPreset qualityPreset = CeilingVfxQualityPreset.Full;
+
         private MaterialPropertyBlock _mpb;
         private float _coneAlpha;
         private float _haloAlpha;
@@ -54,6 +67,32 @@ namespace MuseDesk.Art
         private float _airCushionAlpha;
         private Color _rippleColor = ColTealCalm;
         private CeilingWorkspacePodController.PodState _lastState = CeilingWorkspacePodController.PodState.DockedIdle;
+
+        public CeilingVfxQualityPreset ActiveQualityPreset => qualityPreset;
+
+        public void SetQualityPreset(CeilingVfxQualityPreset preset)
+        {
+            qualityPreset = preset;
+            ApplyQualityMaterial();
+            if (preset != CeilingVfxQualityPreset.Full)
+            {
+                SetParticlesActive(ceilingApertureParticles, false);
+                SetParticlesActive(tetherFlowParticles, false);
+                if (arrivalBurstParticles != null)
+                    arrivalBurstParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            }
+        }
+
+        private void ApplyQualityMaterial()
+        {
+            if (ceilingPortalConeRenderer == null) return;
+            if (portalConeFullMaterial == null) portalConeFullMaterial = ceilingPortalConeRenderer.sharedMaterial;
+            Material targetMat = (qualityPreset == CeilingVfxQualityPreset.LowCostNoParticles && portalConeLiteMaterial != null)
+                ? portalConeLiteMaterial
+                : portalConeFullMaterial;
+            if (targetMat != null && ceilingPortalConeRenderer.sharedMaterial != targetMat)
+                ceilingPortalConeRenderer.sharedMaterial = targetMat;
+        }
 
         private void Awake()
         {
@@ -212,10 +251,20 @@ namespace MuseDesk.Art
                 _rippleProgress = Mathf.Min(1f, _rippleProgress + dt * 1.25f);
 
             Color beamCol = ascending ? ColWarmGold : ColCyanGlow;
-            UpdatePortalConeTransformAndColor(beamCol, _coneAlpha, ascending ? 1f : -1f);
+            bool allowCone = qualityPreset != CeilingVfxQualityPreset.MinimalIrisHalo;
+            bool allowSecondaryRings = qualityPreset == CeilingVfxQualityPreset.Full;
+            UpdatePortalConeTransformAndColor(beamCol, allowCone ? _coneAlpha : 0f, ascending ? 1f : -1f);
             UpdateRingRenderer(ceilingProjectionHaloRenderer, ascending ? ColWarmGold : ColTealCalm, _haloAlpha, 1.0f);
-            UpdateCeilingRippleTransformAndColor();
-            UpdateAirCushionTransformAndColor();
+            if (!allowSecondaryRings)
+            {
+                if (ceilingRippleRing != null && ceilingRippleRing.gameObject.activeSelf) ceilingRippleRing.gameObject.SetActive(false);
+                if (airCushionRing != null && airCushionRing.gameObject.activeSelf) airCushionRing.gameObject.SetActive(false);
+            }
+            else
+            {
+                UpdateCeilingRippleTransformAndColor();
+                UpdateAirCushionTransformAndColor();
+            }
         }
 
         /// <summary>
@@ -224,6 +273,7 @@ namespace MuseDesk.Art
         public void ApplySnapshotImmediate(CeilingWorkspacePodController.PodState state, float ripplePhase01 = 0.35f)
         {
             ResolveReferences();
+            ApplyQualityMaterial();
             if (_mpb == null) _mpb = new MaterialPropertyBlock();
 
             bool activeFlight = state == CeilingWorkspacePodController.PodState.Descending ||
@@ -233,11 +283,15 @@ namespace MuseDesk.Art
                              state == CeilingWorkspacePodController.PodState.BeginningAscent ||
                              state == CeilingWorkspacePodController.PodState.DockLocking;
 
-            _coneAlpha = activeFlight ? 0.44f : 0f;
+            bool allowCone = portalConeEnabled && qualityPreset != CeilingVfxQualityPreset.MinimalIrisHalo;
+            bool allowSecondary = qualityPreset == CeilingVfxQualityPreset.Full;
+            bool allowParticles = activeFlight && particlesEnabled && qualityPreset == CeilingVfxQualityPreset.Full;
+
+            _coneAlpha = (activeFlight && allowCone) ? 0.44f : 0f;
             _haloAlpha = activeFlight ? 0.62f : (state == CeilingWorkspacePodController.PodState.DeployedIdle ? 0.24f : 0.12f);
-            _airCushionAlpha = (state == CeilingWorkspacePodController.PodState.Stabilizing ||
+            _airCushionAlpha = allowSecondary && (state == CeilingWorkspacePodController.PodState.Stabilizing ||
                                 state == CeilingWorkspacePodController.PodState.Descending) ? 0.38f : 0f;
-            _rippleProgress = activeFlight ? Mathf.Clamp01(ripplePhase01) : 1f;
+            _rippleProgress = (activeFlight && allowSecondary) ? Mathf.Clamp01(ripplePhase01) : 1f;
             _rippleColor = ascending ? ColWarmGold : ColCyanGlow;
 
             Color beamCol = ascending ? ColWarmGold : ColCyanGlow;
@@ -248,7 +302,7 @@ namespace MuseDesk.Art
 
             if (tetherFlowParticles != null)
             {
-                if (activeFlight && particlesEnabled)
+                if (allowParticles)
                 {
                     ConfigureTetherFlowDirection(!ascending);
                     tetherFlowParticles.Simulate(0.65f, withChildren: true, restart: true);
@@ -260,7 +314,7 @@ namespace MuseDesk.Art
             }
             if (ceilingApertureParticles != null)
             {
-                if (activeFlight && particlesEnabled)
+                if (allowParticles)
                     ceilingApertureParticles.Simulate(0.50f, withChildren: true, restart: true);
                 else
                     ceilingApertureParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);

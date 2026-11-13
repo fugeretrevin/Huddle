@@ -1,5 +1,5 @@
 ﻿{
-    "generatedAtUtc": "2026-11-13T16:38:36.2930137Z",
+    "generatedAtUtc": "2026-11-13T22:39:16.8540994Z",
     "unityVersion": "6000.6.8f1",
     "totalPrefabs": 16,
     "totalMissingScripts": 0,
@@ -11,7 +11,8 @@
         "Screenshots/SpatialWorkspace/Unity/03_CeilingPod_Docked_vs_Deployed.png",
         "Screenshots/SpatialWorkspace/Unity/04_AttentionBeacon_7States.png",
         "Screenshots/SpatialWorkspace/Unity/05_Courier_And_Perch_Showcase.png",
-        "Screenshots/SpatialWorkspace/Unity/06_Mailbox_And_GhostPreviews.png"
+        "Screenshots/SpatialWorkspace/Unity/06_Mailbox_And_GhostPreviews.png",
+        "Screenshots/SpatialWorkspace/Unity/07_CeilingVFX_Full_vs_LowCost.png"
     ],
     "assets": [
         {
@@ -35,8 +36,8 @@
                 "Mat_Tester_Mint",
                 "Mat_WarmWood"
             ],
-            "vertexCount": 16288,
-            "triangleCount": 11628,
+            "vertexCount": 16176,
+            "triangleCount": 11536,
             "socketCount": 11,
             "missingScripts": 0,
             "allSocketsUnitScale": true,
@@ -64,8 +65,8 @@
                 "Mat_Tester_Mint",
                 "Mat_WarmWood"
             ],
-            "vertexCount": 16360,
-            "triangleCount": 11660,
+            "vertexCount": 16248,
+            "triangleCount": 11568,
             "socketCount": 11,
             "missingScripts": 0,
             "allSocketsUnitScale": true,
@@ -167,7 +168,7 @@
                 "Pod_Dock_Lock",
                 "Pod_Mechanical_Settle"
             ],
-            "boundsSize": "0.707 x 0.332 x 0.388 m"
+            "boundsSize": "0.657 x 0.277 x 0.393 m"
         },
         {
             "prefabName": "WorkspaceAttentionBeacon",
@@ -443,7 +444,7 @@
                 "Mount_Spool_Spin",
                 "Mount_Lock"
             ],
-            "boundsSize": "0.707 x 1.000 x 0.600 m"
+            "boundsSize": "0.700 x 1.000 x 0.600 m"
         },
         {
             "prefabName": "Spatial_FloorOffice_Complete",
@@ -488,8 +489,8 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "vertexCount": 61154,
-            "triangleCount": 64474,
+            "vertexCount": 61042,
+            "triangleCount": 64382,
             "socketCount": 17,
             "missingScripts": 0,
             "allSocketsUnitScale": true,
@@ -593,7 +594,7 @@
                 "Mount_Spool_Spin",
                 "Mount_Lock"
             ],
-            "boundsSize": "0.707 x 1.000 x 0.600 m"
+            "boundsSize": "0.700 x 1.000 x 0.600 m"
         }
     ]
 }

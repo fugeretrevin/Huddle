@@ -1,8 +1,8 @@
 # MuseDesk — Spatial Workspace Expansion Asset Manifest & Integration Guide
 
-**Branch:** `art-spatial-workspace-expansion` (isolated worktree at `.worktrees/spatial-art`)  
+**Branch:** `art-final-release-qa` (isolated worktree at `.worktrees/final-art-qa`, branched from `release/final-refinement` @ `beb01a8`)  
 **Unity Version Tested:** `6000.6.8f1`  
-**Inventory Generated:** `2026-11-13T05:50:00Z` (`docs/Art/SPATIAL_WORKSPACE_INVENTORY.json`)  
+**Inventory Generated:** `2026-11-13T22:39:16Z` (`docs/Art/SPATIAL_WORKSPACE_INVENTORY.json`)  
 **Validation Summary:** `totalPrefabs = 16`, `totalMissingScripts = 0`, `totalBrokenSockets = 0`, `totalMissingMaterials = 0`, `allSocketsUnitScale = true`
 
 ---
@@ -38,11 +38,11 @@ Exact post-import counts measured by `SpatialWorkspaceArtSetup.BuildAll` (`docs/
 
 | Prefab | Renderers (Skinned) | Colliders | Tris | Verts | Bounds (`W x H x D m`) | Sockets | Controller Component |
 |---|---|---|---|---|---|---|---|
-| `FloorOfficePlatform.prefab` | 3 (0) | 2 | 11,628 | 16,288 | `0.720 x 0.049 x 0.486` | 11 | `FloorOfficePlatformController` |
-| `FloorOfficePlatform_Compact.prefab` | 3 (0) | 2 | 11,660 | 16,360 | `0.580 x 0.047 x 0.406` | 11 | `FloorOfficePlatformController` |
+| `FloorOfficePlatform.prefab` | 3 (0) | 2 | 11,536 | 16,176 | `0.720 x 0.049 x 0.486` | 11 | `FloorOfficePlatformController` |
+| `FloorOfficePlatform_Compact.prefab` | 3 (0) | 2 | 11,568 | 16,248 | `0.580 x 0.047 x 0.406` | 11 | `FloorOfficePlatformController` |
 | `CeilingMount.prefab` | 1 (1) | 1 | 4,580 | 6,876 | `0.440 x 0.118 x 0.440` | 6 | `Animator` (`MuseDesk_CeilingMount`) |
 | `CeilingInspectionShelf.prefab` | 1 (0) | 1 | 1,436 | 2,112 | `0.240 x 0.021 x 0.125` | 2 | — |
-| `SuspendedOfficePod.prefab` | 2 (1) | 1 | 9,300 | 13,440 | `0.707 x 0.332 x 0.388` | 12 | `Animator` (`MuseDesk_CeilingPod`) |
+| `SuspendedOfficePod.prefab` | 2 (1) | 1 | 9,300 | 13,440 | `0.657 x 0.277 x 0.393` | 12 | `Animator` (`MuseDesk_CeilingPod`) |
 | `WorkspaceAttentionBeacon.prefab` | 10 (10) | 1 | 2,304 | 2,970 | `0.064 x 0.103 x 0.052` | 2 | `SpatialBeaconVisualController` |
 | `SpatialMailbox.prefab` | 2 (0) | 1 | 2,416 | 3,726 | `0.140 x 0.076 x 0.095` | 5 | `SpatialMailboxController` |
 | `FloorCourierStation.prefab` | 2 (2) | 1 | 1,724 | 2,581 | `0.139 x 0.031 x 0.138` | 3 | `Animator` (`MuseDesk_FloorCourierStation`) |
@@ -51,9 +51,9 @@ Exact post-import counts measured by `SpatialWorkspaceArtSetup.BuildAll` (`docs/
 | `PlacementGhostPreview_Floor.prefab` | 2 (0) | 0 | 1,656 | 2,592 | `0.720 x 0.024 x 0.580` | 2 | `PlacementGhostPreviewController` |
 | `PlacementGhostPreview_Ceiling.prefab` | 2 (0) | 0 | 1,064 | 1,472 | `0.620 x 0.143 x 0.435` | 1 | `PlacementGhostPreviewController` |
 | `Spatial_FloorCourierSystem.prefab` | 5 (5) | 2 | 6,400 | 8,772 | `0.146 x 0.099 x 0.138` | 6 | `DocumentCourierController` |
-| `Spatial_CeilingWorkspaceAssembly.prefab` | 21 (12) | 3 | 16,536 | 23,654 | `0.707 x 1.000 x 0.600` | 18 | `CeilingWorkspacePodController`, `CeilingDeploymentVFXController` |
-| `Spatial_FloorOffice_Complete.prefab` | 82 (19) | 10 | 64,474 | 61,154 | `0.720 x 0.185 x 0.486` | 17 | `FloorOfficePlatformController` (+ child `DocumentCourierController`, `SpatialBeaconVisualController`, `SpatialMailboxController`) |
-| `Spatial_CeilingPod_Complete.prefab` | 85 (16) | 8 | 60,678 | 56,778 | `0.707 x 1.000 x 0.600` | 18 | `CeilingWorkspacePodController`, `CeilingDeploymentVFXController` (+ child `SpatialBeaconVisualController`, `SpatialMailboxController`) |
+| `Spatial_CeilingWorkspaceAssembly.prefab` | 21 (12) | 3 | 16,536 | 23,654 | `0.700 x 1.000 x 0.600` | 18 | `CeilingWorkspacePodController`, `CeilingDeploymentVFXController` |
+| `Spatial_FloorOffice_Complete.prefab` | 82 (19) | 10 | 64,382 | 61,042 | `0.720 x 0.185 x 0.486` | 17 | `FloorOfficePlatformController` (+ child `DocumentCourierController`, `SpatialBeaconVisualController`, `SpatialMailboxController`) |
+| `Spatial_CeilingPod_Complete.prefab` | 85 (16) | 8 | 60,678 | 56,778 | `0.700 x 1.000 x 0.600` | 18 | `CeilingWorkspacePodController`, `CeilingDeploymentVFXController` (+ child `SpatialBeaconVisualController`, `SpatialMailboxController`) |
 
 ---
 
@@ -148,11 +148,12 @@ All sockets are verified `allSocketsUnitScale == true` (`lossyScale == (1, 1, 1)
    - **Skipped-Event Recovery:** Animation event hooks (`OnAnimUnlockComplete`, `OnAnimBeginDescentDone`, `OnAnimStabilizeComplete`, `OnAnimShelfOpened`, `OnAnimShelfClosed`, `OnAnimBeginAscentDone`, `OnAnimDockLocked`, `OnAnimSettleComplete`) are optional accelerators — every transitional phase carries a deterministic timeout ceiling and smoothly completes or switches direction cleanly if `Deploy()`, `Retract()`, or `SnapToPoseImmediate(bool deployed)` interrupts mid-flight.
    - Room configuration: `ConfigureRoomPoses(Vector3 dockedWorldPos, Vector3 inspectionWorldPos, Quaternion yawRotation)`.
 4. **`CeilingDeploymentVFXController`** (`CeilingDeploymentVFXController.cs`)
-   - Automatically subscribes to `CeilingWorkspacePodController.StateChanged` (zero extra gameplay plumbing needed) and drives the articulated ceiling ascension/descension VFX rig on `Spatial_CeilingWorkspaceAssembly.prefab` / `Spatial_CeilingPod_Complete.prefab` using Quest-3 Single-Pass Instanced URP shaders (`MuseDesk/Spatial/PortalCone` in `Assets/MuseDesk/Art/Shaders/SpatialPortalCone.shader`, `Mat_Spatial_PortalCone.mat`, `Mat_Spatial_SoftParticle.mat`, `Tex_SoftGlowDot.png`, `VFX_PortalConeMesh.asset`, `VFX_HoloRingMesh.asset`) and `MaterialPropertyBlock`:
-     - `VFX_CeilingProjectionHalo` & `VFX_CeilingRippleRing` flush against the ceiling bay (`TriggerCeilingRipple` pulses cyan on unlock, warm gold on lock).
-     - `VFX_CeilingPortalCone` Fresnel light column spanning `SuspensionTop` -> `DockingConnector` with directional scanline flow (downward Cyan on descent, upward Warm Gold on ascent).
-     - `VFX_TetherFlowParticles` (directional motes clamped inside the cone column), `VFX_CeilingApertureParticles` (orbiting iris bay sparkles), `VFX_AirCushionRing` (soft landing hover glow beneath `PodRoot`), and `VFX_ArrivalBurstParticles` (24-mote arrival/docking puffs).
-     - `ResolveReferences()` and `ApplySnapshotImmediate(PodState state, float progress01, float ripplePhase01)` for deterministic EditMode & scene validation.
+  - Automatically subscribes to `CeilingWorkspacePodController.StateChanged` (zero extra gameplay plumbing needed) and drives the articulated ceiling ascension/descension VFX rig on `Spatial_CeilingWorkspaceAssembly.prefab` / `Spatial_CeilingPod_Complete.prefab` using Quest-3 Single-Pass Instanced URP shaders (`MuseDesk/Spatial/PortalCone` in `Assets/MuseDesk/Art/Shaders/SpatialPortalCone.shader`, `Mat_Spatial_PortalCone.mat`, reversible `Mat_Spatial_PortalCone_Lite.mat`, `Mat_Spatial_SoftParticle.mat`, `Tex_SoftGlowDot.png`, `VFX_PortalConeMesh.asset`, `VFX_HoloRingMesh.asset`) and `MaterialPropertyBlock`:
+    - `VFX_CeilingProjectionHalo` & `VFX_CeilingRippleRing` flush against the ceiling bay (`TriggerCeilingRipple` pulses cyan on unlock, warm gold on lock).
+    - `VFX_CeilingPortalCone` Fresnel light column spanning `SuspensionTop` -> `DockingConnector` with directional scanline flow (downward Cyan on descent, upward Warm Gold on ascent).
+    - `VFX_TetherFlowParticles`, `VFX_CeilingApertureParticles`, `VFX_AirCushionRing`, and `VFX_ArrivalBurstParticles`.
+    - Reversible Quest 3 budget presets via `SetQualityPreset(CeilingVfxQualityPreset)` (`Full`, `LowCostNoParticles`, `MinimalIrisHalo`) — mirrored in `CeilingVfxBridge.qualityPreset`.
+    - `ResolveReferences()` and `ApplySnapshotImmediate(PodState state, float progress01, float ripplePhase01)` for deterministic EditMode & scene validation.
 5. **`SpatialBeaconVisualController`** (`SpatialBeaconVisualController.cs`)
    - `SetState(BeaconState state, bool immediate = false)` supporting `WorkingNormally`, `CompletedWork`, `OptionalSuggestion`, `BlockingDecision`, `Error`, `Disconnected`, `Inactive`, pairing color-restrained peripheral glows (`MaterialPropertyBlock`) with 3D accessibility icon meshes and mechanical flag rotation.
    - `PulseIncoming()` triggers `Beacon_Incoming` arrival squash/pulse.
@@ -169,14 +170,15 @@ All sockets are verified `allSocketsUnitScale == true` (`lossyScale == (1, 1, 1)
 
 ## 6. Validation Scene & Test Verification
 
-- **Editor Pipeline & Validation Scene:** `MuseDesk.Editor.ArtPipeline.SpatialWorkspaceArtSetup.BuildAll` (`Assets/MuseDesk/Editor/ArtPipeline/SpatialWorkspaceArtSetup.cs`) rebuilds all 16 prefabs, builds `Assets/MuseDesk/Scenes/SpatialWorkspaceValidationScene.unity`, writes `docs/Art/SPATIAL_WORKSPACE_INVENTORY.json`, and captures 6 Unity URP RenderTexture views into `Screenshots/SpatialWorkspace/Unity/`:
+- **Editor Pipeline & Validation Scene:** `MuseDesk.Editor.ArtPipeline.SpatialWorkspaceArtSetup.BuildAll` (`Assets/MuseDesk/Editor/ArtPipeline/SpatialWorkspaceArtSetup.cs`) rebuilds all 16 prefabs, builds `Assets/MuseDesk/Scenes/SpatialWorkspaceValidationScene.unity`, writes `docs/Art/SPATIAL_WORKSPACE_INVENTORY.json`, and captures 7 Unity URP RenderTexture views into `Screenshots/SpatialWorkspace/Unity/`:
   - `01_Validation_Overview.png`
   - `02_FloorOffice_Complete.png`
   - `03_CeilingPod_Docked_vs_Deployed.png`
   - `04_AttentionBeacon_7States.png`
   - `05_Courier_And_Perch_Showcase.png`
   - `06_Mailbox_And_GhostPreviews.png`
-- **Unity EditMode Tests (`Unity 6000.6.8f1 -runTests -testPlatform EditMode`):** `33 / 33 passed`, `0 failed`, `0 skipped` (`editmode_test_results.xml`).
+  - `07_CeilingVFX_Full_vs_LowCost.png`
+- **Unity EditMode Tests (`unity test --mode EditMode`):** `677 / 677 passed`, `0 failed`, `0 skipped`.
 
 ---
 
