@@ -1,14 +1,14 @@
 # Room placement findings
 
-2026-11-13. Written by the Spatial-Safety agent; **section 0 and the notes marked "pass 2" were added the same day by the Spatial-Safety-2 agent**, which could edit the director and the machines and closed the gaps listed in section 5. Covers what the floor and ceiling placement rules are now, the audit of the relaxed descent check and what replaced it, the numbers from the synthetic rooms, what the mover does that the check does not cover, and what only a real room can tell.
+2026-11-13 (rc6-1 update, commit `b469a6a`). Written by the Spatial-Safety agent; **section 0 and the notes marked "pass 2" were added the same day by the Spatial-Safety-2 agent**, which could edit the director and the machines and closed the gaps listed in section 5. Covers what the floor and ceiling placement rules are now, the audit of the relaxed descent check and what replaced it, the numbers from the synthetic rooms, what the mover does that the check does not cover, and what only a real room can tell.
 
-**Nothing here has been compiled or run in Unity, and nothing has been tried on a headset.** The numbers and the test results below come from compiling the real `MuseDesk.Spatial.Core` sources and the real test file outside Unity against a hand-written stand-in for the `UnityEngine` math types and for NUnit (see "How the numbers were produced"). That is good evidence for the geometry and weak evidence for anything that depends on Unity itself.
+**Status at rc6-1 (2026-11-13): the full EditMode suite passes in Unity, 701 of 701 over three runs (AUTO), and it includes the spatial fixtures. Nothing here has been tried on a headset (no WORN evidence).** The numbers in sections 2 and 3 and the standalone results in section 0 were produced outside Unity: the real `MuseDesk.Spatial.Core` sources and test file were compiled against a hand-written stand-in for the `UnityEngine` math types and for NUnit (see "How the numbers were produced"). They were not re-run in Unity.
 
 **A clear swept test means "clear of what the room scan recognised". It does not mean "clear".** Scene geometry may be incomplete, out of date or wrong. The user's Confirm, and a way to cancel or retract that is always available, are part of the safety design and are not replaced by this check.
 
 ## 0. Safety pass 2: every move is swept, every move can be stopped
 
-Same caveat as the rest of this file: **not compiled in Unity, not run in Unity, not seen on a headset.** The Core sources and the test file compile outside Unity with 0 errors and 0 warnings. The last run of the tests there was 84 of 84 passing (67 earlier ones, two of them changed, and 17 new). One edit was made after that run (the director keeps the previewed ceiling dock apart from the confirmed one, `_previewCeiling`); it compiles, but the machine's application control policy then blocked the rebuilt test binary, twice, and that was not worked around. So the final sources are compile-checked and the 84 results are from one edit earlier.
+**Not seen on a headset.** Compiled and run in Unity by the full EditMode suite (701 of 701, 2026-11-13, rc6-1). The standalone run described next was done outside Unity: the Core sources and the test file compiled there with 0 errors and 0 warnings. The last run of the tests there was 84 of 84 passing (67 earlier ones, two of them changed, and 17 new). One edit was made after that run (the director keeps the previewed ceiling dock apart from the confirmed one, `_previewCeiling`); it compiles, but the machine's application control policy then blocked the rebuilt test binary, twice, and that was not worked around. So the final sources are compile-checked and the 84 results are from one edit earlier.
 
 **The office is a hologram.** Nothing here can hurt anyone. "Clear" means the picture does not pass through recognised furniture or the user. It still means "clear of what the scan recognised", never "clear".
 
@@ -51,11 +51,13 @@ The floor preview only offers spots that can be reached by a clear route from wh
 
 Hand-placed spots (no usable scan): the user rules are always applied; furniture is applied when a scan exists; the room outline is not (the spot is by definition not vouched for). The status keeps saying "not checked against your room".
 
-Known mismatch: floor spots are accepted 0.10 m from a wall, the sweep wants more than 0.105 m. A spot in that 5 mm band is offered by the evaluator and then filtered out or refused for "too close to a wall".
+**Floor placement flow (rc6-1, commit `b469a6a`; the margins are from `3aa7fc2`).** Letting go on a spot does not move the office. The footprint stays where it was dropped, staged as ready (solid teal, with a "Place here" key), refused (coral or amber, with the reason), or needing confirmation. "Place here" re-plans the route and re-sweeps it at the press; a route that is blocked by then moves nothing and shows the reason. The placement is saved on arrival only; before RC6 it was saved when the move started (fixed). Confirm and Desk are refused while anything is held; Stop is never blocked. The guided look-at card opens the preview after a 0.6 s gaze dwell, offers "Start here" after 8 s, and Cancel restores everything.
+
+Wall margin: placed floor spots keep 0.11 m from a wall (`placedWallMargin`, was 0.10 m). That is above the sweep's 0.105 m sample margin, so the 5 mm band described before is closed by this value. Not checked against a real room.
 
 ### Re-validation (item 3)
 
-`RequestPodDescend` runs `ValidateDock` for the head pose and room of that moment, gives the pod the fresh inspection pose, or refuses with the reason and what to do. `RequestPodRetract` from beside the user sweeps the way up first. A room event while docked re-runs the check and puts the result in the status line. Confirm re-validates the previewed dock. Not done: nothing re-checks a move that is already in flight when the room changes.
+`RequestPodDescend` runs `ValidateDock` for the head pose and room of that moment, gives the pod the fresh inspection pose, or refuses with the reason and what to do. `RequestPodRetract` from beside the user sweeps the way up first. A room event while docked re-runs the check and puts the result in the status line. Confirm re-validates the previewed dock. Room change during a move (rc6-1): a desk or floor move is re-swept when the room changes and is sent back if its route is now blocked. A pod move is not re-swept mid-move; this is still open.
 
 ### Recenter and restore (item 4)
 
@@ -104,12 +106,12 @@ Pause (`OnPause`) still finishes a move at its destination at once (or at its st
 
 ## 1. The rules now
 
-### Floor mode (unchanged)
+### Floor mode
 
-`FloorPlacementEvaluator`, `FloorPlacementSettings` defaults. Not touched by this work.
+`FloorPlacementEvaluator`, `FloorPlacementSettings`. Candidate search defaults: user 0.6 m, furniture 0.15 m, wall 0.10 m. Chosen-spot margins (`placed*`, changed in `3aa7fc2` and not since): user 0.45 m to the sides and behind, furniture 0.11 m, wall 0.11 m. The route to a spot is planned by `FloorRoutePlanner`, which tries side-step shapes, each through the unchanged `SweepRoute`.
 
 - Candidates on both sides at 50, 70, 90, 110 and 130 degrees from the user's forward, 1.0 to 2.2 m away in 0.3 m steps, on a detected floor outline only.
-- Rejected: off the floor outline; footprint (1.0 x 0.7 m, centred 0.12 m toward the user, times scale) within 0.10 m of the outline; within 0.15 m of a furniture box that overlaps the office's height; within 0.6 m of the point under the user's head; within 35 degrees of forward; all three sight lines from the head blocked.
+- Rejected (candidate defaults): off the floor outline; footprint (1.0 x 0.7 m, centred 0.12 m toward the user, times scale) within 0.10 m of the outline; within 0.15 m of a furniture box that overlaps the office's height; within 0.6 m of the point under the user's head; within 35 degrees of forward; all three sight lines from the head blocked.
 - Pass 2: the move to a floor spot and back is now a swept route (section 0).
 
 ### Ceiling mode
@@ -237,4 +239,5 @@ Everything below can only be answered with Quest scene data on a headset. None o
 - **Where the user really is.** The keep-out is centred under the headset. Seated posture, leaning, and the chair itself (only avoided if the scan reports it) are not modelled, and the head pose is read once, at Confirm.
 - **Comfort and reach at the new inspection pose.** 0.85 m to the side instead of 0.6 m, about 80 degrees off forward. Whether the office is readable and its keys reachable there, and whether 0.35 m is the right radius, needs a person in a headset.
 - **Cost on the device.** One evaluation is a fraction of a millisecond on a PC. It runs when a preview opens, on Next, on a room event and on recenter, never per frame; it has not been timed on Quest.
+- **Hand ownership and gesture feel (RC6).** The 0.15 s pinch arm, 0.30 s clear window, 0.25 s pull target grace, the 12 cm pull and the 0.6 s guide dwell are AUTO or PLAY only. No wearer has tried them.
 - **Recenter and restart.** Whether a saved dock still passes `ValidateDock` after a restart depends on the room reference and the user's seat being where they were; both are untested on a device.
