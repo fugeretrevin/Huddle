@@ -69,7 +69,7 @@ Record with each session: build commit (see `FINAL_SPATIAL_RELEASE_AUDIT.md`), A
 | B14 | Back to Desk restores the office exactly; run state intact | PLAY | | |
 | B15 | Relaunch restores the saved floor spot if still valid | PLAY (once) | | |
 | B16 | No candidate available: words, and Desk still works | AUTO | | |
-| B17 | Stop during a move reverses it | In progress | | Being implemented |
+| B17 | Stop during a move reverses it to where it started | AUTO + PLAY | | The Cancel key reads Stop while the office moves |
 
 ## Gate C: Ceiling mode
 
@@ -87,8 +87,8 @@ Record with each session: build commit (see `FINAL_SPATIAL_RELEASE_AUDIT.md`), A
 | C10 | Send up while holding the paper: it waits | PLAY | | |
 | C11 | Retracts and docks | PLAY | | |
 | C12 | Paper delivered by courier while docked | PLAY | | |
-| C13 | Recenter: office stays put or asks for confirmation, never jumps | In progress | | Being implemented |
-| C14 | Stop during descent returns it to the dock | In progress | | Being implemented |
+| C13 | Recenter: office stays put or asks for confirmation, never jumps | AUTO | | Not run in Play Mode: needs real tracking |
+| C14 | Stop during descent returns it to the dock | AUTO + PLAY | | |
 
 ## Gate D: Live backend
 

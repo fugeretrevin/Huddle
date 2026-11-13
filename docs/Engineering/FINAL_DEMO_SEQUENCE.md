@@ -41,5 +41,5 @@ With the desktop server running and reachable, the plaque reads LIVE and the sam
 ## If something goes wrong mid-demo
 
 - A paper that did not arrive: it snaps to in front of you after 3 s by design; if not, press **Status** beside the summon keys.
-- The office somewhere you do not want it: press **Stop** during a move (being added), or **Desk** at any time.
+- The office somewhere you do not want it: press **Stop** during a move (the Cancel key reads Stop while the office is moving; it goes back to where it started), or **Desk** once it is at rest.
 - Anything else: **Run again** on the receipt restarts the scripted run; closing and reopening the app returns to Desk if the saved spot no longer validates.
