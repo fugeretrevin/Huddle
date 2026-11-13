@@ -116,6 +116,8 @@ namespace MuseDesk.Workspace
             }
             EnsureHead();
             if (workspaceRoot == null) { _placing = false; yield break; }
+            // The office is on the floor or ceiling (or travelling): the spatial director owns its pose.
+            if (MuseDesk.Spatial.SpatialWorkspaceState.Mode != MuseDesk.Spatial.WorkspaceMode.Desk || MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning) { _placing = false; yield break; }
 
             Vector3 pos = OffDeskPosition();
             workspaceRoot.position = pos;
@@ -306,6 +308,7 @@ namespace MuseDesk.Workspace
         /// <summary>Call from a hand-driven world-space button to lock in the manual tray.</summary>
         public void ConfirmManualPlacement()
         {
+            if (MuseDesk.Spatial.SpatialWorkspaceState.Mode != MuseDesk.Spatial.WorkspaceMode.Desk || MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning) return;
             if (placementGuide != null) placementGuide.SetActive(false);
             State = PlacementState.PlacedManual;
             Placed?.Invoke(State);
@@ -317,6 +320,7 @@ namespace MuseDesk.Workspace
         public void ResetWorkspaceInFront()
         {
             if (workspaceRoot == null) return;
+            if (MuseDesk.Spatial.SpatialWorkspaceState.Mode != MuseDesk.Spatial.WorkspaceMode.Desk || MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning) return;   // the spatial director owns the pose away from the desk
             float dist = settings != null ? settings.manualTrayDistance : 0.5f;
             Vector3 pos = InFrontOfUser(dist);
             workspaceRoot.SetPositionAndRotation(pos, FacingUserYaw(pos));

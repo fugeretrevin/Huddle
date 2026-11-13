@@ -43,6 +43,16 @@ namespace MuseDesk.Spatial
         [Tooltip("Where the mast meets the office, above the root, at scale 1.")]
         public float mastAttachHeight = 0.46f;
 
+        [Header("Art sockets (optional)")]
+        [Tooltip("Where the mast leaves the ceiling mount (the CeilingMount's SuspensionBottom). When set it replaces the ceiling point as the mast's upper end.")]
+        public Transform mastTop;
+        [Tooltip("Where the mast meets the pod (the SuspendedOfficePod's DockingConnector, which travels with the office). When set it replaces mastAttachHeight.")]
+        public Transform mastBottom;
+        [Tooltip("Ceiling mount position relative to the dock, in the dock's own XZ at scale 1, so the mount sits straight above the pod's connector when docked.")]
+        public Vector2 mountOffset;
+        [Tooltip("Turn the ceiling mount to the dock's heading (the art faces +Z toward the user, like the office).")]
+        public bool alignMountToDock = true;
+
         /// <summary>Set by the director, which then ticks the machine itself (fixed order).</summary>
         [System.NonSerialized] public bool tickedByDirector;
 
@@ -71,6 +81,8 @@ namespace MuseDesk.Spatial
 
         public CeilingPodState State => _machine != null ? _machine.State : CeilingPodState.Docked;
         public bool Active => _machine != null && _machine.Active;
+        /// <summary>True while the world-fixed pod visuals (mount, mast) are switched on.</summary>
+        public bool VisualsShown => _visualsShown;
 
         static bool IsHeld() { return SpatialWorkspaceState.TransitionHeld; }
 
@@ -106,11 +118,20 @@ namespace MuseDesk.Spatial
 
             Transform root = transition.workspaceRoot;
             float scale = root.localScale.x;
-            Vector3 dock = _machine.DockPose.position;
+            RootPose dockPose = _machine.DockPose;
+            Vector3 dock = dockPose.position + dockPose.rotation * new Vector3(mountOffset.x * dockPose.scale, 0f, mountOffset.y * dockPose.scale);
             Vector3 top = new Vector3(dock.x, _ceilingHeight, dock.z);
             Vector3 bottom = root.position + root.rotation * new Vector3(shelfCenterOffset.x * scale, mastAttachHeight * scale, shelfCenterOffset.y * scale);
 
-            if (ceilingMount != null) ceilingMount.position = top;
+            if (ceilingMount != null)
+            {
+                // World-fixed on the ceiling above the dock; it never travels with the office.
+                if (alignMountToDock) ceilingMount.SetPositionAndRotation(top, dockPose.rotation);
+                else ceilingMount.position = top;
+            }
+            // Art sockets, when given: the mast runs from the mount's lower socket to the pod's connector.
+            if (mastTop != null) top = mastTop.position;
+            if (mastBottom != null) bottom = mastBottom.position;
 
             Vector3 span = bottom - top;
             float length = span.magnitude;

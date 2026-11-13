@@ -1,4 +1,5 @@
 using UnityEngine;
+using MuseDesk.Art;
 using MuseDesk.Feedback;
 using MuseDesk.Workspace;
 
@@ -14,6 +15,9 @@ namespace MuseDesk.Spatial
     ///   Completed = plain green plate "Done";
     ///   Error     = coral plate "Problem" with a bar across its top.
     /// Passive (and the unreachable Suggestion) show nothing.
+    /// With the art model assigned (<see cref="artBeacon"/>) the WorkspaceAttentionBeacon stands on
+    /// top of the plate and carries the shape (its own icon per level, light and clip) while the
+    /// plate keeps the words; the model is sized for distance with the plate.
     ///
     /// Restrained: it appears with one eased pop, pulses once when the level changes, then stays
     /// still. Sound only for Blocking and Error, once per change, through
@@ -65,6 +69,21 @@ namespace MuseDesk.Spatial
         [Tooltip("Offset from the near-user point: x = to the user's right, y = up, z = away from the user.")]
         public Vector3 mirrorOffset = new Vector3(0.17f, 0.13f, 0.03f);
 
+        [Header("Art (optional)")]
+        [Tooltip("The WorkspaceAttentionBeacon model inside the office cue's sizer. It shows the level with its own icon, light and clip; the words plates stay (the model has no words). Active only while the cue is shown.")]
+        public SpatialBeaconVisualController artBeacon;
+        [Tooltip("Also show the model (alone, no plate) while agents report progress and nothing needs the user. Off: the cue appears only for Needs you / Done / Problem.")]
+        public bool showWorkingState = false;
+
+        [Header("The small '!' over the agent")]
+        [Tooltip("AgentView.alert objects. While the office is remote they are scaled away (this cue replaces them) and put back afterwards. Their active state stays with AgentRegistry.")]
+        public Transform[] agentAlerts;
+        public bool hideAgentAlertsWhenRemote = true;
+
+        [Header("Sound")]
+        [Tooltip("FeedbackController sounds Attention / Error itself when the reducer reports the event. This cue stays silent for a level that appeared within this many seconds of that event, whatever the order of the handlers or the frame.")]
+        public float feedbackOwnsCueSeconds = 1f;
+
         readonly ScaleEase _officeEase = new ScaleEase();
         readonly ScaleEase _mirrorEase = new ScaleEase();
         bool _bound, _eased;
@@ -75,6 +94,29 @@ namespace MuseDesk.Spatial
         float _sizerScale = -1f;
         Vector3 _mirrorPlaced;
         bool _mirrorHasPlace;
+        SpatialBeaconVisualController.BeaconState _artState;
+        bool _artStateSet;
+        Vector3[] _alertScales;
+        bool _alertsHidden;
+
+        /// <summary>The art model's state for an attention level. Suggestion is unreachable (no
+        /// backend event); Disconnected is used only when there is no session to read.</summary>
+        public static SpatialBeaconVisualController.BeaconState BeaconStateFor(AttentionLevel level, bool hasSession)
+        {
+            if (!hasSession) return SpatialBeaconVisualController.BeaconState.Disconnected;
+            switch (level)
+            {
+                case AttentionLevel.Blocking: return SpatialBeaconVisualController.BeaconState.BlockingDecision;
+                case AttentionLevel.Error: return SpatialBeaconVisualController.BeaconState.Error;
+                case AttentionLevel.Completed: return SpatialBeaconVisualController.BeaconState.CompletedWork;
+                case AttentionLevel.Suggestion: return SpatialBeaconVisualController.BeaconState.OptionalSuggestion;
+                case AttentionLevel.Passive: return SpatialBeaconVisualController.BeaconState.WorkingNormally;
+                default: return SpatialBeaconVisualController.BeaconState.Inactive;
+            }
+        }
+
+        /// <summary>True while the art model is switched on (the office cue is shown and has a model).</summary>
+        public bool ArtBeaconShown => artBeacon != null && artBeacon.gameObject.activeSelf;
 
         /// <summary>True while the office cue is shown (or on its way to being shown).</summary>
         public bool OfficeCueShown => _eased && _officeEase.Shown;
@@ -90,6 +132,8 @@ namespace MuseDesk.Spatial
             if (mirrorCue != null)
                 _mirrorEase.Init(mirrorCue, ScaleEase.ResolveFull(mirrorCue, mirrorCueShownScale), 0.25f, false);
             _eased = true;
+            // The model animates (ten skinned parts): it is switched on only while the cue is shown.
+            if (artBeacon != null && artBeacon.gameObject.activeSelf) artBeacon.gameObject.SetActive(false);
         }
 
         void OnEnable() { SpatialWorkspaceState.Changed += Refresh; }
@@ -99,6 +143,7 @@ namespace MuseDesk.Spatial
             SpatialWorkspaceState.Changed -= Refresh;
             if (_bound && attention != null) attention.Changed -= OnAttentionChanged;
             _bound = false;
+            HideAgentAlerts(false);          // never leave the agents' own markers scaled away
         }
 
         void Update()
@@ -120,6 +165,13 @@ namespace MuseDesk.Spatial
             }
             if (officeCue != null && _officeEase.Shown) PlaceOfficeCue();
             if (mirrorCue != null && _mirrorEase.Shown) PlaceMirrorCue();
+
+            // The cue has finished leaving: switch the model (and its animator) off.
+            if (artBeacon != null && !_officeEase.Shown && !_officeEase.Animating && artBeacon.gameObject.activeSelf)
+            {
+                artBeacon.gameObject.SetActive(false);
+                _artStateSet = false;
+            }
         }
 
         void OnAttentionChanged(AttentionLevel level) { Refresh(); }
@@ -139,26 +191,46 @@ namespace MuseDesk.Spatial
             bool remote = SpatialWorkspaceState.IsRemote;
             bool cue = level == AttentionLevel.Blocking || level == AttentionLevel.Error
                        || (level == AttentionLevel.Completed && !_completedExpired);
-            bool show = cue && (remote || showInDeskMode) && officeCue != null;
+            // Optional: the model alone (no plate) while agents are simply working.
+            bool working = showWorkingState && artBeacon != null && level == AttentionLevel.Passive;
+            bool show = (cue || working) && (remote || showInDeskMode) && officeCue != null;
+
+            // The agents' own small "!" is replaced by this cue while the office is far away.
+            HideAgentAlerts(remote && hideAgentAlertsWhenRemote && officeCue != null);
 
             if (show)
             {
                 _anchor = AnchorFor(attention.AgentId);
-                SetFaces(officeBlocking, officeCompleted, officeError, level);
+                SetFaces(officeBlocking, officeCompleted, officeError, level);   // Passive: no plate
+                ShowArtState(BeaconStateFor(level, attention.controller != null));
                 bool was = _officeEase.Shown;
                 _officeEase.Show();
                 if (levelChanged || !was) _officeEase.Pulse(0.08f, 0.35f);     // once, then steady
                 PlaceOfficeCue();
                 // Sound only for the two levels that need the user, and only when the level changed.
+                // FeedbackController sounds the same cue itself when the reducer reports the event;
+                // that is detected from the event's time stamp, not from handler order or frame, so
+                // one event is one sound. The cue sounds here only when the level appeared without
+                // a fresh event (a loaded snapshot, or a failure uncovered when a decision resolved).
                 if (levelChanged)
                 {
-                    if (level == AttentionLevel.Blocking) FeedbackController.PlayCue(FeedbackCue.Attention);
-                    else if (level == AttentionLevel.Error) FeedbackController.PlayCue(FeedbackCue.Error);
+                    float now = Time.unscaledTime;
+                    bool feedbackListens = FeedbackController.Instance != null;
+                    if (level == AttentionLevel.Blocking)
+                    {
+                        if (!feedbackListens || now - attention.LastDecisionRequestedAt > feedbackOwnsCueSeconds)
+                            FeedbackController.PlayCue(FeedbackCue.Attention);
+                    }
+                    else if (level == AttentionLevel.Error)
+                    {
+                        if (!feedbackListens || now - attention.LastTaskFailedAt > feedbackOwnsCueSeconds)
+                            FeedbackController.PlayCue(FeedbackCue.Error);
+                    }
                 }
             }
             else _officeEase.Hide();
 
-            bool mirror = show && showMirror && remote && mirrorCue != null;
+            bool mirror = show && cue && showMirror && remote && mirrorCue != null;   // never an empty mirror for "working"
             if (mirror)
             {
                 SetFaces(mirrorBlocking, mirrorCompleted, mirrorError, level);
@@ -175,6 +247,42 @@ namespace MuseDesk.Spatial
             if (blocking != null) blocking.SetActive(level == AttentionLevel.Blocking);
             if (completed != null) completed.SetActive(level == AttentionLevel.Completed);
             if (error != null) error.SetActive(level == AttentionLevel.Error);
+        }
+
+        /// <summary>Switch the model on (if it was off) and give it the state. The art controller
+        /// only swaps its icon, tints through a property block and cross-fades its own clip.</summary>
+        void ShowArtState(SpatialBeaconVisualController.BeaconState state)
+        {
+            if (artBeacon == null) return;
+            if (!artBeacon.gameObject.activeSelf)
+            {
+                artBeacon.gameObject.SetActive(true);     // its animator restarts in its default state
+                _artStateSet = false;
+            }
+            if (_artStateSet && state == _artState) return;
+            _artState = state;
+            _artStateSet = true;
+            artBeacon.SetState(state, false);
+        }
+
+        /// <summary>Scale the agents' "!" markers away (true) or put their scale back (false).
+        /// Only the scale is touched: AgentRegistry keeps switching the objects on and off.</summary>
+        void HideAgentAlerts(bool hide)
+        {
+            if (hide == _alertsHidden || agentAlerts == null) return;
+            if (_alertScales == null || _alertScales.Length != agentAlerts.Length) _alertScales = new Vector3[agentAlerts.Length];
+            for (int i = 0; i < agentAlerts.Length; i++)
+            {
+                Transform t = agentAlerts[i];
+                if (t == null) continue;
+                if (hide)
+                {
+                    _alertScales[i] = t.localScale;
+                    t.localScale = _alertScales[i] * ScaleEase.HiddenFactor;
+                }
+                else t.localScale = _alertScales[i];
+            }
+            _alertsHidden = hide;
         }
 
         Transform AnchorFor(string agentId)

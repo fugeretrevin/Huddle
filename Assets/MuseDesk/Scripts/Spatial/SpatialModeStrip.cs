@@ -40,6 +40,10 @@ namespace MuseDesk.Spatial
         public Transform cancelKey;
         public Transform podKey;
         public TMP_Text podKeyLabel;
+        [Tooltip("Label of the Floor key (found under the key when empty). It reads 'Send back' while a Floor office is parked at the desk.")]
+        public TMP_Text floorKeyLabel;
+        public string floorWords = "Floor";
+        public string sendBackWords = "Send\nback";
         [Tooltip("Uniform scale of a shown key.")]
         public float keyScale = 0.04f;
         public Vector3 slot0;
@@ -60,12 +64,29 @@ namespace MuseDesk.Spatial
         Quaternion _deskLocalRot = Quaternion.identity;
         string _status;
         string _podText;
+        bool _floorSendsBack;
 
         void Awake()
         {
             _deskLocalRot = Quaternion.Euler(deskLocalEuler);
+            if (floorKeyLabel == null && floorKey != null) floorKeyLabel = floorKey.GetComponentInChildren<TMP_Text>(true);
             HideAll();
         }
+
+        /// <summary>
+        /// The Floor key doubles as "Send back" after a Floor office was brought to the desk (the
+        /// near-user summon keys are hidden in Desk mode, so this is the visible way back). The
+        /// director routes the press; this only changes the words, and only when they change.
+        /// </summary>
+        public void SetFloorKeySendsBack(bool sendsBack)
+        {
+            if (sendsBack == _floorSendsBack) return;
+            _floorSendsBack = sendsBack;
+            if (floorKeyLabel != null) floorKeyLabel.text = sendsBack ? sendBackWords : floorWords;
+        }
+
+        /// <summary>True while the Floor key reads "Send back".</summary>
+        public bool FloorKeySendsBack => _floorSendsBack;
 
         /// <summary>Hide every key and the status line (both flags off, or before the first refresh).</summary>
         public void HideAll()

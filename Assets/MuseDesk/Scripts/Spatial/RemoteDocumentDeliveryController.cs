@@ -44,7 +44,7 @@ namespace MuseDesk.Spatial
         public MuseDesk.Agents.AgentAnimatorBridge researcherBridge;
         [Tooltip("A transform this component owns and animates (NOT under WorkspaceRoot).")]
         public Transform courierAnchor;
-        [Tooltip("The carrier tray. Optional: without it the paper travels by itself.")]
+        [Tooltip("The courier (the DocumentCourier model, or the primitive tray). Optional: without it the paper travels by itself. This component alone moves it; the courier only plays its own clips.")]
         public CourierVisual courier;
         [Tooltip("Used when the placement side has not published the office root.")]
         public Transform workspaceRootFallback;
@@ -186,10 +186,12 @@ namespace MuseDesk.Spatial
             {
                 case RemoteDeliveryState.ToPlatform:
                     BeginCarry();
+                    if (courier != null) courier.PlayLoad();
                     break;
 
                 case RemoteDeliveryState.Flying:
                     BeginCarry();
+                    if (courier != null) courier.PlayFly();
                     if (courierAnchor != null)
                     {
                         _legFrom = courierAnchor.position;
@@ -205,6 +207,7 @@ namespace MuseDesk.Spatial
                     BeginCarry();
                     _hoverLatched = false;
                     NormalizeHeldScale();
+                    if (courier != null) courier.PlayPresent();
                     break;
 
                 case RemoteDeliveryState.Taken:
@@ -338,8 +341,9 @@ namespace MuseDesk.Spatial
         void StartReturn()
         {
             if (courier == null || !courier.Shown) { _returning = false; return; }
+            if (!_returning) courier.PlayReturn();
             _returning = true;
-            _returnFrom = courier.transform.position;
+            _returnFrom = courier.CarryPoint;       // SetPose places this point (the attach socket when there is art)
             _returnStart = Time.unscaledTime;
         }
 
@@ -354,6 +358,7 @@ namespace MuseDesk.Spatial
             if (k >= 1f)
             {
                 _returning = false;
+                courier.PlayDocked();
                 courier.Hide();
             }
         }

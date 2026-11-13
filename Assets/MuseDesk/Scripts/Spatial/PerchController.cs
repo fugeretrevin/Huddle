@@ -44,6 +44,8 @@ namespace MuseDesk.Spatial
         public Renderer roleStrip;
         [Tooltip("Offset from the near-user point: x = to the user's right, y = up, z = away from the user.")]
         public Vector3 standOffset = new Vector3(0.21f, 0.0f, 0.03f);
+        [Tooltip("Optional art: the AgentConversationPerch model the summary plate stands on. Only its unfold / fold clips are triggered; no agent is mounted on it. Switched off while the perch is closed.")]
+        public AgentConversationPerchController artPerch;
 
         [Header("Behaviour")]
         [Tooltip("Seconds the perch stays open.")]
@@ -71,6 +73,7 @@ namespace MuseDesk.Spatial
             if (stand != null)
                 _ease.Init(stand, ScaleEase.ResolveFull(stand, standShownScale), 0.25f, false);
             _eased = true;
+            if (artPerch != null && artPerch.gameObject.activeSelf) artPerch.gameObject.SetActive(false);
         }
 
         void OnEnable()
@@ -103,6 +106,9 @@ namespace MuseDesk.Spatial
             if (!_bound && controller != null) Bind();
             _ease.Tick(Time.unscaledDeltaTime);
             if (_open && Time.unscaledTime >= _closeAt) Close();
+            // Closed and fully hidden: the model (and its animator) is switched off.
+            if (artPerch != null && !_open && !_ease.Shown && !_ease.Animating && artPerch.gameObject.activeSelf)
+                artPerch.gameObject.SetActive(false);
         }
 
         void Bind()
@@ -134,6 +140,12 @@ namespace MuseDesk.Spatial
             {
                 _open = true;
                 Place();
+                if (artPerch != null)
+                {
+                    // Its animator restarts folded; the unfold clip then runs into the listening idle.
+                    if (!artPerch.gameObject.activeSelf) artPerch.gameObject.SetActive(true);
+                    artPerch.TriggerUnfoldArrive();
+                }
                 _ease.Show();
             }
             else if (!sameAgent) _ease.Pulse(0.05f, 0.25f);
@@ -165,6 +177,7 @@ namespace MuseDesk.Spatial
         {
             if (!_open) return;
             _open = false;
+            if (artPerch != null && artPerch.gameObject.activeInHierarchy) artPerch.TriggerFoldReturn();
             _ease.Hide();
         }
 

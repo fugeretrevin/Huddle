@@ -27,6 +27,19 @@ public static class IntegrateV3
                 sb.AppendLine($"{k}/{l.name} -> white bold");
             }
         }
+        // Artifact viewer: BuildReceiptV3 put it at (0, 0.32, 0.26), where the open sheet covers the
+        // Developer's face. From the eye (0, 0.30, 0.62) the agents' heads (y 0.19 to 0.31 at z about 0)
+        // are cleared only if the sheet's lower edge projects above them, so it goes above the office:
+        // centre (0, 0.435, 0.10), 0.54 m from the eye, lower edge and keys at y 0.325 (0.52 m, in reach),
+        // top edge 25 degrees above eye level.
+        var viewer = Find("ArtifactPanel"); var wsRoot = Find("WorkspaceRoot");
+        if (viewer != null && wsRoot != null)
+        {
+            Vector3 eye = new Vector3(0f, 0.30f, 0.62f), p = new Vector3(0f, 0.435f, 0.10f);
+            viewer.position = wsRoot.TransformPoint(p);
+            viewer.rotation = wsRoot.rotation * Quaternion.LookRotation(p - eye, Vector3.up);
+            sb.AppendLine($"ArtifactPanel -> {p} facing the eye, {Vector3.Distance(p, eye):F2} m away (above the office, clear of the agents' heads)");
+        }
         var scene = EditorSceneManager.GetActiveScene();
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);

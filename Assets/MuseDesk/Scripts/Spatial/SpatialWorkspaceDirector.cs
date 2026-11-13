@@ -58,6 +58,7 @@ namespace MuseDesk.Spatial
         public float restoreTimeoutSeconds = 15f;
 
         static readonly float[] UnitScale = { 1f };
+        const string ParkedStatus = "Office is at your desk. Send back returns it to the floor.";
 
         SpatialDirectorCore _core;
         float[] _authoredScales;
@@ -178,8 +179,19 @@ namespace MuseDesk.Spatial
         {
             // A second press while the floor preview is already open must not restart it.
             if (_core != null && _core.Phase == DirectorPhase.Previewing && _core.PendingMode == PlacementMode.Floor) return;
+            // After "Bring it here" from Floor the office is parked at the desk and the Floor key
+            // reads "Send back": it returns the office to the spot it came from (or opens the floor
+            // preview if that spot no longer passes the room checks).
+            if (_core != null && _parkedValid && _core.Mode == PlacementMode.Desk && _core.Phase == DirectorPhase.Idle)
+            {
+                SendOfficeBack();
+                return;
+            }
             RequestMode(WorkspaceMode.Floor);
         }
+
+        /// <summary>True while a Floor office that was brought to the desk can be sent back to its floor spot.</summary>
+        public bool HasParkedFloorSpot => _parkedValid;
 
         public void RequestCeiling()
         {
@@ -233,7 +245,11 @@ namespace MuseDesk.Spatial
             if (_core.Mode == PlacementMode.Ceiling) { _core.RequestPodDescend(); return; }
             if (_core.Mode != PlacementMode.Floor) return;
             SavedPlacement parked = _core.BuildSave(Application.buildGUID);   // null for a hand-placed spot
-            if (_core.RequestMode(PlacementMode.Desk)) { _parked = parked; _parkedValid = true; }
+            if (_core.RequestMode(PlacementMode.Desk))
+            {
+                _parked = parked; _parkedValid = true;
+                RefreshViews();          // the Floor key now reads "Send back"
+            }
         }
 
         /// <summary>
@@ -247,10 +263,11 @@ namespace MuseDesk.Spatial
             if (_core.Mode == PlacementMode.Ceiling) { _core.RequestPodRetract(); return; }
             if (_core.Mode != PlacementMode.Desk || !_parkedValid) return;
             string reason;
-            if (_parked != null && _core.TryRestore(_parked, out reason)) { _parkedValid = false; _parked = null; return; }
+            if (_parked != null && _core.TryRestore(_parked, out reason)) { _parkedValid = false; _parked = null; RefreshViews(); return; }
             if (_core.IsTransitioning || SpatialWorkspaceState.TransitionHeld) return;   // try again later; the spot is kept
             _parkedValid = false; _parked = null;
             RequestFloor();
+            RefreshViews();              // the key reads "Floor" again even if the preview was refused
         }
 
         void OnBringOfficeHere() { BringOfficeHere(); }
@@ -390,7 +407,9 @@ namespace MuseDesk.Spatial
             if (_core == null) return;
             if (ghost != null)
             {
-                if (_core.HasPreview) ghost.Show(_core.PreviewPose, !_core.PreviewIsDetected || _core.PreviewValid);
+                if (_core.HasPreview)
+                    ghost.Show(_core.PreviewPose, !_core.PreviewIsDetected || _core.PreviewValid,
+                               _core.PendingMode == PlacementMode.Ceiling, _core.PreviewIsDetected);
                 else ghost.Hide();
             }
             if (strip != null)
@@ -405,6 +424,10 @@ namespace MuseDesk.Spatial
                 strip.SetFollowRoot(followRoot);
                 string status = _core.StatusText;
                 if (string.IsNullOrEmpty(status) && _core.Pod.Active) status = _core.Pod.StatusText;
+                // A Floor office parked at the desk: the Floor key is the way back, and says so.
+                bool parked = _parkedValid && _core.Mode == PlacementMode.Desk && !previewing;
+                strip.SetFloorKeySendsBack(parked);
+                if (parked && !transitioning && string.IsNullOrEmpty(status)) status = ParkedStatus;
                 strip.Apply(flags.floorModeEnabled, flags.ceilingModeEnabled, _core.Mode, previewing, canCycle,
                             transitioning, _core.Pod.State, _core.Pod.RetractPending, status);
             }

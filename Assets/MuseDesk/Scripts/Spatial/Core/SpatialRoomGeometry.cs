@@ -441,6 +441,23 @@ namespace MuseDesk.Spatial
             return OrientedRect.FromYaw(new Vector2(c.x, c.z), footprint * (0.5f * scale), rootRotation.eulerAngles.y);
         }
 
+        /// <summary>Largest horizontal distance from the office root to a corner of its footprint: the
+        /// lever arm of the fastest-moving point when the office turns about its root. Same inputs
+        /// as <see cref="Footprint"/>.</summary>
+        public static float FootprintReach(Vector2 footprint, Vector2 centerOffset, float scale)
+        {
+            float x = Mathf.Abs(centerOffset.x) + Mathf.Abs(footprint.x) * 0.5f;
+            float z = Mathf.Abs(centerOffset.y) + Mathf.Abs(footprint.y) * 0.5f;
+            return Mathf.Sqrt(x * x + z * z) * Mathf.Abs(scale);
+        }
+
+        /// <summary>True when two vertical intervals overlap, touch, or are within <paramref name="margin"/>
+        /// of each other. Touching counts (fail closed).</summary>
+        public static bool VerticalRangesTouch(float minA, float maxA, float minB, float maxB, float margin)
+        {
+            return maxB >= minA - margin && minB <= maxA + margin;
+        }
+
         /// <summary>Rotation whose +Z points from <paramref name="from"/> toward the user, yaw only
         /// (the project's facing convention: the root's +Z points AT the user).</summary>
         public static Quaternion FaceUserYaw(Vector3 from, Vector3 userHead)

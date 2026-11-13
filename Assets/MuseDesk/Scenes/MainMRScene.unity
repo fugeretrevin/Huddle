@@ -3322,6 +3322,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Spatial.CourierVisual
   shownScale: {x: 1, y: 1, z: 1}
   easeSeconds: 0.25
+  model: {fileID: 0}
+  animator: {fileID: 0}
+  stationAnimator: {fileID: 0}
+  attachSocket: {fileID: 0}
+  presentSeconds: 0.6
+  dockSeconds: 0.6
 --- !u!1 &79995626
 GameObject:
   m_ObjectHideFlags: 0
@@ -6896,6 +6902,14 @@ MonoBehaviour:
   - {fileID: 1171312107}
   - {fileID: 611827215}
   lift: 0.004
+  floorArt: {fileID: 0}
+  floorArtController: {fileID: 0}
+  ceilingArt: {fileID: 0}
+  ceilingArtController: {fileID: 0}
+  floorReadyWords: READY TO PLACE
+  ceilingReadyWords: COMES DOWN HERE
+  notClearWords: NOT CLEAR
+  notCheckedWords: NOT CHECKED
 --- !u!4 &164329624
 Transform:
   m_ObjectHideFlags: 0
@@ -11058,6 +11072,11 @@ MonoBehaviour:
   mirrorCompleted: {fileID: 1062411340}
   mirrorError: {fileID: 1358429725}
   mirrorOffset: {x: 0.17, y: 0.13, z: 0.03}
+  artBeacon: {fileID: 0}
+  showWorkingState: 0
+  agentAlerts: []
+  hideAgentAlertsWhenRemote: 1
+  feedbackOwnsCueSeconds: 1
 --- !u!1 &290360575
 GameObject:
   m_ObjectHideFlags: 0
@@ -17299,8 +17318,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 428860030}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: 0.9996151, z: 0.027745666, w: 0}
-  m_LocalPosition: {x: 0, y: 0.31999993, z: 0.26}
+  m_LocalRotation: {x: -0, y: 0.99194586, z: 0.12666272, w: 0}
+  m_LocalPosition: {x: 0, y: 0.43499994, z: 0.100000024}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -20015,6 +20034,7 @@ MonoBehaviour:
   modeText: {fileID: 1036164447}
   roleStrip: {fileID: 1501801766}
   standOffset: {x: 0.21, y: 0, z: 0.03}
+  artPerch: {fileID: 0}
   openSeconds: 10
   allowInDeskMode: 0
 --- !u!114 &481127314
@@ -73732,6 +73752,11 @@ MonoBehaviour:
   cancelKey: {fileID: 1676939091}
   podKey: {fileID: 460002632}
   podKeyLabel: {fileID: 813723375}
+  floorKeyLabel: {fileID: 0}
+  floorWords: Floor
+  sendBackWords: 'Send
+
+    back'
   keyScale: 0.050000004
   slot0: {x: 0, y: 0, z: 0}
   slot1: {x: 0.03459045, y: 0, z: 0.056209482}

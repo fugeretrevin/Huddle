@@ -37,12 +37,25 @@ namespace MuseDesk.Spatial
         /// <summary>Updates held back while focus mode was on.</summary>
         public int QuietCount => Model.QuietCount;
 
-        /// <summary>Raised (main thread) when the level, its agent or the quiet count changed.</summary>
+        /// <summary>Decisions waiting for the user right now (the reducer's pending decisions).</summary>
+        public int PendingDecisionCount => Model.PendingDecisions;
+        /// <summary>Deliveries (WorkDelivered events) since the last run start, failure, acknowledgement
+        /// or reset. A true count of reducer events; counted in focus mode too (it is a quiet number).</summary>
+        public int CompletedCount => _completedCount;
+        /// <summary>Time.unscaledTime at which the reducer last reported a decision request
+        /// (FeedbackController sounds its Attention cue for that same event). Far in the past if never.</summary>
+        public float LastDecisionRequestedAt { get; private set; } = -1000f;
+        /// <summary>Time.unscaledTime at which the reducer last reported a failure
+        /// (FeedbackController sounds its Error cue for that same event). Far in the past if never.</summary>
+        public float LastTaskFailedAt { get; private set; } = -1000f;
+
+        /// <summary>Raised (main thread) when the level, its agent, the quiet count or a count above changed.</summary>
         public event Action<AttentionLevel> Changed;
 
         SessionReducer _reducer;
         bool _bound;
         bool _wasRunning;
+        int _completedCount;
 
         void Awake()
         {
@@ -99,12 +112,36 @@ namespace MuseDesk.Spatial
 
         /// <summary>The user looked at the latest update: clear completed / error / quiet updates.
         /// A pending decision is never cleared here.</summary>
-        public void Acknowledge() { Model.Acknowledge(); }
+        public void Acknowledge()
+        {
+            int version = Model.Version;
+            bool had = ClearCompleted();
+            Model.Acknowledge();
+            RaiseIfOnlyCountChanged(had, version);
+        }
+
+        /// <summary>Forget the delivery count. True when it was not already zero.</summary>
+        bool ClearCompleted()
+        {
+            bool had = _completedCount != 0;
+            _completedCount = 0;
+            return had;
+        }
+
+        /// <summary>The model raises Changed only for its own values; when only the delivery count
+        /// moved, listeners are told here (once).</summary>
+        void RaiseIfOnlyCountChanged(bool countChanged, int versionBefore)
+        {
+            if (countChanged && Model.Version == versionBefore) OnModelChanged();
+        }
 
         // State that predates the event stream (start-up, resume, the switch to live).
         void ProjectSnapshot()
         {
+            int version = Model.Version;
+            bool had = ClearCompleted();
             Model.Reset();
+            RaiseIfOnlyCountChanged(had, version);
             if (_reducer == null) return;
             DecisionView pending = _reducer.FirstPendingDecision();
             if (pending != null)
@@ -123,21 +160,47 @@ namespace MuseDesk.Spatial
             // The agent that asks is named on the event; the researcher is the one who asks today
             // (the same convention AgentNameplate uses).
             string asker = e != null && !string.IsNullOrEmpty(e.AgentId) ? e.AgentId : AgentIds.Researcher;
+            LastDecisionRequestedAt = Time.unscaledTime;     // before the model raises Changed
             Model.DecisionRequested(decisionId, asker);
         }
 
         void OnDecisionResolved(string decisionId, string state) { Model.DecisionResolved(decisionId); }
 
-        void OnWorkDelivered(EventEnvelope e) { Model.WorkDelivered(e != null ? e.AgentId : null); }
+        void OnWorkDelivered(EventEnvelope e)
+        {
+            int version = Model.Version;
+            _completedCount++;
+            Model.WorkDelivered(e != null ? e.AgentId : null);
+            RaiseIfOnlyCountChanged(true, version);
+        }
 
-        void OnTaskFailed(EventEnvelope e) { Model.TaskFailed(e != null ? e.AgentId : null); }
+        void OnTaskFailed(EventEnvelope e)
+        {
+            int version = Model.Version;
+            LastTaskFailedAt = Time.unscaledTime;            // before the model raises Changed
+            bool had = ClearCompleted();                     // the model drops its completion here too
+            Model.TaskFailed(e != null ? e.AgentId : null);
+            RaiseIfOnlyCountChanged(had, version);
+        }
 
-        void OnSessionReset() { Model.Reset(); }
+        void OnSessionReset()
+        {
+            int version = Model.Version;
+            bool had = ClearCompleted();
+            Model.Reset();
+            RaiseIfOnlyCountChanged(had, version);
+        }
 
         void OnRunStateChanged()
         {
             bool running = controller != null && controller.RunInProgress;
-            if (running && !_wasRunning) Model.RunStarted();
+            if (running && !_wasRunning)
+            {
+                int version = Model.Version;
+                bool had = ClearCompleted();
+                Model.RunStarted();
+                RaiseIfOnlyCountChanged(had, version);
+            }
             _wasRunning = running;
         }
 
