@@ -1,28 +1,33 @@
 # Final performance results
 
-2026-11-12.
+Updated 2026-11-13.
 
-## There are no device performance numbers
+## There are still no device performance numbers
 
-No frame-time, CPU, GPU or memory measurement of MuseDesk on the Quest 3 exists, for this build or any earlier one. The unattended run on 2026-11-12 collected 60 VrApi lines, but the app process never started (lock screen), so those lines describe the system compositor idling at 90 FPS, not the app. They are in `Logs/quest/vrapi_ux_redesign.txt` and must not be quoted as app performance.
+Three unattended launch attempts (2026-11-12 evening, 2026-11-12 night, 2026-11-13) all ended the same way: the app process never started because the headset lock screen holds the display. The lock was not bypassed. The VrApi lines saved from those attempts (`Logs/quest/vrapi_ux_redesign.txt`, `vrapi_baseline_rc.txt`) describe the system compositor idling at 90 FPS and must not be quoted as app performance.
 
-To measure: unlock the headset, run `scripts/quest_run.ps1 -Label perf -Seconds 120` while going through one full demo run, and read `Logs/quest/vrapi_perf.txt` (FPS, App and GPU time, CPU and GPU level, memory).
+## How the numbers will be collected
 
-## What the redesign changed that affects cost (not measured)
+`scripts/quest_perf_watch.ps1` is a passive recorder. It never launches the app and never touches the proximity sensor or the lock screen. It waits until MuseDesk is running on the headset, then records the compositor's per-second line and memory for up to 8 minutes and writes `Logs/quest/perf_summary_<label>.txt` with average, minimum, 5th and 95th percentile for FPS, app GPU time, GPU and CPU utilisation, stale frames and memory.
 
-Likely cheaper:
-- 20 decor props and the physics tray are deactivated, with their renderers, colliders and rigidbodies.
-- The board is collapsed at start and its interactables are disabled while collapsed.
-- Three billboarded status panels and three billboarded name tags are gone.
-- New views rebuild text only on reducer events; `CardRoleTint` no longer instantiates a material per card.
+A copy has been waiting since 2026-11-13 00:20 (label `worn_baseline`, 4 hour window). To run it yourself:
 
-Likely more expensive:
-- One dynamic font atlas (Inter, 1024 x 1024) in addition to LiberationSans, which stays as the fallback.
-- The paper has more quads and labels (cover, pending and outcome plates, details sheet). Only one group is active at a time.
-- Eight short audio clips are synthesised once at start-up.
+```
+powershell -ExecutionPolicy Bypass -File scripts\quest_perf_watch.ps1 -Label rc1 -CaptureMinutes 8
+```
 
-New plates are opaque unlit quads tinted through property blocks. No transparent materials were added.
+then put the headset on, open MuseDesk and go through the checklist in `FINAL_INTERACTION_QA.md`, including opening the board and one full run. That covers idle, hand interaction, animation and the open board in one capture.
+
+Draw calls are not in the VrApi line. They need a development build with the profiler attached, which has not been made.
+
+## What changed that affects cost (not measured)
+
+Likely cheaper since the redesign: 20 decor props off; board collapsed and its interactables disabled until opened; billboarded status panels gone; the 50 x 60 cm viewer panel no longer shown; key colour components that re-applied a property block every frame are disabled, and the replacement holds no block at rest.
+
+Likely more expensive: three dynamic font atlases (Inter Medium, Inter Bold, LiberationSans fallback) instead of one; 50 rounded plates have more triangles than quads (tens each); wide keys from models; the completion sequence runs an extra 2.5 s of animation on delivery.
+
+No transparent materials were added in either pass.
 
 ## Still deferred
 
-Foveated rendering (deferred at the user's request) and any measurement-led tuning.
+Foveated rendering, and any tuning, until there is a measurement to tune against.

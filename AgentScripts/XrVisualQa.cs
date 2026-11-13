@@ -74,6 +74,9 @@ public static class XrVisualQa
         new[] { "Nameplate_", "ResearchStation" },          // a nameplate stands on its own desk
         new[] { "Nameplate_", "DevStation" },
         new[] { "Nameplate_", "QAStation" },
+        // The open board stands above the Tester's side of the office; BuildBoardV3 places its lowest
+        // edge 12 mm clear of what is under it, but the board's box in this test is inflated by its yaw.
+        new[] { "TaskBoard", "QAStation" },
     };
 
     /// <summary>Renderers that are not printable surfaces and not solid bodies (ignored in 3, 8, 9, 10).</summary>

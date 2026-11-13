@@ -778,8 +778,10 @@ namespace MuseDesk.Tests.EditMode
             var rig = Docked(out placement);
             rig.agentsBusy = true;
             Assert.IsTrue(rig.core.RequestPodDescend());
-            rig.Run(8f);                             // prepare, then the bounded agent wait runs out
+            int writes = rig.writes;
+            rig.Run(6.7f);                           // prepare (0.4 s), then the bounded agent wait (6 s) runs out
             Assert.AreEqual(CeilingPodState.ErrorRecovery, rig.pod.State);
+            Assert.AreEqual(writes, rig.writes, "the office never moved under the walking agents");
             rig.agentsBusy = false;
             rig.Run(8f);
             Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);

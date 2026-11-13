@@ -71,6 +71,8 @@ namespace MuseDesk.Spatial
         int _recenterFrames;
         PlacementMode _publishedMode;
         bool _wasTransitioning;
+        SavedPlacement _parked;          // the floor spot the office was brought back from
+        bool _parkedValid;
 
         /// <summary>The scene-free logic (null until Awake, or when the wiring is incomplete).</summary>
         public SpatialDirectorCore Core => _core;
@@ -104,6 +106,9 @@ namespace MuseDesk.Spatial
             // Desk state is always published, flags or not: readers of the contract get a valid root.
             SpatialWorkspaceState.PublishRoot(workspaceRoot);
             SpatialWorkspaceState.Publish(Mode, _core != null && _core.IsRemote, _core != null && _core.IsTransitioning);
+            // Requests raised by the reach side (a near-user key, a hand ray, a voice phrase).
+            SummonRequests.BringOfficeHere += OnBringOfficeHere;
+            SummonRequests.SendOfficeBack += OnSendOfficeBack;
         }
 
         void Start()
@@ -113,6 +118,8 @@ namespace MuseDesk.Spatial
 
         void OnDisable()
         {
+            SummonRequests.BringOfficeHere -= OnBringOfficeHere;
+            SummonRequests.SendOfficeBack -= OnSendOfficeBack;
             Unhook();
             ReleaseDeskPlacement();
         }
@@ -214,6 +221,40 @@ namespace MuseDesk.Spatial
             if (_core.Pod.State == CeilingPodState.Docked) _core.RequestPodDescend();
             else if (_core.Pod.State == CeilingPodState.Engaged) _core.RequestPodRetract();
         }
+
+        /// <summary>
+        /// "Bring the office within reach" (SummonRequests.BringOfficeHere). Ceiling: lower the pod.
+        /// Floor: return to the desk pose, remembering the floor spot so it can be sent back.
+        /// A request, not a command: it is refused while a move runs or a paper is held.
+        /// </summary>
+        public void BringOfficeHere()
+        {
+            if (_core == null || !flags.Any) return;
+            if (_core.Mode == PlacementMode.Ceiling) { _core.RequestPodDescend(); return; }
+            if (_core.Mode != PlacementMode.Floor) return;
+            SavedPlacement parked = _core.BuildSave(Application.buildGUID);   // null for a hand-placed spot
+            if (_core.RequestMode(PlacementMode.Desk)) { _parked = parked; _parkedValid = true; }
+        }
+
+        /// <summary>
+        /// "Send the office back" (SummonRequests.SendOfficeBack). Ceiling: raise the pod (waits while a
+        /// paper is held). After a Floor office was brought to the desk: back to the same floor spot if
+        /// it still passes the room checks, otherwise the floor preview opens so the user chooses again.
+        /// </summary>
+        public void SendOfficeBack()
+        {
+            if (_core == null || !flags.Any) return;
+            if (_core.Mode == PlacementMode.Ceiling) { _core.RequestPodRetract(); return; }
+            if (_core.Mode != PlacementMode.Desk || !_parkedValid) return;
+            string reason;
+            if (_parked != null && _core.TryRestore(_parked, out reason)) { _parkedValid = false; _parked = null; return; }
+            if (_core.IsTransitioning || SpatialWorkspaceState.TransitionHeld) return;   // try again later; the spot is kept
+            _parkedValid = false; _parked = null;
+            RequestFloor();
+        }
+
+        void OnBringOfficeHere() { BringOfficeHere(); }
+        void OnSendOfficeBack() { SendOfficeBack(); }
 
         /// <summary>Editor / Play Mode: use a hand-built room instead of the headset's scan (null = back to the scan).</summary>
         public void UseSyntheticRoom(SyntheticRoomGeometry room)
@@ -325,6 +366,7 @@ namespace MuseDesk.Spatial
             if (mode != _publishedMode)
             {
                 _publishedMode = mode;
+                if (mode != PlacementMode.Desk) { _parkedValid = false; _parked = null; }   // a new placement replaces a parked one
                 PublishNearUserPose();              // a mode was just confirmed
                 if (mode == PlacementMode.Ceiling && pod != null && _core.LastCeiling.valid)
                     pod.SetCeilingHeight(_core.LastCeiling.ceilingHeight);
