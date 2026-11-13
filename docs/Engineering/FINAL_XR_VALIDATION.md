@@ -146,3 +146,21 @@ In rough order of likelihood:
 4. **Stamp gating.** If `ReadyForDecision` never becomes true (for example the paper never finishes unfolding), the stamps would silently do nothing. The buttons would still work.
 5. **Modified art files.** Five FBX files used by the scene were changed by another tool during this pass (the Kanban frame, the task card, the approval stamp, two paper models). If their size or pivot changed, card text and the board layout may no longer line up.
 6. **Key label size** on the new keys and dock pads: sized by calculation, seen only in a capture.
+
+## 6. Additions after this document was written (2026-11-12, night)
+
+A further pass by Antigravity, then verified and committed as `2b8f074` on branch `antigravity/visual-polish`. The build on the headset is from that tree. Re-verified at that commit: Unity compiles, 0 missing scripts, **108** runtime checks pass, **145** backend tests pass, live backend end to end **71 of 71** (now including a request-changes round that produces a revised decision in the same run, and the bounded cancel).
+
+None of the following has been seen on the headset. Add these to the checklist in section 4:
+
+27. **Changes key.** The paper has a fifth key, "Changes". Press it. Does the Researcher go back to work and bring a second paper titled as a revision, still labelled a template recommendation? Approve that one: does the build then run? In a separate run, press Changes three times: does the run stop with "no further revisions are available"?
+28. **Stamps.** New stamp models on a rest pad at front centre. Do they sit on the pad, grab cleanly, and still stamp only a paper you have taken?
+29. **Keys.** New keycap and housing models. Do the caps sink when pressed and return to rest, with no cap left floating after a press?
+30. **Carried paper and token.** Is the paper in the Researcher's hand small (about 6.5 cm), and the hand-off token a sensible size? (They were 100 times too large because the rig's hand bones are scaled by 100.)
+31. **Desk props.** Can you pick up, carry and throw the mug, plant, books and so on, from near and from a distance, and do they return?
+32. **Distance grab.** Point at a task card or the offered paper from out of reach and pinch. Does it come to your hand? Does that ever steal a grab you meant for something near?
+33. **Fingers on surfaces.** When your fingers close on a card, the paper or a prop, do the rendered fingers rest on its surface instead of sinking in? **If the hands flicker, jitter or look wrong at any time, say so first**: this solver is new and is the most likely thing to make hands look worse. It is `DynamicFingerCollision` on `[BuildingBlock] Camera Rig`; disabling that component (or setting `DynamicFingerCollision.GloballyEnabled = false`) restores plain tracked hands.
+34. **Touch an agent.** Rest a fingertip on an agent's head for a moment. Does a small card appear with its state, progress and task?
+35. **Voice.** Press the Voice key on the paper. Is there a microphone permission prompt? With Wi-Fi on, do "approve", "reject", "changes" and "why" work, and does "don't approve" do nothing? Voice needs network and does nothing offline.
+36. **Stability.** Does the office stay put (no slow drift, no re-placing itself while you work, no falling)? Locomotion was disabled and automatic re-placement on recenter was turned off.
+37. **Merged models.** The three desks and the board frame were swapped for merged-mesh versions. Does anything on them look wrong or missing (lamps, monitors, the tester's scanner ring)?
