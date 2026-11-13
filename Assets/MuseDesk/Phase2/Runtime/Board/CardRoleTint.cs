@@ -24,7 +24,7 @@ namespace MuseDesk.Phase2.Board
         public Color developer  = new Color(0.30f, 0.80f, 0.45f);   // green
         public Color tester     = new Color(0.95f, 0.65f, 0.25f);   // amber
 
-        [Tooltip("Emission multiplier so the header reads in passthrough.")]
+        [Tooltip("Emission colour multiplier. Only has an effect if the strip's material already has emission on.")]
         [Range(0f, 1f)] public float emission = 0.25f;
 
         TaskCardView _view;
@@ -54,19 +54,23 @@ namespace MuseDesk.Phase2.Board
             }
         }
 
+        MaterialPropertyBlock _block;
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        static readonly int ColorId = Shader.PropertyToID("_Color");
+        static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
         void Apply(Color c)
         {
-            // Use the instance material (not shared) so pooled cards tint independently.
-            var m = headerStrip.material;
-            if (m == null) return;
-            m.color = c;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-            if (emission > 0f && m.HasProperty("_EmissionColor"))
-            {
-                m.EnableKeyword("_EMISSION");
-                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-                m.SetColor("_EmissionColor", c * emission);
-            }
+            // A property block, not renderer.material: that made a material instance per card and
+            // switched on an emission keyword (both ruled out by the redesign brief). Pooled cards
+            // still tint independently. The emission colour only has an effect on a material that
+            // already has emission enabled.
+            if (_block == null) _block = new MaterialPropertyBlock();
+            headerStrip.GetPropertyBlock(_block);
+            _block.SetColor(BaseColorId, c);
+            _block.SetColor(ColorId, c);
+            _block.SetColor(EmissionColorId, c * emission);
+            headerStrip.SetPropertyBlock(_block);
         }
     }
 }

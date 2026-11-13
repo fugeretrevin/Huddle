@@ -47,6 +47,35 @@ namespace MuseDesk.Phase2.Board
         /// helpers such as the desk card-action console; do not mutate.</summary>
         public Dictionary<string, TaskCardView>.ValueCollection ActiveViews => _views.Values;
 
+        /// <summary>The card view for a task id, or null. Lets the task dock send the same assign
+        /// command a hand drop sends, with the same pending / confirmed / refused feedback.</summary>
+        public TaskCardView FindView(string taskId)
+        {
+            if (string.IsNullOrEmpty(taskId)) return null;
+            return _views.TryGetValue(taskId, out var v) ? v : null;
+        }
+
+        /// <summary>The card a hand is holding right now, or null. Computed at most once per frame
+        /// and shared by the helpers that react to a held card (toolbar, assignment pads, dock).</summary>
+        public TaskCardView HeldCard
+        {
+            get
+            {
+                int frame = Time.frameCount;
+                if (frame == _heldFrame) return _heldCard;
+                _heldFrame = frame;
+                _heldCard = null;
+                foreach (var v in _views.Values)
+                {
+                    if (v != null && v.IsHeld) { _heldCard = v; break; }
+                }
+                return _heldCard;
+            }
+        }
+
+        TaskCardView _heldCard;
+        int _heldFrame = -1;
+
         readonly Dictionary<string, TaskCardView> _views = new Dictionary<string, TaskCardView>();
         readonly Stack<TaskCardView> _pool = new Stack<TaskCardView>();
         CancellationTokenSource _cts;
@@ -277,20 +306,29 @@ namespace MuseDesk.Phase2.Board
         static string Confirmation(string label, TaskCardV2 c) => label switch
         {
             "assign" => AssignLine(c),
-            "priority" => c != null ? $"Priority P{Mathf.Clamp(c.Priority, 0, 3)}" : "Priority set",
+            "priority" => c != null ? "Priority: " + TaskCardView.PriorityWord(c.Priority) : "Priority set",
             "pause" => "Paused",
             "resume" => "Back in the queue",
             _ => "Done",
         };
+
+        /// <summary>Words for a confirmed command, from the canonical card the gateway returned.
+        /// <paramref name="label"/> is "assign", "priority", "pause" or "resume".</summary>
+        public static string DescribeConfirmation(string label, TaskCardV2 canonical) => Confirmation(label, canonical);
+
+        /// <summary>Words for a refused command (a 409 body, a transport failure or a client-side
+        /// "not ready"). Same wording the card itself shows.</summary>
+        public static string DescribeRefusal(CommandErrorBody error) => Reason(error);
 
         // An executable card that the backend has started says so. A planned card says plainly that
         // it was only assigned: no agent runs it (never imply work began when it did not).
         static string AssignLine(TaskCardV2 c)
         {
             if (c == null || string.IsNullOrEmpty(c.AgentId)) return "Assigned";
-            string who = char.ToUpperInvariant(c.AgentId[0]) + c.AgentId.Substring(1);
+            string who = TaskCardView.RoleWord(c.AgentId);
             if (c.Executable && c.TaskState == TaskStates.Running) return who + " started it";
-            return c.Executable ? "Assigned to " + who : "Planned for " + who + ". Not run yet";
+            // Short enough for the card's state line; "only" keeps it honest: nothing runs it.
+            return c.Executable ? "Assigned to " + who : "Planned only: " + who;
         }
 
         static string Reason(CommandErrorBody e)
@@ -308,7 +346,10 @@ namespace MuseDesk.Phase2.Board
                 CommandErrorCodes.DependenciesNotReady => "Waiting on another task",
                 CommandErrorCodes.ExecutorUnavailable => "Nothing can run it right now",
                 CommandErrorCodes.TaskNotPaused => "It isn't paused",
+                CommandErrorCodes.RevisionConflict => "It just changed. Try again",
                 "CLIENT_NOT_READY" => "Board is still loading",
+                "TRANSPORT_ERROR" => "Couldn't reach the desktop",
+                "CANCELLED" => "Cancelled before it was sent",
                 _ => string.IsNullOrEmpty(e.Message) ? "Not accepted" : e.Message,
             };
         }

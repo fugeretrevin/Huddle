@@ -39,6 +39,15 @@ namespace MuseDesk.Documents
                  "paper, revealed when the user takes it.")]
         public GameObject[] hideWhileHeld;
 
+        [Tooltip("Cover elements of the small carried paper (header band, the big word, the grab tab, " +
+                 "the sheets behind). Shown only while the agent holds it; hidden when the user takes it.")]
+        public GameObject[] showWhileHeld;
+
+        [Tooltip("The paper's panel. It owns the keys, the stamp area and the details sheet; this " +
+                 "controller only tells it when the sheet is open and when the keys may be used. " +
+                 "Auto-found in children if empty.")]
+        public DecisionPanel panel;
+
         System.Func<int> _selCount;
         bool _selResolved;
         bool _held;
@@ -51,6 +60,7 @@ namespace MuseDesk.Documents
         void Awake()
         {
             if (!_capturedScale) { _fullScale = transform.localScale; _capturedScale = true; }
+            if (panel == null) panel = GetComponentInChildren<DecisionPanel>(true);
         }
 
         void OnEnable()
@@ -94,13 +104,25 @@ namespace MuseDesk.Documents
 
         void SetContent(bool on, bool includeActions = true)
         {
-            if (hideWhileHeld == null) return;
-            foreach (var go in hideWhileHeld)
+            if (hideWhileHeld != null)
             {
-                if (go == null) continue;
-                if (!includeActions && go.name == "Actions") continue;
-                go.SetActive(on);
+                for (int i = 0; i < hideWhileHeld.Length; i++)
+                {
+                    var go = hideWhileHeld[i];
+                    if (go == null) continue;
+                    if (!includeActions && go.name == "Actions") continue;
+                    go.SetActive(on);
+                }
             }
+            // The cover is the opposite of the content: it is what the small carried paper shows.
+            if (showWhileHeld != null)
+            {
+                for (int i = 0; i < showWhileHeld.Length; i++)
+                    if (showWhileHeld[i] != null) showWhileHeld[i].SetActive(!on);
+            }
+            // The panel has the last word on the keys, the stamp area, the details sheet and the
+            // pending / outcome plates (it knows whether a response is in flight or confirmed).
+            if (panel != null) panel.SetSheetState(on, on && includeActions);
         }
 
         IEnumerator ExpandAndEnableActions()

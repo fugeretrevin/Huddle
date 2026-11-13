@@ -111,29 +111,23 @@ namespace MuseDesk.Agents
 
             bool live = controller != null && controller.IsLive;
             _sb.Clear();
-            _sb.Append("<b>").Append(view.displayName).Append("</b>   <size=70%>")
+            _sb.Append("<b>").Append(view.displayName).Append("</b>   <size=80%>")
                .Append(live ? "LIVE" : "SCRIPTED DEMO").Append("</size>\n");
-            _sb.Append(Describe(view.State)).Append('\n');
+            // Same words as the desk nameplate (one mapping for every surface).
+            bool waitingOnUser = false;
+            if (controller != null)
+            {
+                var pending = controller.Reducer.FirstPendingDecision();
+                waitingOnUser = pending != null && pending.AgentId == view.agentId;
+            }
+            _sb.Append(MuseDesk.Art.WorkstationStatusDisplay.ActivityWords(view.State, waitingOnUser)).Append('\n');
             if (!string.IsNullOrEmpty(view.Progress))
                 _sb.Append("<size=85%>").Append(view.Progress).Append("</size>\n");
 
             string task = OwnedTaskLine();
-            _sb.Append("<size=75%>").Append(task ?? "No task card assigned.").Append("</size>");
+            _sb.Append("<size=80%>").Append(task ?? "No task card assigned.").Append("</size>");
             cardText.text = _sb.ToString();
         }
-
-        static string Describe(string state) => (state ?? "").ToLowerInvariant() switch
-        {
-            "researching" => "Researching",
-            "coding" => "Writing code",
-            "testing" => "Running tests",
-            "reporting" => "Reporting",
-            "approaching" => "Coming to you",
-            "waiting" => "Waiting",
-            "complete" => "Finished",
-            "error" => "Stopped on an error",
-            _ => "Idle",
-        };
 
         // The card this agent owns on the board: prefer one that is active, else any assigned to it.
         string OwnedTaskLine()
@@ -153,7 +147,7 @@ namespace MuseDesk.Agents
             }
             if (best == null) return null;
             string title = string.IsNullOrEmpty(best.Title) ? "(untitled)" : best.Title;
-            if (title.Length > 40) title = title.Substring(0, 39) + "…";
+            if (title.Length > 40) title = title.Substring(0, 37) + "...";
             string state = best.TaskState == TaskStates.AwaitingApproval ? "needs your decision"
                          : best.TaskState == TaskStates.Running ? "in progress"
                          : (best.TaskState ?? "").Replace('_', ' ');

@@ -105,33 +105,51 @@ namespace MuseDesk.Phase2.Board
 
         void OnReleased()
         {
+            // Read both targets BEFORE clearing the halos: ClearHighlights nulls _candidate, and the
+            // check below used to run after it, so a drop on a valid zone never sent the assign
+            // (the card just went home).
             var invalidTarget = _invalidHover;
+            var target = _candidate;
             ClearHighlights();
 
             // Valid target under the card at release?
-            if (_candidate != null && _candidate.IsCompatible(_card.Data))
+            if (target != null && target.IsCompatible(_card.Data))
             {
-                if (!_candidate.WouldReassign(_card.Data))
+                if (!target.WouldReassign(_card.Data))
                 {
-                    // Already assigned to this agent — no command; just rest at the station.
-                    SnapTo(_candidate.RestAnchor);
+                    // Already assigned to this agent: no command. The card goes back to its place on
+                    // the board (it used to stay floating at the pad, which is now hidden after a drop).
+                    _card.ShowResult(true, "Already with the " + TaskCardView.RoleWord(target.agentId));
+                    _card.ReturnHome();
                     ResetToIdle(returnHome: false);
                     return;
                 }
-                _ = BeginAssignAsync(_candidate);
+                _ = BeginAssignAsync(target);
                 return;
             }
 
             // Invalid drop or empty space: explain why if dropped on a red zone, return home, NO server call.
             if (invalidTarget != null && _card?.Data != null)
-            {
-                string msg = _card.Data.Executable
-                    ? "Starts with Researcher"
-                    : (TaskStateSets.IsRunning(_card.Data.TaskState) ? "Running: pause first" : "Can't assign here");
-                _card.ShowResult(false, msg);
-            }
+                _card.ShowResult(false, LocalRefusalWords(_card.Data, invalidTarget));
             _card.ReturnHome();
             ResetToIdle(returnHome: false);
+        }
+
+        /// <summary>
+        /// Why a drop of <paramref name="card"/> on <paramref name="zone"/> is refused locally (no
+        /// server call is made for these). Same wording the gateway's refusal codes map to, so the
+        /// card, the assignment pads and the dock all say one thing. Returns null when the drop
+        /// would be sent to the gateway.
+        /// </summary>
+        public static string LocalRefusalWords(TaskCardV2 card, StationDropZone zone)
+        {
+            if (card == null || zone == null) return null;
+            if (zone.IsCompatible(card)) return null;
+            if (TaskStateSets.IsTerminal(card.TaskState)) return "Finished tasks can't move";
+            if (TaskStateSets.IsRunning(card.TaskState)) return "Already running";
+            if (!TaskStateSets.IsSafeAssignCheckpoint(card.TaskState)) return "Can't move it right now";
+            if (card.Executable && zone.agentId != Phase2AgentIds.Researcher) return "Starts with the Researcher";
+            return "Can't assign here";
         }
 
         async Task BeginAssignAsync(StationDropZone zone)

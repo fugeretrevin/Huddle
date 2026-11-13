@@ -8,9 +8,11 @@ namespace MuseDesk.Phase2.Board
 {
     /// <summary>
     /// A single physical task card on the board (P2-01). Pure view + data holder: it renders a
-    /// TaskCardV2 (short title, status marker, role, compact priority, and a conspicuous live/demo
-    /// source label) and exposes grab state. The drag state machine lives in TaskDragController;
-    /// the authoritative task truth always comes from the Phase2Reducer, never from this view.
+    /// TaskCardV2 as a title, one state line in plain words, a role chip and the LIVE / SCRIPTED DEMO
+    /// mode words (always shown: honesty invariant), and exposes grab state. Priority appears only
+    /// when it is not the default, as a word. The id and revision are not on the card face. The drag
+    /// state machine lives in TaskDragController; the authoritative task truth always comes from the
+    /// Phase2Reducer, never from this view.
     ///
     /// Grab state is read by REFLECTION off the project's Oculus.Interaction.Grabbable
     /// (SelectingPointsCount), mirroring the existing MuseDesk.Workspace.GrabbableRigidbody /
@@ -22,17 +24,20 @@ namespace MuseDesk.Phase2.Board
     {
         [Header("Text (TMP)")]
         public TMP_Text titleLabel;
-        public TMP_Text idRevisionLabel;   // e.g. "t2-ab12 · r3"
+        public TMP_Text idRevisionLabel;   // no longer on the card face: kept empty (reference detail)
         public TMP_Text roleLabel;         // assignee role or "Unassigned"
-        public TMP_Text priorityLabel;     // compact: "P2"
-        public TMP_Text stateLabel;        // status marker text
-        public TMP_Text sourceLabel;       // "LIVE" / "SCRIPTED DEMO" — always visible (invariant #1)
+        public TMP_Text priorityLabel;     // a word ("High"), only when the priority is not the default
+        public TMP_Text stateLabel;        // one state line in plain words
+        public TMP_Text sourceLabel;       // "LIVE" / "SCRIPTED DEMO": always visible (invariant #1)
 
         [Header("Optional visuals")]
         [Tooltip("Shown while the card is inspected/expanded (pinch to expand). Optional.")]
         public GameObject detailsRoot;
         [Tooltip("Status marker renderer tinted by task state. Optional.")]
         public Renderer statusMarker;
+        [Tooltip("Colour the role and priority words to suit the role strip under them (light text, or " +
+                 "dark text on the Tester's amber). Set by the builder only when the strip is role-tinted.")]
+        public bool tintHeaderText;
 
         [Header("Interaction (set by the Editor builder / ISDK Quick Actions)")]
         [Tooltip("The Oculus.Interaction.Grabbable on this card. Read by reflection only.")]
@@ -69,14 +74,42 @@ namespace MuseDesk.Phase2.Board
         bool _noticeActive;
         Color _stateBaseColor;
         bool _stateColorCaptured;
-        static readonly Color NoticePending = new Color(0.95f, 0.78f, 0.25f);
-        static readonly Color NoticeOk = new Color(0.25f, 0.62f, 0.32f);
-        static readonly Color NoticeError = new Color(0.85f, 0.25f, 0.22f);
+        // Dark enough to read on the paper-coloured card face (nothing lighter than "ink soft" there):
+        // ink soft while waiting, a dark green for confirmed, a dark coral for refused. The words
+        // carry the meaning; the colour only reinforces it.
+        static readonly Color NoticePending = new Color(0.294f, 0.333f, 0.388f);   // #4B5563
+        static readonly Color NoticeOk = new Color(0.10f, 0.42f, 0.24f);
+        static readonly Color NoticeError = new Color(0.66f, 0.18f, 0.15f);
+        static readonly Color RoleTextOnDark = new Color(0.953f, 0.957f, 0.965f);  // #F3F4F6
+        static readonly Color RoleTextOnLight = new Color(0.122f, 0.145f, 0.188f); // #1F2530
+
+        /// <summary>Raised whenever any card shows command feedback: (card, words, outcome).
+        /// outcome is null while the command is pending, true once the gateway confirmed it, false
+        /// when it was refused. Lets the card toolbar, the assignment pads and the task dock repeat
+        /// the same words the card shows. Subscribers must unsubscribe in OnDisable.</summary>
+        public static event Action<TaskCardView, string, bool?> NoticeShown;
 
         /// <summary>The command was sent and the backend has not answered yet.</summary>
-        public void ShowPending(string text = "Sending…") => Notice(text, NoticePending, 8f);
+        public void ShowPending(string text = "Sending")
+        {
+            Notice(text, NoticePending, 8f);
+            RaiseNotice(text, null);
+        }
+
         /// <summary>The backend answered: confirmed (ok) or rejected with a reason.</summary>
-        public void ShowResult(bool ok, string text) => Notice(text, ok ? NoticeOk : NoticeError, ok ? 2f : 4f);
+        public void ShowResult(bool ok, string text)
+        {
+            Notice(text, ok ? NoticeOk : NoticeError, ok ? 2f : 4f);
+            RaiseNotice(text, ok);
+        }
+
+        void RaiseNotice(string text, bool? outcome)
+        {
+            var handler = NoticeShown;
+            if (handler == null || string.IsNullOrEmpty(text)) return;
+            try { handler(this, text, outcome); }
+            catch (Exception ex) { Debug.LogError($"[MuseDesk.P2] card notice listener error: {ex.Message}"); }
+        }
 
         void Notice(string text, Color color, float seconds)
         {
@@ -140,13 +173,30 @@ namespace MuseDesk.Phase2.Board
         void Render()
         {
             if (Data == null) return;
-            if (titleLabel) titleLabel.text = Truncate(Data.Title, 48);
-            if (idRevisionLabel) idRevisionLabel.text = $"{ShortId(Data.TaskId)} · r{Data.Revision}";
-            if (roleLabel) roleLabel.text = string.IsNullOrEmpty(Data.AgentId) ? "Unassigned" : Capitalize(Data.AgentId);
-            if (priorityLabel) priorityLabel.text = $"P{Mathf.Clamp(Data.Priority, 0, 3)}";
-            if (stateLabel && !_noticeActive) stateLabel.text = StateLine(Data);
-            if (sourceLabel) sourceLabel.text = Data.SourceMode == SourceModes.Demo ? "SCRIPTED DEMO" : "LIVE";
+            // The card face: title, one state line, role chip, mode words. Nothing else by default.
+            SetText(titleLabel, Truncate(Data.Title, 48));
+            SetText(idRevisionLabel, "");                        // id / revision are off the card face
+            SetText(roleLabel, RoleWord(Data.AgentId));
+            // Priority only when it is not the default, and as a word.
+            SetText(priorityLabel, Data.Priority == DefaultPriority ? "" : PriorityWord(Data.Priority));
+            if (tintHeaderText)
+            {
+                // Both sit on the role strip. The Tester's strip is amber, where dark text reads;
+                // the other strips are dark enough for light text.
+                Color want = Data.AgentId == Phase2AgentIds.Tester ? RoleTextOnLight : RoleTextOnDark;
+                if (roleLabel && roleLabel.color != want) roleLabel.color = want;
+                if (priorityLabel && priorityLabel.color != want) priorityLabel.color = want;
+            }
+            if (!_noticeActive) SetText(stateLabel, StateLine(Data));
+            SetText(sourceLabel, ModeWords(Data.SourceMode));
             if (statusMarker) ApplyStateTint();
+        }
+
+        static void SetText(TMP_Text label, string text)
+        {
+            if (label == null) return;
+            if (text == null) text = "";
+            if (label.text != text) label.text = text;
         }
 
         MaterialPropertyBlock _tintBlock;
@@ -212,32 +262,92 @@ namespace MuseDesk.Phase2.Board
         public void PokeCyclePriority() => PriorityCycleRequested?.Invoke(this);
 
         // ─── helpers ───
+        // ASCII only (the UI font rule): three dots, not an ellipsis character.
         static string Truncate(string s, int max)
-            => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max - 1) + "…");
-        static string ShortId(string id)
-            => string.IsNullOrEmpty(id) ? "?" : (id.Length <= 10 ? id : id.Substring(0, 10));
+            => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max - 3) + "...");
         static string Capitalize(string s)
             => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
-        // What the card can honestly say about itself. A queued card that a pipeline can run reads
-        // "Ready: drop on Researcher"; one that nothing runs yet shows its assignee if assigned.
-        static string StateLine(TaskCardV2 d)
+
+        // What the card can honestly say about itself, in one short line.
+        static string StateLine(TaskCardV2 d) => StateWords(d);
+
+        // ─── words shared by the card, the card toolbar and the task dock ───
+
+        /// <summary>The priority new cards get (BoardPresenter / Phase2Bootstrap create with 1). A card
+        /// at this priority shows no priority word.</summary>
+        public const int DefaultPriority = 1;
+
+        /// <summary>Priority 0..3 as a word.</summary>
+        public static string PriorityWord(int priority)
         {
-            if (d.TaskState == TaskStates.Queued)
+            switch (Mathf.Clamp(priority, 0, 3))
             {
-                if (d.Executable) return "Ready: drop on Researcher";
-                return !string.IsNullOrEmpty(d.AgentId)
-                    ? $"Assigned: {Capitalize(d.AgentId)} (planned)"
-                    : "Planned";
+                case 0: return "Low";
+                case 2: return "High";
+                case 3: return "Urgent";
+                default: return "Normal";
             }
-            return PrettyState(d.TaskState);
         }
 
-        static string PrettyState(string s) => s switch
+        /// <summary>The assignee as a word: "Researcher", "Developer", "Tester" or "Unassigned".</summary>
+        public static string RoleWord(string agentId)
         {
-            TaskStates.AwaitingApproval => "Needs me",
-            TaskStates.PauseRequested => "Pausing…",
-            null => "",
-            _ => Capitalize(s ?? "")
-        };
+            switch (agentId)
+            {
+                case Phase2AgentIds.Researcher: return "Researcher";
+                case Phase2AgentIds.Developer: return "Developer";
+                case Phase2AgentIds.Tester: return "Tester";
+                default: return string.IsNullOrEmpty(agentId) ? "Unassigned" : Capitalize(agentId);
+            }
+        }
+
+        /// <summary>"SCRIPTED DEMO" or "LIVE" for a source_mode value. Anything that is not
+        /// explicitly the demo is reported as LIVE only when it says "live"; an unknown or missing
+        /// value is shown as scripted, so nothing is ever presented as live by default.</summary>
+        public static string ModeWords(string sourceMode)
+            => sourceMode == SourceModes.Live ? "LIVE" : "SCRIPTED DEMO";
+
+        /// <summary>True for a queued executable card whose run has not been started: the card that
+        /// Start (or a drop on the Researcher) launches.</summary>
+        public static bool IsReadyToRun(TaskCardV2 d)
+            => d != null && d.Executable && d.TaskState == TaskStates.Queued && string.IsNullOrEmpty(d.RunTaskId);
+
+        /// <summary>Local hint for showing a Pause action (the gateway still decides). Waiting cards
+        /// can be paused; a card whose pipeline run is in progress has no safe pause point.</summary>
+        public static bool IsPausable(TaskCardV2 d)
+            => d != null && (d.TaskState == TaskStates.Queued || d.TaskState == TaskStates.Blocked);
+
+        /// <summary>Local hint for showing a Resume action.</summary>
+        public static bool IsResumable(TaskCardV2 d)
+            => d != null && (d.TaskState == TaskStates.Paused || d.TaskState == TaskStates.PauseRequested);
+
+        /// <summary>One state line in plain words for a card, from its canonical task state.</summary>
+        public static string StateWords(TaskCardV2 d)
+        {
+            if (d == null) return "";
+            switch (d.TaskState)
+            {
+                case TaskStates.Queued:
+                    if (IsReadyToRun(d)) return "Ready for Researcher";
+                    if (d.Executable) return "Queued";
+                    // A planned card: nothing runs it, and the card says so.
+                    switch (d.AgentId)
+                    {
+                        case Phase2AgentIds.Researcher: return "Planned for Researcher";
+                        case Phase2AgentIds.Developer: return "Planned for Developer";
+                        case Phase2AgentIds.Tester: return "Planned for Tester";
+                        default: return "Planned";
+                    }
+                case TaskStates.Running: return "In progress";
+                case TaskStates.AwaitingApproval: return "Needs your decision";
+                case TaskStates.Blocked: return "Waiting on a task";
+                case TaskStates.PauseRequested: return "Pausing";
+                case TaskStates.Paused: return "Paused";
+                case TaskStates.Completed: return "Completed";
+                case TaskStates.Failed: return "Failed";
+                case TaskStates.Cancelled: return "Cancelled";
+                default: return string.IsNullOrEmpty(d.TaskState) ? "" : Capitalize(d.TaskState);
+            }
+        }
     }
 }

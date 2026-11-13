@@ -99,7 +99,9 @@ namespace MuseDesk.Documents
             _responding = false;
             // Where the recommendation came from, in the backend's own words when it says so
             // ("Template recommendation. Not live AI research.").
-            if (panel) panel.Bind(content, content.SourceMode, e.PayloadString("research_provenance_label", null));
+            // A revised proposal (after "Changes") says so: revision 0 is the first proposal.
+            int revision = e.PayloadValue<int>("decision_revision", e.PayloadValue<int>("revision", 0));
+            if (panel) panel.Bind(content, content.SourceMode, e.PayloadString("research_provenance_label", null), revision);
             if (paperRoot)
             {
                 paperRoot.SetActive(false);   // re-trigger OnEnable placement
@@ -159,6 +161,7 @@ namespace MuseDesk.Documents
             if (paperRoot) paperRoot.SetActive(false);
             _currentDecisionId = null;
             _responding = false;
+            if (panel) panel.Clear();
         }
 
         bool BeginResponse()
@@ -189,7 +192,7 @@ namespace MuseDesk.Documents
         public void OnAskWhy()
         {
             if (controller == null) return;
-            if (panel) { panel.Expand(); panel.SetAnswer("Asking…"); }
+            if (panel) { panel.Expand(); panel.SetAnswer("Asking..."); }
             controller.AskPending("Why do you recommend this?",
                 ans => { if (panel) panel.SetAnswer(ans); });
         }

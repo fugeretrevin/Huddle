@@ -5,19 +5,22 @@ using TMPro;
 using UnityEngine;
 using MuseDesk.Models;
 using MuseDesk.Networking;
+using MuseDesk.Workspace;
 
 namespace MuseDesk.Documents
 {
     /// <summary>
     /// The filing tray: every decision the user has made stays in the workspace. Each decided paper
-    /// adds a sheet to the out-tray stack, and pressing the "Filed" key pages through the record of
-    /// what was decided and what came of it: the question, the outcome, whether it was live or a
-    /// scripted demo, and the resulting artifact (files changed, tests passed) if there was one.
+    /// adds a sheet to the out-tray stack, and poking the stack (ArchiveStackPoke) pages through the
+    /// record of what was decided and what came of it: the question, the outcome, whether it was
+    /// live or a scripted demo, and the resulting artifact (files changed, tests passed) if there
+    /// was one. The readout stays open for a few seconds after a poke, then closes by itself.
     ///
     /// Everything shown comes from events the session reducer applied (decision.requested,
     /// decision.resolved, artifact.created, task.completed). Nothing is invented, and a rejected
-    /// decision is filed as rejected with no result. The archive survives a demo replay, so the
-    /// workspace keeps its history for the session.
+    /// decision is filed as rejected with no result. The records and the stack survive a demo
+    /// replay on purpose (the workspace keeps its history for the session); only the open readout
+    /// is closed by a session reset.
     /// </summary>
     public class DecisionArchive : MonoBehaviour
     {
@@ -35,8 +38,10 @@ namespace MuseDesk.Documents
         [Header("Readout")]
         public GameObject readoutRoot;
         public TMP_Text readout;
-        [Tooltip("Seconds the readout stays open after the last press.")]
-        public float readoutSeconds = 14f;
+        [Tooltip("Seconds the readout stays open after the last poke.")]
+        public float readoutSeconds = 8f;
+        [Tooltip("Scale of the readout when open (used when the builder saved it hidden).")]
+        public Vector3 readoutShownScale = Vector3.one;
 
         public class Record
         {
@@ -58,15 +63,42 @@ namespace MuseDesk.Documents
         /// <summary>Decisions made this session, oldest first.</summary>
         public IReadOnlyList<Record> Records => _records;
 
+        /// <summary>How many decisions have been decided and filed this session.</summary>
+        public int FiledCount
+        {
+            get
+            {
+                int filed = 0;
+                for (int i = 0; i < _records.Count; i++) if (_records[i].State != "requested") filed++;
+                return filed;
+            }
+        }
+
+        /// <summary>Raised when a decided paper has reached the out-tray (after <see cref="fileDelay"/>),
+        /// so <see cref="FiledCount"/> has a new value to show.</summary>
+        public event System.Action FiledCountChanged;
+
+        /// <summary>True while the readout is open.</summary>
+        public bool ReadoutOpen => _open;
+
+        readonly ScaleEase _readoutEase = new ScaleEase();
+
         void Awake()
         {
-            if (readoutRoot != null) readoutRoot.SetActive(false);
+            if (readoutRoot != null)
+            {
+                // Shown and hidden by scale, so the readout can pop in and out; it holds no keys.
+                Vector3 full = ScaleEase.ResolveFull(readoutRoot.transform, readoutShownScale);
+                if (!readoutRoot.activeSelf) readoutRoot.SetActive(true);
+                _readoutEase.Init(readoutRoot.transform, full, 0.2f, false);
+            }
             if (sheetTemplate != null) sheetTemplate.SetActive(false);
         }
 
         void Update()
         {
             if (!_bound && controller != null) Bind();
+            _readoutEase.Tick(Time.deltaTime);
             if (_open && Time.time >= _hideAt) HideReadout();
         }
 
@@ -77,6 +109,7 @@ namespace MuseDesk.Documents
             r.DecisionResolved += OnResolved;
             r.ArtifactCreated += OnArtifact;
             r.WorkDelivered += OnDelivered;
+            r.SessionReset += HideReadout;
             _bound = true;
         }
 
@@ -88,7 +121,16 @@ namespace MuseDesk.Documents
             r.DecisionResolved -= OnResolved;
             r.ArtifactCreated -= OnArtifact;
             r.WorkDelivered -= OnDelivered;
+            r.SessionReset -= HideReadout;
             _bound = false;
+        }
+
+        void RaiseFiledCountChanged()
+        {
+            var handler = FiledCountChanged;
+            if (handler == null) return;
+            try { handler(); }
+            catch (System.Exception ex) { Debug.LogError($"[MuseDesk] filed-count listener error: {ex.Message}"); }
         }
 
         Record Find(string decisionId)
@@ -126,6 +168,7 @@ namespace MuseDesk.Documents
             if (rec == null || rec.State != "requested") return;      // unknown, or already filed (replay)
             rec.State = (state ?? "resolved").ToLowerInvariant();
             if (isActiveAndEnabled) StartCoroutine(AddSheetAfter(fileDelay));
+            else RaiseFiledCountChanged();
         }
 
         void OnArtifact(EventEnvelope e)
@@ -150,6 +193,7 @@ namespace MuseDesk.Documents
         IEnumerator AddSheetAfter(float seconds)
         {
             yield return new WaitForSeconds(seconds);
+            RaiseFiledCountChanged();                          // the paper has landed: the count may show it
             if (sheetTemplate == null || stackAnchor == null) yield break;
             if (_sheets.Count >= maxSheets) yield break;       // the stack stops growing; the records are all kept
             var sheet = Instantiate(sheetTemplate, stackAnchor);
@@ -187,7 +231,7 @@ namespace MuseDesk.Documents
         {
             _shown = -1;
             _open = false;
-            if (readoutRoot != null) readoutRoot.SetActive(false);
+            _readoutEase.Hide();
         }
 
         void Render()
@@ -199,7 +243,7 @@ namespace MuseDesk.Documents
                 if (_records[i].State != "requested") { filed++; if (i <= _shown) ordinal = filed; }
 
             _sb.Clear();
-            _sb.Append("<size=70%>Filed ").Append(ordinal).Append(" of ").Append(filed).Append("    ")
+            _sb.Append("<size=80%>Filed ").Append(ordinal).Append(" of ").Append(filed).Append("    ")
                .Append(r.Mode == SourceModes.Live ? "LIVE" : "SCRIPTED DEMO").Append("</size>\n");
             _sb.Append("<b>").Append(r.Title).Append("</b>\n");
             _sb.Append(r.State switch
@@ -210,7 +254,7 @@ namespace MuseDesk.Documents
                 "expired" => "Expired before it was answered. Nothing was run.",
                 _ => "Outcome: " + r.State,
             }).Append('\n');
-            if (!string.IsNullOrEmpty(r.ProvenanceLabel)) _sb.Append("<size=70%><i>").Append(r.ProvenanceLabel).Append("</i></size>\n");
+            if (!string.IsNullOrEmpty(r.ProvenanceLabel)) _sb.Append("<size=80%><i>").Append(r.ProvenanceLabel).Append("</i></size>\n");
             if (r.State == "approved")
             {
                 if (r.ArtifactSummary == null) _sb.Append("Result: still in progress.");
@@ -220,8 +264,8 @@ namespace MuseDesk.Documents
                     if (r.TestsPassed >= 0)
                         _sb.Append("Tests: ").Append(r.TestsPassed).Append(" passed, ").Append(Mathf.Max(0, r.TestsFailed)).Append(" failed\n");
                     if (r.Files != null && r.Files.Count > 0)
-                        _sb.Append("<size=70%>Files: ").Append(string.Join(", ", r.Files)).Append("</size>");
-                    if (!r.Delivered) _sb.Append("\n<size=70%>Not yet confirmed complete.</size>");
+                        _sb.Append("<size=80%>Files: ").Append(string.Join(", ", r.Files)).Append("</size>");
+                    if (!r.Delivered) _sb.Append("\n<size=80%>Not yet confirmed complete.</size>");
                 }
             }
             Show(_sb.ToString());
@@ -230,7 +274,7 @@ namespace MuseDesk.Documents
         void Show(string text)
         {
             if (readout != null) readout.text = text;
-            if (readoutRoot != null) readoutRoot.SetActive(true);
+            _readoutEase.Show();
             _hideAt = Time.time + readoutSeconds;
             _open = true;
         }

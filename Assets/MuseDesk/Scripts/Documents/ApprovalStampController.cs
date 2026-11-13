@@ -29,9 +29,10 @@ namespace MuseDesk.Documents
         Vector3 _stampHome;
         bool _capturedHome;
 
-        static readonly Color Approve = new Color(0.22f, 0.76f, 0.45f);
-        static readonly Color Reject  = new Color(0.89f, 0.20f, 0.18f);
-        static readonly Color Changes = new Color(0.96f, 0.60f, 0.25f);
+        // Darker shades of the success / coral / amber tokens: the mark is printed on cream paper.
+        static readonly Color Approve = new Color(0.10f, 0.42f, 0.24f);
+        static readonly Color Reject  = new Color(0.62f, 0.16f, 0.13f);
+        static readonly Color Changes = new Color(0.60f, 0.36f, 0.05f);
 
         void Awake()
         {
