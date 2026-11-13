@@ -20,12 +20,12 @@ namespace MuseDesk.Workspace
     [DefaultExecutionOrder(2000)]   // run LateUpdate after ISDK's own joint writers
     public class DynamicFingerCollision : MonoBehaviour
     {
-        // DEFERRED (user parked it): the solver runs but ISDK overwrites the joints so it only
-        // flickers. Off by default — clean hands — until the WhenHandVisualUpdated hook fix lands.
-        public static bool GloballyEnabled = false;
+        // Subscribes to ISDK HandVisual.WhenHandVisualUpdated so joint poses clamp right after
+        // UpdateSkeleton() writes them, instead of flickering against LateUpdate ordering.
+        public static bool GloballyEnabled = true;
 
         [Tooltip("Layer(s) the grabbable colliders live on. Keep narrow so casts are cheap and never hit the desk.")]
-        public LayerMask grabbableMask = ~0;
+        public LayerMask grabbableMask = 1 << 8;
         [Tooltip("Approx finger-bone thickness for the sweeps (m).")]
         public float boneRadius = 0.008f;
         [Tooltip("Only solve when a grabbable is within this distance of the wrist (m).")]
@@ -58,8 +58,10 @@ namespace MuseDesk.Workspace
 
         readonly List<HandRig> _rigs = new List<HandRig>();
         Type _handJointIdType;
+        EventInfo _whenUpdatedEvent;
         bool _ready;
         bool _usedEvent;
+        bool _hooked;
         int _hits;
         float _logT;
 
@@ -67,11 +69,27 @@ namespace MuseDesk.Workspace
         {
             try { Resolve(); }
             catch (Exception e) { Debug.LogError($"MDFINGER resolve failed: {e.Message}"); enabled = false; }
-            if (!_ready) enabled = false;
+            if (!_ready) { enabled = false; return; }
+            HookEvents();
         }
+
+        void OnEnable()
+        {
+            if (_ready) HookEvents();
+        }
+
+        void OnDisable() => UnhookEvents();
+        void OnDestroy() => UnhookEvents();
 
         void Resolve()
         {
+            // Never allow an unconfigured all-layers mask to clamp fingers onto desks or room colliders.
+            if (grabbableMask.value == ~0 || grabbableMask.value == 0)
+            {
+                int fc = LayerMask.NameToLayer("FingerCollide");
+                if (fc >= 0) grabbableMask = 1 << fc;
+            }
+
             var hvType = ResolveType(T_HandVisual);
             _handJointIdType = ResolveType(T_HandJointId);
             if (hvType == null || _handJointIdType == null) { Debug.LogError("MDFINGER ISDK types not found"); return; }
@@ -79,6 +97,11 @@ namespace MuseDesk.Workspace
             var getT = hvType.GetMethod("GetTransformByHandJointId",
                 BindingFlags.Instance | BindingFlags.Public, null, new[] { _handJointIdType }, null);
             if (getT == null) { Debug.LogError("MDFINGER GetTransformByHandJointId not found"); return; }
+
+            _whenUpdatedEvent = hvType.GetEvent("WhenHandVisualUpdated", BindingFlags.Instance | BindingFlags.Public);
+            if (_whenUpdatedEvent != null && _whenUpdatedEvent.EventHandlerType != typeof(Action))
+                _whenUpdatedEvent = null;
+            _usedEvent = _whenUpdatedEvent != null;
 
             object wrist = EnumVal("HandWristRoot");
             var chains = new object[FingerChains.Length][];
@@ -89,16 +112,41 @@ namespace MuseDesk.Workspace
             {
                 if (!string.IsNullOrEmpty(handVisualNamePrefix) &&
                     !obj.gameObject.name.StartsWith(handVisualNamePrefix)) continue;
-                _rigs.Add(new HandRig { handVisual = obj, getTransform = getT, wristJointId = wrist, fingerJointIds = chains });
+                var rig = new HandRig { handVisual = obj, getTransform = getT, wristJointId = wrist, fingerJointIds = chains };
+                if (_usedEvent)
+                    rig.handler = (Action)(() =>
+                    {
+                        if (_ready && GloballyEnabled && isActiveAndEnabled) SolveHand(rig);
+                    });
+                _rigs.Add(rig);
             }
 
             _ready = _rigs.Count > 0;
-            Debug.Log($"MDFINGER ready={_ready} rendered-hands={_rigs.Count} mask={grabbableMask.value}");
+            Debug.Log($"MDFINGER ready={_ready} rendered-hands={_rigs.Count} mask={grabbableMask.value} hookedEvent={_usedEvent}");
+        }
+
+        void HookEvents()
+        {
+            if (_hooked || !_usedEvent || _whenUpdatedEvent == null) return;
+            foreach (var rig in _rigs)
+                if (rig.handVisual != null && rig.handler != null)
+                    _whenUpdatedEvent.AddEventHandler(rig.handVisual, rig.handler);
+            _hooked = true;
+        }
+
+        void UnhookEvents()
+        {
+            if (!_hooked || _whenUpdatedEvent == null) return;
+            foreach (var rig in _rigs)
+                if (rig.handVisual != null && rig.handler != null)
+                    _whenUpdatedEvent.RemoveEventHandler(rig.handVisual, rig.handler);
+            _hooked = false;
         }
 
         void LateUpdate()
         {
-            if (!_ready || !GloballyEnabled) return;
+            // Fallback only when HandVisual.WhenHandVisualUpdated is unavailable.
+            if (_usedEvent || !_ready || !GloballyEnabled) return;
             foreach (var rig in _rigs) SolveHand(rig);
         }
 

@@ -28,12 +28,12 @@ namespace MuseDesk.Documents
         [Header("Agent handoff")]
         [Tooltip("If set, the paper is carried (small) in this agent hand point until the user takes it.")]
         public Transform agentHoldPoint;
-        [Tooltip("Scale of the paper while the agent holds it out (relative to full).")]
-        public float heldScale = 0.42f;
+        [Tooltip("Scale of the paper while the agent holds it out (relative to full world size).")]
+        public float heldScale = 0.18f;
         [Tooltip("Local rotation while held by the agent (face the offered side toward the user).")]
         public Vector3 heldLocalEuler = new Vector3(0f, 0f, 0f);
         [Tooltip("Seconds to expand up to full size when taken.")]
-        public float expandSeconds = 0.4f;
+        public float expandSeconds = 0.35f;
 
         [Tooltip("Content (badge/title/text/buttons/details) hidden while the agent holds the blank " +
                  "paper, revealed when the user takes it.")]
@@ -64,12 +64,18 @@ namespace MuseDesk.Documents
             _readableSince = float.MaxValue;
             if (agentHoldPoint != null)
             {
-                // Carried in the agent's hand: a small blank paper (no content/buttons), parented,
-                // offered toward the user at an angle; no billboard/placer until taken.
+                // Carried in the agent's hand: a compact miniature sheet (compensated for rig bone
+                // scale, since Blender-exported armature bones have 100x lossyScale), parented,
+                // offered toward the user; no billboard/placer until taken.
                 transform.SetParent(agentHoldPoint, false);
                 transform.localPosition = Vector3.zero;
                 transform.localRotation = Quaternion.Euler(heldLocalEuler);
-                transform.localScale = _fullScale * heldScale;
+                Vector3 p = agentHoldPoint.lossyScale;
+                Vector3 targetWorld = _fullScale * heldScale;
+                transform.localScale = new Vector3(
+                    targetWorld.x / Mathf.Max(1e-5f, Mathf.Abs(p.x)),
+                    targetWorld.y / Mathf.Max(1e-5f, Mathf.Abs(p.y)),
+                    targetWorld.z / Mathf.Max(1e-5f, Mathf.Abs(p.z)));
                 if (face) face.enabled = false;
                 if (placer) placer.enabled = false;
                 SetContent(false);
@@ -86,10 +92,22 @@ namespace MuseDesk.Documents
             }
         }
 
-        void SetContent(bool on)
+        void SetContent(bool on, bool includeActions = true)
         {
             if (hideWhileHeld == null) return;
-            foreach (var go in hideWhileHeld) if (go != null) go.SetActive(on);
+            foreach (var go in hideWhileHeld)
+            {
+                if (go == null) continue;
+                if (!includeActions && go.name == "Actions") continue;
+                go.SetActive(on);
+            }
+        }
+
+        IEnumerator ExpandAndEnableActions()
+        {
+            yield return ScaleTo(_fullScale, expandSeconds);
+            SetContent(true, includeActions: true);
+            BroadcastMessage("SyncToCurrentScale", SendMessageOptions.DontRequireReceiver);
         }
 
         /// <summary>True once the user has taken the paper out of the agent's hand (or there is no
@@ -161,9 +179,9 @@ namespace MuseDesk.Documents
             {
                 _taken = true;
                 transform.SetParent(null, true);
-                SetContent(true);          // reveal title/info/buttons now that it's taken
+                SetContent(true, includeActions: false); // reveal readable sheet while unfolding; enable buttons once full size
                 StopAllCoroutines();
-                StartCoroutine(ScaleTo(_fullScale, expandSeconds));
+                StartCoroutine(ExpandAndEnableActions());
             }
             // Stop fighting the hand.
             if (face) face.enabled = false;
@@ -190,6 +208,7 @@ namespace MuseDesk.Documents
             transform.localScale = target;
             _scaleLocked = true;   // from here on, hold it at full size (LateUpdate enforces)
             _readableSince = Time.time;
+            BroadcastMessage("SyncToCurrentScale", SendMessageOptions.DontRequireReceiver);
 
         }
 

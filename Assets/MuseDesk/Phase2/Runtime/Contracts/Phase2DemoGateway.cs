@@ -227,7 +227,8 @@ namespace MuseDesk.Phase2.Contracts
         /// <summary>The scripted run asked the human for a decision: the card waits on it
         /// (decision.requested on the v2 stream, task_state awaiting_approval).</summary>
         public void NotifyRunDecisionRequested(string decisionId, string summary = null,
-            string researchProvenance = null, string researchProvenanceLabel = null)
+            string researchProvenance = null, string researchProvenanceLabel = null,
+            int decisionRevision = 0, string revisesDecisionId = null)
         {
             if (!TryGetRunCard(out var card)) return;
             if (card.TaskState != TaskStates.Running) return;
@@ -237,10 +238,33 @@ namespace MuseDesk.Phase2.Contracts
             var p = TaskPayload(card);
             p["decision_id"] = Str(decisionId);
             p["summary"] = Str(summary);
+            p["decision_revision"] = decisionRevision;
+            if (!string.IsNullOrEmpty(revisesDecisionId))
+                p["revises_decision_id"] = Str(revisesDecisionId);
             p["research_provenance"] = Str(string.IsNullOrEmpty(researchProvenance) ? "template" : researchProvenance);
             p["research_provenance_label"] = Str(string.IsNullOrEmpty(researchProvenanceLabel)
                 ? "Template recommendation. Not live AI research." : researchProvenanceLabel);
             EmitTask(Phase2EventTypes.DecisionRequested, card, p, agentId: card.AgentId);
+        }
+
+        /// <summary>Changes were requested and a revised template proposal is being prepared: the card
+        /// returns to running (task.resumed with reason=changes_requested) until the next decision.</summary>
+        public void NotifyRunChangesRequested(string decisionId, int nextRevision)
+        {
+            if (!TryGetRunCard(out var card)) return;
+            if (card.TaskState != TaskStates.AwaitingApproval) return;
+            if (!string.IsNullOrEmpty(card.DecisionId) && !string.IsNullOrEmpty(decisionId) && card.DecisionId != decisionId)
+                return;
+
+            string answered = card.DecisionId ?? decisionId;
+            card.DecisionId = null;
+            card.Revision += 1;
+            card.TaskState = TaskStates.Running;
+            var p = TaskPayload(card);
+            p["decision_id"] = Str(answered);
+            p["reason"] = "changes_requested";
+            p["decision_revision"] = nextRevision;
+            EmitTask(Phase2EventTypes.TaskResumed, card, p, agentId: card.AgentId);
         }
 
         /// <summary>The decision was answered. Approved → the card runs on. Anything else ends the

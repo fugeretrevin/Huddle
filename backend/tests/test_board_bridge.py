@@ -27,14 +27,14 @@ TERMINAL = ("completed", "failed", "cancelled")
 
 
 # ─────────────────────── helpers ───────────────────────
-def _app(producer: str, tmp_path, db_path: str = ":memory:"):
+def _app(producer: str, tmp_path, db_path: str = ":memory:", **extra):
     if producer == "live":
         return create_app(Settings(
             db_path=db_path, producer="live", producer_step_seconds=0.0,
             require_pairing=True, workspace_root=str(tmp_path / "ws"),
-            task_timeout_seconds=60))
+            task_timeout_seconds=60, **extra))
     return create_app(Settings(db_path=db_path, producer_step_seconds=0.0,
-                               require_pairing=True, producer_source_mode="demo"))
+                               require_pairing=True, producer_source_mode="demo", **extra))
 
 
 def _fake_tester(monkeypatch, *results: TestResult) -> None:
@@ -246,7 +246,8 @@ def test_assigning_an_executable_card_to_the_researcher_runs_the_pipeline(tmp_pa
 @pytest.mark.parametrize("action", ["reject", "request_changes"])
 def test_rejected_run_cancels_the_card_with_no_artifact(tmp_path, monkeypatch, producer, action):
     _fake_tester(monkeypatch, PASS)
-    with TestClient(_app(producer, tmp_path)) as client:
+    kw = {"max_proposal_revisions": 0} if action == "request_changes" else {}
+    with TestClient(_app(producer, tmp_path, **kw)) as client:
         sid, token, h = _open(client)
         card, did = _launch(client, sid, h)
         assert _respond(client, sid, h, did, action, "bridge-resolve-rej01").status_code == 200
@@ -279,7 +280,7 @@ def test_rejected_run_cancels_the_card_with_no_artifact(tmp_path, monkeypatch, p
 @pytest.mark.parametrize("producer", PRODUCERS)
 def test_failed_run_fails_the_card(tmp_path, monkeypatch, producer):
     if producer == "live":
-        _fake_tester(monkeypatch, PASS, FAIL)     # the tests on the new code fail
+        _fake_tester(monkeypatch, PASS, FAIL, FAIL)     # post-approval + bounded retest both fail
     else:
         async def boom(self, *a, **k):
             raise RuntimeError("scripted branch blew up")

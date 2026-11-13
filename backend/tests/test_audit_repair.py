@@ -79,15 +79,15 @@ def _wait_run_over(client, sid, headers, parent):
     _wait(lambda: _task_status(client, sid, headers, parent) in TERMINAL, "the run to end")
 
 
-def _live_app(tmp_path, db_path=":memory:"):
+def _live_app(tmp_path, db_path=":memory:", **extra):
     return create_app(Settings(
         db_path=db_path, producer="live", producer_step_seconds=0.0, require_pairing=True,
-        workspace_root=str(tmp_path / "ws"), task_timeout_seconds=60))
+        workspace_root=str(tmp_path / "ws"), task_timeout_seconds=60, **extra))
 
 
-def _demo_app(db_path=":memory:"):
+def _demo_app(db_path=":memory:", **extra):
     return create_app(Settings(db_path=db_path, producer_step_seconds=0.0,
-                               require_pairing=True, producer_source_mode="demo"))
+                               require_pairing=True, producer_source_mode="demo", **extra))
 
 
 def _fake_tester(monkeypatch, *results: TestResult) -> None:
@@ -101,7 +101,8 @@ def _fake_tester(monkeypatch, *results: TestResult) -> None:
 def test_cancelled_branch_event_carries_cancelled_task_state(tmp_path, monkeypatch,
                                                              producer, action):
     _fake_tester(monkeypatch, PASS)
-    app = _live_app(tmp_path) if producer == "live" else _demo_app()
+    kw = {"max_proposal_revisions": 0} if action == "request_changes" else {}
+    app = _live_app(tmp_path, **kw) if producer == "live" else _demo_app(**kw)
     with TestClient(app) as client:
         sid, token, headers = _open(client)
         parent = _start(client, headers, sid, "repair-create-rej001").json()["task_id"]

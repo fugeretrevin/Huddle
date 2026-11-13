@@ -1,0 +1,268 @@
+{
+  "manifest_version": "3.0-visual-polish",
+  "branch": "antigravity/visual-polish",
+  "unity_version": "6000.6.8f1",
+  "preview_scene": "Assets/MuseDesk/Scenes/VisualPolishPreviewScene.unity",
+  "production_scene_untouched": "Assets/MuseDesk/Scenes/MainMRScene.unity",
+  "performance_summary": {
+    "baseline_total_renderers": 920,
+    "polished_total_renderers": 680,
+    "total_renderers_saved": 240,
+    "reduction_percent": 26.1,
+    "baseline_active_renderers": 703,
+    "polished_active_renderers": 544,
+    "active_renderers_saved": 159,
+    "poke_buttons_upgraded": 20,
+    "poke_button_renderers_eliminated": 100
+  },
+  "scripts": [
+    "ArtSource/Scripts/generate_visual_polish_assets.py",
+    "ArtSource/Scripts/render_visual_polish_sheets.py",
+    "Assets/MuseDesk/Art/Scripts/VisualPolishAffordanceController.cs",
+    "AgentScripts/BuildVisualPolishSuite.cs"
+  ],
+  "prefabs": [
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/DecisionPaper_Small_Polished.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/DecisionPaper_Expanded_Polished.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/TaskCard_Grabbable_Polished.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Affordance_AgentHaloRing.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Affordance_DeskReceivePad.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Affordance_CardSocket.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Affordance_StatePuck.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Affordance_StationAssignment_Kit.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Doc_Stamp_Approve_Polished.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Doc_Stamp_Reject_Polished.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Doc_StampRestPad.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Mascot_FeedbackBadgeGroup.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Workstation_Research_Optimized.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Workstation_Developer_Optimized.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/Workstation_Testing_Optimized.prefab",
+    "Assets/MuseDesk/Art/Prefabs/VisualPolish/TaskBoard_KanbanFrame_Optimized.prefab"
+  ],
+  "screenshots": [
+    "Screenshots/VisualPolish/After_01_SeatedOverview.png",
+    "Screenshots/VisualPolish/After_02_TaskBoard.png",
+    "Screenshots/VisualPolish/After_03_DecisionPaper.png",
+    "Screenshots/VisualPolish/After_04_BoardButtons3D.png",
+    "Screenshots/VisualPolish/After_05_StampsAndAffordances.png",
+    "Screenshots/VisualPolish/ContactSheet_DecisionPaper_And_Stamps.png",
+    "Screenshots/VisualPolish/ContactSheet_Affordances_And_Feedback.png"
+  ],
+  "models": [
+    {
+      "category": "Documents",
+      "asset": "Doc_DecisionPaper_Small",
+      "fbx": "Assets/MuseDesk/Art/Models/Documents/Doc_DecisionPaper_Small.fbx",
+      "mesh_renderers": 7,
+      "anchors": 7,
+      "vertices": 688,
+      "triangles": 1340,
+      "bounds_m": [0.118, 0.142, 0.006]
+    },
+    {
+      "category": "Documents",
+      "asset": "Doc_DecisionPaper_Expanded",
+      "fbx": "Assets/MuseDesk/Art/Models/Documents/Doc_DecisionPaper_Expanded.fbx",
+      "mesh_renderers": 10,
+      "anchors": 17,
+      "vertices": 1704,
+      "triangles": 3316,
+      "bounds_m": [0.583, 0.399, 0.014]
+    },
+    {
+      "category": "Documents",
+      "asset": "Doc_Stamp_Approve",
+      "fbx": "Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Approve.fbx",
+      "mesh_renderers": 5,
+      "anchors": 2,
+      "vertices": 640,
+      "triangles": 1256,
+      "bounds_m": [0.042, 0.069, 0.034]
+    },
+    {
+      "category": "Documents",
+      "asset": "Doc_Stamp_Reject",
+      "fbx": "Assets/MuseDesk/Art/Models/Documents/Doc_Stamp_Reject.fbx",
+      "mesh_renderers": 5,
+      "anchors": 2,
+      "vertices": 640,
+      "triangles": 1256,
+      "bounds_m": [0.042, 0.069, 0.034]
+    },
+    {
+      "category": "Documents",
+      "asset": "Doc_StampRestPad",
+      "fbx": "Assets/MuseDesk/Art/Models/Documents/Doc_StampRestPad.fbx",
+      "mesh_renderers": 4,
+      "anchors": 2,
+      "vertices": 224,
+      "triangles": 432,
+      "bounds_m": [0.118, 0.007, 0.054]
+    },
+    {
+      "category": "Affordances",
+      "asset": "Affordance_AgentHaloRing",
+      "fbx": "Assets/MuseDesk/Art/Models/Affordances/Affordance_AgentHaloRing.fbx",
+      "mesh_renderers": 2,
+      "anchors": 1,
+      "vertices": 648,
+      "triangles": 1280,
+      "bounds_m": [0.342, 0.018, 0.259]
+    },
+    {
+      "category": "Affordances",
+      "asset": "Affordance_DeskReceivePad",
+      "fbx": "Assets/MuseDesk/Art/Models/Affordances/Affordance_DeskReceivePad.fbx",
+      "mesh_renderers": 4,
+      "anchors": 1,
+      "vertices": 280,
+      "triangles": 540,
+      "bounds_m": [0.123, 0.005, 0.056]
+    },
+    {
+      "category": "Affordances",
+      "asset": "Affordance_CardSocket",
+      "fbx": "Assets/MuseDesk/Art/Models/Affordances/Affordance_CardSocket.fbx",
+      "mesh_renderers": 3,
+      "anchors": 1,
+      "vertices": 168,
+      "triangles": 324,
+      "bounds_m": [0.086, 0.054, 0.006]
+    },
+    {
+      "category": "Affordances",
+      "asset": "Affordance_StatePuck",
+      "fbx": "Assets/MuseDesk/Art/Models/Affordances/Affordance_StatePuck.fbx",
+      "mesh_renderers": 3,
+      "anchors": 0,
+      "vertices": 346,
+      "triangles": 684,
+      "bounds_m": [0.032, 0.010, 0.032]
+    },
+    {
+      "category": "Affordances",
+      "asset": "UI_PokeKey_Housing",
+      "fbx": "Assets/MuseDesk/Art/Models/Affordances/UI_PokeKey_Housing.fbx",
+      "mesh_renderers": 1,
+      "anchors": 0,
+      "vertices": 280,
+      "triangles": 540,
+      "bounds_m": [1.200, 1.200, 0.349]
+    },
+    {
+      "category": "Affordances",
+      "asset": "UI_PokeKey_Cap",
+      "fbx": "Assets/MuseDesk/Art/Models/Affordances/UI_PokeKey_Cap.fbx",
+      "mesh_renderers": 1,
+      "anchors": 0,
+      "vertices": 96,
+      "triangles": 188,
+      "bounds_m": [0.980, 0.980, 0.276]
+    },
+    {
+      "category": "Feedback",
+      "asset": "Feedback_Listening",
+      "fbx": "Assets/MuseDesk/Art/Models/Feedback/Feedback_Listening.fbx",
+      "mesh_renderers": 2,
+      "anchors": 0,
+      "vertices": 498,
+      "triangles": 992,
+      "bounds_m": [0.043, 0.043, 0.008]
+    },
+    {
+      "category": "Feedback",
+      "asset": "Feedback_Speaking",
+      "fbx": "Assets/MuseDesk/Art/Models/Feedback/Feedback_Speaking.fbx",
+      "mesh_renderers": 2,
+      "anchors": 0,
+      "vertices": 360,
+      "triangles": 708,
+      "bounds_m": [0.040, 0.040, 0.004]
+    },
+    {
+      "category": "Feedback",
+      "asset": "Feedback_Thinking",
+      "fbx": "Assets/MuseDesk/Art/Models/Feedback/Feedback_Thinking.fbx",
+      "mesh_renderers": 2,
+      "anchors": 0,
+      "vertices": 730,
+      "triangles": 1440,
+      "bounds_m": [0.036, 0.020, 0.014]
+    },
+    {
+      "category": "Feedback",
+      "asset": "Feedback_NeedsAttention",
+      "fbx": "Assets/MuseDesk/Art/Models/Feedback/Feedback_NeedsAttention.fbx",
+      "mesh_renderers": 2,
+      "anchors": 0,
+      "vertices": 378,
+      "triangles": 748,
+      "bounds_m": [0.042, 0.046, 0.008]
+    },
+    {
+      "category": "Feedback",
+      "asset": "Feedback_Error",
+      "fbx": "Assets/MuseDesk/Art/Models/Feedback/Feedback_Error.fbx",
+      "mesh_renderers": 2,
+      "anchors": 0,
+      "vertices": 124,
+      "triangles": 236,
+      "bounds_m": [0.034, 0.029, 0.006]
+    },
+    {
+      "category": "Feedback",
+      "asset": "Feedback_Success",
+      "fbx": "Assets/MuseDesk/Art/Models/Feedback/Feedback_Success.fbx",
+      "mesh_renderers": 3,
+      "anchors": 0,
+      "vertices": 312,
+      "triangles": 612,
+      "bounds_m": [0.038, 0.038, 0.006]
+    },
+    {
+      "category": "Optimized",
+      "asset": "Workstation_Research_Optimized",
+      "fbx": "Assets/MuseDesk/Art/Models/Optimized/Workstation_Research_Optimized.fbx",
+      "original_renderers": 60,
+      "mesh_renderers": 16,
+      "anchors": 13,
+      "vertices": 3256,
+      "triangles": 6268,
+      "bounds_m": [0.541, 0.257, 0.255]
+    },
+    {
+      "category": "Optimized",
+      "asset": "Workstation_Developer_Optimized",
+      "fbx": "Assets/MuseDesk/Art/Models/Optimized/Workstation_Developer_Optimized.fbx",
+      "original_renderers": 55,
+      "mesh_renderers": 18,
+      "anchors": 14,
+      "vertices": 3016,
+      "triangles": 5820,
+      "bounds_m": [0.416, 0.189, 0.304]
+    },
+    {
+      "category": "Optimized",
+      "asset": "Workstation_Testing_Optimized",
+      "fbx": "Assets/MuseDesk/Art/Models/Optimized/Workstation_Testing_Optimized.fbx",
+      "original_renderers": 53,
+      "mesh_renderers": 24,
+      "anchors": 14,
+      "vertices": 3014,
+      "triangles": 5820,
+      "bounds_m": [0.409, 0.296, 0.244]
+    },
+    {
+      "category": "Optimized",
+      "asset": "TaskBoard_KanbanFrame_Optimized",
+      "fbx": "Assets/MuseDesk/Art/Models/Optimized/TaskBoard_KanbanFrame_Optimized.fbx",
+      "original_renderers": 38,
+      "mesh_renderers": 10,
+      "anchors": 26,
+      "vertices": 2064,
+      "triangles": 3976,
+      "bounds_m": [0.669, 0.574, 0.095]
+    }
+  ]
+}
+

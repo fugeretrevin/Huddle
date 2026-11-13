@@ -8,6 +8,10 @@ using only existing v2 event types and task states:
     task.started        task_state=running            (run launched by the assign)
     decision.requested  task_state=awaiting_approval  (payload carries decision_id)
     task.resumed        task_state=running            (decision approved)
+    task.resumed        task_state=running            (reason=changes_requested: a revised
+                                                       proposal is being prepared; followed
+                                                       by another decision.requested with
+                                                       revision / revises_decision_id)
     task.completed      task_state=completed          (run succeeded)
     task.completed      task_state=cancelled          (decision rejected / changes requested;
                                                        there is no cancel event type, same
@@ -97,8 +101,25 @@ class BoardRunBridge:
         row = self._live_card(run_task_id)
         if row is None:
             return
+        # A run can raise several decisions (one per proposal revision). The event id
+        # stays canonical per run + milestone + revision; revision 0 keeps its old id.
+        # NOTE the key: on this stream ``revision`` is the CARD's revision, so the
+        # proposal's revision number travels as ``decision_revision``.
+        revision = int((extra or {}).get("decision_revision") or 0)
+        tag = "decision" if revision == 0 else f"decision-r{revision}"
         await self._move(row, TaskStateV2.awaiting_approval, EventTypeV2.decision_requested,
-                         "decision", {"decision_id": decision_id, **(extra or {})})
+                         tag, {"decision_id": decision_id, **(extra or {})})
+
+    async def changes_requested(self, run_task_id: str, decision_id: str,
+                                next_revision: int) -> None:
+        """The human asked for changes and a revised proposal is being prepared: the
+        card is working again until the next decision is raised."""
+        row = self._live_card(run_task_id)
+        if row is None or row["task_state"] != TaskStateV2.awaiting_approval.value:
+            return
+        await self._move(row, TaskStateV2.running, EventTypeV2.task_resumed,
+                         f"changes-r{next_revision}",
+                         {"decision_id": decision_id, "reason": "changes_requested"})
 
     async def decision_approved(self, run_task_id: str, decision_id: str) -> None:
         row = self._live_card(run_task_id)

@@ -12,11 +12,8 @@ namespace MuseDesk.Voice
     /// <summary>
     /// Wit.ai-backed IVoiceCommandSource using the Meta Voice SDK's AppVoiceExperience. On each NLU
     /// response it reads the transcription (and any recognized intent) and maps it to approve / reject /
-    /// ask-why. It drives off the spoken TEXT so it works with a brand-new, untrained Wit app (no custom
-    /// intents required); recognized built-in intents are used as a bonus. This only RAISES events —
-    /// VoiceDecisionController routes them through SessionController -> backend, so the backend still
-    /// authorizes every action (a spoken "approve" is not itself approval). Requires network + a linked
-    /// WitConfiguration on the AppVoiceExperience, so it is live-mode / connected only, never the offline demo.
+    /// request-changes / ask-why. Drives off spoken text so it works with an untrained Wit app, while
+    /// preserving the rule that voice NEVER bypasses backend authorization.
     /// </summary>
     [RequireComponent(typeof(AppVoiceExperience))]
     public class WitVoiceSource : MonoBehaviour, IVoiceCommandSource
@@ -25,14 +22,35 @@ namespace MuseDesk.Voice
 
         public event Action Approve;
         public event Action Reject;
+        public event Action RequestChanges;
         public event Action<string> AskWhy;
         public event Action<bool> ListeningChanged;
+        public event Action<string> StatusChanged;
 
-        static readonly string[] YesWords = { "approve", "approved", "yes", "ship it", "ship", "confirm", "confirmed", "go ahead", "accept", "sounds good", "do it", "sure" };
-        static readonly string[] NoWords  = { "reject", "rejected", "no", "deny", "denied", "don't", "do not", "stop", "cancel", "decline" };
-        static readonly string[] WhyWords = { "why", "explain", "reason", "tell me", "what if", "how come", "justify" };
+        static readonly string[] YesWords =
+        {
+            "approve", "approved", "yes", "yes please", "ship it", "ship", "confirm", "confirmed",
+            "go ahead", "accept", "sounds good", "looks good", "lgtm", "do it", "sure"
+        };
+        static readonly string[] NoWords =
+        {
+            "reject", "rejected", "no", "no thanks", "nope", "deny", "denied", "don't", "do not",
+            "stop", "cancel", "decline"
+        };
+        static readonly string[] ChangeWords =
+        {
+            "request changes", "request change", "make changes", "changes", "change", "revise",
+            "revision", "modify", "edit"
+        };
+        static readonly string[] WhyWords =
+        {
+            "why", "explain", "reason", "tell me", "what if", "how come", "justify"
+        };
 
         public bool IsAvailable => appVoice != null;
+
+        bool _listening;
+        bool _gotResult;
 
         void Reset() { appVoice = GetComponent<AppVoiceExperience>(); }
 
@@ -42,6 +60,12 @@ namespace MuseDesk.Voice
             if (appVoice == null) return;
             appVoice.VoiceEvents.OnResponse.AddListener(OnResponse);
             appVoice.VoiceEvents.OnError.AddListener(OnError);
+            appVoice.VoiceEvents.OnStartListening.AddListener(OnSdkStartListening);
+            appVoice.VoiceEvents.OnStoppedListening.AddListener(OnSdkStoppedListening);
+            appVoice.VoiceEvents.OnAborted.AddListener(OnSdkStopped);
+            appVoice.VoiceEvents.OnCanceled.AddListener(OnSdkCanceled);
+            appVoice.VoiceEvents.OnPartialTranscription.AddListener(OnPartial);
+            appVoice.VoiceEvents.OnFullTranscription.AddListener(OnFull);
         }
 
         void OnDisable()
@@ -49,55 +73,121 @@ namespace MuseDesk.Voice
             if (appVoice == null) return;
             appVoice.VoiceEvents.OnResponse.RemoveListener(OnResponse);
             appVoice.VoiceEvents.OnError.RemoveListener(OnError);
+            appVoice.VoiceEvents.OnStartListening.RemoveListener(OnSdkStartListening);
+            appVoice.VoiceEvents.OnStoppedListening.RemoveListener(OnSdkStoppedListening);
+            appVoice.VoiceEvents.OnAborted.RemoveListener(OnSdkStopped);
+            appVoice.VoiceEvents.OnCanceled.RemoveListener(OnSdkCanceled);
+            appVoice.VoiceEvents.OnPartialTranscription.RemoveListener(OnPartial);
+            appVoice.VoiceEvents.OnFullTranscription.RemoveListener(OnFull);
         }
 
         public void StartListening()
         {
-            if (appVoice == null) return;
+            if (appVoice == null)
+            {
+                StatusChanged?.Invoke("Voice error: Voice SDK missing");
+                return;
+            }
+            if (_listening)
+            {
+                StopListening();
+                return;
+            }
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // Mic is a dangerous permission on Quest; request on first use. The user re-triggers
-            // after granting (a one-time flow), so we return rather than listen without permission.
             if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
             {
-                Permission.RequestUserPermission(Permission.Microphone);
+                StatusChanged?.Invoke("Mic permission needed — allow and tap Voice again");
+                var cb = new PermissionCallbacks();
+                cb.PermissionGranted += _ => ActivateNow();
+                cb.PermissionDenied += _ => StatusChanged?.Invoke("Mic permission denied");
+                Permission.RequestUserPermission(Permission.Microphone, cb);
                 return;
             }
 #endif
+            ActivateNow();
+        }
+
+        void ActivateNow()
+        {
+            if (appVoice == null) return;
+            _gotResult = false;
+            SetListening(true);
+            StatusChanged?.Invoke("Listening… say Approve, Reject, Changes, or Why?");
             appVoice.Activate();
-            ListeningChanged?.Invoke(true);
         }
 
         public void StopListening()
         {
             if (appVoice == null) return;
             appVoice.Deactivate();
-            ListeningChanged?.Invoke(false);
+            SetListening(false);
+            StatusChanged?.Invoke("");
+        }
+
+        void SetListening(bool on)
+        {
+            if (_listening == on) return;
+            _listening = on;
+            ListeningChanged?.Invoke(on);
+        }
+
+        void OnSdkStartListening() => SetListening(true);
+
+        void OnSdkStoppedListening()
+        {
+            SetListening(false);
+        }
+
+        void OnSdkStopped()
+        {
+            SetListening(false);
+            if (!_gotResult) StatusChanged?.Invoke("");
+        }
+
+        void OnSdkCanceled(string _) => OnSdkStopped();
+
+        void OnPartial(string text)
+        {
+            if (!string.IsNullOrWhiteSpace(text))
+                StatusChanged?.Invoke("Hearing: “" + text.Trim() + "”");
+        }
+
+        void OnFull(string text)
+        {
+            if (!string.IsNullOrWhiteSpace(text))
+                StatusChanged?.Invoke("Heard: “" + text.Trim() + "”");
         }
 
         void OnResponse(WitResponseNode node)
         {
-            ListeningChanged?.Invoke(false);
+            SetListening(false);
             if (node == null) return;
 
             string intent = SafeIntent(node);
-            string text = (node.GetTranscription() ?? "").Trim().ToLowerInvariant();
+            string raw = node.GetTranscription() ?? "";
+            string text = raw.Trim().ToLowerInvariant();
+            var cmd = Classify(text, intent);
+            _gotResult = cmd != VoiceCommand.None;
 
-            switch (Classify(text, intent))
+            switch (cmd)
             {
-                case VoiceCommand.Approve: Approve?.Invoke(); break;
-                case VoiceCommand.Reject:  Reject?.Invoke(); break;
-                case VoiceCommand.Ask:     AskWhy?.Invoke(node.GetTranscription()); break;
-                // None: unrecognized or ambiguous. Intentionally do nothing.
+                case VoiceCommand.Approve:        Approve?.Invoke(); break;
+                case VoiceCommand.Reject:         Reject?.Invoke(); break;
+                case VoiceCommand.RequestChanges: RequestChanges?.Invoke(); break;
+                case VoiceCommand.Ask:            AskWhy?.Invoke(raw); break;
+                default:
+                    if (!string.IsNullOrEmpty(text))
+                        StatusChanged?.Invoke($"Heard “{raw.Trim()}” (say approve, reject, changes, or why?)");
+                    break;
             }
         }
 
-        public enum VoiceCommand { None, Approve, Reject, Ask }
+        public enum VoiceCommand { None, Approve, Reject, RequestChanges, Ask }
 
         /// <summary>
         /// Map a transcript (lower-case) and optional Wit intent to a command. Approval is the
-        /// consequential action, so it is the HARDEST to trigger: questions are checked first, then
-        /// any negation ("don't approve", "not sure") rejects or does nothing, and only a short,
-        /// unambiguous affirmative approves. Whole-word matching, never substrings.
+        /// consequential action, so it is the HARDEST to trigger: questions first, then changes,
+        /// then negation/reject, then short unambiguous affirmative. Whole-word/phrase matching only.
         /// </summary>
         public static VoiceCommand Classify(string text, string intent)
         {
@@ -106,15 +196,15 @@ namespace MuseDesk.Voice
             if (text.Length == 0 && intent.Length == 0) return VoiceCommand.None;
 
             bool question = HasAny(text, WhyWords) || text.EndsWith("?");
+            bool changes = HasAny(text, ChangeWords);
             bool negated = HasAny(text, NegationWords);
             bool no = HasAny(text, NoWords);
             bool yes = HasAny(text, YesWords);
 
             if (question) return VoiceCommand.Ask;
+            if (changes && !negated) return VoiceCommand.RequestChanges;
             if (no && !yes) return VoiceCommand.Reject;
             if (intent.Contains("reject") || intent.Contains("negat")) return VoiceCommand.Reject;
-            // "don't approve", "not sure", "no, approve it": contradictory or hedged. Do nothing
-            // rather than guess; the user can repeat a clear command or use their hands.
             if (negated || (no && yes)) return VoiceCommand.None;
             int words = text.Length == 0 ? 0 : text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
             if ((yes || intent.Contains("confirm")) && words <= 6) return VoiceCommand.Approve;
@@ -135,8 +225,9 @@ namespace MuseDesk.Voice
 
         void OnError(string error, string message)
         {
-            ListeningChanged?.Invoke(false);
+            SetListening(false);
             Debug.LogWarning($"[MuseDesk] voice error: {error} {message}");
+            StatusChanged?.Invoke($"Voice error: {(string.IsNullOrEmpty(error) ? message : error)}");
         }
 
         static string SafeIntent(WitResponseNode node)
@@ -144,6 +235,5 @@ namespace MuseDesk.Voice
             try { return (node.GetIntentName() ?? "").ToLowerInvariant(); }
             catch { return ""; }
         }
-
     }
 }

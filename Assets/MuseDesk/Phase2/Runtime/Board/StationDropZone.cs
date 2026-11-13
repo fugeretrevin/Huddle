@@ -27,9 +27,9 @@ namespace MuseDesk.Phase2.Board
         public GameObject halo;
 
         [Tooltip("Tint the halo when the hovered card is a VALID target here.")]
-        public Color validColor = new Color(0.30f, 0.80f, 0.45f, 0.6f);
+        public Color validColor = new Color(0.30f, 0.80f, 0.45f, 0.24f);
         [Tooltip("Tint the halo when the hovered card is INVALID here (e.g. running/terminal).")]
-        public Color invalidColor = new Color(0.85f, 0.35f, 0.30f, 0.6f);
+        public Color invalidColor = new Color(0.85f, 0.35f, 0.30f, 0.26f);
 
         Collider _collider;
         Renderer _haloRenderer;

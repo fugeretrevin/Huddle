@@ -140,7 +140,7 @@ namespace MuseDesk.Documents
             {
                 case "approved": SetStatus("Approved. The developer is continuing.", Good); break;
                 case "rejected": SetStatus("Rejected. Nothing was changed.", Bad); break;
-                case "changes_requested": SetStatus("Changes requested. The run has stopped.", Warn); break;
+                case "changes_requested": SetStatus("Changes requested.", Warn); break;
                 case "expired": SetStatus("This request expired (the desktop restarted). Nothing was run.", Warn); break;
                 default: SetStatus($"Resolved: {state}", Ink); break;
             }
@@ -156,6 +156,14 @@ namespace MuseDesk.Documents
         public void SetAnswer(string text)
         {
             if (answer) answer.text = string.IsNullOrEmpty(text) ? "" : "“" + text + "”";
+        }
+
+        public void SetVoiceStatus(string text)
+        {
+            if (!status) return;
+            if (string.IsNullOrEmpty(text)) { status.text = ""; status.color = Ink; return; }
+            status.text = text;
+            status.color = text.StartsWith("Voice error") || text.Contains("permission") ? Warn : Ink;
         }
 
         void SetActionsVisible(bool v)

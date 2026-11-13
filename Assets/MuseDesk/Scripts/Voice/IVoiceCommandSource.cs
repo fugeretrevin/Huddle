@@ -15,10 +15,14 @@ namespace MuseDesk.Voice
         event Action Approve;
         /// <summary>User declined (e.g. built-in wit/rejection, "reject", "no").</summary>
         event Action Reject;
+        /// <summary>User requested changes / revision ("request changes", "revise").</summary>
+        event Action RequestChanges;
         /// <summary>User asked a contextual question about the pending decision; carries the text.</summary>
         event Action<string> AskWhy;
         /// <summary>Mic listening state changed — drives a visible "listening" indicator.</summary>
         event Action<bool> ListeningChanged;
+        /// <summary>Human-readable status message (e.g. errors, permission state, heard transcript).</summary>
+        event Action<string> StatusChanged;
 
         /// <summary>
         /// True only when the provider can actually recognize speech right now: configured with a

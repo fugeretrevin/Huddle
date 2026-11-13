@@ -219,11 +219,16 @@ namespace MuseDesk.Phase2.Board
         static string Capitalize(string s)
             => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
         // What the card can honestly say about itself. A queued card that a pipeline can run reads
-        // "Ready: drop on Researcher"; one that nothing runs yet reads "Planned".
+        // "Ready: drop on Researcher"; one that nothing runs yet shows its assignee if assigned.
         static string StateLine(TaskCardV2 d)
         {
             if (d.TaskState == TaskStates.Queued)
-                return d.Executable ? "Ready: drop on Researcher" : "Planned";
+            {
+                if (d.Executable) return "Ready: drop on Researcher";
+                return !string.IsNullOrEmpty(d.AgentId)
+                    ? $"Assigned: {Capitalize(d.AgentId)} (planned)"
+                    : "Planned";
+            }
             return PrettyState(d.TaskState);
         }
 

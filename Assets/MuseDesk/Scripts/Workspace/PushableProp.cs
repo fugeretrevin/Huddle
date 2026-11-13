@@ -38,6 +38,21 @@ namespace MuseDesk.Workspace
         float _stillFor;
         Vector3 _fromPos;
         Quaternion _fromRot;
+        System.Func<int> _sel;
+        bool _selResolved;
+
+        bool IsHeld()
+        {
+            if (!_selResolved)
+            {
+                _selResolved = true;
+                Component g = null;
+                foreach (var mb in GetComponents<MonoBehaviour>())
+                    if (mb != null && mb.GetType().Name == "Grabbable") { g = mb; break; }
+                if (g != null) _sel = GrabState.BindSelectingPoints(g);
+            }
+            return _sel != null && _sel() > 0;
+        }
 
         void Awake()
         {
@@ -77,6 +92,13 @@ namespace MuseDesk.Workspace
                 float moved = (_parent.position - _lastParentPos).sqrMagnitude;
                 _lastParentPos = _parent.position;
                 if (moved > 0.02f * 0.02f) { EnterSettling(); return; }
+            }
+
+            if (IsHeld())
+            {
+                if (_mode == Mode.Returning) _mode = Mode.Dynamic;
+                _stillFor = 0f;
+                return;
             }
 
             switch (_mode)

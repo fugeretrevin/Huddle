@@ -7,25 +7,21 @@ namespace MuseDesk.Voice
     /// <summary>
     /// Optional voice layer for responding to the pending decision. It is PURELY ADDITIVE: it calls
     /// the exact same SessionController commands the poke buttons do, so the backend still authorizes
-    /// every action (AGENTS invariant #2 — a spoken "approve" is not proof of approval; the acknowledged
-    /// backend state is). Voice is also gated to connected mode by default, because it relies on a cloud
-    /// recognizer (Wit.ai) that cannot run in the standalone offline judge demo (invariants #7/#8:
-    /// hands-first, every P0 path works without voice). If no provider is present or available, this
-    /// component does nothing and the hand UI is unaffected.
+    /// every action (AGENTS invariant #2). Surfaces listening/heard/error status on DecisionPanel.
     /// </summary>
     public class VoiceDecisionController : MonoBehaviour
     {
         [Header("Wiring")]
         public SessionController controller;
         [Tooltip("A component implementing IVoiceCommandSource (e.g. the Wit bridge). Auto-found if left null.")]
-        public MonoBehaviour sourceBehaviour;   // must implement IVoiceCommandSource
+        public MonoBehaviour sourceBehaviour;
 
         [Header("Policy")]
         [Tooltip("Only act on voice while a live backend is connected (offline demo stays hands-only).")]
         public bool requireLiveMode = true;
-        [Tooltip("Master switch; can be driven by RuntimeSettings so voice ships off by default.")]
+        [Tooltip("Master switch; can be driven by RuntimeSettings.")]
         public bool voiceEnabled = false;
-        [Tooltip("Decision paper that shows the spoken question's answer. Auto-found if left null.")]
+        [Tooltip("Decision paper that shows listening status and spoken question answers. Auto-found if left null.")]
         public MuseDesk.Documents.DecisionPanel panel;
 
         /// <summary>Raised with a short human-readable note ("heard: approve", "listening…") for UI.</summary>
@@ -40,8 +36,10 @@ namespace MuseDesk.Voice
             if (_source == null) return;
             _source.Approve += OnApprove;
             _source.Reject += OnReject;
+            _source.RequestChanges += OnRequestChanges;
             _source.AskWhy += OnAskWhy;
             _source.ListeningChanged += OnListeningChanged;
+            _source.StatusChanged += OnStatusChanged;
             _bound = true;
         }
 
@@ -50,8 +48,10 @@ namespace MuseDesk.Voice
             if (!_bound || _source == null) return;
             _source.Approve -= OnApprove;
             _source.Reject -= OnReject;
+            _source.RequestChanges -= OnRequestChanges;
             _source.AskWhy -= OnAskWhy;
             _source.ListeningChanged -= OnListeningChanged;
+            _source.StatusChanged -= OnStatusChanged;
             _bound = false;
         }
 
@@ -63,40 +63,51 @@ namespace MuseDesk.Voice
             return null;
         }
 
+        MuseDesk.Documents.DecisionPanel ResolvePanel()
+        {
+            if (panel == null)
+                panel = FindAnyObjectByType<MuseDesk.Documents.DecisionPanel>(FindObjectsInactive.Include);
+            return panel;
+        }
+
         bool CanAct()
         {
             if (!voiceEnabled || controller == null) return false;
             if (_source == null || !_source.IsAvailable) return false;
             if (requireLiveMode && !controller.IsLive) return false;
-            // Only meaningful when a decision is actually awaiting a human.
             return !string.IsNullOrEmpty(controller.PendingDecisionId);
         }
 
         void OnApprove()
         {
             if (!CanAct()) return;
-            Heard?.Invoke("heard: approve");
-            controller.ApprovePending();   // routes through the gateway -> backend authorizes
+            NotifyStatus("Heard: approve");
+            controller.ApprovePending();
         }
 
         void OnReject()
         {
             if (!CanAct()) return;
-            Heard?.Invoke("heard: reject");
+            NotifyStatus("Heard: reject");
             controller.RejectPending();
+        }
+
+        void OnRequestChanges()
+        {
+            if (!CanAct()) return;
+            NotifyStatus("Heard: request changes");
+            controller.RequestChangesPending();
         }
 
         void OnAskWhy(string question)
         {
             if (!CanAct()) return;
-            Heard?.Invoke("asked: " + (string.IsNullOrEmpty(question) ? "why?" : question));
-            if (panel == null) panel = FindAnyObjectByType<MuseDesk.Documents.DecisionPanel>(FindObjectsInactive.Include);
-            if (panel != null) { panel.Expand(); panel.SetAnswer("Asking…"); }
-            // The answer comes from the backend's question route (real task context, or an explicitly
-            // demo-labelled answer offline) and is shown on the decision paper; nothing is invented here.
+            NotifyStatus("Asking: " + (string.IsNullOrEmpty(question) ? "why?" : question));
+            var p = ResolvePanel();
+            if (p != null) { p.Expand(); p.SetAnswer("Asking…"); }
             controller.AskPending(
                 string.IsNullOrEmpty(question) ? "Why do you recommend this?" : question,
-                ans => { if (panel != null) panel.SetAnswer(ans); Heard?.Invoke(""); },
+                ans => { if (p != null) p.SetAnswer(ans); NotifyStatus(""); },
                 AgentFor(question));
         }
 
@@ -114,6 +125,18 @@ namespace MuseDesk.Voice
             return who;
         }
 
-        void OnListeningChanged(bool listening) => Heard?.Invoke(listening ? "listening…" : "");
+        void OnListeningChanged(bool listening)
+        {
+            if (listening) NotifyStatus("Listening… say Approve, Reject, Changes, or Why?");
+        }
+
+        void OnStatusChanged(string msg) => NotifyStatus(msg);
+
+        void NotifyStatus(string msg)
+        {
+            Heard?.Invoke(msg);
+            var p = ResolvePanel();
+            if (p != null) p.SetVoiceStatus(msg);
+        }
     }
 }

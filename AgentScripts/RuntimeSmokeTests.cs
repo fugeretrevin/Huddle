@@ -403,6 +403,33 @@ public static class RuntimeSmokeTests
             IdempotencyKey = "k-plain-resume-0001" }, CancellationToken.None).GetAwaiter().GetResult();
         Check(resumed.Ok && plain.R2.GetTask(pid).TaskState == TaskStates.Queued, "resuming an assigned planned card returns it to queued, not running");
         Check(plain.V2Events.All(e => e.PayloadString("task_state") != TaskStates.Running), "a planned card is never reported running");
+
+        // Request changes once -> researcher revises -> approve completes with artifacts.
+        var rev = Rig();
+        rev.Assign(rev.CardId, "researcher", "k-rev-start-0001");
+        string firstDec = rev.PendingDecision;
+        rev.Respond(firstDec, "request_changes", "k-rev-chg-0001");
+        Check(rev.Card.TaskState == TaskStates.AwaitingApproval
+              && !string.IsNullOrEmpty(rev.PendingDecision) && rev.PendingDecision != firstDec,
+            "request_changes raises a fresh revised decision");
+        rev.Respond(rev.PendingDecision, "approve", "k-rev-app-0001");
+        const string expectedRevStates = "queued>running>awaiting_approval>running>awaiting_approval>running>completed";
+        Check(rev.Card.TaskState == TaskStates.Completed && rev.States(rev.CardId) == expectedRevStates,
+            "revise then approve follows expected states (got " + rev.States(rev.CardId) + ")");
+        Check(rev.R2.Artifacts.Count == 2 && !rev.V1.RunInProgress && rev.Board.ActiveRunTaskId == null,
+            "revised run finishes cleanly with two artifacts");
+
+        // Exhaust MaxProposalRevisions (2 revisions -> 3rd request_changes cancels cleanly).
+        var revCap = Rig();
+        revCap.Assign(revCap.CardId, "researcher", "k-revcap-start-0001");
+        revCap.Respond(revCap.PendingDecision, "request_changes", "k-revcap-chg-0001");
+        revCap.Respond(revCap.PendingDecision, "request_changes", "k-revcap-chg-0002");
+        revCap.Respond(revCap.PendingDecision, "request_changes", "k-revcap-chg-0003");
+        const string expectedCapStates = "queued>running>awaiting_approval>running>awaiting_approval>running>awaiting_approval>cancelled";
+        Check(revCap.Card.TaskState == TaskStates.Cancelled && revCap.States(revCap.CardId) == expectedCapStates,
+            "exhausting proposal revisions ends the card cancelled (got " + revCap.States(revCap.CardId) + ")");
+        Check(revCap.R2.Artifacts.Count == 0 && !revCap.V1.RunInProgress && revCap.Board.ActiveRunTaskId == null,
+            "exhausted revision run produces no artifacts and ends the run");
     }
 
     public static string Run()

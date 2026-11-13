@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5483428008874275453}
-  - component: {fileID: 4670768882956565609}
+  - component: {fileID: 4349629960452548907}
   m_Layer: 0
   m_Name: Mascot_FeedbackBadgeGroup
   m_TagString: Untagged
@@ -38,7 +38,7 @@ Transform:
   - {fileID: 3317850839887366758}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &4670768882956565609
+--- !u!114 &4349629960452548907
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

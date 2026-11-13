@@ -103,6 +103,11 @@ namespace MuseDesk.Workspace
         void OnDecisionResolved(string id, string state)
         {
             string s = (state ?? "").ToLowerInvariant();
+            if (s.Contains("change"))
+            {
+                Show(Step.Working);
+                return;
+            }
             Show(s.Contains("approv") ? Step.Approved : Step.Rejected);
         }
 

@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # real workers will emit "live" only for actually executed work.
     producer_source_mode: str = "demo"
 
+    # Bounded revise loop: revised template proposals after "request changes" (so at
+    # most 1 + this many decisions per run; capped by the templates that exist).
+    max_proposal_revisions: int = 2
+    # Bounded retest loop (live producer): extra developer attempts after the tests on
+    # new code did not pass (total attempts = 1 + this).
+    max_dev_revision_attempts: int = 1
+
     @property
     def state_source_mode(self) -> str:
         """Mode stamped on backend-AUTHORITATIVE state the API itself records: the

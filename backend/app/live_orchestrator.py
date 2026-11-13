@@ -18,6 +18,7 @@ from .run_recovery import fail_run
 from .settings import Settings
 from .storage import Storage
 from .workers import (
+    CHANGES_LIMIT_MESSAGE,
     CHANGES_REQUESTED_MESSAGE,
     RESEARCH_PROGRESS_MESSAGE,
     WORK_PROVENANCE_SANDBOX,
@@ -25,6 +26,9 @@ from .workers import (
     DeveloperWorker,
     ResearchWorker,
     TesterWorker,
+    proposal_revision_limit,
+    retest_reason,
+    revising_progress_message,
 )
 from .workspace_guard import WorkspaceGuard
 
@@ -206,39 +210,61 @@ class LiveOrchestrator:
 
         # Researcher raises the gated decision. The recommendation is a fixed TEMPLATE
         # (no model call, no web research): disclosed in machine-readable fields.
-        proposal = self._research.evaluate(f"dec-{uuid.uuid4().hex[:10]}")
-        details = {
-            "title": proposal.title, "summary": proposal.summary,
-            "recommendation": proposal.recommendation, "rationale": proposal.rationale,
-            "risk_level": proposal.risk_level, "priority": "blocking",
-            "allowed_actions": ["approve", "reject", "request_changes"],
-            "alternatives": proposal.alternatives, "provenance": proposal.provenance,
-            "research_provenance": proposal.research_provenance,
-            "research_provenance_label": proposal.research_provenance_label,
-            "impact": f"Developer task {oauth_task} is blocked on this decision",
-            **link,
-            "source_mode": "live",
-        }
-        self._storage.create_decision(proposal.decision_id, session_id, research_task,
-                                      AgentId.researcher.value, proposal.summary,
-                                      proposal.recommendation, details)
+        # "Request changes" revises the template recommendation up to ``max_revisions``
+        # times without executing any developer work in between.
+        max_revisions = proposal_revision_limit(self._settings.max_proposal_revisions)
+        revision = 0
+        previous_id: str | None = None
         loop = asyncio.get_running_loop()
-        fut: asyncio.Future[str] = loop.create_future()
-        self._waiters[proposal.decision_id] = fut
-        self._storage.set_task_status(research_task, TaskState.awaiting_approval.value, utcnow_iso())
-        await self._set_agent(session_id, AgentId.researcher, AgentState.waiting,
-                              TaskState.awaiting_approval, "Needs a decision", "live")
-        await self._bus.publish(session_id, EventType.decision_requested, details,
-                                task_id=research_task, agent_id=AgentId.researcher.value,
-                                decision_id=proposal.decision_id)
-        if board is not None:
-            await board.decision_requested(parent_task_id, proposal.decision_id, {
-                "summary": proposal.summary,
+        while True:
+            proposal = self._research.evaluate(f"dec-{uuid.uuid4().hex[:10]}", revision=revision)
+            details = {
+                "title": proposal.title, "summary": proposal.summary,
+                "recommendation": proposal.recommendation, "rationale": proposal.rationale,
+                "risk_level": proposal.risk_level, "priority": "blocking",
+                "allowed_actions": ["approve", "reject", "request_changes"],
+                "alternatives": proposal.alternatives, "provenance": proposal.provenance,
                 "research_provenance": proposal.research_provenance,
-                "research_provenance_label": proposal.research_provenance_label})
+                "research_provenance_label": proposal.research_provenance_label,
+                "revision": revision,
+                "decision_revision": revision,
+                "revises_decision_id": previous_id,
+                "impact": f"Developer task {oauth_task} is blocked on this decision",
+                **link,
+                "source_mode": "live",
+            }
+            self._storage.create_decision(proposal.decision_id, session_id, research_task,
+                                          AgentId.researcher.value, proposal.summary,
+                                          proposal.recommendation, details)
+            fut: asyncio.Future[str] = loop.create_future()
+            self._waiters[proposal.decision_id] = fut
+            self._storage.set_task_status(research_task, TaskState.awaiting_approval.value, utcnow_iso())
+            await self._set_agent(session_id, AgentId.researcher, AgentState.waiting,
+                                  TaskState.awaiting_approval, "Needs a decision", "live")
+            await self._bus.publish(session_id, EventType.decision_requested, details,
+                                    task_id=research_task, agent_id=AgentId.researcher.value,
+                                    decision_id=proposal.decision_id)
+            if board is not None:
+                await board.decision_requested(parent_task_id, proposal.decision_id, {
+                    "summary": proposal.summary,
+                    "research_provenance": proposal.research_provenance,
+                    "research_provenance_label": proposal.research_provenance_label,
+                    "decision_revision": revision,
+                    "revises_decision_id": previous_id})
 
-        action = await fut
-        self._waiters.pop(proposal.decision_id, None)
+            action = await fut
+            self._waiters.pop(proposal.decision_id, None)
+            if action != DecisionAction.request_changes.value or revision >= max_revisions:
+                break
+            revision += 1
+            previous_id = proposal.decision_id
+            if board is not None:
+                await board.changes_requested(parent_task_id, proposal.decision_id, revision)
+            self._storage.set_task_status(research_task, TaskState.running.value, utcnow_iso())
+            await self._set_agent(session_id, AgentId.researcher, AgentState.researching,
+                                  TaskState.running, revising_progress_message(revision), "live")
+            await self._step()
+
         if board is not None and action == DecisionAction.approve.value:
             await board.decision_approved(parent_task_id, proposal.decision_id)
         self._storage.set_task_status(research_task, TaskState.completed.value, utcnow_iso())
@@ -248,21 +274,40 @@ class LiveOrchestrator:
         parent_final = TaskState.completed
         card_final, card_summary = TaskState.completed, ""
         if action == DecisionAction.approve.value:
-            await self._set_agent(session_id, AgentId.developer, AgentState.coding,
-                                  TaskState.running, "Implementing OAuth scaffold", "live",
-                                  executed=True)
             self._storage.set_task_status(oauth_task, TaskState.running.value, utcnow_iso())
-            dev = await asyncio.to_thread(self._dev.implement_oauth, self._guard, ws)
-            await self._set_agent(session_id, AgentId.tester, AgentState.testing,
-                                  TaskState.running, "Running tests on new code", "live",
-                                  executed=True)
-            result = await asyncio.to_thread(self._tester.run, self._guard, ws,
-                                             self._settings.task_timeout_seconds)
-            # pytest's exit code is the authority: 0 means every collected test passed.
-            # (Counting only "N failed" treated a crashed/empty run — non-zero exit with
-            # no parsable summary — as a success.)
-            passed_ok = (result.returncode == 0 and result.failed == 0
-                         and not result.timed_out)
+            max_retries = max(0, int(self._settings.max_dev_revision_attempts))
+            attempts = 0
+            first_attempt: dict | None = None
+            while True:
+                attempts += 1
+                prog = ("Implementing OAuth scaffold" if attempts == 1
+                        else f"Revising OAuth scaffold (attempt {attempts})")
+                await self._set_agent(session_id, AgentId.developer, AgentState.coding,
+                                      TaskState.running, prog, "live", executed=True)
+                dev = await asyncio.to_thread(self._dev.implement_oauth, self._guard, ws)
+                await self._set_agent(session_id, AgentId.tester, AgentState.testing,
+                                      TaskState.running,
+                                      "Running tests on new code" if attempts == 1 else f"Retesting code (attempt {attempts})",
+                                      "live", executed=True)
+                result = await asyncio.to_thread(self._tester.run, self._guard, ws,
+                                                 self._settings.task_timeout_seconds)
+                # pytest's exit code is the authority: 0 means every collected test passed.
+                passed_ok = (result.returncode == 0 and result.failed == 0
+                             and not result.timed_out)
+                if passed_ok or attempts > max_retries:
+                    break
+                if first_attempt is None:
+                    first_attempt = {
+                        "tests_passed": result.passed,
+                        "tests_failed": result.failed,
+                        "timed_out": result.timed_out,
+                        "returncode": result.returncode,
+                    }
+                reason = retest_reason(result)
+                await self._set_agent(session_id, AgentId.tester, AgentState.testing,
+                                      TaskState.running, f"Tests failed ({reason}); requesting fix",
+                                      "live", executed=True)
+
             counts = f"{result.passed} passed / {result.failed} failed"
             # The tester's own run is over: without this it stayed in "testing" forever.
             await self._set_agent(session_id, AgentId.tester,
@@ -276,6 +321,7 @@ class LiveOrchestrator:
                          else f"OAuth login scaffold written but tests did not pass; {counts}"),
                 files_changed=dev.files_changed, diff_excerpt=dev.diff_excerpt,
                 tests_passed=result.passed, tests_failed=result.failed, timed_out=result.timed_out,
+                attempts=attempts, first_attempt=first_attempt,
             )
             artifact_id = f"art-{uuid.uuid4().hex[:10]}"
             self._storage.create_artifact(artifact_id, session_id, oauth_task, "code_change",
@@ -310,8 +356,9 @@ class LiveOrchestrator:
                                     task_id=oauth_task, agent_id="developer")
         else:
             self._storage.set_task_status(oauth_task, TaskState.cancelled.value, utcnow_iso())
-            msg = ("Rejected: no OAuth files written" if action == DecisionAction.reject.value
-                   else CHANGES_REQUESTED_MESSAGE)
+            rejected = action == DecisionAction.reject.value
+            msg = ("Rejected: no OAuth files written" if rejected
+                   else CHANGES_LIMIT_MESSAGE if revision > 0 else CHANGES_REQUESTED_MESSAGE)
             card_final, card_summary = TaskState.cancelled, msg
             await self._set_agent(session_id, AgentId.developer, AgentState.waiting,
                                   TaskState.cancelled, msg, "live")

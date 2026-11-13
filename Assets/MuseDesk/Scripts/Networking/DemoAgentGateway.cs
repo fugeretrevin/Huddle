@@ -43,12 +43,30 @@ namespace MuseDesk.Networking
         public const string ResearchProvenance = "template";
         public const string ResearchProvenanceLabel = "Template recommendation. Not live AI research.";
 
+        /// <summary>Bounded proposal revisions allowed when the user requests changes.</summary>
+        public int MaxProposalRevisions { get; set; } = 2;
+
+        /// <summary>Current 0-based proposal revision index in the active run.</summary>
+        public int ProposalRevision => _revision;
+
+        /// <summary>True if <paramref name="decisionId"/> is the active decision and has remaining
+        /// proposal revisions available on request_changes.</summary>
+        public bool WillReviseOnChanges(string decisionId)
+            => _decisionRequested && !string.IsNullOrEmpty(_decisionId)
+               && (decisionId == _decisionId || decisionId == _lastRevisedDecisionId)
+               && _pendingRevisionForDecisionId == decisionId;
+
         const string SessionId = "ses-demo-001";
         readonly DemoFixture _fx;
         readonly float _step;
         long _seq;
         string _resolvedAction;
         string _decisionId;
+        string _baseDecisionId;
+        string _lastRevisedDecisionId;
+        string _pendingRevisionForDecisionId;
+        int _revision;
+        readonly Dictionary<string, string> _resolvedDecisions = new Dictionary<string, string>();
         bool _decisionRequested;
         int _cycle;
         int _generation;                 // bumped by every start and every reset
@@ -103,8 +121,13 @@ namespace MuseDesk.Networking
             _cycle++;
             int gen = ++_generation;
             _resolvedAction = null;
+            _resolvedDecisions.Clear();
             _decisionRequested = false;
-            _decisionId = _cycle == 1 ? _fx.Decision.DecisionId : $"{_fx.Decision.DecisionId}-c{_cycle}";
+            _revision = 0;
+            _baseDecisionId = _cycle == 1 ? _fx.Decision.DecisionId : $"{_fx.Decision.DecisionId}-c{_cycle}";
+            _decisionId = _baseDecisionId;
+            _lastRevisedDecisionId = null;
+            _pendingRevisionForDecisionId = null;
             _boardTaskId = string.IsNullOrEmpty(boardTaskId) ? null : boardTaskId;
             CancelRunDelays();
             _runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -134,6 +157,7 @@ namespace MuseDesk.Networking
                     ["title"] = d.Title, ["summary"] = d.Summary, ["rationale"] = d.Rationale,
                     ["recommendation"] = "approve", ["risk_level"] = d.RiskLevel,
                     ["priority"] = d.Priority, ["source_mode"] = "demo",
+                    ["revision"] = 0, ["decision_revision"] = 0, ["revises_decision_id"] = null,
                     ["research_provenance"] = ResearchProvenance,
                     ["research_provenance_label"] = ResearchProvenanceLabel,
                     ["allowed_actions"] = JArray.FromObject(d.AllowedActions)
@@ -156,28 +180,86 @@ namespace MuseDesk.Networking
         public Task<DecisionResolutionDto> RespondToDecisionAsync(string decisionId, string action,
             string idempotencyKey, string comment, CancellationToken ct)
         {
+            if (string.IsNullOrEmpty(decisionId))
+                return Task.FromResult(new DecisionResolutionDto { DecisionId = decisionId,
+                    State = "expired", Action = action, Applied = false });
+
+            // Idempotent: a second resolution for any already-resolved decision returns canonical state.
+            if (_resolvedDecisions.TryGetValue(decisionId, out var prevAction))
+                return Task.FromResult(new DecisionResolutionDto { DecisionId = decisionId,
+                    State = StateFor(prevAction), Action = prevAction, Applied = false });
+
             // A decision from a run that was reset (or one that was never requested) is not answerable:
             // nothing is applied and nothing is emitted.
             if (!_decisionRequested || string.IsNullOrEmpty(_decisionId) || decisionId != _decisionId)
                 return Task.FromResult(new DecisionResolutionDto { DecisionId = decisionId,
                     State = "expired", Action = action, Applied = false });
 
-            // Idempotent: a second resolution returns the canonical first, applies nothing new.
-            if (_resolvedAction != null)
-                return Task.FromResult(new DecisionResolutionDto { DecisionId = decisionId,
-                    State = StateFor(_resolvedAction), Action = _resolvedAction, Applied = false });
-
             _resolvedAction = action;
+            _resolvedDecisions[decisionId] = action;
             var state = StateFor(action);
             int gen = _generation;
+
+            bool willRevise = action == "request_changes" && _revision < MaxProposalRevisions;
+            _lastRevisedDecisionId = willRevise ? decisionId : null;
+            _pendingRevisionForDecisionId = willRevise ? decisionId : null;
+
             Emit("decision.resolved", new JObject {
                 ["state"] = state, ["action"] = action, ["source_mode"] = "demo",
                 ["resolved_at"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
             }, decisionId: decisionId);
 
-            _ = PlayBranchAsync(action, gen);
+            if (willRevise)
+                _ = PlayRevisionAsync(decisionId, gen);
+            else
+                _ = PlayBranchAsync(action, gen);
+
             return Task.FromResult(new DecisionResolutionDto { DecisionId = decisionId, State = state,
                 Action = action, Applied = true });
+        }
+
+        async Task PlayRevisionAsync(string previousDecisionId, int gen)
+        {
+            try
+            {
+                if (gen != _generation) return;
+                var runCt = _runCts != null ? _runCts.Token : CancellationToken.None;
+                _revision++;
+                string nextId = $"{_baseDecisionId}-r{_revision}";
+                _decisionId = nextId;
+                _resolvedAction = null;
+
+                EmitAgent("researcher", "researching", $"Revising the template recommendation (revision {_revision})");
+                await Step(runCt);
+                if (gen != _generation) return;
+
+                var d = _fx.Decision;
+                (string title, string summary, string rationale, string risk) = _revision == 1
+                    ? ("Choose authentication approach (revision 1)",
+                       "Use OAuth, limited to a login scaffold with tests?",
+                       "Narrower scope: only an OAuth authorize-URL scaffold and its unit tests are prepared. No password storage, token exchange, or network calls.",
+                       "low")
+                    : ("Choose authentication approach (revision 2)",
+                       "Use OAuth, added as two new files with no existing code changed?",
+                       "Smallest safe step: the OAuth scaffold and its tests are added as two new files. Existing files are left untouched.",
+                       "low");
+
+                EmitAgent("researcher", "waiting", "Needs a decision");
+                _decisionRequested = true;
+                _pendingRevisionForDecisionId = null;
+                Emit("decision.requested", new JObject {
+                    ["title"] = title, ["summary"] = summary, ["rationale"] = rationale,
+                    ["recommendation"] = "approve", ["risk_level"] = risk,
+                    ["priority"] = d.Priority, ["source_mode"] = "demo",
+                    ["revision"] = _revision, ["decision_revision"] = _revision,
+                    ["revises_decision_id"] = previousDecisionId,
+                    ["research_provenance"] = ResearchProvenance,
+                    ["research_provenance_label"] = ResearchProvenanceLabel,
+                    ["allowed_actions"] = JArray.FromObject(d.AllowedActions)
+                }, agentId: "researcher", decisionId: nextId, taskId: "task-demo-research");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Debug.LogError($"[MuseDesk] scripted demo revision error: {ex}"); }
         }
 
         async Task PlayBranchAsync(string action, int gen)
@@ -218,10 +300,13 @@ namespace MuseDesk.Networking
                 }
                 else
                 {
-                    // Rejected / changes requested: nothing was built, so NO task.completed is emitted —
-                    // a completion here would light the shelf, the PASSED lamp and the completion chime
+                    // Rejected / changes requested at limit: nothing was built, so NO task.completed
+                    // is emitted — a completion here would light the shelf, PASSED lamp, and chime
                     // for work that never happened.
-                    EmitAgent("developer", "waiting", branch?.Result ?? "No OAuth changes made");
+                    string stopMsg = action == "request_changes" && _revision > 0
+                        ? "Changes requested again: no further revisions are available. Run stopped."
+                        : branch?.Result ?? "No OAuth changes made";
+                    EmitAgent("developer", "waiting", stopMsg);
                 }
                 if (gen != _generation) return;
                 _boardTaskId = null;
@@ -253,7 +338,12 @@ namespace MuseDesk.Networking
             _generation++;
             CancelRunDelays();
             _resolvedAction = null;
+            _resolvedDecisions.Clear();
             _decisionId = null;
+            _baseDecisionId = null;
+            _lastRevisedDecisionId = null;
+            _pendingRevisionForDecisionId = null;
+            _revision = 0;
             _decisionRequested = false;
             _boardTaskId = null;
             RunInProgress = false;

@@ -127,7 +127,7 @@ def test_respond_with_key_from_another_request_is_409_not_a_replay(client):
     TestResult(passed=0, failed=0, returncode=-1, output="[timeout]", timed_out=True),
 ], ids=["failed-tests", "crashed-no-summary", "timed-out"])
 def test_live_failed_run_emits_task_failed_not_completed(tmp_path, monkeypatch, bad):
-    _fake_tester(monkeypatch, PASS, bad)  # baseline passes; the post-approval run does not
+    _fake_tester(monkeypatch, PASS, bad, bad)  # baseline passes; post-approval + 1 retest fail
     with _live_client(tmp_path) as client:
         sid, token, headers = _open(client)
         parent = _start(client, headers, sid, "live-create-fail0001")["task_id"]

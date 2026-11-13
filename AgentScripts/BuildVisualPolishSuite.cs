@@ -56,9 +56,9 @@ public static class BuildVisualPolishSuite
         AssetDatabase.ImportAsset(PreviewScenePath, ImportAssetOptions.ForceSynchronousImport);
         var previewScene = EditorSceneManager.OpenScene(PreviewScenePath, OpenSceneMode.Single);
 
+        ApplySingleMeshPokeButtons(matMap, sb);
         ApplyDecisionPaperPolish(matMap, sb);
         ApplyTaskBoardAndCardPolish(matMap, sb);
-        ApplySingleMeshPokeButtons(matMap, sb);
         ApplyStampsAndClutterReduction(matMap, sb);
         ApplyStationAffordancesAndOptimizedWorkstations(matMap, sb);
         ApplyMascotFeedbackBadges(matMap, sb);
@@ -184,18 +184,14 @@ public static class BuildVisualPolishSuite
             var inst = (GameObject)PrefabUtility.InstantiatePrefab(smallFbx);
             inst.name = "DecisionPaper_Small_Polished";
             ApplyMaterialsRecursively(inst, matMap);
-            var b = CreateDarkTMP(inst.transform, "Badge",   new Vector3(0f,  0.046f, 0.0042f), 2.0f, new Vector2(7.6f, 1.2f), TextAlignmentOptions.Center, new Color(0.96f, 0.94f, 0.88f), FontStyles.Bold);
+            var b = CreateDarkTMP(inst.transform, "Badge",   new Vector3(0f,  0.046f, -0.0045f), 3.6f, new Vector2(7.6f, 1.3f), TextAlignmentOptions.Center, new Color(0.99f, 0.96f, 0.88f), FontStyles.Bold);
             b.text = "DECISION";
-            b.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            var t = CreateDarkTMP(inst.transform, "Title",   new Vector3(0f,  0.020f, 0.0042f), 2.5f, new Vector2(7.4f, 1.8f), TextAlignmentOptions.Center, new Color(0.10f, 0.11f, 0.14f), FontStyles.Bold);
+            var t = CreateDarkTMP(inst.transform, "Title",   new Vector3(0f,  0.020f, -0.0045f), 4.6f, new Vector2(7.4f, 2.0f), TextAlignmentOptions.Center, new Color(0.10f, 0.11f, 0.14f), FontStyles.Bold);
             t.text = "Use OAuth for sign-in?";
-            t.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            var s = CreateDarkTMP(inst.transform, "Summary", new Vector3(0f, -0.004f, 0.0042f), 1.8f, new Vector2(7.2f, 2.4f), TextAlignmentOptions.Center, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal);
+            var s = CreateDarkTMP(inst.transform, "Summary", new Vector3(0f, -0.004f, -0.0045f), 3.3f, new Vector2(7.2f, 2.4f), TextAlignmentOptions.Center, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal);
             s.text = "Baseline tests pass.";
-            s.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            var r = CreateDarkTMP(inst.transform, "Reco",    new Vector3(0.012f, -0.030f, 0.0042f), 1.8f, new Vector2(4.8f, 1.0f), TextAlignmentOptions.Center, new Color(0.12f, 0.44f, 0.26f), FontStyles.Bold);
+            var r = CreateDarkTMP(inst.transform, "Reco",    new Vector3(-0.012f, -0.030f, -0.0045f), 3.4f, new Vector2(4.8f, 1.1f), TextAlignmentOptions.Center, new Color(0.10f, 0.44f, 0.26f), FontStyles.Bold);
             r.text = "APPROVE";
-            r.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             SavePrefab(inst, $"{PrefabDir}/DecisionPaper_Small_Polished.prefab", sb);
         }
 
@@ -216,6 +212,7 @@ public static class BuildVisualPolishSuite
             var h = (GameObject)PrefabUtility.InstantiatePrefab(haloFbx, kitGo.transform);
             h.name = "AgentHaloRing";
             h.transform.localPosition = new Vector3(0f, 0.002f, 0f);
+            h.transform.localScale = Vector3.one * 0.46f;
             view.haloRoot = h;
             view.haloOuterRenderer = h.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("StatusGreen"));
         }
@@ -224,6 +221,7 @@ public static class BuildVisualPolishSuite
             var p = (GameObject)PrefabUtility.InstantiatePrefab(padFbx, kitGo.transform);
             p.name = "DeskReceivePad";
             p.transform.localPosition = new Vector3(0.095f, 0.092f, -0.040f);
+            p.transform.localScale = Vector3.one * 0.72f;
             view.receivePadStatusRenderer = p.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("StatusBar"));
         }
         if (puckFbx != null)
@@ -294,8 +292,8 @@ public static class BuildVisualPolishSuite
             return;
         }
 
-        // Remove old Card / ExpandedFrame visuals
-        foreach (var childName in new[] { "Card", "Doc_ExpandedFrame", "Doc_DecisionPaper_Expanded", "SmallHeldPreview" })
+        // Remove old Card / ModeBand / ExpandedFrame visuals (ModeBand was the oversized orange quad sticking above the frame!)
+        foreach (var childName in new[] { "Card", "ModeBand", "Doc_ExpandedFrame", "Doc_DecisionPaper_Expanded", "SmallHeldPreview" })
         {
             var old = doc.transform.Find(childName);
             if (old != null) UnityEngine.Object.DestroyImmediate(old.gameObject);
@@ -314,76 +312,95 @@ public static class BuildVisualPolishSuite
             folio.transform.localScale = Vector3.one;
             ApplyMaterialsRecursively(folio, matMap);
 
-            // Wire DecisionPanel.modeBand to the folio's TopHeaderBar renderer if desired, or keep TopHeaderBar dark charcoal
             var panel = doc.GetComponentInChildren<DecisionPanel>(true);
             if (panel != null)
             {
-                var headerRend = folio.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("TopHeaderBar"));
-                if (headerRend != null) panel.modeBand = headerRend;
+                panel.modeBand = null; // Keep Folio's dark charcoal header bar sleek & untinted!
             }
         }
 
-        // Re-layout all TMP text fields for crisp contrast, clear hierarchy, and zero overlap!
-        // Note: On DecisionDocument, front face is -Z (`z = -0.0045f`).
+        // Re-layout all TMP text fields for crisp contrast, large legible hierarchy, and zero overlap!
+        // Note: On DecisionDocument, front face is -Z (`z = -0.005f`).
         //   - Above Top Brass Clip (y = +0.168): `Status`
-        //   - Region 1 (Top Header Band, y = +0.118): `Badge` ("SCRIPTED DEMO    needs your decision")
+        //   - Region 1 (Top Dark Header Bar, y = +0.118): `Badge` ("SCRIPTED DEMO    needs your decision")
         //   - Region 2 (Upper Cream Summary Card, y = +0.020 to +0.092):
         //       `Title` at y = +0.078 ("Use OAuth for sign-in?")
         //       `Summary` at y = +0.048 ("OAuth with an existing provider is less code to own...")
         //       `Reco` at y = +0.024 ("Recommended: Approve")
-        //       `Provenance` at y = +0.008 ("Template recommendation. Not live AI research.")
-        //   - Region 3 (Lower-Left Details Card, x = -0.044, y = -0.032, width = 17.6 cm):
-        //       `Details` root containing `Body` (y = -0.024) and `Answer` (y = -0.058)
+        //       `Provenance` at y = +0.009 ("Template recommendation. Not live AI research.")
+        //   - Region 3 (Lower-Left Details Card, x = -0.044, y = -0.032, width = 18.0 cm):
+        //       `Details` root containing `Body` (y = -0.023) and `Answer` (y = -0.059)
         //   - Region 4 (Lower-Right Dedicated Stamp Target Pad, x = +0.096, y = -0.032):
         //       `StampZone` and `StampMark` centered at `(0.096, -0.032, -0.006)`!
         //   - Region 5 (Bottom Single-Row Action Deck, y = -0.114, inside the frame bottom at -0.150):
         //       All 4 buttons in ONE row (`Btn_Approve`, `Btn_Ask_why`, `Btn_Details`, `Btn_Reject`)!
 
-        StyleDocText(doc.transform, "Status",     new Vector3(0.000f,  0.168f, -0.005f), new Vector2(28f, 2.2f), 2.0f, 2.8f, new Color(0.98f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleDocText(doc.transform, "Badge",      new Vector3(0.000f,  0.118f, -0.005f), new Vector2(26f, 2.0f), 1.9f, 2.5f, new Color(0.99f, 0.97f, 0.90f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleDocText(doc.transform, "Title",      new Vector3(0.000f,  0.078f, -0.005f), new Vector2(26f, 2.4f), 2.4f, 3.4f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
-        StyleDocText(doc.transform, "Summary",    new Vector3(0.000f,  0.048f, -0.005f), new Vector2(26f, 2.5f), 1.8f, 2.4f, new Color(0.16f, 0.18f, 0.22f), FontStyles.Normal, TextAlignmentOptions.Center, true);
-        StyleDocText(doc.transform, "Reco",       new Vector3(0.000f,  0.024f, -0.005f), new Vector2(16f, 1.4f), 1.8f, 2.3f, new Color(0.12f, 0.44f, 0.26f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleDocText(doc.transform, "Provenance", new Vector3(0.000f,  0.008f, -0.005f), new Vector2(26f, 1.2f), 1.3f, 1.7f, new Color(0.32f, 0.34f, 0.38f), FontStyles.Italic, TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Status",     new Vector3(0.000f,  0.168f, -0.005f), new Vector2(28f, 2.2f), 2.4f, 3.2f, new Color(0.98f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Badge",      new Vector3(0.000f,  0.118f, -0.005f), new Vector2(26f, 2.0f), 2.4f, 3.1f, new Color(0.99f, 0.97f, 0.90f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Title",      new Vector3(0.000f,  0.078f, -0.005f), new Vector2(26f, 2.5f), 3.4f, 4.6f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
+        StyleDocText(doc.transform, "Summary",    new Vector3(0.000f,  0.048f, -0.005f), new Vector2(26f, 2.6f), 2.4f, 3.2f, new Color(0.15f, 0.17f, 0.21f), FontStyles.Normal, TextAlignmentOptions.Center, true);
+        StyleDocText(doc.transform, "Reco",       new Vector3(0.000f,  0.024f, -0.005f), new Vector2(16f, 1.5f), 2.3f, 2.9f, new Color(0.10f, 0.44f, 0.26f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleDocText(doc.transform, "Provenance", new Vector3(0.000f,  0.009f, -0.005f), new Vector2(26f, 1.2f), 1.6f, 2.1f, new Color(0.30f, 0.32f, 0.36f), FontStyles.Italic, TextAlignmentOptions.Center, false);
 
         // Details region on the left side (x = -0.044) so the right side (x = +0.096) is 100% dedicated to the Stamp Target!
         var details = doc.transform.Find("Details");
         if (details != null)
         {
             details.localPosition = Vector3.zero;
-            StyleDocText(details, "Body",   new Vector3(-0.044f, -0.025f, -0.005f), new Vector2(17.4f, 4.8f), 1.45f, 1.95f, new Color(0.14f, 0.15f, 0.19f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
-            StyleDocText(details, "Answer", new Vector3(-0.044f, -0.058f, -0.005f), new Vector2(17.4f, 1.8f), 1.40f, 1.85f, new Color(0.18f, 0.32f, 0.54f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
+            StyleDocText(details, "Body",   new Vector3(-0.044f, -0.023f, -0.005f), new Vector2(17.8f, 4.8f), 1.85f, 2.45f, new Color(0.12f, 0.14f, 0.18f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
+            StyleDocText(details, "Answer", new Vector3(-0.044f, -0.059f, -0.005f), new Vector2(17.8f, 1.8f), 1.75f, 2.25f, new Color(0.16f, 0.30f, 0.52f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
         }
         else
         {
-            StyleDocText(doc.transform, "Body",   new Vector3(-0.044f, -0.025f, -0.005f), new Vector2(17.4f, 4.8f), 1.45f, 1.95f, new Color(0.14f, 0.15f, 0.19f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
-            StyleDocText(doc.transform, "Answer", new Vector3(-0.044f, -0.058f, -0.005f), new Vector2(17.4f, 1.8f), 1.40f, 1.85f, new Color(0.18f, 0.32f, 0.54f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
+            StyleDocText(doc.transform, "Body",   new Vector3(-0.044f, -0.023f, -0.005f), new Vector2(17.8f, 4.8f), 1.85f, 2.45f, new Color(0.12f, 0.14f, 0.18f), FontStyles.Normal, TextAlignmentOptions.TopLeft, true);
+            StyleDocText(doc.transform, "Answer", new Vector3(-0.044f, -0.059f, -0.005f), new Vector2(17.8f, 1.8f), 1.75f, 2.25f, new Color(0.16f, 0.30f, 0.52f), FontStyles.Italic, TextAlignmentOptions.Center,  true);
         }
 
         // Move StampZone to the dedicated Stamp Target pad on the right (x = +0.096, y = -0.032)
-        // and remove the giant primitive cylinder ZoneMarker that overlapped Ask Why!
+        // and remove the old primitive cylinders ZoneMarker AND ZoneRing (our 3D brass ring is now in the folio mesh)!
         var stampZone = doc.transform.Find("StampZone");
         if (stampZone != null)
         {
             stampZone.localPosition = new Vector3(0.096f, -0.032f, -0.005f);
-            var oldMarker = stampZone.Find("ZoneMarker");
-            if (oldMarker != null) UnityEngine.Object.DestroyImmediate(oldMarker.gameObject);
+            foreach (var oldCyl in new[] { "ZoneMarker", "ZoneRing" })
+            {
+                var c = stampZone.Find(oldCyl);
+                if (c != null) UnityEngine.Object.DestroyImmediate(c.gameObject);
+            }
+            var stampHere = stampZone.Find("StampHere");
+            if (stampHere != null)
+            {
+                stampHere.localPosition = new Vector3(0f, 0.011f, -0.002f);
+                stampHere.localScale = Vector3.one * 0.01f;
+                var shTmp = stampHere.GetComponent<TMP_Text>();
+                if (shTmp != null)
+                {
+                    shTmp.text = "STAMP TARGET";
+                    shTmp.rectTransform.sizeDelta = new Vector2(5.4f, 1.2f);
+                    shTmp.enableAutoSizing = false;
+                    shTmp.fontSize = 1.35f;
+                    shTmp.color = new Color(0.42f, 0.36f, 0.24f);
+                    shTmp.fontStyle = FontStyles.Bold;
+                    shTmp.alignment = TextAlignmentOptions.Center;
+                }
+            }
         }
 
-        // Move StampMark & ApprovalStamp prop to the dedicated Stamp Target zone (x = +0.096, y = -0.032)
+        // Move StampMark & ApprovalStamp prop to the dedicated Stamp Target zone (x = +0.096, y = -0.036)
         var stampMark = doc.transform.Find("StampMark");
         if (stampMark != null)
         {
-            stampMark.localPosition = new Vector3(0.096f, -0.032f, -0.007f);
-            stampMark.localRotation = Quaternion.Euler(0f, 0f, -10f);
+            stampMark.localPosition = new Vector3(0.096f, -0.037f, -0.007f);
+            stampMark.localRotation = Quaternion.Euler(0f, 0f, -8f);
             stampMark.localScale = Vector3.one * 0.01f;
             var tm = stampMark.GetComponent<TMP_Text>();
             if (tm != null)
             {
-                tm.fontSize = 2.4f;
+                tm.fontSize = 2.2f;
                 tm.enableAutoSizing = false;
-                tm.rectTransform.sizeDelta = new Vector2(7.5f, 2.2f);
-                tm.color = new Color(0.14f, 0.58f, 0.32f);
+                tm.rectTransform.sizeDelta = new Vector2(6.2f, 1.8f);
+                tm.color = new Color(0.12f, 0.56f, 0.30f);
+                tm.fontStyle = FontStyles.Bold;
             }
         }
         var appStamp = doc.transform.Find("ApprovalStamp");
@@ -395,8 +412,6 @@ public static class BuildVisualPolishSuite
 
         // Arrange all 4 action buttons (`Btn_Approve`, `Btn_Ask_why`, `Btn_Details`, `Btn_Reject`)
         // into ONE single horizontal row inside the lower frame deck (`y = -0.114`)!
-        // Note: each Btn_* contains `[BuildingBlock] ISDK_PokeInteraction` whose localScale is (0.14, 0.05, 0.10).
-        // Setting Btn_* localScale to (0.44, 0.56, 0.50) makes each key 6.16 cm wide x 2.8 cm tall!
         var actions = doc.transform.Find("Actions");
         if (actions != null)
         {
@@ -494,25 +509,39 @@ public static class BuildVisualPolishSuite
                 ApplyMaterialsRecursively(frame, matMap);
             }
 
-            // Raise the "TASK BOARD" header label onto the new top Title Pediment so it NEVER overlaps "Working" or "Needs me"!
+            // Raise the "TASK BOARD" header label onto the new top Title Pediment, matching Label_Backlog's scale & font proportions!
+            var refColLabel = tb.Find("Label_Backlog")?.GetComponent<TMP_Text>();
             foreach (var tmp in tb.GetComponentsInChildren<TMP_Text>(true))
             {
                 if (tmp.text != null && tmp.text.ToUpperInvariant().Contains("TASK BOARD"))
                 {
-                    tmp.transform.localPosition = new Vector3(0f, 0.242f, -0.010f);
-                    tmp.fontSize = 3.2f;
-                    tmp.enableAutoSizing = false;
+                    tmp.transform.localPosition = new Vector3(0f, 0.240f, -0.012f);
+                    tmp.transform.localRotation = Quaternion.identity;
+                    if (refColLabel != null)
+                    {
+                        tmp.transform.localScale = refColLabel.transform.localScale;
+                        tmp.rectTransform.sizeDelta = new Vector2(refColLabel.rectTransform.sizeDelta.x * 2.2f, refColLabel.rectTransform.sizeDelta.y);
+                        tmp.enableAutoSizing = false;
+                        tmp.fontSize = (refColLabel.enableAutoSizing ? refColLabel.fontSizeMax : refColLabel.fontSize) * 0.85f;
+                    }
+                    else
+                    {
+                        tmp.transform.localScale = Vector3.one * 0.01f;
+                        tmp.rectTransform.sizeDelta = new Vector2(24f, 3.0f);
+                        tmp.enableAutoSizing = false;
+                        tmp.fontSize = 14f;
+                    }
                     tmp.color = new Color(0.98f, 0.95f, 0.88f);
                     tmp.fontStyle = FontStyles.Bold;
+                    tmp.alignment = TextAlignmentOptions.Center;
                 }
             }
         }
 
-        // Clean up CardTemplate and any active cards so corner sub-props don't overlap text!
+        // Clean up CardTemplate and any active cards so corner sub-props & legacy HeaderStrip don't overlap text!
         var cardTemplate = all.FirstOrDefault(t => t != null && t.name == "CardTemplate");
         if (cardTemplate != null)
         {
-            // Also swap TaskCard_Visual on CardTemplate with our newly exported TaskCard_Grabbable.fbx (with tucked corner indicators)
             var oldVis = cardTemplate.Find("TaskCard_Visual");
             if (oldVis != null) UnityEngine.Object.DestroyImmediate(oldVis.gameObject);
             var cardFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/TaskBoard/TaskCard_Grabbable.fbx");
@@ -540,7 +569,6 @@ public static class BuildVisualPolishSuite
     static void CleanCardHierarchy(Transform card)
     {
         // Remove the oversized secondary badge sub-objects (`OwnerIcon_Visual`, `PriorityBadge_Visual`, `StatusMarker_Visual`)
-        // that were overlapping `SH_Role`, `SH_Priority`, and `SCRIPTED DEMO` in `02_task_board.png`!
         var toDestroy = new List<GameObject>();
         foreach (Transform ch in card)
         {
@@ -549,13 +577,25 @@ public static class BuildVisualPolishSuite
         }
         foreach (var go in toDestroy) UnityEngine.Object.DestroyImmediate(go);
 
-        // Ensure high-contrast dark typography on the card labels
+        // Disable legacy flat quad renderers (`Shadow`, `Face`, `HeaderStrip`) so our 3D `TaskCard_Visual` role header strip shows cleanly!
+        foreach (var qName in new[] { "Shadow", "Face", "HeaderStrip" })
+        {
+            var q = card.Find(qName);
+            if (q != null)
+            {
+                var mr = q.GetComponent<Renderer>();
+                if (mr != null) mr.enabled = false;
+            }
+        }
+
+        // Ensure high-contrast typography on the card labels (with SH_Role & SH_Priority on the dark lavender 3D top header strip!)
         const float z = -0.0055f;
-        StyleCardLabel(card, "SH_Role",     new Vector3(-0.011f,  0.0180f, z), new Vector2(4.4f, 0.85f), 3.4f, 4.6f, new Color(0.98f, 0.96f, 0.92f), FontStyles.Bold,   TextAlignmentOptions.Left,   false);
-        StyleCardLabel(card, "SH_Priority", new Vector3( 0.016f,  0.0180f, z), new Vector2(1.6f, 0.85f), 3.6f, 4.6f, new Color(0.99f, 0.92f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Right,  false);
-        StyleCardLabel(card, "Title",       new Vector3( 0.000f,  0.0032f, z), new Vector2(6.8f, 1.65f), 4.4f, 6.8f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
-        StyleCardLabel(card, "SH_State",    new Vector3( 0.000f, -0.0102f, z), new Vector2(5.2f, 0.80f), 3.2f, 4.8f, new Color(0.20f, 0.23f, 0.28f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
-        StyleCardLabel(card, "SH_Source",   new Vector3( 0.000f, -0.0182f, z), new Vector2(5.2f, 0.65f), 2.6f, 3.6f, new Color(0.68f, 0.28f, 0.22f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleCardLabel(card, "SH_Role",     new Vector3(-0.008f,  0.0205f, z), new Vector2(4.2f, 0.80f), 3.2f, 4.4f, new Color(0.99f, 0.98f, 0.95f), FontStyles.Bold,   TextAlignmentOptions.Left,   false);
+        StyleCardLabel(card, "SH_Priority", new Vector3( 0.016f,  0.0205f, z), new Vector2(1.5f, 0.80f), 3.4f, 4.4f, new Color(1.00f, 0.94f, 0.65f), FontStyles.Bold,   TextAlignmentOptions.Right,  false);
+        StyleCardLabel(card, "Title",       new Vector3( 0.000f,  0.0040f, z), new Vector2(6.6f, 1.65f), 4.4f, 6.8f, new Color(0.10f, 0.11f, 0.15f), FontStyles.Bold,   TextAlignmentOptions.Center, true);
+        StyleCardLabel(card, "SH_State",    new Vector3( 0.000f, -0.0095f, z), new Vector2(5.2f, 0.80f), 3.2f, 4.6f, new Color(0.18f, 0.22f, 0.28f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleCardLabel(card, "SH_Source",   new Vector3( 0.000f, -0.0172f, z), new Vector2(5.2f, 0.60f), 2.5f, 3.4f, new Color(0.68f, 0.26f, 0.20f), FontStyles.Bold,   TextAlignmentOptions.Center, false);
+        StyleCardLabel(card, "SH_IdRev",    new Vector3( 0.010f, -0.0222f, z), new Vector2(4.6f, 0.45f), 1.8f, 2.2f, new Color(0.42f, 0.44f, 0.48f), FontStyles.Normal, TextAlignmentOptions.Right,  false);
     }
 
     static void StyleCardLabel(Transform card, string name, Vector3 lp, Vector2 box, float minF, float maxF,
@@ -630,11 +670,11 @@ public static class BuildVisualPolishSuite
                 renderersSaved += 1;
             }
 
-            // Create 1 single-mesh Housing3D (rotated 180 deg around Y so Blender -Y front rim faces Unity -Z!)
+            // Create 1 single-mesh Housing3D centered at z = -0.013f (so walls span -0.186z to +0.160z around the cap)
             var hGo = new GameObject("Housing3D");
             hGo.transform.SetParent(btn, false);
-            hGo.transform.localPosition = Vector3.zero;
-            hGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            hGo.transform.localPosition = -housingMesh.bounds.center + new Vector3(0f, 0f, -0.013f);
+            hGo.transform.localRotation = Quaternion.identity;
             hGo.transform.localScale = Vector3.one;
             hGo.AddComponent<MeshFilter>().sharedMesh = housingMesh;
             var hr = hGo.AddComponent<MeshRenderer>();
@@ -642,14 +682,14 @@ public static class BuildVisualPolishSuite
             hr.shadowCastingMode = ShadowCastingMode.Off;
             hr.receiveShadows = false;
 
-            // Create 1 single-mesh Cap3D (rotated 180 deg around Y so cap sits from +0.004 to +0.280 behind ButtonVisual's -0.035 label!)
+            // Create 1 single-mesh Cap3D centered at z = +0.142f (so cap spans +0.004z to +0.280z BEHIND ButtonVisual's z=0 face!)
             string path = (btn.parent != null ? btn.parent.name + "/" : "") + btn.name;
             Material capMat = GetButtonCapMaterial(path, out bool darkCap);
 
             var cGo = new GameObject("Cap3D");
             cGo.transform.SetParent(visual, false);
-            cGo.transform.localPosition = Vector3.zero;
-            cGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            cGo.transform.localPosition = -capMesh.bounds.center + new Vector3(0f, 0f, 0.142f);
+            cGo.transform.localRotation = Quaternion.identity;
             cGo.transform.localScale = Vector3.one;
             cGo.AddComponent<MeshFilter>().sharedMesh = capMesh;
             var cr = cGo.AddComponent<MeshRenderer>();
@@ -657,14 +697,38 @@ public static class BuildVisualPolishSuite
             cr.shadowCastingMode = ShadowCastingMode.Off;
             cr.receiveShadows = false;
 
-            // Ensure label rides in front of Cap3D at z = -0.035f with high contrast
-            foreach (var tmp in visual.GetComponentsInChildren<TMP_Text>(true))
+            // Ensure all button labels sit on ButtonVisual at z = -0.025f (in front of Cap3D's +0.004z front face!)
+            // Keep PolishBoardAndButtons' proven localScale = Vector3.one, fontSize = 3.8f, sizeDelta = (0.09, 0.03)!
+            var labels = new List<Transform>();
+            labels.AddRange(btn.GetComponentsInChildren<TMP_Text>(true).Select(t => t.transform));
+            if (btn.parent != null && btn.parent.name.StartsWith("Btn_"))
+                labels.AddRange(btn.parent.GetComponentsInChildren<TMP_Text>(true).Select(t => t.transform));
+            var distinctLabels = labels.Distinct().ToList();
+            bool single = distinctLabels.Count == 1;
+
+            foreach (var lab in distinctLabels)
             {
-                var lp = tmp.transform.localPosition;
-                tmp.transform.localPosition = new Vector3(0f, 0f, -0.038f);
-                tmp.color = darkCap ? new Color(0.98f, 0.97f, 0.94f) : new Color(0.10f, 0.11f, 0.15f);
-                tmp.fontStyle = FontStyles.Bold;
-                EditorUtility.SetDirty(tmp);
+                if (lab.parent != visual) lab.SetParent(visual, false);
+                var lp = lab.localPosition;
+                lab.localPosition = single ? new Vector3(0f, 0f, -0.025f) : new Vector3(lp.x, lp.y, -0.025f);
+                lab.localRotation = Quaternion.identity;
+                var tmp = lab.GetComponent<TMP_Text>();
+                if (tmp != null)
+                {
+                    if (single)
+                    {
+                        lab.localScale = Vector3.one;
+                        tmp.rectTransform.sizeDelta = new Vector2(0.84f, 0.42f);
+                        tmp.enableAutoSizing = false;
+                        tmp.fontSize = 2.45f;
+                        tmp.textWrappingMode = TextWrappingModes.NoWrap;
+                        tmp.overflowMode = TextOverflowModes.Overflow;
+                        tmp.alignment = TextAlignmentOptions.Center;
+                    }
+                    tmp.color = darkCap ? new Color(0.99f, 0.98f, 0.95f) : new Color(0.10f, 0.11f, 0.15f);
+                    tmp.fontStyle = FontStyles.Bold;
+                    EditorUtility.SetDirty(tmp);
+                }
             }
 
             renderersSaved -= 2; // +2 new renderers (1 housing + 1 cap)
@@ -679,12 +743,12 @@ public static class BuildVisualPolishSuite
         string p = buttonPath.ToLowerInvariant().Replace("taskboard/", "").Replace("root/", "").Replace("phase6/", "");
         string matName = "Mat_CreamCeramic";
         darkCap = false;
-        if (p.Contains("approve")) { matName = "Mat_StatusGreen"; darkCap = false; }
+        if (p.Contains("approve")) { matName = "Mat_Tester_Mint"; darkCap = false; }
         else if (p.Contains("reject") || p.Contains("close")) { matName = "Mat_Developer_Coral"; darkCap = true; }
-        else if (p.Contains("ask") || p.Contains("explain") || p.Contains("new")) { matName = "Mat_Tester_SlateBlue"; darkCap = true; }
+        else if (p.Contains("ask") || p.Contains("explain") || p.Contains("new") || p.Contains("start")) { matName = "Mat_Tester_SlateBlue"; darkCap = true; }
         else if (p.Contains("focus")) { matName = "Mat_Researcher_Lavender"; darkCap = true; }
         else if (p.Contains("voice") || p.Contains("priority")) { matName = "Mat_Developer_Amber"; darkCap = false; }
-        else if (p.Contains("details") || p.Contains("pause")) { matName = "Mat_CreamCeramic"; darkCap = false; }
+        else if (p.Contains("details") || p.Contains("pause") || p.Contains("replay") || p.Contains("tips") || p.Contains("filed")) { matName = "Mat_CreamCeramic"; darkCap = false; }
 
         return AssetDatabase.LoadAssetAtPath<Material>($"Assets/MuseDesk/Art/Materials/{matName}.mat")
             ?? AssetDatabase.LoadAssetAtPath<Material>("Assets/MuseDesk/Art/Materials/Mat_CreamCeramic.mat");
@@ -775,6 +839,17 @@ public static class BuildVisualPolishSuite
         var haloFbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Affordances/Affordance_AgentHaloRing.fbx");
         var padFbx  = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MuseDesk/Art/Models/Affordances/Affordance_DeskReceivePad.fbx");
 
+        // Remove any accidental AgentHaloRing or DeskReceivePad from Dock_* on the TaskBoard
+        foreach (var dockDz in UnityEngine.Object.FindObjectsByType<StationDropZone>(FindObjectsInactive.Include)
+                     .Where(z => z.name.StartsWith("Dock_")))
+        {
+            foreach (var cn in new[] { "AgentHaloRing", "DeskReceivePad" })
+            {
+                var c = dockDz.transform.Find(cn);
+                if (c != null) UnityEngine.Object.DestroyImmediate(c.gameObject);
+            }
+        }
+
         var stationSpecs = new (string stationName, string role, string optFbxPath, AssignmentVisualState demoState)[]
         {
             ("ResearchStation", "researcher", "Assets/MuseDesk/Art/Models/Optimized/Workstation_Research_Optimized.fbx",  AssignmentVisualState.ValidTarget),
@@ -786,20 +861,27 @@ public static class BuildVisualPolishSuite
 
         foreach (var (stationName, role, optFbxPath, demoState) in stationSpecs)
         {
-            // 1. Wire StationDropZone.halo (fixes REMAINING_ISSUES.md #47!)
+            // 1. Wire StationDropZone.halo ONLY on the desk station TaskDropZone (under Agent_Researcher / Agent_Developer / Agent_Tester)!
             var dz = UnityEngine.Object.FindObjectsByType<StationDropZone>(FindObjectsInactive.Include)
-                .FirstOrDefault(z => z.agentId == role);
+                .FirstOrDefault(z => z.agentId == role && z.name == "TaskDropZone");
 
             if (dz != null && haloFbx != null)
             {
-                var oldHalo = dz.transform.Find("AgentHaloRing");
-                if (oldHalo != null) UnityEngine.Object.DestroyImmediate(oldHalo.gameObject);
+                foreach (var oldName in new[] { "AgentHaloRing", "Halo" })
+                {
+                    var oldH = dz.transform.Find(oldName);
+                    if (oldH != null) UnityEngine.Object.DestroyImmediate(oldH.gameObject);
+                }
+
+                var agent = dz.transform.parent;
+                Vector3 ps = dz.transform.lossyScale;
+                float invScale = 0.46f / Mathf.Max(1e-4f, ps.x); // ~15.6 cm world diameter on the desk around the agent!
 
                 var haloGo = (GameObject)PrefabUtility.InstantiatePrefab(haloFbx, dz.transform);
                 haloGo.name = "AgentHaloRing";
-                haloGo.transform.localPosition = new Vector3(0f, 0.003f, 0f);
-                haloGo.transform.localRotation = Quaternion.identity;
-                haloGo.transform.localScale = Vector3.one;
+                haloGo.transform.position = (agent != null ? agent.position : dz.transform.position) + new Vector3(0f, 0.003f, 0.03f);
+                haloGo.transform.rotation = Quaternion.identity;
+                haloGo.transform.localScale = Vector3.one * invScale;
                 ApplyMaterialsRecursively(haloGo, matMap);
 
                 dz.halo = haloGo;
@@ -809,16 +891,16 @@ public static class BuildVisualPolishSuite
                 affView.haloRoot = haloGo;
                 affView.haloOuterRenderer = haloGo.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("StatusGreen"));
 
-                // Add miniature DeskReceivePad on the station's desk corner
+                // Add miniature DeskReceivePad on the front-right corner of the agent's desk
                 if (padFbx != null)
                 {
                     var oldPad = dz.transform.Find("DeskReceivePad");
                     if (oldPad != null) UnityEngine.Object.DestroyImmediate(oldPad.gameObject);
                     var padGo = (GameObject)PrefabUtility.InstantiatePrefab(padFbx, dz.transform);
                     padGo.name = "DeskReceivePad";
-                    padGo.transform.localPosition = new Vector3(0.088f, 0.089f, 0.042f);
-                    padGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-                    padGo.transform.localScale = Vector3.one * 0.85f;
+                    padGo.transform.position = (agent != null ? agent.position : dz.transform.position) + new Vector3(-0.085f, 0.090f, 0.085f);
+                    padGo.transform.rotation = Quaternion.identity;
+                    padGo.transform.localScale = Vector3.one * (0.72f / Mathf.Max(1e-4f, ps.x));
                     ApplyMaterialsRecursively(padGo, matMap);
                     affView.receivePadStatusRenderer = padGo.GetComponentsInChildren<Renderer>(true).FirstOrDefault(r => r.name.Contains("StatusBar"));
                 }
@@ -828,7 +910,7 @@ public static class BuildVisualPolishSuite
                 EditorUtility.SetDirty(dz);
             }
 
-            // 2. Swap Workstation multi-part mesh (53-56 renderers) with Reversible Material-Welded Optimized Workstation (16-24 renderers!)
+            // 2. Swap Workstation multi-part mesh (53-60 renderers) with Reversible Material-Welded Optimized Workstation (16-24 renderers!)
             var st = ws.Find(stationName);
             var wsNode = st != null ? st.Find("Workstation") : null;
             var optFbx = AssetDatabase.LoadAssetAtPath<GameObject>(optFbxPath);
@@ -926,22 +1008,22 @@ public static class BuildVisualPolishSuite
 
         var strip = new GameObject("VisualPolish_GalleryStrip");
         strip.transform.SetParent(ws, false);
-        strip.transform.localPosition = new Vector3(-0.20f, 0.012f, 0.39f);
+        // Place on the clear front-left desk area (x = +0.13, z = +0.39) next to Doc_StampRestPad (x = 0, z = 0.40), clear of StartKey/ReplayKey!
+        strip.transform.localPosition = new Vector3(0.13f, 0.012f, 0.39f);
         strip.transform.localRotation = Quaternion.identity;
 
-        // Place a Small Decision Paper next to the Stamp Rest Pad & Focus/Explain buttons so both Small and Expanded Decision Papers are visible!
         var smallPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PrefabDir}/DecisionPaper_Small_Polished.prefab");
         if (smallPrefab != null)
         {
             var sm = (GameObject)PrefabUtility.InstantiatePrefab(smallPrefab, strip.transform);
             sm.name = "DecisionPaper_Small_Showcase";
-            sm.transform.localPosition = new Vector3(0f, 0.008f, 0f);
-            sm.transform.localRotation = Quaternion.Euler(-65f, 0f, 0f);
+            sm.transform.localPosition = new Vector3(0f, 0.012f, 0f);
+            sm.transform.localRotation = Quaternion.Euler(-55f, 180f, 0f);
             sm.transform.localScale = Vector3.one;
             ApplyMaterialsRecursively(sm, matMap);
         }
 
-        sb.AppendLine("Showcase: placed DecisionPaper_Small_Polished on right-front desk reading spot");
+        sb.AppendLine("Showcase: placed DecisionPaper_Small_Polished on clear front-left desk reading spot next to Doc_StampRestPad");
     }
 
     // =========================================================================
@@ -964,7 +1046,7 @@ public static class BuildVisualPolishSuite
         keyLight.type = LightType.Directional;
         keyLight.color = new Color(1.0f, 0.97f, 0.92f);
         keyLight.intensity = 1.25f;
-        keyLight.transform.rotation = Quaternion.Euler(42f, -155f, 0f); // Shining from user's +Z side toward -Z workspace!
+        keyLight.transform.rotation = Quaternion.Euler(42f, -155f, 0f);
 
         var fillLight = new GameObject("FillLight").AddComponent<Light>();
         fillLight.transform.SetParent(lightRoot.transform, false);
@@ -1031,8 +1113,8 @@ public static class BuildVisualPolishSuite
             if (tb != null)
             {
                 RenderCameraToPng(
-                    tb.position - tb.forward * 0.50f,
-                    tb.position,
+                    tb.position - tb.forward * 0.54f + Vector3.up * 0.01f,
+                    tb.position + Vector3.up * 0.01f,
                     50f, Path.Combine(ScreenshotDir, "After_02_TaskBoard.png"), sb);
 
                 // Capture 4: Board 3D Buttons Closeup (matches 04_board_buttons_3d.png)
@@ -1048,7 +1130,7 @@ public static class BuildVisualPolishSuite
             {
                 doc.gameObject.SetActive(true);
                 foreach (Transform c in doc)
-                    c.gameObject.SetActive(c.name != "ApprovalStamp" && c.name != "HoverFrame");
+                    c.gameObject.SetActive(c.name != "ApprovalStamp" && c.name != "HoverFrame" && c.name != "ModeBand");
 
                 var panel = doc.GetComponentInChildren<DecisionPanel>(true);
                 if (panel != null)
@@ -1076,18 +1158,17 @@ public static class BuildVisualPolishSuite
                 RefreshAllTmpText();
 
                 RenderCameraToPng(
-                    doc.position - doc.forward * 0.38f,
+                    doc.position - doc.forward * 0.36f,
                     doc.position,
                     48f, Path.Combine(ScreenshotDir, "After_03_DecisionPaper.png"), sb);
             }
 
-            // Capture 5: Desk Buttons, Stamps, Small Decision Paper & Affordances Closeup (matches 05_desk_buttons_3d.png)
+            // Capture 5: Desk Stamps, Small Decision Paper, 3D Desk Keys & Halo Rings Closeup (matches 05_desk_buttons_3d.png)
             if (doc != null) doc.gameObject.SetActive(false);
-            var focusBtn = ws != null ? ws.GetComponentsInChildren<Transform>(true).FirstOrDefault(x => x.name == "FocusToggle") : null;
-            if (focusBtn != null)
+            if (ws != null)
             {
-                Vector3 camEye = ws.TransformPoint(new Vector3(-0.22f, 0.22f, 0.58f));
-                Vector3 target = ws.TransformPoint(new Vector3(-0.18f, 0.04f, 0.38f));
+                Vector3 camEye = ws.TransformPoint(new Vector3(-0.06f, 0.24f, 0.62f));
+                Vector3 target = ws.TransformPoint(new Vector3(-0.04f, 0.04f, 0.36f));
                 RenderCameraToPng(
                     camEye,
                     target,

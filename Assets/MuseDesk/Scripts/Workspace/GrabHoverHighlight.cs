@@ -20,10 +20,10 @@ namespace MuseDesk.Workspace
         public GameObject indicator;
         [Tooltip("Renderers that brighten slightly while hovered. Optional.")]
         public Renderer[] brighten;
-        [Range(1f, 1.6f)] public float hoverBrightness = 1.22f;
+        [Range(1f, 1.6f)] public float hoverBrightness = 1.15f;
         [Tooltip("Colour of the indicator while hovered / while held.")]
-        public Color hoverColor = new Color(0.35f, 0.85f, 0.95f, 1f);
-        public Color heldColor = new Color(0.98f, 0.82f, 0.30f, 1f);
+        public Color hoverColor = new Color(0.35f, 0.85f, 0.95f, 0.22f);
+        public Color heldColor = new Color(0.98f, 0.82f, 0.30f, 0.36f);
         [Tooltip("Seconds a hover must persist before it shows (debounce).")]
         public float enterDelay = 0.06f;
         [Tooltip("Seconds the highlight lingers after the hand leaves (hysteresis).")]

@@ -187,7 +187,13 @@ namespace MuseDesk.Agents
         // Parent the token to a hand while keeping its authored WORLD size (rig bones are not unit scale).
         void AttachProp(Transform hand)
         {
-            if (!_propScaleCaptured) { _propWorldScale = artifactProp.lossyScale; _propScaleCaptured = true; }
+            if (!_propScaleCaptured)
+            {
+                _propWorldScale = artifactProp.lossyScale;
+                // Guard against props authored directly inside Blender's 100x rig bones in scene.
+                if (_propWorldScale.magnitude > 3f) _propWorldScale = Vector3.one;
+                _propScaleCaptured = true;
+            }
             artifactProp.gameObject.SetActive(true);
             artifactProp.SetParent(hand, false);
             artifactProp.localPosition = Vector3.zero;

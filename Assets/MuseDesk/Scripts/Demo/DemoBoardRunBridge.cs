@@ -89,14 +89,27 @@ namespace MuseDesk.Demo
         void OnDecisionRequested(string decisionId, EventEnvelope e)
         {
             if (IsForActiveCard(e))
+            {
+                int rev = e.PayloadValue<int>("decision_revision", 0);
+                string revises = e.PayloadString("revises_decision_id", null);
                 _board.NotifyRunDecisionRequested(decisionId, e.PayloadString("summary"),
-                    e.PayloadString("research_provenance"), e.PayloadString("research_provenance_label"));
+                    e.PayloadString("research_provenance"), e.PayloadString("research_provenance_label"),
+                    rev, revises);
+            }
         }
 
         void OnDecisionResolved(string decisionId, string state)
         {
-            // The board ignores an answer that is not for the decision its card is waiting on.
-            if (!_disposed) _board.NotifyRunDecisionResolved(decisionId, state);
+            // If changes were requested and a proposal revision will follow, resume the card to
+            // running so it awaits the revised decision; otherwise let NotifyRunDecisionResolved end it.
+            if (!_disposed)
+            {
+                string s = (state ?? "").ToLowerInvariant();
+                if (s == "changes_requested" && _session.WillReviseOnChanges(decisionId))
+                    _board.NotifyRunChangesRequested(decisionId, _session.ProposalRevision + 1);
+                else
+                    _board.NotifyRunDecisionResolved(decisionId, state);
+            }
         }
 
         void OnArtifactCreated(EventEnvelope e)

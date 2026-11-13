@@ -224,9 +224,21 @@ public static class FinalPass
         var actions = doc.Find("Actions");
         if (actions != null)
         {
-            var row = new (string name, float x)[] { ("Btn_Approve", -0.117f), ("Btn_Ask_why", -0.039f), ("Btn_Details", 0.039f), ("Btn_Reject", 0.117f) };
+            var detailsBtn = actions.Find("Btn_Details");
+            var deliveryCtrl = doc.GetComponentInParent<DocumentDeliveryController>()
+                               ?? Object.FindAnyObjectByType<DocumentDeliveryController>(FindObjectsInactive.Include);
+            if (detailsBtn != null && deliveryCtrl != null)
+            {
+                var chg = Key(actions, detailsBtn, "Btn_Changes", "Changes", new Vector3(0.062f, -0.142f, -0.004f),
+                    new Color(0.84f, 0.66f, 0.24f), deliveryCtrl, nameof(DocumentDeliveryController.OnRequestChanges));
+                if (chg != null) chg.localRotation = detailsBtn.localRotation;
+            }
+            var row = new (string name, float x)[]
+            {
+                ("Btn_Approve", -0.124f), ("Btn_Ask_why", -0.062f), ("Btn_Details", 0f), ("Btn_Changes", 0.062f), ("Btn_Reject", 0.124f),
+            };
             foreach (var (name, x) in row)
-                Pose(actions.Find(name), new Vector3(x, -0.142f, -0.004f), Vector3.one * 0.837f);
+                Pose(actions.Find(name), new Vector3(x, -0.142f, -0.004f), Vector3.one * 0.68f);
             var voice = actions.Find("Btn_Voice");
             if (voice != null && voice.gameObject.activeSelf) { Undo.RecordObject(voice.gameObject, "hide voice"); voice.gameObject.SetActive(false); }
         }

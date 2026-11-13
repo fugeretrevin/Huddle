@@ -229,6 +229,101 @@ async def run_card():
         check(f"{T} a finished card cannot start another run", r.status_code == 409, r.text[:100])
 
 
+async def run_revise():
+    """Request changes -> a revised (template) decision in the SAME run -> approve it -> real build.
+    Then a second session: request changes until no revisions are left -> the run is cancelled."""
+    async with httpx.AsyncClient(base_url=BASE, timeout=30) as c:
+        async def respond(sid, h, did, action, key):
+            return await c.post(f"/v1/sessions/{sid}/decisions/{did}/respond", headers=h,
+                                json={"schema_version": 1, "action": action, "idempotency_key": key})
+
+        # ── revise once, then approve ──
+        r = await c.post("/v1/sessions", json={"schema_version": 1, "mode": "live_local", "client": "quest"})
+        body = r.json(); sid, token = body["session_id"], body["token"]
+        h = {"Authorization": f"Bearer {token}"}
+        await c.post(f"/v1/sessions/{sid}/tasks", headers=h,
+                     json={"schema_version": 1, "task_template": "auth_demo", "idempotency_key": "e2e-revise-start-01"})
+        ev = await collect(sid, token, lambda es: any(e["type"] == "decision.requested" for e in es))
+        first = next((e for e in ev if e["type"] == "decision.requested"), None)
+        check("[revise] first decision requested", first is not None)
+        if first is None:
+            return
+        check("[revise] first decision is revision 0", first["payload"].get("revision") == 0, str(first["payload"].get("revision")))
+
+        r = await respond(sid, h, first["decision_id"], "request_changes", "e2e-revise-resp-0001")
+        check("[revise] request_changes applied", r.status_code == 200 and r.json().get("state") == "changes_requested", r.text[:90])
+        last = ev[-1]["seq"]
+        ev2 = await collect(sid, token, lambda es: any(e["type"] == "decision.requested" for e in es), after=last)
+        second = next((e for e in ev2 if e["type"] == "decision.requested"), None)
+        check("[revise] a revised decision arrives in the same run", second is not None, ",".join(types(ev2)))
+        if second is None:
+            return
+        p1, p2 = first["payload"], second["payload"]
+        check("[revise] new decision id, revision 1, names the decision it revises",
+              second["decision_id"] != first["decision_id"] and p2.get("revision") == 1
+              and p2.get("revises_decision_id") == first["decision_id"],
+              json.dumps({k: p2.get(k) for k in ("revision", "revises_decision_id")}))
+        check("[revise] revised proposal differs and is still labelled a template",
+              (p2.get("summary"), p2.get("title")) != (p1.get("summary"), p1.get("title"))
+              and p2.get("research_provenance") == "template",
+              (p2.get("title") or "")[:70])
+        check("[revise] nothing was built between the two decisions",
+              "artifact.created" not in types(ev2), ",".join(sorted(set(types(ev2)))))
+        check("[revise] researcher said it was revising",
+              any(e["type"] == "agent.status_changed" and e.get("agent_id") == "researcher"
+                  and "evis" in (e["payload"].get("progress_message") or "") for e in ev2),
+              next((e["payload"].get("progress_message") for e in ev2
+                    if e["type"] == "agent.status_changed" and e.get("agent_id") == "researcher"), "none"))
+        snap = (await c.get(f"/v1/sessions/{sid}/snapshot", headers=h)).json()
+        states = {d["decision_id"]: d["state"] for d in snap["decisions"]}
+        check("[revise] snapshot: first is changes_requested, second is pending",
+              states.get(first["decision_id"]) == "changes_requested" and states.get(second["decision_id"]) == "requested", str(states))
+
+        r = await respond(sid, h, first["decision_id"], "approve", "e2e-revise-resp-0002")
+        check("[revise] the superseded decision cannot be answered again", r.status_code == 409, str(r.status_code))
+        r = await respond(sid, h, second["decision_id"], "approve", "e2e-revise-resp-0003")
+        check("[revise] approving the revised decision is applied", r.status_code == 200 and r.json().get("applied") is True, r.text[:90])
+        last = ev2[-1]["seq"]
+        done = lambda es: any(e["type"] in ("task.completed", "task.failed") and (e.get("task_id") or "").endswith("-oauth") for e in es)
+        ev3 = await collect(sid, token, done, after=last)
+        art = next((e for e in ev3 if e["type"] == "artifact.created"), None)
+        fin = next((e for e in ev3 if e["type"] in ("task.completed", "task.failed") and (e.get("task_id") or "").endswith("-oauth")), None)
+        check("[revise] real build after approval: artifact with passing tests, attempts recorded",
+              art is not None and art["payload"].get("tests_passed", 0) > 0 and art["payload"].get("tests_failed") == 0,
+              json.dumps({k: art["payload"].get(k) for k in ("tests_passed", "tests_failed", "attempts")}) if art else "none")
+        check("[revise] run completed", fin is not None and fin["type"] == "task.completed"
+              and fin["payload"].get("task_state") == "completed", fin["type"] if fin else "none")
+
+        # ── revise until the limit, then once more ──
+        r = await c.post("/v1/sessions", json={"schema_version": 1, "mode": "live_local", "client": "quest"})
+        body = r.json(); sid, token = body["session_id"], body["token"]
+        h = {"Authorization": f"Bearer {token}"}
+        await c.post(f"/v1/sessions/{sid}/tasks", headers=h,
+                     json={"schema_version": 1, "task_template": "auth_demo", "idempotency_key": "e2e-limit-start-01"})
+        after, rounds, cancelled, all_types = 0, 0, None, []
+        for i in range(6):                                   # far more than any sane limit
+            evs = await collect(sid, token, lambda es: any(
+                e["type"] == "decision.requested" or (e["type"] in ("task.completed", "task.failed")
+                                                      and (e.get("task_id") or "").endswith("-oauth")) for e in es), after=after)
+            if not evs:
+                break
+            after = evs[-1]["seq"]; all_types += types(evs)
+            d = next((e for e in evs if e["type"] == "decision.requested"), None)
+            end = next((e for e in evs if e["type"] in ("task.completed", "task.failed")
+                        and (e.get("task_id") or "").endswith("-oauth")), None)
+            if end is not None:
+                cancelled = end
+                break
+            if d is None:
+                break
+            rounds += 1
+            await respond(sid, h, d["decision_id"], "request_changes", f"e2e-limit-resp-{i:04d}")
+        check("[revise] revisions are bounded (between 2 and 4 decisions before the run stops)", 2 <= rounds <= 4, f"decisions={rounds}")
+        check("[revise] at the limit the run is cancelled, with no artifact",
+              cancelled is not None and cancelled["payload"].get("task_state") == "cancelled" and "artifact.created" not in all_types,
+              json.dumps(cancelled["payload"])[:140] if cancelled else "no end event")
+
+
 async def main():
     async with httpx.AsyncClient(base_url=BASE, timeout=10) as c:
         r = await c.get("/health")
@@ -236,6 +331,7 @@ async def main():
     await run("approve")
     await run("reject")
     await run_card()
+    await run_revise()
     print(f"TOTAL {sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)
 

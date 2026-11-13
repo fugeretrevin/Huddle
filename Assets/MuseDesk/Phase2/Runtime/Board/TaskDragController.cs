@@ -29,7 +29,7 @@ namespace MuseDesk.Phase2.Board
         public enum DragState { Idle, Held, Candidate, Pending, Confirmed, Error }
 
         [Tooltip("Max distance (m) from a zone's bounds within which a hovered card snaps to it.")]
-        public float snapRadius = 0.12f;
+        public float snapRadius = 0.15f;
         [Tooltip("Seconds the Confirmed/Error visual holds before returning to Idle.")]
         public float resolveHoldSeconds = 0.6f;
 
@@ -105,6 +105,7 @@ namespace MuseDesk.Phase2.Board
 
         void OnReleased()
         {
+            var invalidTarget = _invalidHover;
             ClearHighlights();
 
             // Valid target under the card at release?
@@ -121,7 +122,14 @@ namespace MuseDesk.Phase2.Board
                 return;
             }
 
-            // Invalid drop or empty space: return home, NO server call.
+            // Invalid drop or empty space: explain why if dropped on a red zone, return home, NO server call.
+            if (invalidTarget != null && _card?.Data != null)
+            {
+                string msg = _card.Data.Executable
+                    ? "Starts with Researcher"
+                    : (TaskStateSets.IsRunning(_card.Data.TaskState) ? "Running: pause first" : "Can't assign here");
+                _card.ShowResult(false, msg);
+            }
             _card.ReturnHome();
             ResetToIdle(returnHome: false);
         }

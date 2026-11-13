@@ -43,6 +43,9 @@ namespace MuseDesk.Workspace
         public float offDeskDrop = 0.55f;
         [Tooltip("Longest to wait for the headset to be worn and steady before placing anyway, seconds.")]
         [Range(2f, 20f)] public float settleTimeout = 10f;
+        [Tooltip("Re-anchor the workspace automatically when HMDMounted / RecenteredPose fires. " +
+                 "Off by default so the diorama stays put once placed.")]
+        public bool autoReplaceOnRecenter = false;
 
         bool _placing;
         bool _hooksSubscribed;
@@ -93,7 +96,8 @@ namespace MuseDesk.Workspace
             float waited = 0f, steady = 0f;
             Quaternion lastRot = Quaternion.identity;
             bool hasLast = false;
-            while (waited < settleTimeout)
+            float maxWait = Mathf.Min(settleTimeout, 4.0f);
+            while (waited < maxWait)
             {
                 waited += Time.deltaTime;
                 EnsureHead();
@@ -105,7 +109,7 @@ namespace MuseDesk.Workspace
                     lastRot = _head.rotation;
                     hasLast = true;
                     steady = degPerSec < 45f ? steady + Time.deltaTime : 0f;
-                    if (steady >= 0.6f) break;
+                    if (steady >= 0.35f) break;
                 }
                 else { steady = 0f; hasLast = false; }
                 yield return null;
@@ -163,6 +167,7 @@ namespace MuseDesk.Workspace
         void OnReplaceRequested()
         {
             if (!offDeskMode || !isActiveAndEnabled) return;
+            if (!autoReplaceOnRecenter && _sceneHandled) return;
             StartCoroutine(PlaceOffDeskRoutine());
         }
 
