@@ -24,7 +24,7 @@ public static class PlayDrive
     {
         if (!Application.isPlaying) return "not playing";
         var sb = new StringBuilder();
-        foreach (var n in new[] { "TaskDock", "ModePlaque", "Nameplate_Researcher", "Nameplate_Developer", "Nameplate_Tester", "CompletionReceipt", "FiledPoke", "DecisionDocument", "CardToolbar", "AssignDock", "ArchiveReadout" })
+        foreach (var n in new[] { "TaskDock", "ModePlaque", "Nameplate_Researcher", "Nameplate_Developer", "Nameplate_Tester", "CompletionReceipt", "FiledPoke", "DecisionDocument", "CardToolbar", "AssignDock", "ArchiveCard", "ViewerSheetRoot" })
             sb.AppendLine(Texts(n));
         var b = Find("TaskBoard");
         sb.AppendLine($"TaskBoard scale={b.localScale.x:F3} cards={b.GetComponentsInChildren<Transform>(false).Count(t => t.GetComponent("TaskCardView") != null)}");
@@ -53,6 +53,25 @@ public static class PlayDrive
     public static string Details() => Call("AppServices", "DocumentDeliveryController", "OnToggleDetails");
     public static string RunAgain() => Call("CompletionReceipt", "CompletionReceipt", "RunAgain");
     public static string Filed() => Call("FiledPoke", "ArchiveStackPoke", "Poke");
+    public static string TakePaper() => Call("DecisionDocument", "HeldPaperController", "TakeNow");
+    public static string View() => Call("CompletionReceipt", "CompletionReceipt", "View");
+    public static string ViewerNext() => Call("ArtifactPanel", "ArtifactViewer", "NextPage");
+    public static string ViewerClose() => Call("ArtifactPanel", "ArtifactViewer", "Close");
+    public static string SelectCard() => Call("TaskBoard", "CardActionConsole", "SelectFirstCard");
+    public static string HoldCard() => Call("TaskBoard", "CardActionConsole", "SimulateHoldOverPad");
+    public static string CancelHold() => Call("TaskBoard", "CardActionConsole", "CancelSimulatedHold");
+    public static string PreviewSuccess() => Call("AppServices", "CompletionSequence", "PreviewSuccess");
+    public static string PreviewFailure() => Call("AppServices", "CompletionSequence", "PreviewFailure");
+    /// <summary>Puts the taken paper where a user would hold it to read (capture aid only).</summary>
+    public static string LiftPaper()
+    {
+        var d = Find("DecisionDocument"); var ws = Find("WorkspaceRoot");
+        Vector3 eye = ws.TransformPoint(new Vector3(0, 0.30f, 0.62f));
+        Vector3 pos = ws.TransformPoint(new Vector3(0, 0.34f, 0.22f));
+        foreach (var mb in d.GetComponents<MonoBehaviour>()) if (mb != null && mb.GetType().Name == "FaceUser") mb.enabled = false;
+        d.SetPositionAndRotation(pos, Quaternion.LookRotation(pos - eye, Vector3.up));
+        return "paper lifted to reading pose";
+    }
     public static string Fast() { Time.timeScale = 4f; return "timeScale 4"; }
     public static string Normal() { Time.timeScale = 1f; return "timeScale 1"; }
 }

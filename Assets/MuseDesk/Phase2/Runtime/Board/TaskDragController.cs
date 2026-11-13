@@ -200,7 +200,9 @@ namespace MuseDesk.Phase2.Board
         void SnapTo(Transform anchor)
         {
             if (anchor == null) return;
-            _card.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+            // Eases to the pad / station (about 200 ms) instead of jumping; from there the card
+            // eases to its lane slot when the answer arrives, or back home when it is refused.
+            _card.GlideTo(anchor);
         }
 
         void ClearHighlights()
@@ -223,6 +225,10 @@ namespace MuseDesk.Phase2.Board
         void OnDisable() => CancelHeldGrab();
         void OnApplicationPause(bool paused) { if (paused) CancelHeldGrab(); }
         void OnApplicationFocus(bool focused) { if (!focused) CancelHeldGrab(); }
+
+        /// <summary>Abandon a hold that has not sent anything yet: halos off, card back to its slot,
+        /// no command. Same path as tracking loss. Does nothing once a command is in flight.</summary>
+        public void CancelHold() => CancelHeldGrab();
 
         void CancelHeldGrab()
         {

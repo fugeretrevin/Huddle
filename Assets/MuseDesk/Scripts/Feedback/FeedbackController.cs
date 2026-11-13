@@ -182,7 +182,17 @@ namespace MuseDesk.Feedback
             else Play(FeedbackCue.Reject);
         }
 
-        void OnDelivered(EventEnvelope e) => Play(FeedbackCue.Delivered);
+        /// <summary>Set (at run time) by a component that sequences the delivery payoff itself, the
+        /// completion sequence. While true this controller does not sound <see cref="FeedbackCue.Delivered"/>
+        /// on WorkDelivered; the owner plays it once, at its own beat. False (the default) keeps the
+        /// original behaviour, so the cue is never lost if no sequence is present.</summary>
+        public bool DeliveredCueSequenced { get; set; }
+
+        void OnDelivered(EventEnvelope e)
+        {
+            if (DeliveredCueSequenced) return;
+            Play(FeedbackCue.Delivered);
+        }
         void OnFailed(EventEnvelope e) => Play(FeedbackCue.Error);
         void OnRespondFailed(string decisionId, string message) => Play(FeedbackCue.Error);
 
@@ -228,6 +238,19 @@ namespace MuseDesk.Feedback
                 key.WhenStateChanged += OnKeyState;
                 _keys.Add(key);
             }
+        }
+
+        /// <summary>
+        /// Give the poke keys under <paramref name="root"/> the key-press click, on the scene's
+        /// controller if there is one. For code that instantiates keys after start-up (a task card
+        /// taken fresh from its prefab): call it once, right after Instantiate. Safe to call again
+        /// for the same object (registered keys are skipped), before the controller exists (ignored)
+        /// and with the click switched off (ignored).
+        /// </summary>
+        public static void RegisterLateKeys(GameObject root)
+        {
+            if (root == null || Instance == null || !Instance.keyPressSound || !Instance.isActiveAndEnabled) return;
+            Instance.RegisterKeys(root);
         }
 
         void OnKeyState(Oculus.Interaction.InteractableStateChangeArgs args)

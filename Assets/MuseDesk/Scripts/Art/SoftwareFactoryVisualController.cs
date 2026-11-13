@@ -60,7 +60,7 @@ namespace MuseDesk.Art
             }
         }
 
-        public void PlayStageClip(string clipName, float crossfade = 0.15f)
+        public void PlayStageClip(string clipName, float crossfade = 0.2f)
         {
             if (factoryAnimator == null)
             {

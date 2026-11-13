@@ -96,6 +96,11 @@ namespace MuseDesk.Agents
         // explicit hooks
         Transform _attention;
         float _attentionUntil;
+        float _attentionWeight = 1f;
+
+        // Whatever is serialized on the component, the head never turns further than this.
+        const float HardMaxYaw = 60f;
+        const float HardMaxPitch = 30f;
         bool _listening, _speaking;
 
         // smoothed output
@@ -116,9 +121,26 @@ namespace MuseDesk.Agents
         /// <summary>Look at <paramref name="target"/> for <paramref name="seconds"/>, then go back to normal.</summary>
         public void SetAttention(Transform target, float seconds = 2f)
         {
+            SetAttention(target, seconds, 1f);
+        }
+
+        /// <summary>Look at <paramref name="target"/> for <paramref name="seconds"/> with a reduced
+        /// <paramref name="weight"/> (0..1: a glance instead of a full turn), then go back to normal.
+        /// An explicit attention like this one also carries through a reaction clip (at a reduced
+        /// weight), so an agent can nod toward a colleague.</summary>
+        public void SetAttention(Transform target, float seconds, float weight)
+        {
             _attention = target;
+            _attentionWeight = Mathf.Clamp01(weight);
             _attentionUntil = Time.time + Mathf.Max(0f, seconds);
             _nextDecide = 0f;
+        }
+
+        /// <summary>Look at the user's head for <paramref name="seconds"/> with a reduced weight.</summary>
+        public void SetAttentionOnUser(float seconds, float weight)
+        {
+            ResolveUser();
+            SetAttention(_user, seconds, weight);
         }
 
         /// <summary>Look at the user's head for <paramref name="seconds"/>.</summary>
@@ -242,6 +264,7 @@ namespace MuseDesk.Agents
 
             Transform t = null;
             float w = 0f;
+            bool explicitAttention = false;
 
             if (_listening || _speaking)
             {
@@ -249,7 +272,8 @@ namespace MuseDesk.Agents
             }
             else if (_attention != null && now < _attentionUntil)
             {
-                t = _attention; w = 1f;
+                t = _attention; w = _attentionWeight;
+                explicitAttention = true;
             }
             else if (moving)
             {
@@ -301,7 +325,10 @@ namespace MuseDesk.Agents
             }
 
             // A reaction clip (hop, startle, give, receive) owns the head while it plays.
-            if (bridge != null && bridge.ReactionPlaying && !_listening && !_speaking) w = 0f;
+            // An explicit attention (a caller asked for this look) carries through at a reduced
+            // weight, layered on the clip, so the agent can nod toward what it was told to look at.
+            if (bridge != null && bridge.ReactionPlaying && !_listening && !_speaking)
+                w = explicitAttention ? w * 0.6f : 0f;
             if (t == null) w = 0f;
 
             _target = t;
@@ -377,8 +404,10 @@ namespace MuseDesk.Agents
                     // Something behind the agent: do not crane the neck, just let go.
                     if (Mathf.Abs(yaw) < 120f)
                     {
-                        wantYaw = Mathf.Clamp(yaw, -maxYaw, maxYaw);
-                        wantPitch = Mathf.Clamp(pitch, -maxPitch, maxPitch);
+                        float yawLimit = Mathf.Min(Mathf.Abs(maxYaw), HardMaxYaw);
+                        float pitchLimit = Mathf.Min(Mathf.Abs(maxPitch), HardMaxPitch);
+                        wantYaw = Mathf.Clamp(yaw, -yawLimit, yawLimit);
+                        wantPitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimit);
                         wantWeight = _targetWeight;
                     }
                 }

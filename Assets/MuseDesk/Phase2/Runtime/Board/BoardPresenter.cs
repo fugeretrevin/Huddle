@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using TMPro;
 using UnityEngine;
 using MuseDesk.Phase2.Contracts;
 
@@ -38,6 +39,24 @@ namespace MuseDesk.Phase2.Board
         public Vector2 cardSpacing = new Vector2(0.14f, 0.10f);
         [Tooltip("Cards per row within a region before wrapping.")]
         public int columns = 3;
+
+        [Header("Column headings (wired by AgentScripts/BuildBoardV3; all optional)")]
+        [Tooltip("Heading labels in lane order: Backlog, Working, Needs me, Completed. Each shows its " +
+                 "card count after the name (\"Backlog 3\"); an empty lane shows the name only.")]
+        public TMP_Text[] laneHeadings;
+        [Tooltip("Header block renderers in the same order. An empty lane's header is dimmed a little " +
+                 "through a property block, so an empty column reads as quiet rather than broken.")]
+        public Renderer[] laneHeaders;
+        [Tooltip("Brightness of an empty lane's header block (1 = no dimming).")]
+        [Range(0.3f, 1f)] public float emptyLaneBrightness = 0.62f;
+
+        static readonly string[] LaneNames = { "Backlog", "Working", "Needs me", "Completed" };
+        readonly int[] _laneCounts = { -1, -1, -1, -1 };
+        readonly Color[] _laneBase = new Color[4];
+        readonly bool[] _laneBaseRead = new bool[4];
+        MaterialPropertyBlock _laneBlock;
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        static readonly int ColorId = Shader.PropertyToID("_Color");
 
         public IPhase2Gateway Gateway { get; private set; }
         public Phase2Reducer Reducer { get; private set; }
@@ -161,8 +180,10 @@ namespace MuseDesk.Phase2.Board
             view.SetData(card);
             var region = RegionFor(card.TaskState);
             var parent = RegionTransform(region);
+            // A fresh card takes the lane's frame; a card a hand has moved keeps its place in the
+            // world so the layout can ease it to its new slot instead of jumping.
             if (parent != null && view.transform.parent != parent)
-                view.transform.SetParent(parent, worldPositionStays: false);
+                view.MoveToRegion(parent);
         }
 
         TaskCardView Rent()
@@ -203,15 +224,49 @@ namespace MuseDesk.Phase2.Board
 
         void LayoutAllRegions()
         {
-            LayoutRegion(backlogRegion);
-            LayoutRegion(workingRegion);
-            LayoutRegion(needsMeRegion);
-            LayoutRegion(completedRegion);
+            SetLaneCount(0, LayoutRegion(backlogRegion));
+            SetLaneCount(1, LayoutRegion(workingRegion));
+            SetLaneCount(2, LayoutRegion(needsMeRegion));
+            SetLaneCount(3, LayoutRegion(completedRegion));
         }
 
-        void LayoutRegion(Transform region)
+        /// <summary>Heading text ("Backlog 3") and the dimming of an empty lane's header. Touched
+        /// only when a lane's count changes, so nothing is rebuilt per layout.</summary>
+        void SetLaneCount(int lane, int count)
         {
-            if (region == null) return;
+            if (_laneCounts[lane] == count) return;
+            _laneCounts[lane] = count;
+
+            TMP_Text heading = laneHeadings != null && lane < laneHeadings.Length ? laneHeadings[lane] : null;
+            if (heading != null) heading.text = count > 0 ? LaneNames[lane] + " " + count : LaneNames[lane];
+
+            Renderer header = laneHeaders != null && lane < laneHeaders.Length ? laneHeaders[lane] : null;
+            if (header == null) return;
+            if (!_laneBaseRead[lane])
+            {
+                _laneBaseRead[lane] = true;
+                Material m = header.sharedMaterial;
+                _laneBase[lane] = m == null ? Color.white
+                    : m.HasProperty(BaseColorId) ? m.GetColor(BaseColorId)
+                    : m.HasProperty(ColorId) ? m.GetColor(ColorId) : Color.white;
+            }
+            Color c = _laneBase[lane];
+            if (count == 0)
+            {
+                float k = Mathf.Clamp(emptyLaneBrightness, 0.3f, 1f);
+                c = new Color(c.r * k, c.g * k, c.b * k, c.a);
+            }
+            if (_laneBlock == null) _laneBlock = new MaterialPropertyBlock();
+            header.GetPropertyBlock(_laneBlock);
+            _laneBlock.SetColor(BaseColorId, c);
+            _laneBlock.SetColor(ColorId, c);
+            header.SetPropertyBlock(_laneBlock);
+        }
+
+        /// <summary>Lay a lane's cards into their slots. Returns the number of cards in the lane.</summary>
+        int LayoutRegion(Transform region)
+        {
+            if (region == null) return 0;
             int i = 0;
             int cols = Mathf.Max(1, columns);
             for (int c = 0; c < region.childCount; c++)
@@ -226,10 +281,19 @@ namespace MuseDesk.Phase2.Board
                 if (card != null) card.SetHome(region, pos, Quaternion.identity);
                 // Don't fight a card the user is actively holding — it owns its transform then.
                 if (card != null && card.IsHeld) { i++; continue; }
-                child.localPosition = pos;
-                child.localRotation = Quaternion.identity;
+                if (card != null)
+                {
+                    // Eases there if a hand moved the card (a drop), otherwise places it at once.
+                    card.PlaceAtHome();
+                }
+                else
+                {
+                    child.localPosition = pos;
+                    child.localRotation = Quaternion.identity;
+                }
                 i++;
             }
+            return i;
         }
 
         // ─────────────────────────── commands ───────────────────────────

@@ -105,9 +105,74 @@ namespace MuseDesk.Phase2.Board
             _reducer.SnapshotLoaded += OnSnapshotLoaded;
             _reducer.TaskChanged += OnTaskChanged;
             presenter.AssignResolved += OnCommandResolved;
-            if (session != null) { session.RunStateChanged += MarkDirty; _sessionHooked = true; }
+            if (session != null)
+            {
+                session.RunStateChanged += MarkDirty;
+                // Which agent is working right now, from the session reducer's own agent states.
+                var sr = session.Reducer;
+                sr.AgentChanged += OnAgentChanged;
+                sr.SessionReset += OnSessionReset;
+                sr.SnapshotLoaded += OnSessionSnapshot;
+                _sessionHooked = true;
+                OnSessionSnapshot();
+            }
             _bound = true;
             _dirty = true;
+        }
+
+        // ─────────────────────────── who is working ───────────────────────────
+
+        string _activeAgentId;           // the agent whose latest reducer state is a working state, or null
+
+        static bool IsWorkingState(string state)
+            => state == MuseDesk.Models.AgentStates.Researching || state == MuseDesk.Models.AgentStates.Coding
+            || state == MuseDesk.Models.AgentStates.Testing || state == MuseDesk.Models.AgentStates.Reporting;
+
+        void OnAgentChanged(MuseDesk.Models.AgentView agent)
+        {
+            if (agent == null || string.IsNullOrEmpty(agent.AgentId)) return;
+            if (IsWorkingState(agent.State))
+            {
+                if (_activeAgentId == agent.AgentId) return;
+                _activeAgentId = agent.AgentId;
+            }
+            else
+            {
+                if (_activeAgentId != agent.AgentId) return;
+                _activeAgentId = null;
+            }
+            _dirty = true;
+        }
+
+        void OnSessionReset()
+        {
+            _activeAgentId = null;
+            _dirty = true;
+        }
+
+        // State that predates the event stream (start-up, resume, the switch to live).
+        void OnSessionSnapshot()
+        {
+            _activeAgentId = null;
+            var snap = session != null ? session.Reducer.Snapshot : null;
+            var agents = snap != null ? snap.Agents : null;
+            if (agents != null)
+                for (int i = 0; i < agents.Count; i++)
+                    if (agents[i] != null && IsWorkingState(agents[i].State)) { _activeAgentId = agents[i].AgentId; break; }
+            _dirty = true;
+        }
+
+        /// <summary>The running line: names the agent that is working when the session reducer
+        /// says one is; otherwise the general words.</summary>
+        string RunningWords()
+        {
+            switch (_activeAgentId)
+            {
+                case Phase2AgentIds.Researcher: return "In progress: Researcher is on it";
+                case Phase2AgentIds.Developer: return "In progress: Developer is on it";
+                case Phase2AgentIds.Tester: return "In progress: Tester is on it";
+                default: return "In progress: the agents are on it";
+            }
         }
 
         void Unbind()
@@ -121,8 +186,16 @@ namespace MuseDesk.Phase2.Board
                 }
                 if (presenter != null) presenter.AssignResolved -= OnCommandResolved;
             }
-            if (_sessionHooked && session != null) session.RunStateChanged -= MarkDirty;
+            if (_sessionHooked && session != null)
+            {
+                session.RunStateChanged -= MarkDirty;
+                var sr = session.Reducer;
+                sr.AgentChanged -= OnAgentChanged;
+                sr.SessionReset -= OnSessionReset;
+                sr.SnapshotLoaded -= OnSessionSnapshot;
+            }
             _sessionHooked = false;
+            _activeAgentId = null;
             _bound = false;
             _reducer = null;
         }
@@ -231,7 +304,8 @@ namespace MuseDesk.Phase2.Board
             else SetText(titleLabel, ref _titleShown, string.IsNullOrEmpty(focus.Title) ? "(untitled task)" : focus.Title);
 
             // State line: the outcome of the last key press while it is fresh, else the task's state.
-            if (!_noticeActive) SetState(DockStateWords(focus), textColor);
+            if (!_noticeActive)
+                SetState(focus != null && focus.TaskState == TaskStates.Running ? RunningWords() : DockStateWords(focus), textColor);
 
             // Mode, from the snapshot the reducer loaded (the gateway's own value before that).
             string mode = _reducer.SourceMode;

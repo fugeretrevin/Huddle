@@ -31,6 +31,10 @@ namespace MuseDesk.Agents
         /// so the view can play a walk cycle instead of its idle/working motion.</summary>
         public bool IsMoving => _moving;
 
+        /// <summary>Measured ground speed of the walk this frame, metres per second (0 when standing).
+        /// The animator bridge reads it to match the walk clip's playback rate to the real speed.</summary>
+        public float PlanarSpeed { get; private set; }
+
         void Awake()
         {
             _parent = transform.parent;
@@ -62,6 +66,9 @@ namespace MuseDesk.Agents
 
         public void ReturnHome()
         {
+            // Already standing at the home slot: nothing to walk. (Without this the agent "walked"
+            // on the spot for a full travel time whenever a caller sent it home twice.)
+            if (AtHome && !_moving) return;
             _returning = true; _onArrived = null;
             _startWorld = transform.position; _t = 0f; _moving = true;
         }
@@ -69,7 +76,9 @@ namespace MuseDesk.Agents
         void Update()
         {
             if (!_moving) return;
-            _t += Time.deltaTime / Mathf.Max(0.1f, travelSeconds);
+            float dt = Time.deltaTime;
+            Vector3 before = transform.position;
+            _t += dt / Mathf.Max(0.1f, travelSeconds);
             float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_t));
 
             Vector3 targetWorld = _returning && _parent != null
@@ -79,6 +88,12 @@ namespace MuseDesk.Agents
             Vector3 flat = Vector3.Lerp(_startWorld, targetWorld, k);
             flat.y += Mathf.Abs(Mathf.Sin(_t * Mathf.PI * walkBobSpeed)) * walkBobHeight;
             transform.position = flat;
+
+            if (dt > 1e-5f)
+            {
+                float dx = flat.x - before.x, dz = flat.z - before.z;
+                PlanarSpeed = Mathf.Sqrt(dx * dx + dz * dz) / dt;
+            }
 
             Vector3 dir = targetWorld - _startWorld; dir.y = 0f;
             if (_returning && k > 0.75f)
@@ -95,6 +110,7 @@ namespace MuseDesk.Agents
             {
                 transform.position = targetWorld;
                 _moving = false;
+                PlanarSpeed = 0f;
                 if (_returning)
                 {
                     if (_parent != null) transform.localPosition = _homeLocal;

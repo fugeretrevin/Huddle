@@ -63,6 +63,33 @@ namespace MuseDesk.Networking
         /// live backend (<see cref="IsLive"/> is already true and the live snapshot is loaded).</summary>
         public event Action ModeChanged;
 
+        /// <summary>True exactly while the background attempt to reach the live desktop backend is
+        /// running (from just before the handshake starts until it has succeeded, failed, timed out
+        /// or been discarded). False before start-up, when the settings prefer the offline demo (no
+        /// attempt is made), and after the attempt has ended.</summary>
+        public bool LiveAttemptInProgress { get; private set; }
+
+        /// <summary>True once a background live attempt has run and ended, whatever the outcome
+        /// (<see cref="IsLive"/> tells whether it was adopted).</summary>
+        public bool LiveAttemptEnded { get; private set; }
+
+        /// <summary>Raised on the main thread whenever <see cref="LiveAttemptInProgress"/> changes.</summary>
+        public event Action LiveAttemptChanged;
+
+        /// <summary>True while the event socket of the live session is connected. False in the
+        /// offline demo and while the socket is down (it reconnects by itself).</summary>
+        public bool SocketConnected => IsLive && dispatcher != null && dispatcher.Connected;
+
+        void SetLiveAttempt(bool inProgress)
+        {
+            if (LiveAttemptInProgress == inProgress) return;
+            LiveAttemptInProgress = inProgress;
+            if (!inProgress) LiveAttemptEnded = true;
+            if (this == null) return;   // the scene is being torn down: nobody left to tell
+            try { LiveAttemptChanged?.Invoke(); }
+            catch (Exception ex) { Debug.LogError($"[MuseDesk] live-attempt listener error: {ex.Message}"); }
+        }
+
         CancellationTokenSource _cts;
         int _idemCounter;
         DemoAgentGateway _demo;          // the scripted session while in demo mode, else null
@@ -135,7 +162,13 @@ namespace MuseDesk.Networking
             // 2) Look for the desktop in the background. Never blocks the demo.
             bool wantLive = settings != null && !settings.preferOfflineDemo;
             if (wantLive && dispatcher != null)
-                await TryGoLiveAsync(ct);
+            {
+                // Additive: publish that the attempt is running, for the mode plaque. The attempt
+                // itself is unchanged.
+                SetLiveAttempt(true);
+                try { await TryGoLiveAsync(ct); }
+                finally { SetLiveAttempt(false); }
+            }
         }
 
         /// <summary>Attempt the live handshake. Success switches to live only if the user has not

@@ -73,6 +73,32 @@ public static class PreviewV2
         Refresh();
         return "ok";
     }
+    /// <summary>Looks from the seated eye at a named object (works in Play Mode too).</summary>
+    static string LookAt(string name, float fov, Vector3 worldOffset = default)
+    {
+        Transform t = null;
+        foreach (var x in Resources.FindObjectsOfTypeAll<Transform>())
+            if (x.name == name && x.gameObject.scene.IsValid()) { t = x; break; }
+        if (t == null) return "not found: " + name;
+        var ws = Find("WorkspaceRoot");
+        if (ws == null) foreach (var x in Resources.FindObjectsOfTypeAll<Transform>()) if (x.name == "WorkspaceRoot" && x.gameObject.scene.IsValid()) { ws = x; break; }
+        return Look(ws.InverseTransformPoint(t.position + worldOffset), fov);
+    }
+    public static string AtPaper() => LookAt("DecisionDocument", 60f);
+    public static string AtPaperLow() => LookAt("DecisionDocument", 75f, new Vector3(0, -0.07f, 0));
+    public static string AtViewer() => LookAt("ViewerSheetRoot", 60f);
+    public static string AtReceipt() => LookAt("CompletionReceipt", 45f);
+    public static string AtArchive() => LookAt("ArchiveCard", 45f);
+    public static string AtBoard() => LookAt("TaskBoard", 75f);
+    public static string AtDock() => LookAt("TaskDock", 45f);
+    public static string FogOff()
+    {
+        var sv = SceneView.lastActiveSceneView;
+        var st = sv.sceneViewState; st.showFog = false; st.showImageEffects = false; st.showSkybox = false;
+        sv.sceneViewState = st; sv.Repaint();
+        return "scene view fog/skybox/post off";
+    }
+
     public static string Overview() => Look(new Vector3(0, 0.10f, 0.10f), 90f);
     public static string FrontBand() => Look(new Vector3(0, 0.02f, 0.40f), 80f);
     public static string Dock() => Look(new Vector3(0.24f, 0.03f, 0.44f), 45f);

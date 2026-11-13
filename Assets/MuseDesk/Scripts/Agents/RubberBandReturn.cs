@@ -35,6 +35,7 @@ namespace MuseDesk.Agents
         Vector3 _home;
         Vector3 _offset;
         float _contact;   // >0 while a hand is touching this frame-window (trigger fallback)
+        bool _wasMoving;
 
         void Awake() { _home = transform.localPosition; }
         void OnEnable() { _offset = Vector3.zero; _contact = 0f; }
@@ -63,7 +64,16 @@ namespace MuseDesk.Agents
                 _home = transform.localPosition;   // re-home wherever the walk leaves us
                 _offset = Vector3.zero;
                 _contact = 0f;
+                _wasMoving = true;
                 return;
+            }
+            if (_wasMoving)
+            {
+                // The walk ended since our last frame. Take the home from where it actually left
+                // the agent: whichever of the two components updated first on the arrival frame,
+                // the position we remembered above can be one frame (and one walk bob) stale.
+                _wasMoving = false;
+                _home = transform.localPosition;
             }
 
             // Primary path: deterministic proximity from tracked hands. Prefer real fingertips so

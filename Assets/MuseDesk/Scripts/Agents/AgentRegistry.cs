@@ -84,12 +84,16 @@ namespace MuseDesk.Agents
         IEnumerator ReactAndReturn(string state)
         {
             string s = (state ?? "").ToLowerInvariant();
+            bool approved = s.Contains("approv");
             if (_researcherBridge != null)
             {
-                if (s.Contains("approv")) _researcherBridge.PlaySuccess();
-                else _researcherBridge.PlayFailure();   // rejected / changes_requested
+                if (approved) _researcherBridge.PlaySuccess();
+                // A rejection or a request for changes is the user's decision, not a failure: no
+                // failure clip. The agent lowers the paper and walks back calmly.
+                else _researcherBridge.EndOffer();
             }
-            yield return new WaitForSeconds(1.2f);       // let the reaction read before walking back
+            // Let the reaction read before walking back; after a rejection only a short beat.
+            yield return new WaitForSeconds(approved ? 1.2f : 0.5f);
             // An approved decision starts a researcher→developer handoff, which owns the walk and
             // returns the courier home itself; sending it home here would cut that walk short.
             if (AgentHandoffController.AnyBusy) yield break;

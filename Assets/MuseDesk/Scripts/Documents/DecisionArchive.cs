@@ -14,7 +14,9 @@ namespace MuseDesk.Documents
     /// adds a sheet to the out-tray stack, and poking the stack (ArchiveStackPoke) pages through the
     /// record of what was decided and what came of it: the question, the outcome, whether it was
     /// live or a scripted demo, and the resulting artifact (files changed, tests passed) if there
-    /// was one. The readout stays open for a few seconds after a poke, then closes by itself.
+    /// was one. The record is shown on a small paper card that rises from the stack; it stays up
+    /// for a few seconds after a poke, then goes back by itself. A poke after the oldest record
+    /// puts it away at once.
     ///
     /// Everything shown comes from events the session reducer applied (decision.requested,
     /// decision.resolved, artifact.created, task.completed). Nothing is invented, and a rejected
@@ -35,13 +37,36 @@ namespace MuseDesk.Documents
         [Tooltip("Seconds after a decision resolves before its sheet appears (the paper glides here first).")]
         public float fileDelay = 3.6f;
 
-        [Header("Readout")]
+        [Header("Readout (the archive card)")]
+        [Tooltip("The archive card. Stays active; shown and hidden by scale.")]
         public GameObject readoutRoot;
+        [Tooltip("Legacy single text block. Used only when the card fields below are not wired.")]
         public TMP_Text readout;
         [Tooltip("Seconds the readout stays open after the last poke.")]
         public float readoutSeconds = 8f;
         [Tooltip("Scale of the readout when open (used when the builder saved it hidden).")]
         public Vector3 readoutShownScale = Vector3.one;
+
+        [Header("Archive card fields")]
+        [Tooltip("The decision's title.")]
+        public TMP_Text cardTitle;
+        [Tooltip("What the user decided, in words.")]
+        public TMP_Text cardOutcome;
+        [Tooltip("What came of it: result, tests, files.")]
+        public TMP_Text cardResult;
+        [Tooltip("The research provenance label the decision carried, when it had one.")]
+        public TMP_Text cardProvenance;
+        [Tooltip("'Filed 1 of 2'.")]
+        public TMP_Text cardCount;
+        [Tooltip("LIVE or SCRIPTED DEMO, in words, from the decision's own source_mode.")]
+        public TMP_Text cardMode;
+        [Tooltip("Colour band that repeats the mode.")]
+        public Renderer cardBand;
+        [Tooltip("The card rises from here (local position in its parent's space) to its saved position.")]
+        public Vector3 riseFromLocal;
+        [Tooltip("Use riseFromLocal. Off: the card only scales in place.")]
+        public bool riseFromStack = false;
+        public float riseSeconds = 0.3f;
 
         public class Record
         {
@@ -81,16 +106,25 @@ namespace MuseDesk.Documents
         /// <summary>True while the readout is open.</summary>
         public bool ReadoutOpen => _open;
 
-        readonly ScaleEase _readoutEase = new ScaleEase();
+        // The card's own show / hide: scale and (optionally) a rise from the stack, one eased value.
+        Transform _card;
+        Vector3 _cardFull = Vector3.one, _cardRest;
+        float _k, _goal;          // 0 put away .. 1 up
+        bool _moving;
+        MaterialPropertyBlock _block;
 
         void Awake()
         {
+            _block = new MaterialPropertyBlock();
             if (readoutRoot != null)
             {
-                // Shown and hidden by scale, so the readout can pop in and out; it holds no keys.
-                Vector3 full = ScaleEase.ResolveFull(readoutRoot.transform, readoutShownScale);
+                // Shown and hidden by scale, so the card can rise and go back; it holds no keys.
+                _card = readoutRoot.transform;
+                _cardFull = ScaleEase.ResolveFull(_card, readoutShownScale);
+                _cardRest = _card.localPosition;
                 if (!readoutRoot.activeSelf) readoutRoot.SetActive(true);
-                _readoutEase.Init(readoutRoot.transform, full, 0.2f, false);
+                _k = _goal = 0f;
+                ApplyCard();
             }
             if (sheetTemplate != null) sheetTemplate.SetActive(false);
         }
@@ -98,8 +132,30 @@ namespace MuseDesk.Documents
         void Update()
         {
             if (!_bound && controller != null) Bind();
-            _readoutEase.Tick(Time.deltaTime);
+            if (_moving)
+            {
+                _k = Mathf.MoveTowards(_k, _goal, Time.deltaTime / Mathf.Max(0.05f, riseSeconds));
+                ApplyCard();
+                if (Mathf.Approximately(_k, _goal)) _moving = false;
+            }
             if (_open && Time.time >= _hideAt) HideReadout();
+        }
+
+        void ApplyCard()
+        {
+            if (_card == null) return;
+            float inv = 1f - _k;
+            float eased = 1f - inv * inv * inv;                       // ease-out cubic
+            _card.localScale = _cardFull * Mathf.Lerp(ScaleEase.HiddenFactor, 1f, eased);
+            if (riseFromStack) _card.localPosition = Vector3.Lerp(riseFromLocal, _cardRest, eased);
+        }
+
+        void MoveCard(bool up)
+        {
+            float goal = up ? 1f : 0f;
+            if (Mathf.Approximately(goal, _goal) && !_moving) return;
+            _goal = goal;
+            _moving = true;
         }
 
         void Bind()
@@ -206,7 +262,10 @@ namespace MuseDesk.Documents
             _sheets.Add(sheet);
         }
 
-        /// <summary>Poke target: open the record, or step to the next filed decision (newest first).</summary>
+        /// <summary>
+        /// Poke target: raise the card on the newest filed decision, or step to the next older one.
+        /// A poke while the oldest record is on show puts the card away (it does not wrap round).
+        /// </summary>
         public void ShowNext()
         {
             int filed = 0;
@@ -214,16 +273,19 @@ namespace MuseDesk.Documents
             if (filed == 0)
             {
                 _shown = -1;
-                Show("Nothing filed yet.\nDecisions you make are kept here.");
+                Show("Nothing filed yet.", "Decisions you make are kept here.", "", "", "", null);
                 return;
             }
-            // Walk newest to oldest among filed records, wrapping.
-            int start = _shown >= 0 ? _shown - 1 : _records.Count - 1;
-            for (int n = 0; n < _records.Count; n++)
+            // Walk newest to oldest among filed records.
+            int next = -1;
+            for (int i = (_open && _shown >= 0 ? _shown : _records.Count) - 1; i >= 0; i--)
+                if (_records[i].State != "requested") { next = i; break; }
+            if (next < 0)
             {
-                int i = ((start - n) % _records.Count + _records.Count) % _records.Count;
-                if (_records[i].State != "requested") { _shown = i; break; }
+                HideReadout();          // the oldest record was on show: this poke closes the card
+                return;
             }
+            _shown = next;
             Render();
         }
 
@@ -231,7 +293,7 @@ namespace MuseDesk.Documents
         {
             _shown = -1;
             _open = false;
-            _readoutEase.Hide();
+            MoveCard(false);
         }
 
         void Render()
@@ -242,39 +304,63 @@ namespace MuseDesk.Documents
             for (int i = 0; i < _records.Count; i++)
                 if (_records[i].State != "requested") { filed++; if (i <= _shown) ordinal = filed; }
 
-            _sb.Clear();
-            _sb.Append("<size=80%>Filed ").Append(ordinal).Append(" of ").Append(filed).Append("    ")
-               .Append(r.Mode == SourceModes.Live ? "LIVE" : "SCRIPTED DEMO").Append("</size>\n");
-            _sb.Append("<b>").Append(r.Title).Append("</b>\n");
-            _sb.Append(r.State switch
+            string outcome = r.State switch
             {
                 "approved" => "You approved it.",
                 "rejected" => "You rejected it. Nothing was built.",
                 "changes_requested" => "You asked for changes. The run stopped.",
                 "expired" => "Expired before it was answered. Nothing was run.",
                 _ => "Outcome: " + r.State,
-            }).Append('\n');
-            if (!string.IsNullOrEmpty(r.ProvenanceLabel)) _sb.Append("<size=80%><i>").Append(r.ProvenanceLabel).Append("</i></size>\n");
+            };
+
+            _sb.Clear();
             if (r.State == "approved")
             {
                 if (r.ArtifactSummary == null) _sb.Append("Result: still in progress.");
                 else
                 {
-                    _sb.Append("Result: ").Append(r.ArtifactSummary).Append('\n');
+                    _sb.Append("Result: ").Append(r.ArtifactSummary);
                     if (r.TestsPassed >= 0)
-                        _sb.Append("Tests: ").Append(r.TestsPassed).Append(" passed, ").Append(Mathf.Max(0, r.TestsFailed)).Append(" failed\n");
+                        _sb.Append("\nTests: ").Append(r.TestsPassed).Append(" passed, ").Append(Mathf.Max(0, r.TestsFailed)).Append(" failed");
                     if (r.Files != null && r.Files.Count > 0)
-                        _sb.Append("<size=80%>Files: ").Append(string.Join(", ", r.Files)).Append("</size>");
-                    if (!r.Delivered) _sb.Append("\n<size=80%>Not yet confirmed complete.</size>");
+                        _sb.Append("\nFiles: ").Append(string.Join(", ", r.Files));
+                    if (!r.Delivered) _sb.Append("\nNot yet confirmed complete.");
                 }
             }
-            Show(_sb.ToString());
+            string result = _sb.ToString();
+
+            _sb.Clear();
+            _sb.Append("Filed ").Append(ordinal).Append(" of ").Append(filed);
+            Show(r.Title, outcome, result, r.ProvenanceLabel ?? "", _sb.ToString(), r.Mode);
         }
 
-        void Show(string text)
+        /// <summary>Write the card (or the legacy single text block) and raise it.</summary>
+        void Show(string title, string outcome, string result, string provenance, string count, string mode)
         {
-            if (readout != null) readout.text = text;
-            _readoutEase.Show();
+            string modeWords = mode == null ? "" : (mode == SourceModes.Live ? "LIVE" : "SCRIPTED DEMO");
+            bool card = cardTitle != null;
+            if (card)
+            {
+                cardTitle.text = title;
+                if (cardOutcome != null) cardOutcome.text = outcome;
+                if (cardResult != null) cardResult.text = result;
+                if (cardProvenance != null) cardProvenance.text = provenance;
+                if (cardCount != null) cardCount.text = count;
+                if (cardMode != null) cardMode.text = modeWords;
+                if (cardBand != null)
+                    OfficeTokens.Tint(cardBand, _block, mode == SourceModes.Live ? OfficeTokens.Success : OfficeTokens.Amber);
+            }
+            else if (readout != null)
+            {
+                // No size tags: every line is printed at the label's own size.
+                _sb.Clear();
+                if (count.Length > 0 || modeWords.Length > 0) _sb.Append(count).Append("    ").Append(modeWords).Append('\n');
+                _sb.Append(title).Append('\n').Append(outcome);
+                if (provenance.Length > 0) _sb.Append('\n').Append(provenance);
+                if (result.Length > 0) _sb.Append('\n').Append(result);
+                readout.text = _sb.ToString();
+            }
+            MoveCard(true);
             _hideAt = Time.time + readoutSeconds;
             _open = true;
         }

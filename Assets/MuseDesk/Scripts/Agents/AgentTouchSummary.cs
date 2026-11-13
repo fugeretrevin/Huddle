@@ -95,7 +95,18 @@ namespace MuseDesk.Agents
             _open = true;
             Render();
             cardRoot.SetActive(true);
+            // The user asked this agent something: it looks up at them for a moment (then back to
+            // the hand or its work, as AgentGaze decides).
+            if (!_gazeLooked)
+            {
+                _gaze = view != null ? view.GetComponent<AgentGaze>() : GetComponent<AgentGaze>();
+                _gazeLooked = true;
+            }
+            if (_gaze != null && _gaze.isActiveAndEnabled) _gaze.SetAttentionOnUser(1.4f, 0.85f);
         }
+
+        AgentGaze _gaze;
+        bool _gazeLooked;
 
         void Close()
         {

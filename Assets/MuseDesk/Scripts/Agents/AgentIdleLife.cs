@@ -49,6 +49,9 @@ namespace MuseDesk.Agents
         public float fidgetDegrees = 2.5f;
         [Tooltip("In focus mode fidgets come this many times less often.")]
         public float focusFidgetSlowdown = 2f;
+        [Range(0f, 1f)]
+        [Tooltip("In focus mode all of this motion (breathing, rock, weight shifts) is scaled by this, so the office is calm.")]
+        public float focusAmount = 0.55f;
 
         [Header("Voice visuals")]
         [Tooltip("Forward lean toward the user while listening, degrees.")]
@@ -56,6 +59,39 @@ namespace MuseDesk.Agents
 
         BoneRotationLayer _spineLayer, _chestLayer;
         BoneScaleLayer _chestScale;
+
+        // One writer per bone: another component that wants to lean the Spine or Chest (AgentTilt,
+        // the push-away lean) hands its rotation to this component instead of layering on the same
+        // bone itself. Two independent layers on one bone only compose correctly while the Animator
+        // rewrites that bone every frame; when it does not, each takes the other's output for the
+        // clip pose and the lean accumulates.
+        Quaternion _extSpine = Quaternion.identity, _extChest = Quaternion.identity;
+        bool _hasExtSpine, _hasExtChest;
+
+        /// <summary>True if this component is running and writes <paramref name="bone"/> (its Spine
+        /// or Chest), in which case an extra lean on that bone must go through
+        /// <see cref="SetBoneOffset"/> instead of a second layer.</summary>
+        public bool Owns(Transform bone)
+        {
+            return isActiveAndEnabled && bone != null && (bone == spine || bone == chest);
+        }
+
+        /// <summary>Add a world-space rotation on top of this component's own motion on its Spine or
+        /// Chest bone. Stays until changed or cleared. Applied in this component's LateUpdate.</summary>
+        public void SetBoneOffset(Transform bone, Quaternion worldDelta)
+        {
+            if (bone == null) return;
+            if (bone == chest) { _extChest = worldDelta; _hasExtChest = true; }
+            else if (bone == spine) { _extSpine = worldDelta; _hasExtSpine = true; }
+        }
+
+        /// <summary>Remove the extra rotation set with <see cref="SetBoneOffset"/>.</summary>
+        public void ClearBoneOffset(Transform bone)
+        {
+            if (bone == null) return;
+            if (bone == chest) { _extChest = Quaternion.identity; _hasExtChest = false; }
+            else if (bone == spine) { _extSpine = Quaternion.identity; _hasExtSpine = false; }
+        }
 
         float _phase;
         float _amount;          // smoothed breathing amount, 0..1
@@ -92,6 +128,8 @@ namespace MuseDesk.Agents
             _chestScale.Release(chest);
             _amount = 0f;
             _lean = 0f;
+            _extSpine = _extChest = Quaternion.identity;
+            _hasExtSpine = _hasExtChest = false;
         }
 
         void LateUpdate()
@@ -114,6 +152,8 @@ namespace MuseDesk.Agents
             else if (listening) wantAmount = 0.5f;
             else if (subdued) wantAmount = 0.7f;
             else wantAmount = 1f;
+            // Focus mode: the same motion, smaller. Eased through _amount, so toggling never pops.
+            if (MuseDesk.Workspace.FocusModeController.Active) wantAmount *= Mathf.Clamp01(focusAmount);
 
             float wantLean = (moving || reacting) ? 0f : (listening ? listenLean : (speaking ? listenLean * 0.35f : 0f));
 
@@ -154,18 +194,28 @@ namespace MuseDesk.Agents
 
             if (spine != null)
             {
-                if (Mathf.Abs(rock) < 0.005f && Mathf.Abs(fidget) < 0.005f) _spineLayer.Release(spine);
+                bool own = Mathf.Abs(rock) >= 0.005f || Mathf.Abs(fidget) >= 0.005f;
+                if (!own && !_hasExtSpine) _spineLayer.Release(spine);
                 else
                 {
-                    Quaternion d = rootRot * Quaternion.Euler(rock, _fidgetYaw ? fidget : 0f, _fidgetYaw ? 0f : fidget) * rootInv;
+                    Quaternion d = own
+                        ? rootRot * Quaternion.Euler(rock, _fidgetYaw ? fidget : 0f, _fidgetYaw ? 0f : fidget) * rootInv
+                        : Quaternion.identity;
+                    if (_hasExtSpine) d = _extSpine * d;
                     _spineLayer.Apply(spine, d);
                 }
             }
 
             if (chest != null)
             {
-                if (Mathf.Abs(_lean) < 0.01f) _chestLayer.Release(chest);
-                else _chestLayer.Apply(chest, rootRot * Quaternion.Euler(_lean, 0f, 0f) * rootInv);
+                bool own = Mathf.Abs(_lean) >= 0.01f;
+                if (!own && !_hasExtChest) _chestLayer.Release(chest);
+                else
+                {
+                    Quaternion d = own ? rootRot * Quaternion.Euler(_lean, 0f, 0f) * rootInv : Quaternion.identity;
+                    if (_hasExtChest) d = _extChest * d;
+                    _chestLayer.Apply(chest, d);
+                }
 
                 if (swell < 0.0002f) _chestScale.Release(chest);
                 else _chestScale.Apply(chest, new Vector3(1f + swell, 1f + swell * 0.35f, 1f + swell));

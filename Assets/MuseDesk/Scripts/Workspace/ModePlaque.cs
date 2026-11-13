@@ -14,10 +14,18 @@ namespace MuseDesk.Workspace
     /// connection flag and the mode label SessionController reports to DiagnosticsOverlay), never
     /// from a timer script, and the colour strip only repeats what the words say.
     ///
-    /// The one approximation: SessionController does not expose whether its background attempt to
-    /// reach the desktop is still running, so "Connecting..." is shown for the configured
-    /// connect timeout after start-up (and dropped at once when a demo run starts, because from
-    /// then on a late connection is discarded). The mode words themselves are never approximate.
+    /// The connection word, in the scripted demo:
+    ///   "Connecting..."   only while SessionController.LiveAttemptInProgress is true, i.e. the
+    ///                     background attempt to reach the desktop is really running (and dropped at
+    ///                     once when a demo run starts, because from then on a late connection is
+    ///                     discarded). It can never stay: the attempt has its own timeout, and as a
+    ///                     backstop the word is withdrawn a few seconds after that timeout.
+    ///   "Offline: demo"   no attempt was made, or it ended without a connection.
+    /// In live mode, from the event socket's real state:
+    ///   "Connected"       for a few seconds after the socket connects, then the line is left empty;
+    ///   "Reconnecting..." while the socket is down and retrying; "Disconnected" once it has been
+    ///                     down for a while (it keeps retrying; nothing is simulated meanwhile).
+    /// Before a session exists the plaque reads STARTING (or NO SESSION if start-up failed).
     /// </summary>
     public class ModePlaque : MonoBehaviour
     {
@@ -45,11 +53,27 @@ namespace MuseDesk.Workspace
         DiagnosticsOverlay _boundDiagnostics;
         bool _bound;
         bool _seenInitialized;
-        bool _connecting;
-        float _connectUntil;
+        bool _attemptSeen;            // LiveAttemptInProgress as last read
+        float _attemptStarted;        // unscaled time the attempt was first seen running
+        bool _attemptGaveUp;          // backstop: the attempt outlived its own timeout by a margin
         bool _lastSocketConnected;
+        bool _socketKnown;
+        float _socketChangedAt = -100f;   // unscaled time of the last socket flip (or of going live)
         Mode _mode = Mode.Unknown;
         string _status;
+
+        [Header("Connection word")]
+        [Tooltip("Seconds \"Connected\" stays on the plaque after the socket connects.")]
+        public float connectedSeconds = 4f;
+        [Tooltip("Seconds the socket must be down before \"Reconnecting...\" becomes \"Disconnected\".")]
+        public float disconnectedAfterSeconds = 20f;
+
+        const string WordConnecting = "Connecting...";
+        const string WordOffline = "Offline: demo";
+        const string WordConnected = "Connected";
+        const string WordReconnecting = "Reconnecting...";
+        const string WordDisconnected = "Disconnected";
+        const float AttemptBackstopSeconds = 5f;
 
         void Awake()
         {
@@ -65,36 +89,74 @@ namespace MuseDesk.Workspace
             _ease.Tick(Time.deltaTime);
             if (!_bound) return;
 
+            float now = Time.unscaledTime;
+
             if (!_seenInitialized && controller.Initialized)
             {
                 _seenInitialized = true;
-                // A live connection is attempted in the background unless the settings prefer the
-                // offline demo. Until that attempt can have timed out, say so.
-                bool wantsLive = controller.settings != null && !controller.settings.preferOfflineDemo
-                                 && controller.dispatcher != null && !controller.IsLive;
-                if (wantsLive)
-                {
-                    _connecting = true;
-                    _connectUntil = Time.unscaledTime + controller.settings.connectTimeoutSeconds + 0.5f;
-                }
                 Refresh();
             }
-            if (_connecting && Time.unscaledTime >= _connectUntil)
+
+            // The real background attempt (also polled, in case this plaque bound after it began).
+            bool attempt = controller.LiveAttemptInProgress;
+            if (attempt != _attemptSeen)
             {
-                _connecting = false;
+                _attemptSeen = attempt;
+                if (attempt) { _attemptStarted = now; _attemptGaveUp = false; }
                 Refresh();
             }
+            // Backstop so the word can never stay: the attempt cancels itself at the connect
+            // timeout; if it is somehow still flagged well after that, stop saying "Connecting...".
+            if (attempt && !_attemptGaveUp)
+            {
+                float limit = (controller.settings != null ? controller.settings.connectTimeoutSeconds : 6f)
+                              + AttemptBackstopSeconds;
+                if (now - _attemptStarted >= limit) { _attemptGaveUp = true; Refresh(); }
+            }
+
             // The socket flips its flag on a background thread; notice it here (a bool read).
-            if (controller.IsLive && controller.dispatcher != null)
+            if (controller.IsLive)
             {
-                bool connected = controller.dispatcher.Connected;
-                if (connected != _lastSocketConnected) Refresh();
+                bool connected = controller.dispatcher == null || controller.dispatcher.Connected;
+                if (!_socketKnown || connected != _lastSocketConnected)
+                {
+                    _socketKnown = true;
+                    _lastSocketConnected = connected;
+                    _socketChangedAt = now;
+                    Refresh();
+                }
+                else if (_nextTimedRefresh > 0f && now >= _nextTimedRefresh)
+                {
+                    // "Connected" has been shown long enough, or the socket has been down long
+                    // enough to say "Disconnected": one refresh at that moment, not every frame.
+                    _nextTimedRefresh = 0f;
+                    Refresh();
+                }
             }
+            else if (_socketKnown)
+            {
+                _socketKnown = false;
+                _nextTimedRefresh = 0f;
+            }
+        }
+
+        float _nextTimedRefresh;
+
+        void OnLiveAttemptChanged()
+        {
+            bool attempt = controller != null && controller.LiveAttemptInProgress;
+            if (attempt != _attemptSeen)
+            {
+                _attemptSeen = attempt;
+                if (attempt) { _attemptStarted = Time.unscaledTime; _attemptGaveUp = false; }
+            }
+            Refresh();
         }
 
         void Bind()
         {
             controller.ModeChanged += Refresh;
+            controller.LiveAttemptChanged += OnLiveAttemptChanged;
             controller.RunStateChanged += Refresh;
             controller.Reducer.SnapshotLoaded += Refresh;
             controller.Reducer.SessionReset += Refresh;
@@ -110,6 +172,7 @@ namespace MuseDesk.Workspace
             if (controller != null)
             {
                 controller.ModeChanged -= Refresh;
+                controller.LiveAttemptChanged -= OnLiveAttemptChanged;
                 controller.RunStateChanged -= Refresh;
                 controller.Reducer.SnapshotLoaded -= Refresh;
                 controller.Reducer.SessionReset -= Refresh;
@@ -136,16 +199,37 @@ namespace MuseDesk.Workspace
             else if (controller.IsLive)
             {
                 mode = Mode.Live;
-                _connecting = false;
-                _lastSocketConnected = controller.dispatcher == null || controller.dispatcher.Connected;
-                status = _lastSocketConnected ? "Connected" : "Reconnecting...";
+                float now = Time.unscaledTime;
+                bool connected = controller.dispatcher == null || controller.dispatcher.Connected;
+                if (!_socketKnown || connected != _lastSocketConnected)
+                {
+                    // First look at the socket in live mode, or it flipped since Update last looked.
+                    _socketKnown = true;
+                    _lastSocketConnected = connected;
+                    _socketChangedAt = now;
+                }
+                float since = now - _socketChangedAt;
+                if (connected)
+                {
+                    bool fresh = since < connectedSeconds;
+                    status = fresh ? WordConnected : "";
+                    _nextTimedRefresh = fresh ? _socketChangedAt + connectedSeconds : 0f;
+                }
+                else
+                {
+                    bool recent = since < disconnectedAfterSeconds;
+                    status = recent ? WordReconnecting : WordDisconnected;
+                    _nextTimedRefresh = recent ? _socketChangedAt + disconnectedAfterSeconds : 0f;
+                }
             }
             else
             {
                 mode = Mode.Demo;
-                // Once a demo run has started, a late desktop connection is not adopted.
-                if (_connecting && (controller.HasStartedRun || controller.RunInProgress)) _connecting = false;
-                status = _connecting ? "Connecting..." : "Offline: demo";
+                // "Connecting..." only while the real attempt is running. Once a demo run has
+                // started, a late desktop connection is not adopted, so the word is dropped.
+                bool connecting = controller.LiveAttemptInProgress && !_attemptGaveUp
+                                  && !controller.HasStartedRun && !controller.RunInProgress;
+                status = connecting ? WordConnecting : WordOffline;
             }
 
             bool changed = false;

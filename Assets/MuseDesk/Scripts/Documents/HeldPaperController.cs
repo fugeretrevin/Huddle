@@ -224,6 +224,18 @@ namespace MuseDesk.Documents
             _held = nowHeld;
         }
 
+        /// <summary>
+        /// Take the paper exactly as a hand grab followed by a release would: it leaves the agent's
+        /// hand, unfolds, and its keys arm when the unfold finishes. For the Editor Play Mode driver
+        /// and tests, where there is no hand. It never approves anything.
+        /// </summary>
+        public void TakeNow()
+        {
+            if (!isActiveAndEnabled || _filing || _taken || agentHoldPoint == null) return;
+            OnGrabbed();
+            OnReleased();
+        }
+
         void OnGrabbed()
         {
 

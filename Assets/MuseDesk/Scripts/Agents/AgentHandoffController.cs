@@ -26,9 +26,12 @@ namespace MuseDesk.Agents
         public float stopDistance = 0.18f;
         [Tooltip("Seconds the give/receive pose holds before the courier walks home.")]
         public float exchangeHold = 1.0f;
+        [Tooltip("After an approval the Researcher plays its success reaction. The walk to the Developer " +
+                 "waits for that reaction, at most this many seconds, so the reaction is not cut to a walk.")]
+        public float approvalReactionWait = 0.9f;
 
         readonly Dictionary<string, AgentView> _byId = new Dictionary<string, AgentView>();
-        readonly Queue<(string src, string dst)> _queue = new Queue<(string, string)>();
+        readonly Queue<(string src, string dst, float settle)> _queue = new Queue<(string, string, float)>();
         bool _bound;
         bool _busy;
         GameObject _destGo;
@@ -38,6 +41,40 @@ namespace MuseDesk.Agents
         /// <summary>True while a handoff owns an agent's movement. AgentRegistry reads this so its
         /// own "react, then walk home" does not cut a handoff walk short.</summary>
         public static bool AnyBusy { get; private set; }
+
+        /// <summary>True from the moment a handoff is queued until its give / receive beat has been
+        /// held and the courier turns for home (and no further handoff is queued). The completion
+        /// sequence waits for this, so a celebration does not start under an exchange.</summary>
+        public static bool ExchangePending { get; private set; }
+
+        enum Stage { Idle, Settling, Approaching, Exchanging, Returning }
+        Stage _stage = Stage.Idle;
+        AgentMovement _courier;
+
+        /// <summary>
+        /// The work has been delivered: a handoff that has not reached its give / receive beat is now
+        /// out of date (it would show work being carried to the Tester after the Tester passed it).
+        /// Queued handoffs are dropped and a courier that is still waiting or walking over is sent
+        /// home; an exchange that is already being held, and a courier already walking home, are left
+        /// to finish. Presentation only: the backend transfer happened long before.
+        /// </summary>
+        public void AbandonPending()
+        {
+            _queue.Clear();
+            if (!_busy) { ExchangePending = false; return; }
+            if (_stage == Stage.Settling || _stage == Stage.Approaching)
+            {
+                StopAllCoroutines();
+                if (artifactProp != null) artifactProp.gameObject.SetActive(false);
+                if (_courier != null && !_courier.AtHome) _courier.ReturnHome();
+                if (_destGo != null) { Destroy(_destGo); _destGo = null; }
+                _busy = AnyBusy = false;
+                _stage = Stage.Idle;
+                _courier = null;
+                ExchangePending = false;
+            }
+            else if (_stage != Stage.Exchanging) ExchangePending = false;
+        }
 
         void Update()
         {
@@ -69,8 +106,10 @@ namespace MuseDesk.Agents
             _bound = false;
             // A disabled component's coroutines stop; don't stay latched busy or leak the marker.
             _queue.Clear();
-            if (_busy) AnyBusy = false;
+            if (_busy) { AnyBusy = false; ExchangePending = false; }
             _busy = false;
+            _stage = Stage.Idle;
+            _courier = null;
             if (_destGo != null) { Destroy(_destGo); _destGo = null; }
         }
 
@@ -79,8 +118,10 @@ namespace MuseDesk.Agents
         {
             StopAllCoroutines();
             _queue.Clear();
-            if (_busy) AnyBusy = false;
+            if (_busy) { AnyBusy = false; ExchangePending = false; }
             _busy = false;
+            _stage = Stage.Idle;
+            _courier = null;
             if (_destGo != null) { Destroy(_destGo); _destGo = null; }
             if (artifactProp != null) artifactProp.gameObject.SetActive(false);
             foreach (var a in _byId.Values)
@@ -94,16 +135,18 @@ namespace MuseDesk.Agents
         {
             string s = (state ?? "").ToLowerInvariant();
             if (!s.Contains("approv")) return;                 // only a greenlit decision hands work onward
-            TryHandoff("researcher", "developer");
+            // The Researcher reacts to the approval first (AgentRegistry plays its success clip on
+            // this same event); starting the walk at once cut that reaction after a single frame.
+            TryHandoff("researcher", "developer", Mathf.Max(0f, approvalReactionWait));
         }
 
         void OnArtifactCreated(EventEnvelope e)
         {
             // A produced artifact moves from the developer to the tester for verification.
-            TryHandoff("developer", "tester");
+            TryHandoff("developer", "tester", 0f);
         }
 
-        void TryHandoff(string sourceId, string targetId)
+        void TryHandoff(string sourceId, string targetId, float settle)
         {
             // Focus mode suppresses routine handoff choreography (the backend transfer already
             // happened; this is presentation only, so skipping it changes no task state).
@@ -112,7 +155,8 @@ namespace MuseDesk.Agents
             // Queue rather than drop: the developer→tester handoff routinely arrives while the
             // researcher→developer one is still walking. Bounded so a burst can't back up forever.
             if (_queue.Count >= 4) return;
-            _queue.Enqueue((sourceId, targetId));
+            _queue.Enqueue((sourceId, targetId, settle));
+            ExchangePending = true;
             if (!_busy) StartCoroutine(Drain());
         }
 
@@ -121,20 +165,35 @@ namespace MuseDesk.Agents
             _busy = AnyBusy = true;
             while (_queue.Count > 0)
             {
-                var (s, t) = _queue.Dequeue();
+                var (s, t, settle) = _queue.Dequeue();
                 if (_byId.TryGetValue(s, out var a) && a != null && _byId.TryGetValue(t, out var b) && b != null)
-                    yield return HandoffRoutine(a, b);
+                    yield return HandoffRoutine(a, b, settle);
             }
             _busy = AnyBusy = false;
+            ExchangePending = false;
+            _stage = Stage.Idle;
+            _courier = null;
         }
 
-        IEnumerator HandoffRoutine(AgentView source, AgentView target)
+        IEnumerator HandoffRoutine(AgentView source, AgentView target, float settle)
         {
             var srcMove = source.GetComponent<AgentMovement>();
             var srcBridge = source.GetComponent<AgentAnimatorBridge>();
             var dstBridge = target.GetComponent<AgentAnimatorBridge>();
 
             if (srcMove == null) yield break;
+            _courier = srcMove;
+            _stage = Stage.Settling;
+
+            // Let the courier's own reaction to the event that started this handoff read before it
+            // walks (walking always wins over a reaction). One frame first: the reaction may be
+            // started by another listener of the same event, after this routine began.
+            if (settle > 0f && srcBridge != null)
+            {
+                yield return null;
+                float waited = 0f;
+                while (waited < settle && srcBridge.ReactionPlaying) { waited += Time.deltaTime; yield return null; }
+            }
 
             // The courier carries the token for the whole walk (not just at the give beat).
             if (artifactProp != null)
@@ -153,6 +212,7 @@ namespace MuseDesk.Agents
             dest.position = target.transform.position + toward.normalized * stopDistance;
             dest.position = new Vector3(dest.position.x, source.transform.position.y, dest.position.z);
 
+            _stage = Stage.Approaching;
             srcMove.DeliverTo(dest, null);
 
             // Wait for arrival (IsMoving falls to false), with a safety guard.
@@ -161,6 +221,7 @@ namespace MuseDesk.Agents
             while (srcMove.IsMoving && guard < 6f) { guard += Time.deltaTime; yield return null; }
 
             // Give / receive beat.
+            _stage = Stage.Exchanging;
             if (srcBridge != null) srcBridge.PlayHandoffGive();
             if (dstBridge != null) dstBridge.PlayHandoffReceive();
 
@@ -175,6 +236,10 @@ namespace MuseDesk.Agents
             // The receiver has the work now; put the token away so it doesn't hang in its hand forever.
             if (artifactProp != null) artifactProp.gameObject.SetActive(false);
 
+            // The exchange itself is over; only the walk home remains.
+            if (_queue.Count == 0) ExchangePending = false;
+
+            _stage = Stage.Returning;
             srcMove.ReturnHome();
             guard = 0f;
             yield return null;

@@ -57,7 +57,20 @@ namespace MuseDesk.Documents
         [Header("Return-to-rest")]
         [Tooltip("When released, glide back to the desk rest pose so the tools stay tidy.")]
         public bool returnHome = true;
+        [Tooltip("Only used when returnSeconds is zero: the old exponential glide.")]
         [Range(0f, 20f)] public float returnLerp = 8f;
+        [Tooltip("Seconds of the eased move back to the rest pad after release.")]
+        [Range(0f, 1.5f)] public float returnSeconds = 0.4f;
+
+        [Header("Press (Paper V3)")]
+        [Tooltip("The stamp's model (a child, never the grabbed root). It dips toward the paper when a stamp lands. Empty: no dip.")]
+        public Transform pressVisual;
+        [Tooltip("How far the model dips, in metres of this stamp's local space.")]
+        public float pressDip = 0.006f;
+        [Tooltip("Seconds for the dip down and back.")]
+        public float pressSeconds = 0.16f;
+        [Tooltip("The stamp target highlights while the ink head of a held stamp that would count is within this distance of the target's centre (metres).")]
+        public float highlightRadius = 0.10f;
 
         // One decision = one stamp, across BOTH stamps (main-thread only, so a static is safe).
         static string s_handledDecision;
@@ -73,6 +86,22 @@ namespace MuseDesk.Documents
         AudioSource _audio;
         AudioClip _thunk, _nope;
 
+        // Eased return to the rest pad.
+        bool _wasHeld;
+        bool _returning;
+        float _returnT;
+        Vector3 _returnFromPos;
+        Quaternion _returnFromRot;
+
+        // Press dip of the model.
+        bool _dipping;
+        float _dipT;
+        Vector3 _visualBasePos;
+
+        // The paper's mark and target highlight (on the same object as the HeldPaperController).
+        ApprovalStampController _marks;
+        bool _marksResolved;
+
         void Awake()
         {
             // Home is PARENT-RELATIVE: WorkspacePlacement moves WorkspaceRoot after Awake, so a world
@@ -81,6 +110,9 @@ namespace MuseDesk.Documents
             _homeRot = transform.localRotation;
             _homeCaptured = true;
             if (headRenderer != null) _headBaseScale = headRenderer.transform.localScale;
+            // The dip moves a child of the grabbed root, and only one that is really a child.
+            if (pressVisual != null && (pressVisual == transform || !pressVisual.IsChildOf(transform))) pressVisual = null;
+            if (pressVisual != null) _visualBasePos = pressVisual.localPosition;
 
             _audio = GetComponent<AudioSource>();
             if (_audio == null) _audio = gameObject.AddComponent<AudioSource>();
@@ -111,31 +143,75 @@ namespace MuseDesk.Documents
             return _selCount != null && _selCount() > 0;
         }
 
+        // The model's dip toward the paper and back. It moves only the model child, so it never
+        // fights the hand that is holding the root.
+        void TickDip()
+        {
+            if (!_dipping) return;
+            if (pressVisual == null) { _dipping = false; return; }
+            _dipT += Time.deltaTime / Mathf.Max(0.02f, pressSeconds);
+            if (_dipT >= 1f)
+            {
+                _dipping = false;
+                pressVisual.localPosition = _visualBasePos;
+                return;
+            }
+            // Down and back in one smooth arc (the ink face is the model's underside: local -Y).
+            pressVisual.localPosition = _visualBasePos + Vector3.down * (pressDip * Mathf.Sin(_dipT * Mathf.PI));
+        }
+
+        // Released: one eased move back to the rest pad (no physics; the stamp is kinematic).
+        void TickReturn()
+        {
+            if (!returnHome || !_homeCaptured) return;
+            if (returnSeconds <= 0f)
+            {
+                float k = 1f - Mathf.Exp(-returnLerp * Time.deltaTime);
+                transform.localPosition = Vector3.Lerp(transform.localPosition, _homePos, k);
+                transform.localRotation = Quaternion.Slerp(transform.localRotation, _homeRot, k);
+                return;
+            }
+            if (!_returning) return;
+            _returnT += Time.deltaTime / returnSeconds;
+            float t = Mathf.Clamp01(_returnT);
+            float e = t * t * (3f - 2f * t);                    // ease in and out
+            transform.localPosition = Vector3.Lerp(_returnFromPos, _homePos, e);
+            transform.localRotation = Quaternion.Slerp(_returnFromRot, _homeRot, e);
+            if (t >= 1f) _returning = false;
+        }
+
         void Update()
         {
+            TickDip();
             bool held = IsHeld();
 
             if (!held)
             {
                 _dwell = 0f;
-                if (returnHome && _homeCaptured)
+                if (_wasHeld)
                 {
-                    float k = 1f - Mathf.Exp(-returnLerp * Time.deltaTime);
-                    transform.localPosition = Vector3.Lerp(transform.localPosition, _homePos, k);
-                    transform.localRotation = Quaternion.Slerp(transform.localRotation, _homeRot, k);
+                    _wasHeld = false;
+                    _returning = true;
+                    _returnT = 0f;
+                    _returnFromPos = transform.localPosition;
+                    _returnFromRot = transform.localRotation;
                 }
+                TickReturn();
                 return;
             }
+            _wasHeld = true;
+            _returning = false;
 
             // Held: look for a press onto the paper zone.
             if (inkHead == null || stampZone == null || controller == null) return;
             if (Time.time < _cooldownUntil) return;
 
             bool zoneReady = stampZone.gameObject.activeInHierarchy;
-            bool contact = zoneReady &&
-                (inkHead.position - stampZone.position).sqrMagnitude <= contactRadius * contactRadius;
+            float distSqr = (inkHead.position - stampZone.position).sqrMagnitude;
+            bool contact = zoneReady && distSqr <= contactRadius * contactRadius;
+            bool near = zoneReady && distSqr <= highlightRadius * highlightRadius;
 
-            if (!contact) { _dwell = 0f; return; }
+            if (!near && !contact) { _dwell = 0f; return; }
 
             // A stamp only counts on a paper the user has taken and had in front of them: never on
             // the blank sheet still in the agent's hand, and never in the instant it is unfolding.
@@ -145,6 +221,20 @@ namespace MuseDesk.Documents
                 _paperResolved = true;
             }
             if (paper != null && !paper.ReadyForDecision) { _dwell = 0f; return; }
+
+            // The target lights up only when pressing this stamp now would really send a response.
+            if (!_marksResolved)
+            {
+                _marksResolved = true;
+                _marks = paper != null ? paper.GetComponent<ApprovalStampController>() : stampZone.GetComponentInParent<ApprovalStampController>(true);
+            }
+            if (_marks != null)
+            {
+                string open = controller.PendingDecisionId;
+                if (!string.IsNullOrEmpty(open) && open != s_handledDecision) _marks.NotifyStampNear();
+            }
+
+            if (!contact) { _dwell = 0f; return; }
 
             string pending = controller.PendingDecisionId;
             if (string.IsNullOrEmpty(pending))
@@ -173,13 +263,21 @@ namespace MuseDesk.Documents
             // paper's own response hooks when there is one, so a stamp and a button press share a
             // single in-flight response (no double submission) and the paper shows "Saving…".
             if (_delivery == null) _delivery = FindAnyObjectByType<DocumentDeliveryController>();
+            bool inFlight = true;
             if (_delivery != null)
             {
                 if (_delivery.ResponseInFlight) return;
                 if (action == StampAction.Approve) _delivery.OnApprove(); else _delivery.OnReject();
+                inFlight = _delivery.ResponseInFlight;
             }
             else if (action == StampAction.Approve) controller.ApprovePending();
             else controller.RejectPending();
+
+            // The model dips onto the paper, and the paper takes a pale provisional mark in the words
+            // of the request. Neither claims an outcome: the dark mark and the outcome cue come from
+            // ApprovalStampController on decision.resolved, and a failed response removes the pale one.
+            if (pressVisual != null) { _dipping = true; _dipT = 0f; }
+            if (inFlight && _marks != null) _marks.ShowProvisional(action == StampAction.Approve);
 
             Play(_thunk);
             StopAllCoroutines();

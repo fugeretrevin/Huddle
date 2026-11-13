@@ -49,10 +49,38 @@ namespace MuseDesk.Agents
                 }
             }
             if (bob == null) bob = transform;
+            _idle = GetComponent<AgentIdleLife>();   // optional
         }
 
         void OnEnable() { _lean = Vector3.zero; _contact = 0f; }
-        void OnDisable() => _layer.Release(bob);
+        void OnDisable() => Clear();
+
+        AgentIdleLife _idle;
+        bool _viaIdle;
+
+        // AgentIdleLife (order 300) already layers on the Spine and Chest. When the bone we lean is
+        // one of those, hand it our rotation so exactly one component writes the bone, in a defined
+        // order (its own motion first, this lean on top). It is applied on its next LateUpdate, one
+        // frame later, which a hand push cannot show. Otherwise use our own layer.
+        void Write(Quaternion worldDelta)
+        {
+            if (_idle != null && _idle.Owns(bob))
+            {
+                if (!_viaIdle) { _layer.Release(bob); _viaIdle = true; }
+                _idle.SetBoneOffset(bob, worldDelta);
+            }
+            else
+            {
+                if (_viaIdle) { if (_idle != null) _idle.ClearBoneOffset(bob); _viaIdle = false; }
+                _layer.Apply(bob, worldDelta);
+            }
+        }
+
+        void Clear()
+        {
+            if (_viaIdle) { if (_idle != null) _idle.ClearBoneOffset(bob); _viaIdle = false; }
+            _layer.Release(bob);
+        }
 
         void OnTriggerStay(Collider other)
         {
@@ -78,7 +106,7 @@ namespace MuseDesk.Agents
             {
                 _lean = Vector3.zero;
                 _contact = 0f;
-                _layer.Release(bob);
+                Clear();
                 return;
             }
 
@@ -116,16 +144,16 @@ namespace MuseDesk.Agents
             float mag = _lean.magnitude;
             if (mag < 1e-4f)
             {
-                _layer.Release(bob);
+                Clear();
                 return;
             }
 
             Vector3 dir = _lean / mag;
             Vector3 axis = Vector3.Cross(Vector3.up, dir);
-            if (axis.sqrMagnitude < 1e-6f) { _layer.Release(bob); return; }
+            if (axis.sqrMagnitude < 1e-6f) { Clear(); return; }
 
             Quaternion worldDelta = Quaternion.AngleAxis(Mathf.Clamp01(mag) * maxTilt, axis.normalized);
-            _layer.Apply(bob, worldDelta);
+            Write(worldDelta);
         }
     }
 }

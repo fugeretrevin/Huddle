@@ -55,10 +55,22 @@ namespace MuseDesk.Phase2.Board
         bool _labelIsResume;
         bool _labelSet;
 
+        // The card view currently drawn as selected (thicker teal edge, small lift).
+        TaskCardView _marked;
+
+        void Mark(TaskCardView view)
+        {
+            if (_marked == view) return;
+            if (_marked != null) _marked.SetSelected(false);
+            _marked = view;
+            if (view != null) view.SetSelected(true);
+        }
+
         void Update()
         {
             if (presenter == null || !presenter.Ready)
             {
+                Mark(null);
                 ApplyActions(null);
                 return;
             }
@@ -81,6 +93,7 @@ namespace MuseDesk.Phase2.Board
                     Deselect();
             }
 
+            Mark(_selected);
             ApplyActions(_selected != null ? _selected.Data : null);
             if (_selected != null && now >= _noticeUntil) ShowTitle(_selected.Data);
         }
@@ -104,6 +117,7 @@ namespace MuseDesk.Phase2.Board
             _bound = false;
             _reducer = null;
             Deselect();
+            if (_simulated != null) { _simulated.SetSimulatedHold(false); _simulated = null; }
         }
 
         // A reload (demo replay, live resync) rebuilds every card: nothing stays selected.
@@ -132,6 +146,100 @@ namespace MuseDesk.Phase2.Board
             _selectedTaskId = null;
             _noticeUntil = 0f;
             _captionValid = false;
+            Mark(null);
+        }
+
+        // ─── selection without a grab (Play Mode driver, tests, future poke-to-select) ───
+
+        /// <summary>Select the card for a task id, as picking it up does: the toolbar opens for it
+        /// and the card shows its selected edge. Returns false when no such card is on the board.</summary>
+        public bool SelectCard(string taskId)
+        {
+            if (presenter == null || !presenter.Ready) return false;
+            var view = presenter.FindView(taskId);
+            if (view == null || view.Data == null) return false;
+            Select(view);
+            _hideAt = Time.unscaledTime + idleHideSeconds;
+            return true;
+        }
+
+        /// <summary>Select the first card that is not finished (lowest task id, so the choice is
+        /// stable). For a Play Mode driver that has no hands.</summary>
+        public void SelectFirstCard()
+        {
+            var view = FirstOpenCard();
+            if (view != null) SelectCard(view.Data.TaskId);
+        }
+
+        /// <summary>Drop the selection: the toolbar hides and the card goes back to its resting edge.</summary>
+        public void ClearSelection() => Deselect();
+
+        TaskCardView _simulated;
+
+        /// <summary>Capture hook for a Play Mode driver with no hands: the first unfinished card
+        /// reports itself as held and comes 6 cm toward the reader, so the assignment pads and the
+        /// held state can be seen. End with CancelSimulatedHold (nothing is sent) or
+        /// EndSimulatedHold (lets go where the card is, exactly like a hand).</summary>
+        public void SimulateHoldFirstCard()
+        {
+            if (_simulated != null && _simulated.IsHeld) return;       // already holding one
+            _simulated = null;                                         // (a reload recycles the card and drops the hold)
+            var view = FirstOpenCard();
+            if (view == null) return;
+            _simulated = view;
+            view.SetSimulatedHold(true);
+            view.transform.position -= view.transform.forward * 0.06f;
+        }
+
+        /// <summary>As SimulateHoldFirstCard, then moves the held card onto the first pad that would
+        /// accept it, so the valid-target highlight shows. EndSimulatedHold after this sends the
+        /// assignment for real (in the demo it starts the run); CancelSimulatedHold does not.</summary>
+        public void SimulateHoldOverPad()
+        {
+            SimulateHoldFirstCard();
+            if (_simulated == null || _simulated.Data == null) return;
+            var zones = StationDropZone.Active;
+            for (int i = 0; i < zones.Count; i++)
+            {
+                var z = zones[i];
+                if (z == null || !z.isActiveAndEnabled || !z.IsCompatible(_simulated.Data) || !z.WouldReassign(_simulated.Data)) continue;
+                if (!z.name.StartsWith("Dock_")) continue;             // the pads on the board, not the far stations
+                _simulated.transform.position = z.RestAnchor.position;
+                return;
+            }
+        }
+
+        /// <summary>Let go of the simulated hold where the card is. Over a pad this is a real drop.</summary>
+        public void EndSimulatedHold()
+        {
+            if (_simulated == null) return;
+            _simulated.SetSimulatedHold(false);
+            _simulated = null;
+        }
+
+        /// <summary>Put the simulated card back in its slot and let go there: no command is sent.</summary>
+        public void CancelSimulatedHold()
+        {
+            if (_simulated == null) return;
+            // Cancel the drag first (halos cleared, card sent home, no command), then let go.
+            var drag = _simulated.GetComponent<TaskDragController>();
+            if (drag != null) drag.CancelHold();
+            _simulated.ReturnHome();
+            _simulated.SetSimulatedHold(false);
+            _simulated = null;
+        }
+
+        TaskCardView FirstOpenCard()
+        {
+            if (presenter == null || !presenter.Ready) return null;
+            TaskCardView best = null;
+            foreach (var v in presenter.ActiveViews)
+            {
+                if (v == null || v.Data == null || !v.gameObject.activeInHierarchy) continue;
+                if (TaskStateSets.IsTerminal(v.Data.TaskState)) continue;
+                if (best == null || string.CompareOrdinal(v.Data.TaskId, best.Data.TaskId) < 0) best = v;
+            }
+            return best;
         }
 
         /// <summary>Show exactly the keys that are valid for this card (null hides the toolbar).</summary>

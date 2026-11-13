@@ -36,9 +36,77 @@ public static class SetupInterFont
         return $"created {AssetPath}; ascii ok={ok} missing='{missing}' fallback={(fallback != null)} shader={fa.material.shader.name}";
     }
 
+    /// <summary>Real Inter Bold: a second font asset registered as the regular asset's 700 weight, so
+    /// FontStyles.Bold renders true bold glyphs instead of TextMeshPro's synthetic bold.</summary>
+    public static string CreateBold()
+    {
+        const string ttf = "Assets/MuseDesk/Art/Fonts/Inter-Bold.ttf";
+        const string path = "Assets/MuseDesk/Art/Fonts/Inter-Bold SDF.asset";
+        var regular = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(AssetPath);
+        if (regular == null) return "no regular asset";
+        var bold = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
+        if (bold == null)
+        {
+            AssetDatabase.ImportAsset(ttf, ImportAssetOptions.ForceUpdate);
+            var font = AssetDatabase.LoadAssetAtPath<Font>(ttf);
+            if (font == null) return "bold ttf not imported";
+            bold = TMP_FontAsset.CreateFontAsset(font, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024, AtlasPopulationMode.Dynamic, true);
+            bold.name = "Inter-Bold SDF";
+            AssetDatabase.CreateAsset(bold, path);
+            bold.material.name = "Inter-Bold SDF Material";
+            bold.atlasTexture.name = "Inter-Bold SDF Atlas";
+            AssetDatabase.AddObjectToAsset(bold.material, bold);
+            AssetDatabase.AddObjectToAsset(bold.atlasTexture, bold);
+            string ascii = "";
+            for (int c = 32; c < 127; c++) ascii += (char)c;
+            bold.TryAddCharacters(ascii, out _);
+            bold.fallbackFontAssetTable = new System.Collections.Generic.List<TMP_FontAsset> { regular };
+            EditorUtility.SetDirty(bold);
+        }
+        var table = regular.fontWeightTable;
+        table[7].regularTypeface = bold;   // index 7 = weight 700
+        EditorUtility.SetDirty(regular);
+        AssetDatabase.SaveAssets();
+        return $"bold weight registered: {path}; regular.fontWeightTable[7]={(regular.fontWeightTable[7].regularTypeface != null ? regular.fontWeightTable[7].regularTypeface.name : "null")}";
+    }
+
+    const string MediumPath = "Assets/MuseDesk/Art/Fonts/Inter-Medium SDF.asset";
+
+    /// <summary>Inter Medium as the base face: Regular reads thin and pale at 5 to 9 mm in the
+    /// headset. Bold (700) is the real Inter Bold asset.</summary>
+    public static string CreateMedium()
+    {
+        const string ttf = "Assets/MuseDesk/Art/Fonts/Inter-Medium.ttf";
+        var bold = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/MuseDesk/Art/Fonts/Inter-Bold SDF.asset");
+        var liberation = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset");
+        var med = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(MediumPath);
+        if (med == null)
+        {
+            AssetDatabase.ImportAsset(ttf, ImportAssetOptions.ForceUpdate);
+            var font = AssetDatabase.LoadAssetAtPath<Font>(ttf);
+            if (font == null) return "medium ttf not imported";
+            med = TMP_FontAsset.CreateFontAsset(font, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024, AtlasPopulationMode.Dynamic, true);
+            med.name = "Inter-Medium SDF";
+            AssetDatabase.CreateAsset(med, MediumPath);
+            med.material.name = "Inter-Medium SDF Material";
+            med.atlasTexture.name = "Inter-Medium SDF Atlas";
+            AssetDatabase.AddObjectToAsset(med.material, med);
+            AssetDatabase.AddObjectToAsset(med.atlasTexture, med);
+            string ascii = "";
+            for (int c = 32; c < 127; c++) ascii += (char)c;
+            med.TryAddCharacters(ascii, out _);
+            if (liberation != null) med.fallbackFontAssetTable = new System.Collections.Generic.List<TMP_FontAsset> { liberation };
+        }
+        if (bold != null) med.fontWeightTable[7].regularTypeface = bold;
+        EditorUtility.SetDirty(med);
+        AssetDatabase.SaveAssets();
+        return $"medium base: {MediumPath}; bold weight={(med.fontWeightTable[7].regularTypeface != null ? med.fontWeightTable[7].regularTypeface.name : "null")}";
+    }
+
     public static string Apply()
     {
-        var fa = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(AssetPath);
+        var fa = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(MediumPath);
+        if (fa == null) fa = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(AssetPath);
         if (fa == null) return "no font asset; run Create first";
         int n = 0;
         var scene = EditorSceneManager.GetActiveScene();

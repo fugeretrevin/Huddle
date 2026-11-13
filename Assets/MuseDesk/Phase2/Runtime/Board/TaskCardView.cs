@@ -43,6 +43,36 @@ namespace MuseDesk.Phase2.Board
         [Tooltip("The Oculus.Interaction.Grabbable on this card. Read by reflection only.")]
         public Component grabbable;
 
+        [Header("Physical edge and states (wired by AgentScripts/BuildBoardV3)")]
+        [Tooltip("The darker backing plate behind the card face. Its colour and size show the card's " +
+                 "state: idle, hover, selected / held, pending, refused. Optional.")]
+        public Renderer edgePlate;
+        [Tooltip("The card's grab hover highlight: read for the hover state. Optional.")]
+        public MuseDesk.Workspace.GrabHoverHighlight hover;
+        [Tooltip("How much the edge plate grows (x, y, relative to its resting scale) for the thicker hover border.")]
+        public Vector2 edgeHoverGrow = new Vector2(1.02f, 1.03f);
+        [Tooltip("How much the edge plate grows (x, y) for the thick selected / held / pending / refused border.")]
+        public Vector2 edgeBoldGrow = new Vector2(1.04f, 1.06f);
+        public Color edgeIdleColor = new Color(0.165f, 0.184f, 0.227f);      // housing #2A2F3A
+        public Color edgeActiveColor = new Color(0.184f, 0.639f, 0.604f);    // teal    #2FA39A
+        public Color edgePendingColor = new Color(0.878f, 0.627f, 0.188f);   // amber   #E0A030
+        public Color edgeRefusedColor = new Color(0.851f, 0.325f, 0.290f);   // coral   #D9534A
+        [Tooltip("How far a selected card comes toward the reader, in metres (world).")]
+        public float selectedLift = 0.004f;
+        [Tooltip("Scale of a selected card relative to its resting scale.")]
+        public float selectedScale = 1.04f;
+        [Tooltip("Seconds a let-go card takes to ease to its lane slot (0 = jump).")]
+        public float settleSeconds = 0.2f;
+        [Tooltip("Seconds the refused (coral) border shows before the card goes back to its state.")]
+        public float refusedSeconds = 1.2f;
+
+        /// <summary>What the card's edge is showing.</summary>
+        public enum EdgeState { Idle, Hover, Selected, Held, Pending, Refused }
+        /// <summary>The state the card's edge shows right now.</summary>
+        public EdgeState Edge => _edge;
+        /// <summary>True while the card is the one the card toolbar acts on.</summary>
+        public bool IsSelected { get; private set; }
+
         // Resting slot on the board (set by BoardPresenter during layout). Stored as a parent + local
         // pose rather than a Transform so ReturnHome is stable even while the card itself is moved by
         // the hand. Never self-reference the card's own transform here.
@@ -50,6 +80,31 @@ namespace MuseDesk.Phase2.Board
         Vector3 _homeLocalPos;
         Quaternion _homeLocalRot = Quaternion.identity;
         bool _hasHome;
+
+        // Motion: a let-go card eases to where it belongs; a selected card lifts a little.
+        Vector3 _baseScale = Vector3.one;
+        bool _baseScaleCaptured;
+        bool _displaced;                 // moved by a hand (or to a pad) since it last rested in its slot
+        bool _parked;                    // sent to a pad / station to wait for the answer to a drop
+        bool _settling;
+        bool _settleToHome;
+        float _settleT;
+        Vector3 _settleFromPos, _settleToPos;
+        Quaternion _settleFromRot = Quaternion.identity, _settleToRot = Quaternion.identity;
+        float _lift;                     // 0 resting .. 1 selected
+
+        // Edge state.
+        EdgeState _edge = EdgeState.Idle;
+        bool _edgeApplied;
+        Vector3 _edgeRest = Vector3.one;
+        bool _edgeRestRead;
+        bool _pending;
+        float _pendingUntil;
+        float _refusedUntil;
+        bool _simulatedHold;
+        MaterialPropertyBlock _edgeBlock;
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        static readonly int ColorId = Shader.PropertyToID("_Color");
 
         /// <summary>Raised by the accessible no-drag fallback (poke 'Assign to X'). The presenter
         /// turns this into an idempotent assign command exactly like a physical drop would.</summary>
@@ -93,6 +148,9 @@ namespace MuseDesk.Phase2.Board
         public void ShowPending(string text = "Sending")
         {
             Notice(text, NoticePending, 8f);
+            _pending = true;                                           // amber edge until the answer
+            _pendingUntil = Time.unscaledTime + 8f;
+            _refusedUntil = 0f;
             RaiseNotice(text, null);
         }
 
@@ -100,6 +158,11 @@ namespace MuseDesk.Phase2.Board
         public void ShowResult(bool ok, string text)
         {
             Notice(text, ok ? NoticeOk : NoticeError, ok ? 2f : 4f);
+            _pending = false;
+            _refusedUntil = ok ? 0f : Time.unscaledTime + refusedSeconds;   // brief coral edge, then back
+            // A card that waited on a pad for this answer now eases to its slot (its new lane after
+            // a confirmation, its old one after a refusal).
+            if (_parked) ReturnHome();
             RaiseNotice(text, ok);
         }
 
@@ -121,9 +184,23 @@ namespace MuseDesk.Phase2.Board
             _noticeActive = true;
         }
 
+        void Awake() => CaptureBaseScale();
+
+        void CaptureBaseScale()
+        {
+            if (_baseScaleCaptured) return;
+            _baseScaleCaptured = true;
+            _baseScale = transform.localScale;
+        }
+
         void Update()
         {
-            if (!_noticeActive || Time.unscaledTime < _noticeUntil) return;
+            float now = Time.unscaledTime;
+            bool held = IsHeld;
+            UpdateEdge(held, now);
+            UpdateMotion(held);
+
+            if (!_noticeActive || now < _noticeUntil) return;
             _noticeActive = false;
             if (stateLabel != null)
             {
@@ -134,10 +211,143 @@ namespace MuseDesk.Phase2.Board
 
         void OnDisable()
         {
-            // Pooled cards must not come back showing another task's notice.
+            // Pooled cards must not come back showing another task's notice, edge or pose.
             _noticeActive = false;
             if (stateLabel != null && _stateColorCaptured) stateLabel.color = _stateBaseColor;
+            ResetPresentation();
         }
+
+        // ─── edge: the card's visible physical border and its states ───
+
+        void UpdateEdge(bool held, float now)
+        {
+            if (_pending && now >= _pendingUntil) _pending = false;    // an answer that never came
+            EdgeState want =
+                now < _refusedUntil ? EdgeState.Refused
+                : _pending ? EdgeState.Pending
+                : held ? EdgeState.Held
+                : IsSelected ? EdgeState.Selected
+                : (hover != null && hover.Highlighted) ? EdgeState.Hover
+                : EdgeState.Idle;
+            if (_edgeApplied && want == _edge) return;
+            ApplyEdge(want);
+        }
+
+        void ApplyEdge(EdgeState state)
+        {
+            _edge = state;
+            _edgeApplied = true;
+            if (edgePlate == null) return;
+            Transform t = edgePlate.transform;
+            // The resting size is whatever the scene gives the plate (a plain or a rounded mesh).
+            if (!_edgeRestRead) { _edgeRestRead = true; _edgeRest = t.localScale; }
+            Color c;
+            Vector2 grow;
+            switch (state)
+            {
+                case EdgeState.Hover: c = edgeActiveColor; grow = edgeHoverGrow; break;
+                case EdgeState.Selected:
+                case EdgeState.Held: c = edgeActiveColor; grow = edgeBoldGrow; break;
+                case EdgeState.Pending: c = edgePendingColor; grow = edgeBoldGrow; break;
+                case EdgeState.Refused: c = edgeRefusedColor; grow = edgeBoldGrow; break;
+                default: c = edgeIdleColor; grow = Vector2.one; break;
+            }
+            // Property block, never renderer.material: pooled cards share one material.
+            if (_edgeBlock == null) _edgeBlock = new MaterialPropertyBlock();
+            edgePlate.GetPropertyBlock(_edgeBlock);
+            _edgeBlock.SetColor(BaseColorId, c);
+            _edgeBlock.SetColor(ColorId, c);
+            edgePlate.SetPropertyBlock(_edgeBlock);
+            t.localScale = new Vector3(_edgeRest.x * grow.x, _edgeRest.y * grow.y, _edgeRest.z);
+        }
+
+        /// <summary>Mark this card as the one the card toolbar acts on (thicker teal edge, a small
+        /// lift toward the reader). Presentation only; called by CardActionConsole.</summary>
+        public void SetSelected(bool selected) => IsSelected = selected;
+
+        // ─── motion: ease to the lane slot after a drop; lift while selected ───
+
+        void UpdateMotion(bool held)
+        {
+            if (held)
+            {
+                // The hand owns the transform. Remember that the card has left its slot.
+                _displaced = true;
+                _settling = false;
+                return;
+            }
+            float goal = IsSelected ? 1f : 0f;
+            bool liftMoving = _lift != goal;
+            if (!_settling && !liftMoving) return;
+            float dt = Time.unscaledDeltaTime;
+            if (liftMoving) _lift = Mathf.MoveTowards(_lift, goal, dt / 0.12f);
+
+            if (_settling)
+            {
+                _settleT = settleSeconds > 0f ? Mathf.MoveTowards(_settleT, 1f, dt / settleSeconds) : 1f;
+                float inv = 1f - _settleT;
+                float eased = 1f - inv * inv * inv;                    // ease-out cubic
+                Vector3 to = _settleToHome ? HomeWithLift() : _settleToPos;
+                Quaternion toRot = _settleToHome ? _homeLocalRot : _settleToRot;
+                transform.localPosition = Vector3.LerpUnclamped(_settleFromPos, to, eased);
+                transform.localRotation = Quaternion.SlerpUnclamped(_settleFromRot, toRot, eased);
+                if (_settleT >= 1f)
+                {
+                    _settling = false;
+                    if (_settleToHome) _displaced = false;             // back in its slot
+                }
+            }
+            else if (_hasHome && !_displaced)
+            {
+                transform.localPosition = HomeWithLift();
+                transform.localRotation = _homeLocalRot;
+            }
+            if (_baseScaleCaptured) transform.localScale = _baseScale * (1f + (selectedScale - 1f) * _lift);
+        }
+
+        /// <summary>The resting slot, moved toward the reader (the region's -Z) by the selection lift.</summary>
+        Vector3 HomeWithLift()
+        {
+            if (_lift <= 0f || _homeParent == null) return _homeLocalPos;
+            float z = Mathf.Abs(_homeParent.lossyScale.z);
+            if (z < 1e-5f) return _homeLocalPos;
+            return _homeLocalPos + new Vector3(0f, 0f, -selectedLift * _lift / z);
+        }
+
+        void BeginSettle(Vector3 toLocalPos, Quaternion toLocalRot, bool toHome)
+        {
+            _settleFromPos = transform.localPosition;
+            _settleFromRot = transform.localRotation;
+            _settleToPos = toLocalPos;
+            _settleToRot = toLocalRot;
+            _settleToHome = toHome;
+            _settleT = 0f;
+            _settling = true;
+        }
+
+        bool CanAnimate => settleSeconds > 0f && Application.isPlaying && isActiveAndEnabled;
+
+        /// <summary>Forget any hold, selection, edge state and half-finished motion. Called when a
+        /// pooled card is recycled, so it does not come back lifted, tinted or mid-flight.</summary>
+        public void ResetPresentation()
+        {
+            _settling = false;
+            _displaced = false;
+            _parked = false;
+            _simulatedHold = false;
+            _pending = false;
+            _refusedUntil = 0f;
+            IsSelected = false;
+            _lift = 0f;
+            if (_baseScaleCaptured) transform.localScale = _baseScale;
+            ApplyEdge(EdgeState.Idle);
+        }
+
+        /// <summary>Capture hook for a Play Mode driver with no hands: makes the card report itself
+        /// as held (the assignment pads appear, the toolbar selects it, layout leaves it alone) until
+        /// it is switched off again, which the drag controller treats as letting go. Not used by the
+        /// app itself.</summary>
+        public void SetSimulatedHold(bool held) => _simulatedHold = held;
 
         /// <summary>True while at least one hand is selecting (grabbing) this card. Reflection read of
         /// Grabbable.SelectingPointsCount &gt; 0 — the same property the existing workspace scripts use.</summary>
@@ -145,6 +355,7 @@ namespace MuseDesk.Phase2.Board
         {
             get
             {
+                if (_simulatedHold) return true;
                 if (grabbable == null) return false;
                 if (!_selResolved)
                 {
@@ -239,14 +450,66 @@ namespace MuseDesk.Phase2.Board
             _hasHome = true;
         }
 
-        /// <summary>Snap back to the recorded resting slot (used on an invalid drop / 409 / cancel).</summary>
+        /// <summary>Go back to the recorded resting slot (used on an invalid drop / 409 / cancel).
+        /// A card that a hand moved eases there in about settleSeconds; a card that never left its
+        /// slot (or an inactive / edit-time card) is placed at once.</summary>
         public void ReturnHome()
         {
+            _parked = false;
             if (!_hasHome) return;
+            bool glide = _displaced && CanAnimate;
             if (_homeParent != null && transform.parent != _homeParent)
-                transform.SetParent(_homeParent, worldPositionStays: false);
-            transform.localPosition = _homeLocalPos;
+                transform.SetParent(_homeParent, worldPositionStays: glide);
+            if (glide)
+            {
+                BeginSettle(_homeLocalPos, _homeLocalRot, toHome: true);
+                return;
+            }
+            _settling = false;
+            _displaced = false;
+            transform.localPosition = HomeWithLift();
             transform.localRotation = _homeLocalRot;
+        }
+
+        /// <summary>Layout hook for BoardPresenter: put a card that is not in a hand at its recorded
+        /// slot. Same rule as ReturnHome: ease if a hand moved it, otherwise place it at once. A card
+        /// waiting on a pad for the answer to its drop stays there until the answer (ShowResult).</summary>
+        public void PlaceAtHome()
+        {
+            if (_parked && _pending) return;
+            ReturnHome();
+        }
+
+        /// <summary>Move the card under another lane. A card that a hand has moved keeps its place
+        /// in the world (so it can ease to the new slot); a fresh card takes the lane's frame.</summary>
+        public void MoveToRegion(Transform region)
+        {
+            if (region == null || transform.parent == region) return;
+            bool keepWorld = (_displaced || _settling || IsHeld) && CanAnimate;
+            Transform old = transform.parent;
+            // A glide to a pad is expressed in the old lane's frame: carry its target across.
+            Vector3 targetWorld = old != null ? old.TransformPoint(_settleToPos) : _settleToPos;
+            transform.SetParent(region, worldPositionStays: keepWorld);
+            if (_settling) BeginSettle(region.InverseTransformPoint(targetWorld), _settleToRot, _settleToHome);
+        }
+
+        /// <summary>Ease the card to a place in the world that is not its slot (a drop pad or a
+        /// station) while a command is pending. It stays "displaced", so it eases home afterwards.</summary>
+        public void GlideTo(Transform anchor)
+        {
+            if (anchor == null) return;
+            _displaced = true;
+            _parked = true;
+            if (!CanAnimate)
+            {
+                _settling = false;
+                transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+                return;
+            }
+            Transform parent = transform.parent;
+            Vector3 lp = parent != null ? parent.InverseTransformPoint(anchor.position) : anchor.position;
+            Quaternion lr = parent != null ? Quaternion.Inverse(parent.rotation) * anchor.rotation : anchor.rotation;
+            BeginSettle(lp, lr, toHome: false);
         }
 
         // ─── Accessible no-drag fallback (hands-only poke). Wire these to poke buttons on the

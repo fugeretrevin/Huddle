@@ -16,6 +16,34 @@ namespace MuseDesk.Art
         public SessionController controller;
         public SoftwareFactoryVisualController factory;
 
+        /// <summary>Set (at run time) by a component that sequences the delivery visuals itself, the
+        /// completion sequence. While true, this controller does not start its own "test gate, then
+        /// delivery" on WorkDelivered; the owner calls <see cref="PlayDeliveryGate"/> and
+        /// <see cref="PlayDeliveryTransport"/> at its own times. False (the default) keeps the
+        /// original behaviour.</summary>
+        public bool SequencedDelivery { get; set; }
+
+        /// <summary>First delivery beat: light the green test gate, but only if real passing test
+        /// evidence arrived with the artifact (or <paramref name="force"/>, for an Editor preview).
+        /// Consumes that evidence. Returns true if the gate was lit.</summary>
+        public bool PlayDeliveryGate(bool force = false)
+        {
+            bool passed = _testsPassedSeen || force;
+            _testsPassedSeen = false;
+            if (factory == null || !passed) return false;
+            factory.PlayTestSuccess();
+            return true;
+        }
+
+        /// <summary>Second delivery beat: the completed artifact travels to the output.</summary>
+        public void PlayDeliveryTransport()
+        {
+            if (factory != null) factory.PlayCompletedDelivery();
+        }
+
+        /// <summary>True while passing test evidence from the last artifact is waiting to be shown.</summary>
+        public bool HasPassingTestEvidence => _testsPassedSeen;
+
         bool _bound;
         bool _testsPassedSeen;
         Coroutine _delivery;
@@ -93,6 +121,7 @@ namespace MuseDesk.Art
         void OnTaskCompleted(EventEnvelope e)
         {
             if (factory == null) return;
+            if (SequencedDelivery) return;   // the completion sequence plays the two beats itself
             if (_delivery != null) StopCoroutine(_delivery);
             _delivery = StartCoroutine(SuccessThenDeliver(_testsPassedSeen));
             _testsPassedSeen = false;

@@ -31,10 +31,19 @@ namespace MuseDesk.Phase2.Board
         [Tooltip("Tint the halo when the hovered card is INVALID here (e.g. running/terminal).")]
         public Color invalidColor = new Color(0.85f, 0.35f, 0.30f, 0.26f);
 
+        [Tooltip("Optional: the pad's own plate. It grows a little while a held card would be accepted " +
+                 "here, so the valid target is shown by shape as well as by colour.")]
+        public Transform highlightPlate;
+        [Tooltip("Scale of highlightPlate while this zone is the valid target (1 = no change).")]
+        public float validPlateScale = 1.08f;
+
         Collider _collider;
         Renderer _haloRenderer;
         MaterialPropertyBlock _block;
         bool _wasOn, _wasValid = true;
+        Vector3 _plateBase;
+        bool _plateBaseRead;
+        bool _plateGrown;
 
         /// <summary>Raised when the halo turns on/off or changes validity (zone, on, valid).</summary>
         public static event System.Action<StationDropZone, bool, bool> HighlightChanged;
@@ -86,6 +95,16 @@ namespace MuseDesk.Phase2.Board
 
         public void SetHighlight(bool on, bool valid)
         {
+            // The plate grows only for a drop that would be accepted (state by shape, not colour alone).
+            bool grow = on && valid;
+            if (highlightPlate != null && grow != _plateGrown)
+            {
+                if (!_plateBaseRead) { _plateBaseRead = true; _plateBase = highlightPlate.localScale; }
+                _plateGrown = grow;
+                highlightPlate.localScale = grow
+                    ? new Vector3(_plateBase.x * validPlateScale, _plateBase.y * validPlateScale, _plateBase.z)
+                    : _plateBase;
+            }
             if (halo == null) return;
             halo.SetActive(on);
             if (on && _haloRenderer != null)

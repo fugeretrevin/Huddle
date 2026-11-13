@@ -24,6 +24,14 @@ namespace MuseDesk.Agents
         static readonly List<Transform> _tips = new List<Transform>();
         static float _nextTry;
 
+        // Reflection results, looked up once. (They used to be looked up again on every retry, twice
+        // a second for as long as no hand was tracked: an assembly scan, LINQ and enum parsing.)
+        static bool _reflected;
+        static Type _hvType;
+        static MethodInfo _getT;
+        static object[] _ids;
+        static readonly object[] _arg = new object[1];
+
         /// <summary>The fingertip transforms (both hands). Empty until hands are tracked.</summary>
         public static IReadOnlyList<Transform> Get()
         {
@@ -35,9 +43,9 @@ namespace MuseDesk.Agents
             return _tips;
         }
 
-        static void Resolve()
+        static void Reflect()
         {
-            _tips.Clear();
+            _reflected = true;
             try
             {
                 var hvType = FindType(T_HandVisual);
@@ -48,16 +56,32 @@ namespace MuseDesk.Agents
                     BindingFlags.Instance | BindingFlags.Public, null, new[] { jointType }, null);
                 if (getT == null) return;
 
-                var ids = TipJoints
+                _ids = TipJoints
                     .Select(n => { try { return Enum.Parse(jointType, n); } catch { return null; } })
                     .Where(v => v != null).ToArray();
+                _hvType = hvType;
+                _getT = getT;
+            }
+            catch { _hvType = null; _getT = null; _ids = null; }
+        }
 
-                foreach (var visual in UnityEngine.Object.FindObjectsByType(hvType, FindObjectsInactive.Exclude, FindObjectsSortMode.None).Cast<Component>())
+        static void Resolve()
+        {
+            _tips.Clear();
+            if (!_reflected) Reflect();
+            if (_hvType == null || _getT == null || _ids == null) return;
+            try
+            {
+                UnityEngine.Object[] visuals = UnityEngine.Object.FindObjectsByType(_hvType, FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                for (int v = 0; v < visuals.Length; v++)
                 {
+                    var visual = visuals[v] as Component;
+                    if (visual == null) continue;
                     if (!visual.gameObject.name.StartsWith(HandVisualPrefix)) continue;
-                    foreach (var id in ids)
+                    for (int i = 0; i < _ids.Length; i++)
                     {
-                        if (getT.Invoke(visual, new[] { id }) is Transform t && t != null) _tips.Add(t);
+                        _arg[0] = _ids[i];
+                        if (_getT.Invoke(visual, _arg) is Transform t && t != null) _tips.Add(t);
                     }
                 }
             }

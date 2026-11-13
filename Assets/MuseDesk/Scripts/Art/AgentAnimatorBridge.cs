@@ -85,25 +85,43 @@ namespace MuseDesk.Art
                 float speed = delta.magnitude / dt;
                 _lastPosition = transform.position;
 
-                // Update MoveSpeed float parameter if present on Animator
-                for (int i = 0; i < characterAnimator.parameterCount; i++)
+                // Update the MoveSpeed float parameter if the Animator has one. Looked up once (the
+                // per-frame parameter scan allocated), and left alone when the backend-driven
+                // MuseDesk.Agents.AgentAnimatorBridge is on this character: that bridge owns MoveSpeed,
+                // and two writers made the controller's own idle/walk transitions fire under it.
+                if (!_moveSpeedResolved)
                 {
-                    AnimatorControllerParameter p = characterAnimator.GetParameter(i);
-                    if (p.name == "MoveSpeed" && p.type == AnimatorControllerParameterType.Float)
+                    if (!characterAnimator.isInitialized || characterAnimator.runtimeAnimatorController == null) return;
+                    _moveSpeedResolved = true;
+                    _hasMoveSpeed = false;
+                    int n = characterAnimator.parameterCount;
+                    for (int i = 0; i < n; i++)
                     {
-                        characterAnimator.SetFloat("MoveSpeed", speed);
-                        break;
+                        AnimatorControllerParameter p = characterAnimator.GetParameter(i);
+                        if (p.name == "MoveSpeed" && p.type == AnimatorControllerParameterType.Float)
+                        {
+                            _hasMoveSpeed = true;
+                            break;
+                        }
                     }
+                    if (GetComponentInParent<MuseDesk.Agents.AgentAnimatorBridge>() != null
+                        || GetComponentInChildren<MuseDesk.Agents.AgentAnimatorBridge>() != null)
+                        _hasMoveSpeed = false;
                 }
+                if (_hasMoveSpeed) characterAnimator.SetFloat(MoveSpeedId, speed);
             }
         }
+
+        private static readonly int MoveSpeedId = Animator.StringToHash("MoveSpeed");
+        private bool _moveSpeedResolved;
+        private bool _hasMoveSpeed;
 
         /// <summary>
         /// Crossfades to any of the 39 shared character animation clips by name
         /// (e.g., "Idle_Breathing", "Walk_Loop", "Typing", "Reading", "Inspecting",
         /// "Offer_Document", "Carry_Package", "Success", "Failure").
         /// </summary>
-        public void PlayAnimationState(string clipStateName, float crossfadeSeconds = 0.18f)
+        public void PlayAnimationState(string clipStateName, float crossfadeSeconds = 0.2f)
         {
             if (string.IsNullOrEmpty(clipStateName)) return;
             _currentState = clipStateName;

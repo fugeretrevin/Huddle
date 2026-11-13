@@ -75,6 +75,36 @@ namespace MuseDesk.Documents
         [Tooltip("The voice layer whose availability decides whether the Voice chip is shown.")]
         public MuseDesk.Voice.VoiceDecisionController voice;
 
+        [Header("Paper V3 header and recommendation (all optional)")]
+        [Tooltip("Header, first line: \"From the Researcher\" (the agent that asked, from the event's agent_id).")]
+        public TMP_Text fromLabel;
+        [Tooltip("Small block in the requesting agent's role colour, beside the From line. The words carry the meaning.")]
+        public Renderer roleChip;
+        [Tooltip("One or two lines under the recommendation: the reason the event gave (rationale). Empty when it gave none.")]
+        public TMP_Text recommendationReason;
+        [Tooltip("Plate behind the recommendation. Hidden when the decision carries no recommendation.")]
+        public GameObject recoPlate;
+        [Tooltip("Thin rule on the recommendation plate: success green for approve, coral for reject. The words carry the meaning.")]
+        public Renderer recoRule;
+
+        [Header("Paper V3 chip row (optional)")]
+        [Tooltip("The secondary chips in row order (Why, Details, Changes, Voice). Only their key roots are moved, never a ButtonVisual.")]
+        public Transform[] chipKeys;
+        [Tooltip("Local position of each chip while the Voice chip is shown (four chips).")]
+        public Vector3[] chipPositionsWithVoice;
+        [Tooltip("Local position of each chip while the Voice chip is hidden (three chips, evenly spread).")]
+        public Vector3[] chipPositionsWithoutVoice;
+
+        [Header("Paper V3 details sheet (optional)")]
+        [Tooltip("When true the details sheet slides out from behind the main sheet instead of appearing at once.")]
+        public bool detailsSlides;
+        [Tooltip("Local position of the details root when open.")]
+        public Vector3 detailsOpenLocalPosition;
+        [Tooltip("Local position of the details root when tucked behind the main sheet.")]
+        public Vector3 detailsTuckedLocalPosition;
+        [Tooltip("Seconds the details sheet takes to slide out or back.")]
+        public float detailsSlideSeconds = 0.3f;
+
         public bool IsExpanded { get; private set; }
 
         /// <summary>True while a response is in flight (keys replaced by inert plates).</summary>
@@ -97,6 +127,7 @@ namespace MuseDesk.Documents
         static readonly Color CoralPlate = new Color32(0xD9, 0x53, 0x4A, 255);
         static readonly Color AmberPlate = new Color32(0xE0, 0xA0, 0x30, 255);
         static readonly Color NeutralPlate = new Color32(0x2A, 0x2F, 0x3A, 255);
+        static readonly Color InfoBluePlate = new Color32(0x4C, 0x85, 0xDB, 255);
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -107,15 +138,26 @@ namespace MuseDesk.Documents
         // without a hand-over still works.
         bool _sheetOpen = true;
         bool _keysArmed = true;
+        // Details sheet slide: 0 tucked behind the main sheet, 1 fully out.
+        float _detailsK;
+        bool _detailsMoving;
 
         public void Bind(DecisionContent c, string sourceMode, string provenanceLabel = null)
         {
-            Bind(c, sourceMode, provenanceLabel, 0);
+            Bind(c, sourceMode, provenanceLabel, 0, null);
         }
 
         /// <summary>Bind a decision. <paramref name="revision"/> is 0 for the first proposal and
         /// 1.. for a revised proposal (shown as "Revised proposal N").</summary>
         public void Bind(DecisionContent c, string sourceMode, string provenanceLabel, int revision)
+        {
+            Bind(c, sourceMode, provenanceLabel, revision, null);
+        }
+
+        /// <summary>Bind a decision and say which agent asked. <paramref name="agentId"/> is the
+        /// event's agent_id ("researcher", "developer", "tester"); when it is empty the header names
+        /// the Researcher, who is the agent that carries the paper to the user.</summary>
+        public void Bind(DecisionContent c, string sourceMode, string provenanceLabel, int revision, string agentId)
         {
             if (c == null) return;
             Revision = revision < 0 ? 0 : revision;
@@ -128,18 +170,33 @@ namespace MuseDesk.Documents
                 badge.text = needsLabel ? mode : mode + "    " + needs;
                 badge.color = bandText;
             }
-            if (needsLabel) { needsLabel.text = needs; needsLabel.color = bandText; }
+            // With a From line the header is printed on paper, so its words are ink; without one
+            // (the V2 layout) the words sit on the coloured mode band and take the band's text colour.
+            if (needsLabel) { needsLabel.text = needs; needsLabel.color = fromLabel ? Ink : bandText; }
             if (coverMode) { coverMode.text = mode; coverMode.color = bandText; }
             Tint(modeBand, live ? liveBand : demoBand);
             Tint(coverBand, live ? liveBand : demoBand);
 
+            if (fromLabel) fromLabel.text = "From the " + RoleName(agentId);
+            Tint(roleChip, RoleColor(agentId));
+
             if (title) title.text = Ascii(c.Title ?? "Approval requested");
             if (summary) summary.text = Ascii(c.Summary ?? "");
+            string recoWord = (c.Recommendation ?? "").Trim();
+            bool recoIsReject = recoWord.StartsWith("reject", System.StringComparison.OrdinalIgnoreCase);
             if (recommendation)
             {
-                string reco = (c.Recommendation ?? "").Trim();
-                recommendation.text = reco.Length == 0 ? "" : "Recommended: " + Ascii(Pretty(reco));
-                recommendation.color = reco.StartsWith("reject", System.StringComparison.OrdinalIgnoreCase) ? Bad : Good;
+                recommendation.text = recoWord.Length == 0 ? "" : "Recommended: " + Ascii(Pretty(recoWord));
+                recommendation.color = recoIsReject ? Bad : Good;
+            }
+            // The reason shown with the recommendation is the event's own rationale, never invented.
+            if (recommendationReason)
+                recommendationReason.text = recoWord.Length == 0 || string.IsNullOrEmpty(c.Rationale) ? "" : Ascii(c.Rationale.Trim());
+            Show(recoPlate, recoWord.Length > 0);
+            if (recoRule)
+            {
+                Show(recoRule.gameObject, recoWord.Length > 0);
+                Tint(recoRule, recoIsReject ? CoralPlate : SuccessPlate);
             }
             if (provenance)
             {
@@ -148,22 +205,38 @@ namespace MuseDesk.Documents
                     : live ? "" : "Scripted sample. Nothing is running on a computer.";
             }
 
+            // The details sheet: one headed line per thing the event actually carried, in a fixed
+            // order (why, risk, impact, the other options). Nothing is added that the event lacks.
             var sb = new StringBuilder();
-            if (!string.IsNullOrEmpty(c.Rationale)) sb.Append("<b>Why</b>  ").Append(c.Rationale).Append('\n');
+            if (!string.IsNullOrEmpty(c.Rationale)) sb.Append("<b>Why</b>  ").Append(c.Rationale.Trim());
+            if (!string.IsNullOrEmpty(c.RiskLevel))
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append("<b>Risk</b>  ").Append(Sentence(c.RiskLevel));
+            }
+            if (!string.IsNullOrEmpty(c.Impact))
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append("<b>If you wait</b>  ").Append(c.Impact.Trim());
+            }
             if (c.Alternatives != null && c.Alternatives.Count > 0)
             {
-                sb.Append("<b>Options</b>  ");
+                bool any = false;
                 for (int i = 0; i < c.Alternatives.Count; i++)
                 {
                     var a = c.Alternatives[i];
-                    if (a == null) continue;
-                    if (i > 0) sb.Append("; ");
-                    sb.Append(a.Label).Append(" (").Append(a.Tradeoff).Append(')');
+                    if (a == null || string.IsNullOrEmpty(a.Label)) continue;
+                    if (!any)
+                    {
+                        if (sb.Length > 0) sb.Append('\n');
+                        sb.Append("<b>Options</b>  ");
+                    }
+                    else sb.Append("; ");
+                    any = true;
+                    sb.Append(a.Label);
+                    if (!string.IsNullOrEmpty(a.Tradeoff)) sb.Append(" (").Append(a.Tradeoff).Append(')');
                 }
-                sb.Append('\n');
             }
-            if (!string.IsNullOrEmpty(c.RiskLevel)) sb.Append("<b>Risk</b>  ").Append(c.RiskLevel).Append('\n');
-            if (!string.IsNullOrEmpty(c.Impact)) sb.Append("<b>If you wait</b>  ").Append(c.Impact);
             if (body) body.text = sb.Length > 0 ? Ascii(sb.ToString()) : "No further detail was provided.";
 
             SetStatus("", Ink);
@@ -173,6 +246,7 @@ namespace MuseDesk.Documents
             _phase = Phase.Ready;
             RefreshVoiceChip();
             Collapse();   // also applies the visibility of every part
+            SnapDetails();   // a newly bound paper starts with its details tucked away, without a slide
         }
 
         /// <summary>Forget the bound decision's state (session reset / replay). The next Bind fills it again.</summary>
@@ -185,6 +259,33 @@ namespace MuseDesk.Documents
             if (outcomeTitle) outcomeTitle.text = "";
             if (outcomeDetail) outcomeDetail.text = "";
             Collapse();
+            SnapDetails();
+        }
+
+        // The three agents by their contract ids. Any other id is shown as the event gave it.
+        static string RoleName(string agentId)
+        {
+            string id = (agentId ?? "").Trim();
+            if (id.Length == 0 || string.Equals(id, AgentIds.Researcher, System.StringComparison.OrdinalIgnoreCase)) return "Researcher";
+            if (string.Equals(id, AgentIds.Developer, System.StringComparison.OrdinalIgnoreCase)) return "Developer";
+            if (string.Equals(id, AgentIds.Tester, System.StringComparison.OrdinalIgnoreCase)) return "Tester";
+            return Ascii(char.ToUpperInvariant(id[0]) + id.Substring(1).Replace('_', ' '));
+        }
+
+        // Role colours (design tokens): info blue, success, amber.
+        static Color RoleColor(string agentId)
+        {
+            string id = (agentId ?? "").Trim();
+            if (string.Equals(id, AgentIds.Developer, System.StringComparison.OrdinalIgnoreCase)) return SuccessPlate;
+            if (string.Equals(id, AgentIds.Tester, System.StringComparison.OrdinalIgnoreCase)) return AmberPlate;
+            return InfoBluePlate;
+        }
+
+        // "medium" -> "Medium": the event's own word, as the start of a line.
+        static string Sentence(string s)
+        {
+            s = s.Trim();
+            return s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s.Substring(1).Replace('_', ' ');
         }
 
         /// <summary>
@@ -255,15 +356,89 @@ namespace MuseDesk.Documents
             Show(stampZoneRoot, _sheetOpen && ready);
             Show(pendingRoot, _sheetOpen && _phase == Phase.Pending);
             Show(outcomeRoot, _sheetOpen && _phase == Phase.Resolved);
-            Show(detailsRoot, _sheetOpen && IsExpanded);
+            ApplyDetails(_sheetOpen && IsExpanded);
+        }
+
+        // The details sheet slides out from behind the main sheet and back. It holds no
+        // interactables, so once it is fully tucked away it is also deactivated.
+        void ApplyDetails(bool want)
+        {
+            if (detailsRoot == null) return;
+            if (!detailsSlides) { Show(detailsRoot, want); return; }
+            if (!_sheetOpen || !isActiveAndEnabled)
+            {
+                // Nothing can animate (the paper is carried, or this component is not running): jump.
+                _detailsK = want ? 1f : 0f;
+                _detailsMoving = false;
+                PlaceDetails();
+                Show(detailsRoot, want);
+                return;
+            }
+            if (want)
+            {
+                Show(detailsRoot, true);
+                PlaceDetails();
+                if (_detailsK < 1f) _detailsMoving = true;
+            }
+            else if (_detailsK > 0f && detailsRoot.activeSelf) _detailsMoving = true;
+            else { _detailsK = 0f; _detailsMoving = false; Show(detailsRoot, false); }
+        }
+
+        void SnapDetails()
+        {
+            if (!detailsSlides || detailsRoot == null) return;
+            bool want = _sheetOpen && IsExpanded;
+            _detailsK = want ? 1f : 0f;
+            _detailsMoving = false;
+            PlaceDetails();
+            Show(detailsRoot, want);
+        }
+
+        void PlaceDetails()
+        {
+            if (detailsRoot == null) return;
+            float inv = 1f - _detailsK;
+            float eased = 1f - inv * inv * inv;                 // ease-out on the way down
+            detailsRoot.transform.localPosition = Vector3.LerpUnclamped(detailsTuckedLocalPosition, detailsOpenLocalPosition, eased);
+        }
+
+        void Update()
+        {
+            if (!_detailsMoving) return;
+            float goal = _sheetOpen && IsExpanded ? 1f : 0f;
+            _detailsK = Mathf.MoveTowards(_detailsK, goal, Time.deltaTime / Mathf.Max(0.01f, detailsSlideSeconds));
+            PlaceDetails();
+            if (Mathf.Approximately(_detailsK, goal))
+            {
+                _detailsMoving = false;
+                if (goal < 0.5f) Show(detailsRoot, false);
+            }
         }
 
         // The Voice chip is offered only when the voice layer could act on what it hears (the same
         // conditions VoiceDecisionController checks, apart from "a decision is pending").
         void RefreshVoiceChip()
         {
-            if (voiceChip == null) return;
-            Show(voiceChip, VoiceUsable());
+            if (voiceChip == null) { LayoutChips(false); return; }
+            bool usable = VoiceUsable();
+            Show(voiceChip, usable);
+            LayoutChips(usable);
+        }
+
+        // Three chips are spread evenly across the row; four take the four-chip positions. Only the
+        // key roots move (never a ButtonVisual), and only when the layout actually changes.
+        int _chipLayout = -1;
+        void LayoutChips(bool withVoice)
+        {
+            if (chipKeys == null) return;
+            int layout = withVoice ? 1 : 0;
+            if (layout == _chipLayout) return;
+            Vector3[] pos = withVoice ? chipPositionsWithVoice : chipPositionsWithoutVoice;
+            if (pos == null) return;
+            _chipLayout = layout;
+            int n = Mathf.Min(chipKeys.Length, pos.Length);
+            for (int i = 0; i < n; i++)
+                if (chipKeys[i] != null) chipKeys[i].localPosition = pos[i];
         }
 
         bool VoiceUsable()
@@ -345,7 +520,11 @@ namespace MuseDesk.Documents
 
         public void SetAnswer(string text)
         {
-            if (answer) answer.text = string.IsNullOrEmpty(text) ? "" : "\"" + Ascii(text) + "\"";
+            if (!answer) return;
+            if (string.IsNullOrEmpty(text)) { answer.text = ""; return; }
+            string t = Ascii(text);
+            // "Asking..." is a state, not an answer: it is not put in quotation marks.
+            answer.text = t.EndsWith("...") && t.Length <= 12 ? "<b>Answer</b>  " + t : "<b>Answer</b>  \"" + t + "\"";
         }
 
         public void SetVoiceStatus(string text)

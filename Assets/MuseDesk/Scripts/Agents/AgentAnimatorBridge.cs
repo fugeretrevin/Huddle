@@ -37,11 +37,26 @@ namespace MuseDesk.Agents
         [Tooltip("Between two standing states (idle, working, waiting...).")]
         public float baseBlend = 0.25f;
         [Tooltip("Into the walk cycle when the agent starts moving.")]
-        public float walkInBlend = 0.18f;
+        public float walkInBlend = 0.2f;
         [Tooltip("Out of the walk cycle when the agent arrives.")]
         public float walkOutBlend = 0.22f;
         [Tooltip("Into a one-shot reaction (success, error, give, receive).")]
-        public float reactionBlend = 0.12f;
+        public float reactionBlend = 0.2f;
+
+        [Header("Walk playback follows the real speed (DIRECT controller only)")]
+        [Tooltip("Scale the Animator's playback speed while walking so the feet keep up with the ground speed.")]
+        public bool matchWalkToSpeed = true;
+        [Tooltip("Ground covered by one Walk_Loop cycle (1.00 s) at the agent's size, metres. Not measured " +
+                 "from the clip (it is an in-place cycle): an estimate for a 0.31 m character. Tune on the headset.")]
+        public float walkCycleMeters = 0.15f;
+        [Tooltip("Slowest and fastest playback while walking, as a multiple of the authored speed.")]
+        public float walkRateMin = 0.7f;
+        public float walkRateMax = 1.4f;
+
+        // No cross-fade is ever shorter than this, whatever is serialized on the component: shorter
+        // blends read as a pop on the headset.
+        const float MinBlend = 0.2f;
+        const float WalkClipSeconds = 1.0f;   // docs/Art/ANIMATION_MANIFEST.md
 
         // ---- PARAMS controller ----
         static readonly int P_StateId = Animator.StringToHash("StateId");
@@ -90,6 +105,7 @@ namespace MuseDesk.Agents
         float _oneShotUntil;
         bool _offerHold;         // DIRECT: holding the paper out until it is taken or the agent moves
         float _phase;            // per-agent offset so the three never animate in unison
+        float _rate = 1f;        // DIRECT: the Animator playback speed we last set
 
         /// <summary>True while a one-shot reaction clip (success, failure, error, give, receive) plays.
         /// Procedural layers (gaze, idle life) fade themselves out while this is set.</summary>
@@ -133,6 +149,9 @@ namespace MuseDesk.Agents
         void OnDisable()
         {
             if (view != null) view.StateChanged -= OnStateChanged;
+            // Never leave the Animator running at a walk-matched rate.
+            if (_rate != 1f && animator != null) animator.speed = 1f;
+            _rate = 1f;
         }
 
         void Update()
@@ -150,6 +169,26 @@ namespace MuseDesk.Agents
             }
 
             if (_mode == Mode.Direct && _hasMoveSpeed) UpdateMoveSpeed();
+            if (_mode == Mode.Direct) UpdateWalkRate();
+        }
+
+        // DIRECT: the walk clip is an in-place cycle and AgentMovement eases the agent along its path,
+        // so at a fixed playback speed the feet slide (too fast at the ends of the walk, too slow in
+        // the middle). Follow the measured ground speed with the Animator's own playback speed, within
+        // limits, and return to normal speed the moment the agent stops. No controller parameter is
+        // involved: the controller only has MoveSpeed.
+        void UpdateWalkRate()
+        {
+            float want = 1f;
+            if (_moving && matchWalkToSpeed && movement != null && walkCycleMeters > 1e-4f)
+            {
+                float authored = walkCycleMeters / WalkClipSeconds;
+                want = Mathf.Clamp(movement.PlanarSpeed / authored,
+                                   Mathf.Min(walkRateMin, walkRateMax), Mathf.Max(walkRateMin, walkRateMax));
+            }
+            if (want == _rate) return;
+            _rate = Mathf.MoveTowards(_rate, want, Time.deltaTime * 4f);
+            animator.speed = _rate;
         }
 
         // Work out which controller is bound. Returns false while the Animator is not ready yet.
@@ -264,7 +303,7 @@ namespace MuseDesk.Agents
             if (target == _playing) return;
             // A per-agent start offset keeps the three agents' loops out of step.
             float offset = target == S_Walk ? 0f : _phase * 2f;
-            animator.CrossFadeInFixedTime(target, Mathf.Max(0.01f, blend), 0, offset);
+            animator.CrossFadeInFixedTime(target, Mathf.Max(MinBlend, blend), 0, offset);
             _playing = target;
         }
 
@@ -272,7 +311,7 @@ namespace MuseDesk.Agents
         void PlayOneShot(int state, float clipSeconds)
         {
             if (!animator.HasState(0, state)) { GoBase(baseBlend); return; }
-            animator.CrossFadeInFixedTime(state, Mathf.Max(0.01f, reactionBlend), 0, 0f);
+            animator.CrossFadeInFixedTime(state, Mathf.Max(MinBlend, reactionBlend), 0, 0f);
             _playing = state;
             _oneShot = true;
             // Leave a little early so the blend back starts before the clip freezes on its last frame.
@@ -352,6 +391,9 @@ namespace MuseDesk.Agents
             _offerHold = false;
             if (_mode == Mode.Params) { animator.SetTrigger(trigger); MarkOneShot(clipSeconds); return; }
             SyncMoving();
+            // Walking always wins: a standing reaction played over a walk slid across the desk and
+            // left the reaction flag set for the rest of the walk.
+            if (_moving) return;
             PlayOneShot(state, clipSeconds);
         }
 
@@ -381,5 +423,22 @@ namespace MuseDesk.Agents
         public void PlayFailure() { Reaction(P_TrFailure, S_Failure, LenFailure); }
         public void PlayHandoffGive() { Reaction(P_TrGive, S_Give, LenGive); }
         public void PlayHandoffReceive() { Reaction(P_TrReceive, S_Receive, LenReceive); }
+
+        /// <summary>A small acknowledgement (the Task_Completed nod), for an agent that is reacting to
+        /// a colleague's result and not to its own. Does nothing while the agent walks, holds the
+        /// paper out or is already in a reaction, and nothing on a controller without that clip.
+        /// Returns true if the nod was started.</summary>
+        public bool PlayAcknowledge()
+        {
+            if (!Ready() || _mode != Mode.Direct) return false;
+            SyncMoving();
+            if (_moving || _offerHold || _oneShot) return false;
+            if (!animator.HasState(0, S_TaskCompleted)) return false;
+            PlayOneShot(S_TaskCompleted, LenTaskCompleted);
+            return true;
+        }
+
+        /// <summary>True while the agent is translating (the walk clip owns the body).</summary>
+        public bool IsWalking => _moving;
     }
 }

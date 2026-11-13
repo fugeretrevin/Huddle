@@ -101,7 +101,8 @@ namespace MuseDesk.Documents
             // ("Template recommendation. Not live AI research.").
             // A revised proposal (after "Changes") says so: revision 0 is the first proposal.
             int revision = e.PayloadValue<int>("decision_revision", e.PayloadValue<int>("revision", 0));
-            if (panel) panel.Bind(content, content.SourceMode, e.PayloadString("research_provenance_label", null), revision);
+            // The header names the agent that asked, from the event's own agent_id.
+            if (panel) panel.Bind(content, content.SourceMode, e.PayloadString("research_provenance_label", null), revision, e.AgentId);
             if (paperRoot)
             {
                 paperRoot.SetActive(false);   // re-trigger OnEnable placement
