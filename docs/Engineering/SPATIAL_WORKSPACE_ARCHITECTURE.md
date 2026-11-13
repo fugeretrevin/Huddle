@@ -236,8 +236,8 @@ Optional, each closes a gap described above:
 
 The agent ran no Unity command. The Editor that the coordinator has open recompiled on its own while the files were being written, and the timestamps in `Library/ScriptAssemblies` say:
 
-- `MuseDesk.Spatial.Core.dll` was rebuilt after the last edit to the Core sources.
-- `Assembly-CSharp.dll` was rebuilt after the scene-side files were first complete. The director was edited once more after that (the `SummonRequests` subscription and the parked floor spot); see the final report for whether a later rebuild was observed.
+- `MuseDesk.Spatial.Core.dll` was rebuilt at 00:23:40, after the last edit to the Core sources (00:22:12).
+- `Assembly-CSharp.dll` was rebuilt at 00:39:20, after the last edit to any scene-side file (`SpatialWorkspaceDirector.cs`, 00:38:50).
 
 That is evidence the runtime code compiles. It is not evidence that it works. The test file is fenced off and the builder is outside `Assets`, so neither has been compiled.
 

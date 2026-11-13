@@ -172,6 +172,11 @@ namespace MuseDesk.Spatial
 
         static bool PathBlocked(IRoomGeometry room, Vector3 from, Vector3 to, float clearance)
         {
+            // The inspection pose is beside a seated user, so it is next to their desk by design, and
+            // its footprint has already been checked against furniture. Requiring the full clearance
+            // right up to it would reject every dock in a furnished room, so the clearance test stops
+            // 0.45 m short of the end; the last stretch is covered by that footprint check.
+            to = Vector3.MoveTowards(to, from, 0.45f);
             for (int i = 0; i < room.FurnitureCount; i++)
                 if (SpatialGeometry.SegmentHitsBox(from, to, room.GetFurniture(i), clearance, 0.05f)) return true;
             return false;
