@@ -43,6 +43,28 @@ public static class PanelsDrive
         return "before: " + before + "\nafter:  " + p.Describe();
     }
 
+    /// <summary>Drag a panel's bar by (dx, dy, dz) metres in world axes (dy is up). Reports before and after.</summary>
+    public static string DragBy(string id, float dx, float dy, float dz) => Drag(id, new Vector3(dx, dy, dz));
+
+    public static string RaiseDock() => DragBy("dock", 0f, 0.30f, 0f);     // clamps at ~45 cm over the desk
+    public static string LowerDock() => DragBy("dock", 0f, -0.10f, 0f);    // clamps at the desk plane (or 5 cm under it away from the desk)
+    public static string LowerDockSmall() => DragBy("dock", 0f, -0.03f, 0f);
+
+    /// <summary>Each panel's pivot and base height above the desk plane (mm), saved flag.</summary>
+    public static string Report()
+    {
+        if (!Application.isPlaying) return "not playing";
+        var sb = new StringBuilder();
+        foreach (var p in Panels())
+        {
+            var frame = p.transform.parent;
+            float deskY = frame != null ? frame.position.y : 0f;
+            float pivot = p.PivotWorld.y;
+            sb.AppendLine($"{p.panelId}: pivot y={pivot:F3} (+{(pivot - deskY) * 1000f:F0} mm over desk), base +{(pivot - p.baseBelowPivot - deskY) * 1000f:F0} mm, band -{p.lowestBelowDesk * 1000f:F0}..+{p.highestAboveDesk * 1000f:F0} mm, saved={(string.IsNullOrEmpty(p.SavedText()) ? "no" : "yes")}");
+        }
+        return sb.ToString();
+    }
+
     static Vector3 UserLeft()
     {
         var kit = One<NearUserKit>();

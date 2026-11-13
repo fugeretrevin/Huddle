@@ -87,9 +87,23 @@ Check on the headset: the effects over passthrough (fill rate), sound levels, wh
 
 Three new pure-logic files live in `Scripts/Spatial/Core/` (`CeilingVfxMap`, `CeilingPodAudioCues`, `CeilingPullLogic`) because the EditMode asmdef only reaches Core; no existing Core file changed.
 
+## Headset feedback 2 (2026-11-13 afternoon; restore point tag `pre-headset-feedback-2`)
+
+Owner wore `rc-feedback-1`. Five items, PLAY-verified here, in the next APK; not yet worn.
+
+| Feedback | Fix | Evidence |
+|---|---|---|
+| Floor: good spots refused; letting go on "ready" did nothing | Root cause: the only route to the floor turned overhead and swung a corner within 6-8 cm of the head axis, so the sweep (correctly) refused most spots beside/behind the shoulder. New `Core/FloorRoutePlanner` tries side-step shapes, all through the unchanged `SweepRoute`. "Ready" now includes the route. Release on a ready spot places (pinch >= 0.25 s, dragged >= 5 cm); refusals stay visible on a words plate. Chosen-spot margins: user 0.6 -> 0.45 m sides/behind, furniture 0.15 -> 0.11 m (both above the sweep's own). Lost-hand-placed-the-office bug found and fixed (a lost hand only drops). | PLAY `FloorAimDrive`: DragAndRelease placed (4-pose route, swept clear); ReleaseBesideShoulder placed (was refused); ReleaseWhereBlocked reason + no move; Twitch/Flick no place. Tests: FloorReleaseToPlace 9, FloorAimSession 9, FloorAimDirector 9, Persistence 5 + all spatial/ceiling fixtures green |
+| Guided scan for Floor/Ceiling | `PlacementGuide` (scene object `LookGuide`): card "Look at the floor / Look up at the ceiling", 0.6 s gaze dwell, then the request; scan grid starts from the gaze point (`FloorScanReveal` new, `CeilingScanReveal` sweeps gaze -> mount). Floor preview opens where you looked when that spot is usable (`CentrePreviewOn(.., quietIfBlocked)`), else the automatic spot silently. "Start here" after 8 s, Cancel. Voice "floor/ceiling mode" goes through it too | PLAY `PlacementGuideDrive`: card waits at level gaze; look down 45 / up 60 opens the preview, card switches to next step. 13 tests. NOTE: first builder run attached to the old desk-placement marker `PlacementGuide` (WorkspacePlacement hides it); the builder now removes that and uses `LookGuide` |
+| Task card text spills to edges | `BuildTextFitV1`: labels inside the card face with 2.5 mm margin, chips clear of the top edge, titles 2 lines + ellipsis | PLAY `TextFitDrive.ReportWorstCase` (merge with the builder file to run): all live card labels >= 2.3 mm from the edge |
+| Agent name tags overflow / not centred | Nameplates: role + activity one line each, centred as a block; gaze chips centred, inside the plate | 6.6-6.9 mm margins; chips 3.5 mm (were -7 mm) |
+| Move panels up/down | Height follows the hand 1:1 within -5..+45 cm of the desk plane, kept on release; near the desk up to 3 cm below the detected desk plane (`deskSinkAllowance`) | PLAY `PanelsDrive`: dock lowered 52 -> 0 mm, raised to 300 mm. PanelHeight 8 tests |
+
+Docs still out of date: `ROOM_PLACEMENT_FINDINGS.md` "known mismatch" (wall margin now 0.11 m) and the "pinch-hold to confirm" wording above (release-to-place is primary; hold still works).
+
 ## Scene build order (append-only; never re-run older builders after newer)
 
-... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`.
+... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`, then headset feedback 2: `BuildTextFitV1`, `BuildFloorPlaceFixV1`, `BuildPlacementGuideV1`.
 
 ## Tools
 

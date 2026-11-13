@@ -658,6 +658,10 @@ namespace MuseDesk.Voice
             bool floor = kind == VoiceIntentKind.ModeFloor;
             bool enabled = director.flags != null && (floor ? director.flags.floorModeEnabled : director.flags.ceilingModeEnabled);
             if (!enabled) { tone = VoiceTone.Warn; return (floor ? "Floor" : "Ceiling") + " mode is switched off in this build."; }
+            // Same guided step as the console keys: a card asks the user to look at the surface first.
+            var guide = PlacementGuide.Instance;
+            if (guide != null && guide.TryBegin(floor ? WorkspaceMode.Floor : WorkspaceMode.Ceiling))
+                return floor ? "Look down at the floor where you'd like the office." : "Look up at the ceiling.";
             if (floor) director.RequestFloor(); else director.RequestCeiling();
             if (director.IsPreviewing) return (floor ? "Floor" : "Ceiling") + " preview. Say next spot, confirm or cancel.";
             if (_office.Moving) return Words(director.StatusText, "The office is moving.");

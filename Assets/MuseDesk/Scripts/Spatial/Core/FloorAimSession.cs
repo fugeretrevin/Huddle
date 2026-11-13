@@ -17,7 +17,15 @@ namespace MuseDesk.Spatial
         [Tooltip("After a drop, a confirm or a tap, a new pinch is ignored for this long.")]
         public float regrabCooldown = 0.45f;
 
-        [Header("Pinch and hold to confirm")]
+        [Header("Drag and let go to place")]
+        [Tooltip("Letting go of a drag on a spot shown ready places the office there (through the same Confirm as the key).")]
+        public bool releaseToPlace = true;
+        [Tooltip("...only when the pinch was held at least this long (seconds) from grab to release. The footprint must " +
+                 "also have been dragged at least SpatialDirectorCore.aimPlaceMinDrag (5 cm), and a pinch only becomes a drag " +
+                 "after holdTolerance of movement, so a tap or a twitch never places it.")]
+        public float placeMinSeconds = 0.25f;
+
+        [Header("Pinch and hold to confirm (still works: hold still on the footprint)")]
         [Tooltip("The aim point may wander this far on the floor during a hold. Further, and the pinch is a drag.")]
         public float holdTolerance = 0.10f;
         [Tooltip("Stillness required before the ring starts to fill (so the start of a drag does not flash it).")]
@@ -152,17 +160,22 @@ namespace MuseDesk.Spatial
     /// <summary>
     /// Pointing at the floor preview with either hand, free of scene access so it can be tested.
     /// Fed one <see cref="AimHandSample"/> per hand per frame; it edits only the PREVIEW of the
-    /// <see cref="SpatialDirectorCore"/> (BeginAimDrag / AimDragTo / EndAimDrag) and, for a
-    /// deliberate pinch-and-hold, calls its Confirm, which is the same Confirm the key calls.
-    /// It never touches the office.
+    /// <see cref="SpatialDirectorCore"/> (BeginAimDrag / AimDragTo / ReleaseAimDrag / EndAimDrag)
+    /// and asks for the office to be placed only through the director's Confirm, the same Confirm
+    /// the key calls. It never touches the office.
     ///
     ///  - A pinch counts only when it BEGINS while that hand's aim point is on the footprint
     ///    (plus a margin). A pinch that was already closed when the preview opened, or that
     ///    began anywhere else, is ignored until it is released.
-    ///  - Move the hand and the footprint follows (Dragging); let go and it is dropped.
+    ///  - Move the hand (more than holdTolerance) and the footprint follows (Dragging).
+    ///  - Let go on a spot shown ready and the office is placed there: ReleaseAimDrag(true), which
+    ///    drops the footprint and calls Confirm. Only when the pinch lasted placeMinSeconds and the
+    ///    footprint was dragged at least the director's aimPlaceMinDrag; a tap, a twitch, or a hand
+    ///    that was lost drops it without placing. Let go over a spot that is not clear and it is
+    ///    dropped on the last ready spot, with the reason; nothing moves.
     ///  - Keep the pinch still on the footprint and, after a short pause, a ring fills; when it is
-    ///    full the spot is confirmed. Any movement beyond the tolerance turns the pinch into a
-    ///    drag, and a drag never confirms, however long it pauses.
+    ///    full the spot is confirmed (the alternative to dragging). Any movement beyond the
+    ///    tolerance turns the pinch into a drag, and a drag never fills the ring.
     ///  - While the fingers are opening the footprint is frozen, so the twitch of letting go
     ///    does not move it.
     /// </summary>
@@ -180,7 +193,8 @@ namespace MuseDesk.Spatial
         readonly SpatialDirectorCore _core;
         Hand _left, _right;
         int _active = -1;
-        float _cooldown, _pressTime, _lost;
+        float _cooldown, _pressTime, _heldTime, _lost;
+        bool _trackingLost;                 // the dragging hand lost tracking since its pinch was last seen closed
         Vector3 _pressCursor, _grabOffset;
 
         public FloorAimSettings settings = new FloorAimSettings();
@@ -193,7 +207,13 @@ namespace MuseDesk.Spatial
         /// <summary>How many times a full hold called Confirm, and how many of those were accepted.</summary>
         public int HoldConfirmAttempts { get; private set; }
         public int HoldConfirms { get; private set; }
+        /// <summary>Every time a drag ended (released or the hand lost), placed or not.</summary>
         public int Drops { get; private set; }
+        /// <summary>How many releases asked for the office to be placed, and how many moved it.</summary>
+        public int ReleasePlaceAttempts { get; private set; }
+        public int ReleasePlaces { get; private set; }
+        /// <summary>Seconds the current (or last) pinch on the footprint has been held.</summary>
+        public float HeldSeconds => _heldTime;
 
         public FloorAimSession(SpatialDirectorCore core) { _core = core; }
 
@@ -264,6 +284,7 @@ namespace MuseDesk.Spatial
                         break;
                     }
                     _lost = 0f;
+                    if (h.rawPinch) _heldTime += dt;
                     Vector3 moved = h.cursor - _pressCursor; moved.y = 0f;
                     if (moved.magnitude > settings.holdTolerance)
                     {
@@ -288,14 +309,26 @@ namespace MuseDesk.Spatial
                 {
                     if (!_core.AimDragging) { ToAiming(settings.regrabCooldown); break; }     // ended by a key (Next, Cancel, ...)
                     Hand h = _active == 0 ? _left : _right;
-                    if (!h.down) { Drop(); break; }
+                    // Tracking lost: the pinch reads as open, but nobody let go. Checked BEFORE the
+                    // release, so a lost hand only ever drops the footprint (after the grace time).
+                    if (!h.tracked)
+                    {
+                        _trackingLost = true;
+                        _lost += dt;
+                        if (_lost > settings.lostGraceSeconds) Drop();      // hand lost: drop, never place
+                        break;
+                    }
+                    if (h.rawPinch) _trackingLost = false;                  // the pinch is seen closed again
+                    // Let go: place it if this was a real drag, and the opening was seen (not a tracking gap).
+                    if (!h.down) { Release(!_trackingLost); break; }
                     if (!h.hasCursor)
                     {
                         _lost += dt;
-                        if (_lost > settings.lostGraceSeconds) Drop();
+                        if (_lost > settings.lostGraceSeconds) Drop();      // ray off the floor: drop, never place
                         break;
                     }
                     _lost = 0f;
+                    if (h.rawPinch) _heldTime += dt;
                     // While the fingers are opening the footprint is frozen where it was.
                     if (h.rawPinch) _core.AimDragTo(h.cursor + _grabOffset);
                     break;
@@ -309,6 +342,8 @@ namespace MuseDesk.Spatial
             State = FloorAimState.Pressing;
             _pressCursor = cursor;
             _pressTime = 0f;
+            _heldTime = 0f;
+            _trackingLost = false;
             _lost = 0f;
             HoldProgress = 0f;
             Vector3 off = _core.PreviewPose.position - cursor;
@@ -319,6 +354,18 @@ namespace MuseDesk.Spatial
         void Drop()
         {
             _core.EndAimDrag();
+            Drops++;
+            ToAiming(settings.regrabCooldown);
+        }
+
+        /// <summary>The pinch opened during a drag. A deliberate drag (held long enough) asks the director
+        /// to place the office where the footprint is; the director decides (spot ready, dragged far
+        /// enough, Confirm's swept route) and says why when it does not.</summary>
+        void Release(bool seen)
+        {
+            bool place = seen && settings.releaseToPlace && _heldTime >= settings.placeMinSeconds;
+            if (place) ReleasePlaceAttempts++;
+            if (_core.ReleaseAimDrag(place)) ReleasePlaces++;
             Drops++;
             ToAiming(settings.regrabCooldown);
         }

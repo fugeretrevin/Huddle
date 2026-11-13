@@ -48,6 +48,8 @@ namespace MuseDesk.Spatial
         [Header("Wiring (AgentScripts/BuildModeConsoleV1)")]
         public SpatialWorkspaceDirector director;
         public SummonController summon;
+        [Tooltip("Guided placement step (AgentScripts/BuildPlacementGuideV1). Floor and Ceiling presses go through it; empty = request at once.")]
+        public PlacementGuide guide;
 
         [Header("Place selector")]
         public ConsoleKey deskKey = new ConsoleKey();
@@ -329,6 +331,7 @@ namespace MuseDesk.Spatial
         public void PressDesk()
         {
             if (Refused(deskKey)) return;
+            if (guide != null) guide.CancelGuide();       // a guided Floor / Ceiling step is dropped; nothing had moved
             director.RequestDesk();
             AfterPlaceRequest(deskKey, WorkspaceMode.Desk);
         }
@@ -336,13 +339,15 @@ namespace MuseDesk.Spatial
         public void PressFloor()
         {
             if (Refused(floorKey)) return;
-            director.RequestFloor();                    // also "Send back" while a Floor office is parked at the desk
+            if (guide != null && guide.TryBegin(WorkspaceMode.Floor)) return;   // guided: the request follows the user's gaze
+            director.RequestFloor();                  // also "Send back" while a Floor office is parked at the desk
             AfterPlaceRequest(floorKey, WorkspaceMode.Floor);
         }
 
         public void PressCeiling()
         {
             if (Refused(ceilingKey)) return;
+            if (guide != null && guide.TryBegin(WorkspaceMode.Ceiling)) return;
             director.RequestCeiling();
             AfterPlaceRequest(ceilingKey, WorkspaceMode.Ceiling);
         }

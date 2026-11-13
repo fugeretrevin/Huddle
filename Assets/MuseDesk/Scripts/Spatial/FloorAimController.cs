@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using TMPro;
 using Oculus.Interaction;
 using Oculus.Interaction.Input;
 using MuseDesk.Workspace;
@@ -10,16 +11,18 @@ namespace MuseDesk.Spatial
     /// <summary>
     /// Placing the floor office from the seat, by pointing. While the floor preview is open either
     /// hand can aim at the floor: a thin arc runs from the hand to a point on the floor plane, the
-    /// office footprint is highlighted there (a rounded rectangle, teal when the spot is clear,
-    /// coral when it is not, with the reason on the status line), a pinch on the footprint grabs
-    /// it, moving the hand slides it across the floor, letting go drops it. A pinch held still on
-    /// the footprint fills a ring and confirms, so no key has to be reached.
+    /// office footprint is highlighted there (a rounded rectangle, teal when the office can stand
+    /// there AND be taken there, coral when not), a pinch on the footprint grabs it, moving the
+    /// hand slides it across the floor, and letting go on a teal spot places the office there. A
+    /// short plate in front of the footprint says what will happen or why not, in words
+    /// (<see cref="SpatialDirectorCore.FootprintWords"/>). A pinch held still on the footprint
+    /// fills a ring and confirms the spot as it is.
     ///
     /// This component only READS the hands (the pointer pose and the index pinch of the Interaction
     /// SDK hands that are already in the rig; it adds no rig, no interactor and no collider) and
     /// DRAWS. Every decision is in <see cref="FloorAimSession"/> and <see cref="SpatialDirectorCore"/>,
     /// which edit the preview only. It never writes the office: Confirm (the same call the key
-    /// makes) is the only thing that moves it, through the unchanged swept-route check.
+    /// makes) is the only thing that moves it, through the swept-route check.
     ///
     /// With no floor preview open it does nothing per frame beyond one property read, and its
     /// visuals are inactive. The meshes are generated once at run time (no asset dependency).
@@ -51,6 +54,19 @@ namespace MuseDesk.Spatial
         public LineRenderer leftRay;
         public LineRenderer rightRay;
 
+        [Header("Words on the footprint (built by BuildFloorPlaceFixV1; optional)")]
+        [Tooltip("Holds the plate and the text. Placed every frame just in front of the footprint's near edge, turned to the eye.")]
+        public Transform wordsRoot;
+        public TextMeshPro wordsText;
+        [Tooltip("A quad behind the text, sized to it. Tinted Plate.")]
+        public MeshRenderer wordsPlate;
+        [Tooltip("Gap between the footprint's near edge and the plate, metres (toward the user).")]
+        public float wordsGap = 0.05f;
+        [Tooltip("Height of the plate's centre above the floor, metres.")]
+        public float wordsHeight = 0.08f;
+        [Tooltip("Plate padding around the text (x, y), metres.")]
+        public Vector2 wordsPadding = new Vector2(0.016f, 0.010f);
+
         [Header("Shape (metres, office scale 1)")]
         [Tooltip("Office footprint (width, depth). Taken from the director when it has one.")]
         public Vector2 footprint = new Vector2(1.0f, 0.7f);
@@ -78,6 +94,8 @@ namespace MuseDesk.Spatial
         bool _built, _visible;
         int _colorKey = -1;
         int _ringShown = -1;
+        string _wordsShown;
+        MaterialPropertyBlock _wordsBlock;
         float _nextHandSearch;
         readonly AimHandSample[] _sim = new AimHandSample[2];
         readonly bool[] _simOn = new bool[2];
@@ -194,6 +212,7 @@ namespace MuseDesk.Spatial
             _visible = on;
             _colorKey = -1;
             _ringShown = -1;
+            _wordsShown = null;
             if (visuals != null) visuals.SetActive(on);
         }
 
@@ -236,6 +255,43 @@ namespace MuseDesk.Spatial
             DrawHoldRing(_session.HoldProgress);
             DrawHand(0, core, leftRay, leftCursor);
             DrawHand(1, core, rightRay, rightCursor);
+            DrawWords(core, shown);
+        }
+
+        /// <summary>The footprint's words on a small plate in front of its near edge, turned to the eye.</summary>
+        void DrawWords(SpatialDirectorCore core, RootPose shown)
+        {
+            if (wordsRoot == null || wordsText == null) return;
+            string words = core.FootprintWords;
+            bool show = !string.IsNullOrEmpty(words);
+            if (wordsRoot.gameObject.activeSelf != show) wordsRoot.gameObject.SetActive(show);   // no interactables inside
+            if (!show) return;
+
+            float s = shown.scale;
+            Vector3 centre = shown.position + shown.rotation * new Vector3(footprintCenterOffset.x * s, 0f, footprintCenterOffset.y * s);
+            Vector3 toUser = shown.rotation * Vector3.forward;             // the root's +Z points at the user
+            Vector3 anchor = centre + toUser * (footprint.y * 0.5f * s + wordsGap) + Vector3.up * (wordsHeight + lift);
+            Vector3 look = anchor - director.CurrentUser.head;
+            Quaternion facing = look.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(look.normalized, Vector3.up) : shown.rotation;
+            wordsRoot.SetPositionAndRotation(anchor, facing);
+
+            if (words == _wordsShown) return;
+            _wordsShown = words;
+            wordsText.text = words;
+            wordsText.color = OfficeTokens.OnPlate;
+            if (wordsPlate == null) return;
+            wordsText.ForceMeshUpdate();
+            Bounds b = wordsText.textBounds;                                // in the text's local units
+            Vector3 k = wordsText.transform.localScale;
+            float w = Mathf.Max(0.04f, b.size.x * k.x) + 2f * wordsPadding.x;
+            float h = Mathf.Max(0.02f, b.size.y * k.y) + 2f * wordsPadding.y;
+            Transform plate = wordsPlate.transform;
+            Vector3 tp = wordsText.transform.localPosition;
+            plate.localPosition = new Vector3(tp.x + b.center.x * k.x, tp.y + b.center.y * k.y, tp.z + 0.0015f);   // 1.5 mm behind the text
+            plate.localRotation = Quaternion.identity;
+            plate.localScale = new Vector3(w, h, 1f);
+            if (_wordsBlock == null) _wordsBlock = new MaterialPropertyBlock();
+            OfficeTokens.Tint(wordsPlate, _wordsBlock, OfficeTokens.Plate);
         }
 
         void Tint(MeshFilter filter, Color c, float alpha)
@@ -440,6 +496,8 @@ namespace MuseDesk.Spatial
             SpatialDirectorCore core = director != null ? director.Core : null;
             string s = "aim: state=" + _session.State + " hand=" + _session.ActiveHand + " hold=" + _session.HoldProgress.ToString("F2")
                        + " drops=" + _session.Drops + " holdConfirms=" + _session.HoldConfirms + "/" + _session.HoldConfirmAttempts
+                       + " releasePlaces=" + _session.ReleasePlaces + "/" + _session.ReleasePlaceAttempts
+                       + " held=" + _session.HeldSeconds.ToString("F2") + "s"
                        + " shown=" + _visible
                        + " L(cursor=" + _session.HasCursor(0) + " over=" + _session.OverFootprint(0) + (_session.HasCursor(0) ? " at " + _session.Cursor(0).ToString("F2") : "") + ")"
                        + " R(cursor=" + _session.HasCursor(1) + " over=" + _session.OverFootprint(1) + (_session.HasCursor(1) ? " at " + _session.Cursor(1).ToString("F2") : "") + ")"
@@ -447,7 +505,10 @@ namespace MuseDesk.Spatial
             if (core != null && core.HasPreview)
                 s += " | footprint at " + core.ShownPose.position.ToString("F2") + " yaw=" + core.ShownPose.rotation.eulerAngles.y.ToString("F0")
                      + " valid=" + core.ShownValid + " roomChecked=" + core.ShownRoomChecked + " dragging=" + core.AimDragging
-                     + (string.IsNullOrEmpty(core.AimProblem) ? "" : " problem='" + core.AimProblem + "'");
+                     + " dragged=" + core.AimDragDisplacement.ToString("F2") + "m"
+                     + (string.IsNullOrEmpty(core.AimProblem) ? "" : " problem='" + core.AimProblem + "'")
+                     + " words='" + core.FootprintWords + "'"
+                     + " wordsDrawn=" + (wordsRoot != null && wordsRoot.gameObject.activeInHierarchy);
             return s;
         }
     }

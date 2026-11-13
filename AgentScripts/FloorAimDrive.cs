@@ -9,9 +9,21 @@ using MuseDesk.Spatial;
 /// it stands in for a hand with a ray and a pinch flag and steps the controller with a fixed time
 /// step, so every method finishes within one call and reports what happened.
 ///
-/// Typical run:  Open -> AimAtFootprint -> FullDrag -> DragToWall -> Release -> HoldToConfirm
-/// No room scan: OpenNoRoom -> FullDrag -> DragTowardUser -> Release -> HoldToConfirm
-/// Every report ends with the office root's position: it must not change before a Confirm.
+/// Typical run:  Open -> AimAtFootprint -> Pinch -> DragToWall -> Release (over the wall: not placed, words) -> HoldToConfirm
+/// No room scan: OpenNoRoom -> Pinch -> DragTowardUser -> Release -> HoldToConfirm
+/// (FullDrag now ends with a release on a ready spot, which places the office.)
+///
+/// Drag and let go places it (headset feedback 1). Each of these opens its own preview; call
+/// Desk and wait for the office to be back between them. The move itself runs over the next
+/// frames: call Report a few seconds later to see the root at the spot.
+///   DragAndRelease          5 x 5 room, drag 0.3 m outward, let go: placed=True, mode Floor, mover running
+///   ReleaseBesideShoulder   5 x 5 room, a spot 1.35 m away beside and behind the right shoulder (refused
+///                           before this fix): placed=True, route shown as a side step
+///   ReleaseWhereBlocked     5 x 5 room, a 2 m cabinet 0.2 m beyond a spot to the right: footprint not ready
+///                           while dragged, words "The way there is blocked by STORAGE", placed=False, root unchanged
+///   TwitchRelease           pinch with a 3 cm shake for 0.2 s, let go: placed=False, drops=0
+///   FlickRelease            a 0.15 s drag, let go: placed=False (too short to be a placement)
+/// Every report ends with the office root's position: it must not change unless a report says placed=True.
 /// </summary>
 public static class FloorAimDrive
 {
@@ -262,8 +274,9 @@ public static class FloorAimDrive
 
     // ───────────────────────── whole gestures ─────────────────────────
 
-    /// <summary>Aim at the footprint, pinch, drag it 0.5 m away from the user, let go. Reports the
-    /// footprint before and after and whether the office root moved (it must not).</summary>
+    /// <summary>Aim at the footprint, pinch, drag it 0.5 m away from the user, let go. Since the headset
+    /// feedback fix letting go on a ready spot PLACES the office (see DragAndRelease, which reports it);
+    /// the root has not moved yet when this returns (the move runs over the next frames).</summary>
     public static string FullDrag()
     {
         SpatialWorkspaceDirector d; FloorAimController aim; string why;
@@ -357,6 +370,156 @@ public static class FloorAimDrive
             mn = Vector3.Min(mn, c); mx = Vector3.Max(mx, c);
         }
         return $"Jitter: raw shake +-0.03 m, smoothed aim point wandered {(mx - mn).magnitude:F3} m | " + Report();
+    }
+
+    // ───────────────────────── drag and let go places it ─────────────────────────
+
+    /// <summary>A 5 x 5 m synthetic room around the head (floor 1.15 m below the eyes), the user's desk in
+    /// front, and optionally a 2 m cabinet 2.31 m to the right; flags on; floor preview open.</summary>
+    static bool OpenRoom5(SpatialWorkspaceDirector d, FloorAimController aim, bool cabinet)
+    {
+        d.SetFlags(true, true);
+        if (d.IsPreviewing) d.Cancel();
+        SeatedUser u = User(d);
+        float floorY = u.head.y - 1.15f;
+        var room = SyntheticRoomGeometry.Rectangle(u.head.x, u.head.z, 5f, 5f, floorY, floorY + 2.5f);
+        float yaw = Mathf.Atan2(u.forward.x, u.forward.z) * Mathf.Rad2Deg;
+        Vector3 desk = u.head + u.forward * 0.75f;
+        room.AddFurniture("TABLE", new Vector3(desk.x, floorY + 0.375f, desk.z), new Vector3(1.4f, 0.75f, 0.7f), yaw);
+        if (cabinet)
+        {
+            Vector3 c = u.head + u.Right * 2.31f - u.forward * 0.1f;
+            room.AddFurniture("STORAGE", new Vector3(c.x, floorY + 1.0f, c.z), new Vector3(0.3f, 2.0f, 0.4f), yaw);
+        }
+        room.roomId = "floor-aim-drive-room";
+        d.UseSyntheticRoom(room);
+        d.RequestFloor();
+        aim.ClearSimulation();
+        _pinch = false;
+        return d.CanAim;
+    }
+
+    /// <summary>A floor spot (root position) relative to the user: metres to their right and forward.</summary>
+    static Vector3 Spot(SpatialWorkspaceDirector d, float right, float forward)
+    {
+        SeatedUser u = User(d);
+        Vector3 p = u.head + u.Right * right + u.forward * forward;
+        p.y = FloorY(d);
+        return p;
+    }
+
+    /// <summary>
+    /// Aim at the footprint, pinch, drag so the office root ends at <paramref name="root"/>, rest there
+    /// for 0.4 s, let go. Reports what the footprint showed and said just before letting go, and after.
+    /// </summary>
+    static string DragRootAndRelease(string name, SpatialWorkspaceDirector d, FloorAimController aim, Vector3 root)
+    {
+        var ws = Root();
+        Vector3 rootBefore = ws != null ? ws.position : Vector3.zero;
+        Vector3 from = d.Core.PreviewPose.position;
+        int places = aim.Session != null ? aim.Session.ReleasePlaces : 0;
+
+        _pinch = false; _target = FootprintCentre(d);
+        Push(d, aim, 0.7f);
+        bool over = aim.Session.OverFootprint(_hand);
+        _pinch = true;
+        Push(d, aim, 0.1f);
+        Vector3 cursor = _target + (root - from); cursor.y = FloorY(d);
+        Sweep(d, aim, cursor, 0.8f);                 // ends with 0.5 s at rest, pinch held
+        FloorAimState during = aim.Session.State;
+        bool readyShown = d.Core.ShownValid;
+        string wordsBefore = d.Core.FootprintWords;
+        Vector3 shown = d.Core.ShownPose.position;
+
+        _pinch = false;
+        Push(d, aim, 0.7f);
+        bool placed = aim.Session.ReleasePlaces > places;
+        bool rootMovedYet = ws != null && (ws.position - rootBefore).sqrMagnitude > 1e-10f;
+        string route = "";
+        if (placed)
+        {
+            WorkspaceRoute r = d.Core.LastRoute;
+            route = $" route={r.count} poses";
+            for (int i = 0; i < r.count; i++) route += " " + r[i].position.ToString("F2");
+            route += $" swept clear={d.Core.LastRouteCheck.clear}";
+            aim.ClearSimulation();
+        }
+        return $"{name}: over={over} whileDragging={during} readyShown={readyShown} wordsBeforeRelease='{wordsBefore}' footprintAt={shown:F2} target={root:F2}"
+               + $" | placed={placed} mode={d.Mode} previewing={d.IsPreviewing} mover={d.Core.Mover.Phase} wordsAfter='{d.Core.FootprintWords}' status='{d.StatusText}'"
+               + $" rootMovedYet={rootMovedYet}{route} | " + Report();
+    }
+
+    /// <summary>5 x 5 room: drag the footprint from the first offered spot 0.3 m further from the user and let go.
+    /// Expect readyShown=True, wordsBeforeRelease='Let go to place it here', placed=True.</summary>
+    public static string DragAndRelease()
+    {
+        SpatialWorkspaceDirector d; FloorAimController aim; string why;
+        if (!Ready(out d, out aim, out why)) return why;
+        if (!OpenRoom5(d, aim, false)) return "no floor preview could be opened (is the office at the desk and at rest?) | " + Report();
+        SeatedUser u = User(d);
+        Vector3 from = d.Core.PreviewPose.position;
+        Vector3 outward = from - u.head; outward.y = 0f;
+        outward = outward.sqrMagnitude > 1e-6f ? outward.normalized : u.Right;
+        return DragRootAndRelease("DragAndRelease", d, aim, from + outward * 0.3f);
+    }
+
+    /// <summary>5 x 5 room: a spot beside and a little behind the right shoulder, 1.35 m away (the usual
+    /// up-and-over route turns over the head there and was refused). Expect placed=True and a route whose
+    /// second pose is stepped sideways from the desk.</summary>
+    public static string ReleaseBesideShoulder()
+    {
+        SpatialWorkspaceDirector d; FloorAimController aim; string why;
+        if (!Ready(out d, out aim, out why)) return why;
+        if (!OpenRoom5(d, aim, false)) return "no floor preview could be opened (is the office at the desk and at rest?) | " + Report();
+        return DragRootAndRelease("ReleaseBesideShoulder", d, aim, Spot(d, 1.25f, -0.5f));
+    }
+
+    /// <summary>5 x 5 room with a 2 m cabinet 0.2 m beyond a spot 1.7 m to the right: the office could stand
+    /// there but cannot come down there. Expect readyShown=False, words "The way there is blocked by STORAGE",
+    /// placed=False and the office root unchanged.</summary>
+    public static string ReleaseWhereBlocked()
+    {
+        SpatialWorkspaceDirector d; FloorAimController aim; string why;
+        if (!Ready(out d, out aim, out why)) return why;
+        if (!OpenRoom5(d, aim, true)) return "no floor preview could be opened (is the office at the desk and at rest?) | " + Report();
+        return DragRootAndRelease("ReleaseWhereBlocked", d, aim, Spot(d, 1.7f, -0.1f));
+    }
+
+    /// <summary>Pinch on the footprint while the hand shakes by 3 cm, let go after 0.2 s. Expect placed=False, drops unchanged.</summary>
+    public static string TwitchRelease()
+    {
+        SpatialWorkspaceDirector d; FloorAimController aim; string why;
+        if (!Ready(out d, out aim, out why)) return why;
+        if (!d.CanAim) return "no floor preview open (call Open first) | " + Report();
+        Vector3 before = d.Core.PreviewPose.position;
+        _pinch = false; _target = FootprintCentre(d);
+        Push(d, aim, 0.7f);
+        int drops = aim.Session.Drops, places = aim.Session.ReleasePlaces;
+        _pinch = true;
+        for (int i = 0; i < 14; i++) Push(d, aim, Dt, new Vector3(0.03f * (i % 2 == 0 ? 1f : -1f), 0f, 0.03f * (i % 3 == 0 ? 1f : -1f)));
+        _pinch = false;
+        Push(d, aim, 0.7f);
+        return $"TwitchRelease: placed={aim.Session.ReleasePlaces > places} dropsAdded={aim.Session.Drops - drops} footprintMoved={(d.Core.PreviewPose.position - before).magnitude:F3} m previewing={d.IsPreviewing} | " + Report();
+    }
+
+    /// <summary>Pinch, drag 0.5 m to the side in 0.1 s, let go at once. Expect placed=False (held under 0.25 s).</summary>
+    public static string FlickRelease()
+    {
+        SpatialWorkspaceDirector d; FloorAimController aim; string why;
+        if (!Ready(out d, out aim, out why)) return why;
+        if (!d.CanAim) return "no floor preview open (call Open first) | " + Report();
+        _pinch = false; _target = FootprintCentre(d);
+        Push(d, aim, 0.7f);
+        int places = aim.Session.ReleasePlaces;
+        _pinch = true;
+        Push(d, aim, 0.04f);
+        _target += User(d).Right * 0.5f;
+        Push(d, aim, 0.1f);
+        FloorAimState during = aim.Session.State;
+        float held = aim.Session.HeldSeconds;
+        _pinch = false;
+        Push(d, aim, 0.7f);
+        return $"FlickRelease: whileDragging={during} held={held:F2}s placed={aim.Session.ReleasePlaces > places} previewing={d.IsPreviewing} | " + Report();
     }
 
     // ───────────────────────── keys ─────────────────────────

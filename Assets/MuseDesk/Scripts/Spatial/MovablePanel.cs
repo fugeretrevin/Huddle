@@ -84,6 +84,12 @@ namespace MuseDesk.Spatial
         public float overlapGap = 0.008f;
         [Tooltip("Within this level distance of the desk frame's origin the panel is kept above the desk plane.")]
         public float deskNearRadius = 0.9f;
+        [Tooltip("Lowest the panel's base may be dragged, metres below the desk plane (never below the desk when near it).")]
+        public float lowestBelowDesk = PanelLayoutMath.DefaultBelowDesk;
+        [Tooltip("Highest the panel's base may be dragged, metres above the desk plane.")]
+        public float highestAboveDesk = PanelLayoutMath.DefaultAboveDesk;
+        [Tooltip("Near the desk, how far below the detected desk plane the base may still go. The detected table can sit a little above the real desk, which makes panels look too high; this lets the user lower them that much.")]
+        public float deskSinkAllowance = 0.03f;
         public bool restoreOnStart = true;
         [Tooltip("Holding the bar still this long offers the Reset layout chip.")]
         public float longPinchSeconds = 1.5f;
@@ -229,14 +235,26 @@ namespace MuseDesk.Spatial
         void DragTo(Vector3 hand, float k)
         {
             _smoothed = Vector3.Lerp(_smoothed, hand, k);
-            Vector3 pivot = _pivot0 + (_smoothed - _hand0);
+            Vector3 pivot = PanelLayoutMath.FollowHand(_pivot0, _hand0, _smoothed);   // 1:1 including height
+            pivot.y = ClampPivotHeight(pivot.y);
             float target = 0f;
             if (faceHead && _head != null)
                 target = Mathf.DeltaAngle(_yaw0, PanelLayoutMath.YawToward(pivot, _head.position, _yaw0));
             _yawDelta = Mathf.LerpAngle(_yawDelta, target, k);
             // Yaw only, about the world's up: no roll, and the authored tilt is kept.
             Quaternion turn = Quaternion.AngleAxis(_yawDelta, Vector3.up);
-            transform.SetPositionAndRotation(pivot + turn * (_pos0 - _pivot0), turn * _rot0);
+            transform.SetPositionAndRotation(pivot + turn * (_pos0 - _pivot0), PanelLayoutMath.UprightTurn(_rot0, _yawDelta));
+        }
+
+        /// <summary>Clamp a world pivot height so the panel's base stays in the vertical band around the desk plane.</summary>
+        float ClampPivotHeight(float pivotY)
+        {
+            Transform frame = transform.parent;
+            if (frame == null) return pivotY;
+            float defaultBaseY = frame.TransformPoint(_defaultPos + _defaultRot * pivotLocal).y - baseBelowPivot;
+            float lo, hi;
+            PanelLayoutMath.HeightBand(frame.position.y, defaultBaseY, lowestBelowDesk, highestAboveDesk, out lo, out hi);
+            return PanelLayoutMath.ClampHeight(pivotY - baseBelowPivot, lo, hi) + baseBelowPivot;
         }
 
         void EndDrag(bool snap)
@@ -261,7 +279,9 @@ namespace MuseDesk.Spatial
             Vector3 start = transform.TransformPoint(pivotLocal);
             Vector3 pivot = start;
             Transform head = RemoteNearUser.Head();
-            if (head != null) pivot = PanelLayoutMath.ClampToReach(pivot, head.position, head.forward, minReach, maxReach);
+            pivot.y = ClampPivotHeight(pivot.y);
+            // Reach is judged with the chosen height kept: the panel slides level, it is not pulled up or down.
+            if (head != null) pivot = PanelLayoutMath.ClampToReachKeepHeight(pivot, head.position, head.forward, minReach, maxReach);
 
             pivot += OverlapShift(pivot - start, head);
 
@@ -270,11 +290,11 @@ namespace MuseDesk.Spatial
             {
                 Vector3 level = pivot - frame.position; level.y = 0f;
                 float baseY = pivot.y - baseBelowPivot;
-                pivot.y += PanelLayoutMath.LiftAboveDesk(baseY, frame.position.y, level.magnitude, deskNearRadius) - baseY;
+                pivot.y += PanelLayoutMath.LiftAboveDesk(baseY, frame.position.y - Mathf.Max(0f, deskSinkAllowance), level.magnitude, deskNearRadius) - baseY;
             }
             // The nudge may have pushed it out of reach again: reach wins.
             if (head != null && (pivot - head.position).magnitude > maxReach + 0.02f)
-                pivot = PanelLayoutMath.ClampToReach(pivot, head.position, head.forward, minReach, maxReach);
+                pivot = PanelLayoutMath.ClampToReachKeepHeight(pivot, head.position, head.forward, minReach, maxReach);
 
             if (!RemoteNearUser.IsFinite(pivot)) pivot = start;
             return transform.position + (pivot - start);

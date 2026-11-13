@@ -55,6 +55,69 @@ namespace MuseDesk.Spatial
             return levelDistance <= nearRadius && baseY < deskY ? deskY : baseY;
         }
 
+        // ───────────────────────── height ─────────────────────────
+
+        /// <summary>Default lowest base height of a panel relative to the desk plane (m, negative = below).</summary>
+        public const float DefaultBelowDesk = 0.05f;
+        /// <summary>Default highest base height of a panel above the desk plane (m).</summary>
+        public const float DefaultAboveDesk = 0.45f;
+
+        /// <summary>
+        /// The band a panel's base may sit in: from <paramref name="belowDesk"/> under the desk plane
+        /// to <paramref name="aboveDesk"/> over it, widened if needed to include the panel's default
+        /// height so the default is always legal. Never below <paramref name="floorY"/> when given.
+        /// </summary>
+        public static void HeightBand(float deskY, float defaultBaseY, float belowDesk, float aboveDesk,
+                                      out float lowest, out float highest, float floorY = float.NegativeInfinity)
+        {
+            lowest = Mathf.Min(deskY - Mathf.Max(0f, belowDesk), defaultBaseY);
+            highest = Mathf.Max(deskY + Mathf.Max(0f, aboveDesk), defaultBaseY);
+            if (lowest < floorY) lowest = Mathf.Min(floorY, defaultBaseY);
+            if (highest < lowest) highest = lowest;
+        }
+
+        public static float ClampHeight(float y, float lowest, float highest)
+        {
+            return Mathf.Clamp(y, lowest, highest);
+        }
+
+        /// <summary>Where the pivot is while dragging: it follows the hand 1:1 in all three axes.</summary>
+        public static Vector3 FollowHand(Vector3 pivotAtGrab, Vector3 handAtGrab, Vector3 handNow)
+        {
+            return pivotAtGrab + (handNow - handAtGrab);
+        }
+
+        /// <summary>The panel's rotation while dragged: its rotation at the grab turned about world up only (never rolls or tilts).</summary>
+        public static Quaternion UprightTurn(Quaternion rotationAtGrab, float yawDeltaDegrees)
+        {
+            return Quaternion.AngleAxis(yawDeltaDegrees, Vector3.up) * rotationAtGrab;
+        }
+
+        /// <summary>
+        /// Like <see cref="ClampToReach"/> but the point's height is kept exactly: only the level
+        /// position is moved, so the 3D distance to the head stays within [min, max] (when the height
+        /// difference alone exceeds max the point goes straight above/below the head, nearest in front).
+        /// </summary>
+        public static Vector3 ClampToReachKeepHeight(Vector3 point, Vector3 head, Vector3 headForward,
+                                                     float min = MinReach, float max = MaxReach, float minAhead = MinAhead)
+        {
+            float dy = point.y - head.y;
+            float maxLevel = Mathf.Sqrt(Mathf.Max(0f, max * max - dy * dy));
+            float minLevel = Mathf.Sqrt(Mathf.Max(0f, min * min - dy * dy));
+            Vector3 f = headForward; f.y = 0f;
+            Vector3 d = point - head; d.y = 0f;
+            if (f.sqrMagnitude < 1e-6f) f = d;
+            if (f.sqrMagnitude < 1e-6f) f = Vector3.forward;
+            f.Normalize();
+            float ahead = Vector3.Dot(d, f);
+            if (ahead < minAhead) d += f * (minAhead - ahead);
+            float m = d.magnitude;
+            if (m < 1e-5f) d = f * Mathf.Max(minLevel, 1e-3f);
+            else if (m < minLevel) d *= minLevel / m;
+            else if (m > maxLevel) d *= maxLevel / m;
+            return new Vector3(head.x + d.x, point.y, head.z + d.z);
+        }
+
         // ───────────────────────── facing ─────────────────────────
 
         /// <summary>Yaw (degrees about +Y) that turns +Z from <paramref name="from"/> toward

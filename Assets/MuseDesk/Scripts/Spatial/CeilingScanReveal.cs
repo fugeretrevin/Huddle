@@ -52,6 +52,13 @@ namespace MuseDesk.Spatial
         float _wipeT;
         float _fade;
         bool _haveCentre;
+        // Guided start: the wipe begins where the user looked and the grid slides to the candidate.
+        public const float SweepSeconds = 0.8f;
+        bool _sweeping;
+        float _sweepT;
+        Vector3 _sweepFrom, _cand;
+        public bool Sweeping => _sweeping;
+        public Vector3 SweepFrom => _sweepFrom;
 
         // Read by the driver.
         public float Fade => _fade;
@@ -109,11 +116,25 @@ namespace MuseDesk.Spatial
                 Vector3 c = p.valid ? p.mastTop : new Vector3(p.dockPosition.x, p.ceilingHeight, p.dockPosition.z);
                 c.y = p.ceilingHeight - Mathf.Max(0f, belowCeiling);
                 int index = core.CandidateIndex;
-                float moved = _haveCentre ? new Vector2(c.x - _centre.x, c.z - _centre.z).magnitude : 0f;
+                float moved = _haveCentre ? new Vector2(c.x - _cand.x, c.z - _cand.z).magnitude : 0f;
                 bool restart = CeilingScanRevealLogic.ShouldRestart(_wasWanted, true, index != _lastIndex && _lastIndex >= 0, moved);
-                if (restart) _wipeT = 0f;
+                if (restart)
+                {
+                    _wipeT = 0f;
+                    _sweepT = 0f;
+                    _sweeping = false;
+                    // The guided step handed over where the user was looking: start the wipe there and sweep to the candidate.
+                    if (!_wasWanted && PlacementGuide.TryConsumeGaze(out Vector3 go, out Vector3 gd)
+                        && PlacementGuideLogic.RayPlane(go, gd, c.y, out Vector3 hit))
+                    {
+                        _sweepFrom = PlacementGuideLogic.ClampOrigin(hit, c, 4f);
+                        _sweepFrom.y = c.y;
+                        _sweeping = true;
+                    }
+                }
                 _lastIndex = index;
-                _centre = c;
+                _cand = c;
+                _centre = _sweeping ? PlacementGuideLogic.SweepCentre(_sweepFrom, c, _sweepT, SweepSeconds) : c;
                 _haveCentre = true;
                 _yaw = p.dockRotation.eulerAngles.y;
                 _red = !p.valid || !core.ShownValid;
@@ -127,6 +148,12 @@ namespace MuseDesk.Spatial
             float dt = Time.unscaledDeltaTime;
             _fade = CeilingScanRevealLogic.StepFade(_fade, wanted, dt, CeilingScanRevealLogic.FadeInSeconds, CeilingScanRevealLogic.FadeOutSeconds);
             _wipeT = CeilingScanRevealLogic.StepWipe(_wipeT, dt, CeilingScanRevealLogic.WipeSeconds);
+        if (_sweeping)
+        {
+            _sweepT += dt;
+            if (wanted) _centre = PlacementGuideLogic.SweepCentre(_sweepFrom, _cand, _sweepT, SweepSeconds);
+            if (_sweepT >= SweepSeconds) _sweeping = false;
+        }
 
             bool visible = CeilingScanRevealLogic.Visible(_fade) && _haveCentre && material != null;
             if (_renderer.enabled != visible) _renderer.enabled = visible;

@@ -1878,7 +1878,8 @@ namespace MuseDesk.Tests.EditMode
             for (int i = 0; i < rig2.core.CandidateCount; i++)
             {
                 WorkspaceRoute r; CeilingPathCheck c;
-                Assert.IsTrue(CeilingPlacementEvaluator.PlanRoute(room2, rig2.user, Desk, rig2.core.GetCandidate(i).Pose, Fp,
+                // The planner the director moves with (the usual shapes, then the side steps).
+                Assert.IsTrue(FloorRoutePlanner.Plan(room2, rig2.user, Desk, rig2.core.GetCandidate(i).Pose, Fp,
                                                                  rig2.core.ceilingSettings, FromDesk(), true, out r, out c), "every offered spot can be reached");
             }
         }
