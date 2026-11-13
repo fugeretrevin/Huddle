@@ -23,8 +23,26 @@ namespace MuseDesk.EditorTools
             "Dev_MonitorCheck", "Dev_DebugScratchHead", "Test_InspectArtifact_Loop", "Test_ClipboardCheck_Loop",
             "Test_Scan_Loop", "Carry_Walk_Loop", "WaitForUser_Loop", "Approval_Request_Loop",
             "Blocked_Frustrated_Loop", "Thinking_Loop", "Listening_To_User_Loop", "Grabbed_Held_Loop",
-            "3_Artifact_Assemble", "5_Artifact_Transport"
+            "3_Artifact_Assemble", "5_Artifact_Transport",
+            // Spatial Workspace Expansion looping clips
+            "Pod_Docked_Idle", "Pod_Descending", "Pod_Deployed_Idle", "Pod_Returning_Dock",
+            "Mount_Docked_Idle", "Mount_Spool_Spin",
+            "Beacon_Idle", "Beacon_Working", "Beacon_Suggestion", "Beacon_Blocking_Decision", "Beacon_Error",
+            "Station_Idle",
+            "Courier_Docked_Idle", "Courier_Fly_Loop", "Courier_Waiting_Idle",
+            "Perch_Folded_Idle", "Perch_Listening_Idle"
         };
+
+        static bool IsAnimatedSpatialPath(string p)
+        {
+            if (!p.Contains("/Spatial/")) return false;
+            return p.Contains("CeilingMount") ||
+                   p.Contains("SuspendedOfficePod") ||
+                   p.Contains("WorkspaceAttentionBeacon") ||
+                   p.Contains("FloorCourierStation") ||
+                   p.Contains("DocumentCourier") ||
+                   p.Contains("AgentConversationPerch");
+        }
 
         void OnPreprocessModel()
         {
@@ -36,16 +54,39 @@ namespace MuseDesk.EditorTools
 
             importer.isReadable = true;
 
-            bool isAnimated = p.Contains("/Characters/") || p.Contains("/Factory/");
+            bool isAnimated = p.Contains("/Characters/") || p.Contains("/Factory/") || IsAnimatedSpatialPath(p);
             if (isAnimated)
             {
+                if (IsAnimatedSpatialPath(p))
+                {
+                    importer.importAnimation = true;
+                    importer.animationType = ModelImporterAnimationType.Generic;
+                    importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                }
+
                 var clips = importer.clipAnimations;
+                bool copiedDefault = false;
+                if (clips == null || clips.Length == 0)
+                {
+                    clips = importer.defaultClipAnimations;
+                    copiedDefault = clips != null && clips.Length > 0;
+                }
+
                 if (clips != null && clips.Length > 0)
                 {
-                    bool changed = false;
+                    bool changed = copiedDefault;
                     for (int i = 0; i < clips.Length; i++)
                     {
-                        bool shouldLoop = LoopingClips.Contains(clips[i].name);
+                        string cleanName = clips[i].name;
+                        int pipe = cleanName.IndexOf('|');
+                        if (pipe >= 0 && pipe + 1 < cleanName.Length)
+                        {
+                            cleanName = cleanName.Substring(pipe + 1);
+                            clips[i].name = cleanName;
+                            changed = true;
+                        }
+
+                        bool shouldLoop = LoopingClips.Contains(cleanName);
                         if (clips[i].loopTime != shouldLoop)
                         {
                             clips[i].loopTime = shouldLoop;
