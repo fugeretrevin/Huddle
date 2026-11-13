@@ -1058,7 +1058,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 54505498}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.0055}
+  m_LocalPosition: {x: 0, y: 0, z: 0.0004}
   m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2100,7 +2100,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 81014687}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.0055}
+  m_LocalPosition: {x: 0, y: 0, z: 0.0004}
   m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3651,6 +3651,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9fc178d9b42b75742a130ad9e89a4a8f, type: 3}
   m_PrefabInstance: {fileID: 190396988}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &203000317
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 203000318}
+  m_Layer: 0
+  m_Name: PaperHoldPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &203000318
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 203000317}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.055, y: 0.125, z: 0.13}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 913268389}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &210550486
 GameObject:
   m_ObjectHideFlags: 0
@@ -4011,9 +4042,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 8a315b90d89423e4aa11461dd31bb313, type: 3}
       insertIndex: -1
       addedObject: {fileID: 381708437}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 8a315b90d89423e4aa11461dd31bb313, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 381708436}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 8a315b90d89423e4aa11461dd31bb313, type: 3}
       insertIndex: -1
       addedObject: {fileID: 381708435}
@@ -5341,9 +5369,6 @@ PrefabInstance:
       addedObject: {fileID: 699130296}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2153f0b5e72600e4f82606811c53b87b, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 699130295}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2153f0b5e72600e4f82606811c53b87b, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 699130294}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2153f0b5e72600e4f82606811c53b87b, type: 3}
       insertIndex: -1
@@ -5416,6 +5441,7 @@ GameObject:
   - component: {fileID: 277732099}
   - component: {fileID: 277732098}
   - component: {fileID: 277732105}
+  - component: {fileID: 277732106}
   m_Layer: 8
   m_Name: StampReject
   m_TagString: Untagged
@@ -5481,6 +5507,7 @@ MonoBehaviour:
   interactables:
   - {fileID: 277732101}
   - {fileID: 277732100}
+  - {fileID: 277732106}
 --- !u!114 &277732100
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5715,6 +5742,44 @@ MonoBehaviour:
   enterDelay: 0.06
   exitDelay: 0.18
   tickVolume: 0.12
+--- !u!114 &277732106
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 277732096}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
+  _interactorFilters: []
+  _maxInteractors: -1
+  _maxSelectingInteractors: -1
+  _data: {fileID: 0}
+  _pointableElement: {fileID: 0}
+  _rigidbody: {fileID: 277732104}
+  _resetGrabOnGrabsUpdated: 1
+  _slippiness: 0
+  _supportedGrabTypes: 3
+  _pinchGrabRules:
+    _thumbRequirement: 1
+    _indexRequirement: 1
+    _middleRequirement: 1
+    _ringRequirement: 0
+    _pinkyRequirement: 0
+    _unselectMode: 0
+  _palmGrabRules:
+    _thumbRequirement: 1
+    _indexRequirement: 2
+    _middleRequirement: 2
+    _ringRequirement: 2
+    _pinkyRequirement: 1
+    _unselectMode: 0
+  _movementProvider: {fileID: 0}
+  _handAligment: 1
+  _handGrabPoses: []
 --- !u!1 &290360575
 GameObject:
   m_ObjectHideFlags: 0
@@ -7259,6 +7324,7 @@ GameObject:
   - component: {fileID: 353573407}
   - component: {fileID: 353573406}
   - component: {fileID: 353573413}
+  - component: {fileID: 353573414}
   m_Layer: 8
   m_Name: StampApprove
   m_TagString: Untagged
@@ -7324,6 +7390,7 @@ MonoBehaviour:
   interactables:
   - {fileID: 353573409}
   - {fileID: 353573408}
+  - {fileID: 353573414}
 --- !u!114 &353573408
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7558,6 +7625,44 @@ MonoBehaviour:
   enterDelay: 0.06
   exitDelay: 0.18
   tickVolume: 0.12
+--- !u!114 &353573414
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 353573404}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
+  _interactorFilters: []
+  _maxInteractors: -1
+  _maxSelectingInteractors: -1
+  _data: {fileID: 0}
+  _pointableElement: {fileID: 0}
+  _rigidbody: {fileID: 353573412}
+  _resetGrabOnGrabsUpdated: 1
+  _slippiness: 0
+  _supportedGrabTypes: 3
+  _pinchGrabRules:
+    _thumbRequirement: 1
+    _indexRequirement: 1
+    _middleRequirement: 1
+    _ringRequirement: 0
+    _pinkyRequirement: 0
+    _unselectMode: 0
+  _palmGrabRules:
+    _thumbRequirement: 1
+    _indexRequirement: 2
+    _middleRequirement: 2
+    _ringRequirement: 2
+    _pinkyRequirement: 1
+    _unselectMode: 0
+  _movementProvider: {fileID: 0}
+  _handAligment: 1
+  _handGrabPoses: []
 --- !u!1001 &355849121
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8276,7 +8381,6 @@ GameObject:
   - component: {fileID: 380641282}
   - component: {fileID: 380641286}
   - component: {fileID: 380641289}
-  - component: {fileID: 380641288}
   - component: {fileID: 380641287}
   m_Layer: 0
   m_Name: Prop_Block
@@ -8541,44 +8645,6 @@ MonoBehaviour:
   enterDelay: 0.06
   exitDelay: 0.18
   tickVolume: 0.12
---- !u!114 &380641288
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 380641275}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 380641284}
-  _rigidbody: {fileID: 380641278}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &380641289
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8731,44 +8797,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 381708438}
---- !u!114 &381708436
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 381708430}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 381708438}
-  _rigidbody: {fileID: 381708432}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &381708437
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11871,7 +11899,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 519532755}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.0055}
+  m_LocalPosition: {x: 0, y: 0, z: 0.0004}
   m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -16137,44 +16165,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 699130297}
---- !u!114 &699130295
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 699130289}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 699130297}
-  _rigidbody: {fileID: 699130291}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &699130296
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -23465,6 +23455,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 5599818946812637758, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1099728739}
+    - targetCorrespondingSourceObject: {fileID: 5599818946812637758, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 203000318}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 5115347028388653188, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       insertIndex: -1
@@ -23512,11 +23505,6 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
---- !u!4 &913268388 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 8138849286396678272, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
-  m_PrefabInstance: {fileID: 913268387}
-  m_PrefabAsset: {fileID: 0}
 --- !u!4 &913268389 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5599818946812637758, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
@@ -25685,7 +25673,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1006246116}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.0055}
+  m_LocalPosition: {x: 0, y: 0, z: -0.0003}
   m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -25693,8 +25681,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -0.009, y: 0.0218}
-  m_SizeDelta: {x: 4.2, y: 0.7}
+  m_AnchoredPosition: {x: -0.009, y: 0.0212}
+  m_SizeDelta: {x: 4.2, y: 0.62}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!23 &1006246118
 MeshRenderer:
@@ -26192,9 +26180,6 @@ PrefabInstance:
       addedObject: {fileID: 1040165310}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43c605aeefd6afa498927764419245dc, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1040165309}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43c605aeefd6afa498927764419245dc, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 1040165308}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 43c605aeefd6afa498927764419245dc, type: 3}
       insertIndex: -1
@@ -26327,44 +26312,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1040165311}
---- !u!114 &1040165309
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 779994065}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1040165311}
-  _rigidbody: {fileID: 1040165301}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1040165310
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -26857,9 +26804,6 @@ PrefabInstance:
       addedObject: {fileID: 1049162079}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 58e5b82a30a06824e91a27384000ee13, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1049162078}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 58e5b82a30a06824e91a27384000ee13, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 1049162077}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 58e5b82a30a06824e91a27384000ee13, type: 3}
       insertIndex: -1
@@ -26992,44 +26936,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1049162080}
---- !u!114 &1049162078
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 613068603}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1049162080}
-  _rigidbody: {fileID: 1049162070}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1049162079
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -28732,7 +28638,6 @@ GameObject:
   - component: {fileID: 1110682577}
   - component: {fileID: 1110682581}
   - component: {fileID: 1110682584}
-  - component: {fileID: 1110682583}
   - component: {fileID: 1110682582}
   m_Layer: 0
   m_Name: Prop_Mug
@@ -28999,44 +28904,6 @@ MonoBehaviour:
   enterDelay: 0.06
   exitDelay: 0.18
   tickVolume: 0.12
---- !u!114 &1110682583
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1110682570}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1110682579}
-  _rigidbody: {fileID: 1110682573}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1110682584
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -31669,9 +31536,6 @@ PrefabInstance:
       addedObject: {fileID: 1556852644}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d80ef3c96f39f24479074f3a7fdabbe0, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1556852643}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d80ef3c96f39f24479074f3a7fdabbe0, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 1556852642}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d80ef3c96f39f24479074f3a7fdabbe0, type: 3}
       insertIndex: -1
@@ -32516,9 +32380,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d6071533f40c5a04aa84a3ae6f2e84a6, type: 3}
       insertIndex: -1
       addedObject: {fileID: 2073517719}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d6071533f40c5a04aa84a3ae6f2e84a6, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 2073517718}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: d6071533f40c5a04aa84a3ae6f2e84a6, type: 3}
       insertIndex: -1
       addedObject: {fileID: 2073517717}
@@ -34851,7 +34712,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1329814891}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.0055}
+  m_LocalPosition: {x: 0, y: 0, z: 0.0004}
   m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -36838,7 +36699,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1444286881}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.0055}
+  m_LocalPosition: {x: 0, y: 0, z: -0.0003}
   m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -36846,8 +36707,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0.018, y: 0.0218}
-  m_SizeDelta: {x: 1.4, y: 0.7}
+  m_AnchoredPosition: {x: 0.018, y: 0.0212}
+  m_SizeDelta: {x: 1.4, y: 0.62}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!23 &1444286883
 MeshRenderer:
@@ -39747,44 +39608,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1556852645}
---- !u!114 &1556852643
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1556852637}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1556852645}
-  _rigidbody: {fileID: 1556852639}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1556852644
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -40352,44 +40175,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1581737207}
---- !u!114 &1581737205
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 340400824}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1581737207}
-  _rigidbody: {fileID: 1679858207}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1581737206
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -40957,9 +40742,6 @@ PrefabInstance:
       addedObject: {fileID: 1616325166}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 4e1a484433d5a194bb81fc928c69a3a5, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1616325165}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 4e1a484433d5a194bb81fc928c69a3a5, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 1616325164}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 4e1a484433d5a194bb81fc928c69a3a5, type: 3}
       insertIndex: -1
@@ -41086,44 +40868,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1616325167}
---- !u!114 &1616325165
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 230859939}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1616325167}
-  _rigidbody: {fileID: 1616325158}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1616325166
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -42323,9 +42067,6 @@ PrefabInstance:
       addedObject: {fileID: 1658064811}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a3880d5d145984a4593d1c4882d1d56a, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1658064810}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a3880d5d145984a4593d1c4882d1d56a, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 1658064809}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a3880d5d145984a4593d1c4882d1d56a, type: 3}
       insertIndex: -1
@@ -42452,44 +42193,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1658064812}
---- !u!114 &1658064810
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 624519433}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1658064812}
-  _rigidbody: {fileID: 1658064803}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1658064811
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -43220,9 +42923,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cad6ee4d87efac74780df1f14a2f26ea, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1581737206}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cad6ee4d87efac74780df1f14a2f26ea, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1581737205}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cad6ee4d87efac74780df1f14a2f26ea, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1581737204}
@@ -46494,9 +46194,6 @@ PrefabInstance:
       addedObject: {fileID: 1799990589}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cbeb6ad59ec4290428ca04a89b7908e3, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1799990588}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cbeb6ad59ec4290428ca04a89b7908e3, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 1799990587}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cbeb6ad59ec4290428ca04a89b7908e3, type: 3}
       insertIndex: -1
@@ -46617,44 +46314,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 1799990590}
---- !u!114 &1799990588
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 769408740}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 1799990590}
-  _rigidbody: {fileID: 1799990582}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &1799990589
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -51006,9 +50665,9 @@ MonoBehaviour:
   placer: {fileID: 1956182063}
   delivery: {fileID: 1998025113}
   reFaceOnRelease: 1
-  agentHoldPoint: {fileID: 913268388}
-  heldScale: 0.18
-  heldLocalEuler: {x: 22, y: 180, z: 0}
+  agentHoldPoint: {fileID: 203000318}
+  heldScale: 0.24
+  heldLocalEuler: {x: -12, y: 180, z: 0}
   expandSeconds: 0.35
   hideWhileHeld:
   - {fileID: 668833490}
@@ -53564,44 +53223,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 2073517720}
---- !u!114 &2073517718
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2073517712}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 2073517720}
-  _rigidbody: {fileID: 2073517714}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &2073517719
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -54312,9 +53933,6 @@ PrefabInstance:
       addedObject: {fileID: 2093743939}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 78ab719c74f6e6642a79dd6a399eb64c, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 2093743938}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 78ab719c74f6e6642a79dd6a399eb64c, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 2093743937}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 78ab719c74f6e6642a79dd6a399eb64c, type: 3}
       insertIndex: -1
@@ -54441,44 +54059,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.GrabbableRigidbody
   grabbable: {fileID: 2093743940}
---- !u!114 &2093743938
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1730931809}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: baed3e011583e1844a6e85b1cd0657f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Oculus.Interaction::Oculus.Interaction.HandGrab.DistanceHandGrabInteractable
-  _interactorFilters: []
-  _maxInteractors: -1
-  _maxSelectingInteractors: -1
-  _data: {fileID: 0}
-  _pointableElement: {fileID: 2093743940}
-  _rigidbody: {fileID: 2093743931}
-  _resetGrabOnGrabsUpdated: 1
-  _slippiness: 0
-  _supportedGrabTypes: 3
-  _pinchGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 1
-    _middleRequirement: 1
-    _ringRequirement: 0
-    _pinkyRequirement: 0
-    _unselectMode: 0
-  _palmGrabRules:
-    _thumbRequirement: 1
-    _indexRequirement: 2
-    _middleRequirement: 2
-    _ringRequirement: 2
-    _pinkyRequirement: 1
-    _unselectMode: 0
-  _movementProvider: {fileID: 0}
-  _handAligment: 1
-  _handGrabPoses: []
 --- !u!114 &2093743939
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -55706,8 +55286,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2132201908}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0.8551509, z: 0, w: 0.5183792}
-  m_LocalPosition: {x: 0.46, y: 0.36, z: 0.38}
+  m_LocalRotation: {x: 0, y: 0.78569734, z: 0, w: 0.6186111}
+  m_LocalPosition: {x: 0.58, y: 0.36, z: 0.48}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:

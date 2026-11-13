@@ -84,15 +84,26 @@ namespace MuseDesk.Workspace
             catch { /* non-fatal */ }
         }
 
+        // "Is a finger on this key?" is asked of the PokeInteractable itself (Hover or Select).
+        // The previous version cast PokeInteractableVisual's private HashSet<PokeInteractor> to the
+        // non-generic ICollection, which HashSet does not implement: the cast was always null, this
+        // always returned false, and LateUpdate snapped the cap back to rest every frame, so no key
+        // ever visibly pressed. If the interactable cannot be found we report "active", which leaves
+        // the SDK in charge (fail open: a key that presses matters more than the rest guard).
+        Oculus.Interaction.IInteractableView _interactable;
+        bool _interactableResolved;
+
         bool IsAnyInteractorActive()
         {
-            if (_pokeVis == null || _fInteractors == null) return false;
-            try
+            if (!_interactableResolved)
             {
-                _interactors ??= _fInteractors.GetValue(_pokeVis) as ICollection;
-                return _interactors != null && _interactors.Count > 0;
+                _interactableResolved = true;
+                var poke = GetComponentInParent<Oculus.Interaction.PokeInteractable>(true);
+                _interactable = poke;
             }
-            catch { return false; }
+            if (_interactable == null) return true;
+            var s = _interactable.State;
+            return s == Oculus.Interaction.InteractableState.Hover || s == Oculus.Interaction.InteractableState.Select;
         }
 
         void LateUpdate()
