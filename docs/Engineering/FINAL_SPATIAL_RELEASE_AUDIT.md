@@ -27,7 +27,7 @@ Codes as in `QUEST_HARDWARE_VALIDATION_MATRIX.md`: AUTO, PLAY, APK, LOG, WORN, N
 | Floor: preview, confirm, up-and-over move, beacon, courier delivery, decide, receipt, return, Stop | tests | yes, synthetic room | yes | no | **no** |
 | Ceiling: preview, confirm, dock, lower, hold blocks retract, raise, Stop during descent, return | tests | yes, synthetic room | yes | no | **no** |
 | Real room scan (MRUK) feeding placement | | no | yes | no | **no** |
-| Live backend with the new client | LOG from before the redesign only | no | yes | no | **no** |
+| Live backend | Server side: live e2e 71 of 71 on 2026-11-13 (real server, live producer, sandbox work, approve, reject, card bridge, revise loop; a script plays the client) | no | yes | server only | **no**: the Quest client has not driven a live run since the redesign |
 | Device performance | | | | no | **no** |
 
 **Not one line of the spatial work or the final refinement pass has been verified by a person wearing the headset.** Unattended launches are blocked by the headset lock screen, which is not bypassed.

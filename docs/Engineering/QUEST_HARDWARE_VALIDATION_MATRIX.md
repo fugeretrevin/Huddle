@@ -95,7 +95,7 @@ Record with each session: build commit (see `FINAL_SPATIAL_RELEASE_AUDIT.md`), A
 | # | Requirement | Evidence now | On-head result | Notes |
 |---|---|---|---|---|
 | D1 | Plaque reads LIVE when the desktop server is reachable | AUTO (code) | | "Connecting..." only during a real attempt |
-| D2 | Start launches the real pipeline from the board card | LOG (live e2e, 71 checks, before the redesign) | | Not re-run since; no backend or gateway code changed |
+| D2 | Start launches the real pipeline from the board card | LOG, server side: live e2e 71 of 71 on 2026-11-13 against a real local server (script plays the client) | | The Quest client itself has not driven a live run since the redesign |
 | D3 | Real decision paper; approve resumes real work | LOG (as above) | | |
 | D4 | Real tests run in the sandbox; artifact delivered | LOG (as above) | | |
 | D5 | Paper states "Template recommendation. Not live AI research." when it is a template | AUTO | | |
