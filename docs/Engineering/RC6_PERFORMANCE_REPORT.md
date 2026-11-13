@@ -1,12 +1,34 @@
 # RC6 performance report
 
-2026-11-13. **No device numbers yet.** `RC6_PERFORMANCE.csv` is deliberately not created until a real capture exists.
+2026-11-13. **First real device numbers.** Build `rc6-1`, worn by the owner, Quest 3 at 72 Hz.
 
-## Why there are none
+## Result: no optimisation needed
 
-The headset's lock screen keeps the app from starting unless someone is wearing it, and the lock is not bypassed. Every device number must come from a worn session.
+One app session: process 9561, 16:33:33–16:38:56, 319 seconds. The device log holds it from launch. The recorder script was not running; the lines were read out of the device log afterwards with the same commands. Only the app's own seconds are counted; VrApi also logs the home shell. Data: `RC6_PERFORMANCE.csv`.
 
-## How the numbers will be produced (ready, waiting)
+| Scenario | Seconds | FPS avg | FPS p5 | App GPU ms avg / p95 | CPU main ms avg / p95 |
+|---|---|---|---|---|---|
+| Desk idle (includes the launch second) | 30 | 69.9 | 65 | 3.77 / 4.82 | 6.63 / 11.47 |
+| Desk task running | 8 | 72.3 | 70 | 2.84 / 3.19 | 5.71 |
+| Board open | 3 | 72.7 | 72 | 3.78 / 4.67 | (under 5 s) |
+| Floor preview (grid on) | 61 | 72.1 | 70 | 3.11 / 4.66 | 5.51 / 6.05 |
+| Floor office active | 12 | 72.6 | 72 | 3.12 / 3.65 | 5.60 |
+| Ceiling scan (grid on) | 33 | 72.3 | 72 | 3.31 / 4.10 | 5.65 / 5.99 |
+| Ceiling descending | 3 | 72.7 | 72 | 3.64 / 4.73 | 5.92 |
+| **Ceiling deployed, all effects** | 96 | 72.2 | 69 | **4.73 / 5.97** | 6.39 / 6.99 |
+| Whole session | 319 | 72.1 | 71 | 3.86 / 5.86 (max 6.15) | 6.02 / 6.87 |
+
+- **Frame budget at 72 Hz is 13.9 ms.** Worst app GPU time is 6.15 ms and worst main-thread average is 7 ms, so there is more than 2× headroom. Particles and the portal cone stay on.
+- **Below 70 FPS: 12 of 319 seconds.** These are mostly the launch second and short dips at mode changes (ceiling scan minimum 63, deployed minimum 64). 146 stale frames in total, most in desk idle at launch.
+- **Memory:** Unity total allocated at most 391 MB. Device free memory was about 3.5 GB at the end of the session.
+- **Temperature:** rose from 31 °C to 38 °C over 5 minutes. A longer soak is still needed for thermal behaviour.
+- **Exceptions:** none. There is one benign startup line: Unity probing for Play Asset Delivery (`AssetPackManager` not found).
+- **Not captured:**
+  - paper held or expanded (no marker seconds in this session);
+  - a 15-minute sustained run;
+  - Unity-side GPU time (`FrameTimingManager` reported none on device; VrApi `App=` is used instead).
+
+## How the numbers were produced
 
 1. `scripts/quest_perf_watch.ps1 -Label rc6_worn` has been running since about 17:30. It waits for MuseDesk to open, then records for 30 minutes:
    - the compositor's per-second VrApi line (FPS, app GPU time, CPU/GPU utilisation, stale frames, temperature), with timestamps;

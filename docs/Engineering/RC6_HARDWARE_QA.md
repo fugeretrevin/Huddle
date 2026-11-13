@@ -21,6 +21,22 @@ Please stay a little while (about 20 s) in each state (idle, board open, paper h
 
 Go through in this order. One word per row is enough (ok / bad + what you saw). Takes about 15 minutes.
 
+### Owner's worn results (2026-11-13 ~16:30, rc6-1)
+
+**WORN.** In the owner's words, summarised:
+
+- **Gate A: A1–A9 all good. Gate A passes (WORN).**
+- **Gate B: works, but too strict.** It says "something's in the way" for a sock a full foot away.
+- **Agents walk through their own desks** when they move. Spread the desks or route or hop them.
+- **Gate C: works, with three problems.**
+  - It found few ceiling spots and kept saying the screen is in the way.
+  - It kept saying "can't come down, you're too close". The default lowering should stop further from the user so they don't have to back up.
+- **Scan guide cards** could be cleaner and nicer.
+- **Everything sits slightly too high** (about head level). Lower it so the hands don't have to come up for every button.
+- Performance from the same session: `RC6_PERFORMANCE_REPORT.md`. 72 FPS throughout, worst case the deployed pod at 4.7 ms app GPU.
+
+Fixes are in progress (round RC6-2). B and C stay open until re-worn on the fixed build.
+
 ### Desk (Gate A)
 
 | # | Do | Look for | Result |

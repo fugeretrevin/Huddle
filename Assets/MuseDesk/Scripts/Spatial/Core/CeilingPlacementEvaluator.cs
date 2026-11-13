@@ -16,8 +16,9 @@ namespace MuseDesk.Spatial
         public float wallMargin = 0.35f;
         [Tooltip("Sideways distances from the user to try, in order of preference.")]
         public float[] lateralOptions = { 1.0f, 1.2f, 0.85f, 1.4f };
-        [Tooltip("Forward offsets to try, in order of preference.")]
-        public float[] forwardOptions = { 0.3f, 0.6f, 0.0f };
+        [Tooltip("Forward offsets to try, in order of preference. -0.3 (a little behind the shoulder line) was added " +
+                 "after the first worn pass: with the desk against the wall in front, the forward docks are too near that wall.")]
+        public float[] forwardOptions = { 0.3f, 0.6f, 0.0f, -0.3f };
         [Tooltip("The office root hangs this far below the ceiling when docked.")]
         public float dockDrop = 0.50f;
         [Tooltip("The ceiling must be at least this far above the user's eyes.")]
@@ -30,17 +31,45 @@ namespace MuseDesk.Spatial
         public float[] inspectSideOptions = { 0.6f, 0.7f, 0.5f };
         [Tooltip("Forward offset of the inspection pose from the user's head.")]
         public float inspectForward = 0.15f;
-        [Tooltip("The office root comes to rest this far below the seated eye height.")]
-        public float inspectDropBelowEye = 0.35f;
+        [Tooltip("The office root comes to rest this far below the seated eye height (the normal lowering). " +
+                 "0.35 until the first worn pass; 0.25 stops it higher and clears a desk top without a raise.")]
+        public float inspectDropBelowEye = 0.25f;
         [Tooltip("Further sideways distances tried after inspectSideOptions. With the user keep-out the office " +
-                 "has to rest about 0.85 m to the side, so the closer options above rarely survive.")]
-        public float[] inspectWideSideOptions = { 0.85f, 0.9f, 0.8f };
+                 "has to rest about 0.85 m to the side, so the closer options above rarely survive. 0.9 first and " +
+                 "1.0 added after the first worn pass: further from the user by default.")]
+        public float[] inspectWideSideOptions = { 0.9f, 0.85f, 1.0f, 0.8f };
         [Tooltip("Added to inspectForward, in order of preference. Negative = back toward the user's side, " +
                  "behind the desk's near edge.")]
         public float[] inspectForwardOffsets = { 0f, -0.15f, -0.3f };
         [Tooltip("The inspection pose may be raised by these amounts (subtracted from inspectDropBelowEye), " +
                  "in order of preference, to clear a desk top.")]
         public float[] inspectRaiseOptions = { 0f, 0.05f, 0.10f };
+
+        [Header("Shallow descent: stop higher instead of refusing (after the first worn pass)")]
+        [Tooltip("When no pose of the normal lowering has a clear way down, the office may stop with its base this far " +
+                 "above the TOP of the user keep-out (head + userKeepOutAboveHead), in order of preference. Up there the " +
+                 "keep-out cylinder does not reach it; the 'never overhead' radius still does. Empty = no shallow descent.")]
+        public float[] shallowBaseAboveKeepOut = { 0.05f, 0.10f };
+        [Tooltip("A shallow pose is never higher than this above the eyes, so a paper on the office stays within reach.")]
+        public float shallowMaxAboveEye = 0.25f;
+        [Tooltip("Every engaged pose is at least this far below its dock: a descent the user can see, not a twitch. " +
+                 "When even the shallowest pose would be closer to the dock, that dock is refused for the user.")]
+        public float minDescent = 0.15f;
+
+        [Header("Compact, fixed obstacles (after the first worn pass)")]
+        [Tooltip("Labels of recognised volumes that are compact and fixed (a screen on a wall or on a desk). The EXTRA " +
+                 "clearance of the high part of a path (descentClearance) is not added for them: they block only when the " +
+                 "office box, its column up to the ceiling or the mast comes within the ordinary sweep margin. Everything " +
+                 "else keeps the larger clearance.")]
+        public string[] compactObstacleLabels = { "SCREEN" };
+
+        [Header("Low floor clutter (after the first worn pass)")]
+        [Tooltip("A recognised volume whose top is at most this far above the floor under it counts as low clutter " +
+                 "(a shoe, a bag, a scanned blob a few cm tall).")]
+        public float lowObstacleMaxHeight = 0.15f;
+        [Tooltip("Low clutter keeps only this horizontal margin from the office (plus half a sweep step per sample), " +
+                 "instead of sweepMarginHorizontal: it blocks when it is under the office's footprint or next to it.")]
+        public float lowObstacleMargin = 0.03f;
 
         [Header("Descent path: swept volume, fail closed")]
         [Tooltip("The office box is tested along the whole path at steps of at most this much travel " +
@@ -264,7 +293,11 @@ namespace MuseDesk.Spatial
     ///  - Touching a margin counts as blocked. Anything that cannot be checked counts as blocked.
     ///  - When no candidate survives, the answer is "no", never a smaller margin. To find more
     ///    candidates, widen the search lists (inspectWideSideOptions, inspectForwardOffsets,
-    ///    inspectRaiseOptions, lateralOptions, forwardOptions).
+    ///    inspectRaiseOptions, lateralOptions, forwardOptions, shallowBaseAboveKeepOut).
+    ///  - Two obstacle classes were loosened on the owner's request after the first worn pass (see
+    ///    Classify): low floor clutter keeps lowObstacleMargin, and a compact fixed object (a screen)
+    ///    is not given the high-part extra. The user keep-out, the overhead radius, the sweep itself and
+    ///    everything else are unchanged.
     ///
     /// A clear result means clear of what the room scan recognised. Scans miss monitors, lamps,
     /// cables and people; the user's Confirm and an always-available Cancel / Retract stay part of
@@ -275,7 +308,8 @@ namespace MuseDesk.Spatial
         /// <summary>Hard limits of the sampling, whatever the settings say.</summary>
         public const float MinSweepStep = 0.005f, MaxSweepStep = 0.10f;
         public const int MaxSweepSamples = 4096;
-        /// <summary>At most this many inspection poses are tried per side (keeps the worst case bounded).</summary>
+        /// <summary>At most this many poses of the normal lowering are tried per side (keeps the worst case
+        /// bounded); <see cref="MaxShallowOptions"/> shallow ones may follow.</summary>
         public const int MaxInspectionOptions = 12;
 
         static readonly int[] SidesRightFirst = { 1, -1 };
@@ -286,7 +320,7 @@ namespace MuseDesk.Spatial
         /// <summary>Counters of one search, turned into the words the user is shown.</summary>
         struct Tally
         {
-            public int tried, overhead, offCeiling, low, dockBlocked, pathFurniture, pathUser, pathWall, noInspect, accepted;
+            public int tried, overhead, offCeiling, low, dockBlocked, pathFurniture, pathUser, pathWall, noInspect, unreachable, accepted;
             public string pathLabel;        // first furniture that blocked a path
             public string besideReason;     // why no inspection pose was found on a side, in words
             public bool hasFirstBlocked;
@@ -301,7 +335,8 @@ namespace MuseDesk.Spatial
                     tried, overhead, offCeiling, low, dockBlocked, pathFurniture,
                     string.IsNullOrEmpty(pathLabel) ? "" : " (first: " + pathLabel + ")",
                     pathUser, pathWall, noInspect,
-                    string.IsNullOrEmpty(besideReason) ? "" : " (" + besideReason + ")");
+                    string.IsNullOrEmpty(besideReason) ? "" : " (" + besideReason + ")")
+                    + (unreachable > 0 ? string.Format(CultureInfo.InvariantCulture, ", {0} no clear way up from where the office is", unreachable) : "");
             }
         }
 
@@ -310,7 +345,19 @@ namespace MuseDesk.Spatial
                                     out CeilingPlacement result)
         {
             Tally tally;
-            return Search(room, user, footprint, s, null, out result, out tally);
+            return Search(room, user, footprint, s, null, null, out result, out tally);
+        }
+
+        /// <summary>
+        /// The best dock whose descent is shown clear AND that <paramref name="accept"/> takes (the
+        /// director passes "the way up to it from where the office is now is clear"), so a preview
+        /// never offers a dock Confirm would refuse. Docks it refuses are counted as "no clear way up".
+        /// </summary>
+        public static bool Evaluate(IRoomGeometry room, SeatedUser user, Vector2 footprint, CeilingPlacementSettings s,
+                                    Predicate<CeilingPlacement> accept, out CeilingPlacement result)
+        {
+            Tally tally;
+            return Search(room, user, footprint, s, null, accept, out result, out tally);
         }
 
         /// <summary>
@@ -323,13 +370,13 @@ namespace MuseDesk.Spatial
             if (results == null) results = new List<CeilingPlacement>();
             results.Clear();
             CeilingPlacement first; Tally tally;
-            Search(room, user, footprint, s, results, out first, out tally);
+            Search(room, user, footprint, s, results, null, out first, out tally);
             summary = results.Count > 0 || tally.tried > 0 ? tally.Summary() : first.explanation;
             return results.Count;
         }
 
         static bool Search(IRoomGeometry room, SeatedUser user, Vector2 footprint, CeilingPlacementSettings s,
-                           List<CeilingPlacement> all, out CeilingPlacement result, out Tally t)
+                           List<CeilingPlacement> all, Predicate<CeilingPlacement> accept, out CeilingPlacement result, out Tally t)
         {
             result = default(CeilingPlacement);
             t = default(Tally);
@@ -406,6 +453,8 @@ namespace MuseDesk.Spatial
                         p.explanation = string.Format(CultureInfo.InvariantCulture,
                             "Ceiling dock on your {0}, {1:F1} m to the side, {2:F1} m descent, {3:F2} m from the walls",
                             side > 0 ? "right" : "left", laterals[li], p.descentDistance, edge);
+                        // The caller's own condition (the way up to it). It must not touch Options.
+                        if (accept != null && !accept(p)) { t.unreachable++; continue; }
                         t.accepted++;
                         if (!found) { result = p; found = true; }
                         if (all == null) { Options.Clear(); return true; }
@@ -448,10 +497,14 @@ namespace MuseDesk.Spatial
         {
             inspect = dock;
             check = default(CeilingPathCheck);
-            bool haveFail = false;
+            bool haveFail = false, tooShallow = false;
             PathSweepOptions o = PodPathOptions(mastTop);
+            float lowestStop = dock.position.y - Mathf.Max(0f, s.minDescent) + 1e-4f;
             for (int i = 0; i < Options.Count; i++)
             {
+                // A pose the office could not even come down to (a low ceiling, a raised head): the
+                // pod would hang at the dock beside the head. Not a descent; not offered.
+                if (Options[i].position.y > lowestStop) { tooShallow = true; continue; }
                 CeilingPathCheck c;
                 if (SweepPath(room, user, dock, Options[i], footprint, s, o, out c))
                 {
@@ -461,7 +514,8 @@ namespace MuseDesk.Spatial
                 }
                 if (!haveFail) { check = c; haveFail = true; }
             }
-            if (!haveFail) check.blockedBy = CeilingPathBlock.Unverifiable;
+            // Every pose was too close under the dock: the head is too near the dock for any descent.
+            if (!haveFail) check.blockedBy = tooShallow ? CeilingPathBlock.User : CeilingPathBlock.Unverifiable;
             return false;
         }
 
@@ -479,43 +533,87 @@ namespace MuseDesk.Spatial
             float[] offsets = s.inspectForwardOffsets != null && s.inspectForwardOffsets.Length > 0 ? s.inspectForwardOffsets : ZeroOnly;
             int near = s.inspectSideOptions != null ? s.inspectSideOptions.Length : 0;
             int wide = s.inspectWideSideOptions != null ? s.inspectWideSideOptions.Length : 0;
-            string why = null;
+            var why = new BesideReason();
 
-            for (int ri = 0; ri < raises.Length; ri++)
-            {
-                for (int oi = 0; oi < offsets.Length; oi++)
-                {
-                    for (int di = 0; di < near + wide; di++)
+            // 1. The normal lowering: beside the user, below the eyes. Up to MaxInspectionOptions usable poses.
+            for (int ri = 0; ri < raises.Length && Options.Count < MaxInspectionOptions; ri++)
+                for (int oi = 0; oi < offsets.Length && Options.Count < MaxInspectionOptions; oi++)
+                    for (int di = 0; di < near + wide && Options.Count < MaxInspectionOptions; di++)
                     {
                         float lateral = di < near ? s.inspectSideOptions[di] : s.inspectWideSideOptions[di - near];
-                        Vector3 p = user.head + right * (side * lateral) + user.forward * (s.inspectForward + offsets[oi]);
-                        p.y = user.head.y - s.inspectDropBelowEye + raises[ri];
-                        Quaternion r = SpatialGeometry.FaceUserYaw(p, user.head);
-                        OrientedRect rect = SpatialGeometry.Footprint(p, r, 1f, footprint, s.footprintCenterOffset);
-                        string label;
-                        if (OverlapsFurniture(room, rect, p.y - 0.03f, p.y + s.officeHeight, out label))
-                        {
-                            if (why == null) why = LabelOf(label) + " in the way";
-                            continue;
-                        }
-                        RootPose pose = new RootPose(p, r, 1f);
-                        CeilingPathCheck c;
-                        if (!SweepPath(room, user, pose, pose, footprint, s, out c))
-                        {
-                            if (why == null)
-                            {
-                                if (c.blockedBy == CeilingPathBlock.Furniture) why = LabelOf(c.blockingLabel) + " in the way";
-                                else if (c.blockedBy == CeilingPathBlock.User) why = "too close to you";
-                                else why = "too close to a wall";
-                            }
-                            continue;
-                        }
-                        Options.Add(pose);
-                        if (Options.Count >= MaxInspectionOptions) return;
+                        TryAddInspection(room, user, right, side, lateral, offsets[oi],
+                                         user.head.y - s.inspectDropBelowEye + raises[ri], footprint, s, ref why);
                     }
+
+            // 2. The shallow descent, tried only after every pose above: the office stops with its base
+            //    above the top of the user keep-out (and never higher than shallowMaxAboveEye), so the
+            //    cylinder around the head and torso does not reach it. The same margins, the same sweep;
+            //    only the height differs. FirstClearPath also keeps each pose minDescent below its dock.
+            float[] shallow = s.shallowBaseAboveKeepOut;
+            if (shallow != null)
+            {
+                int cap = Options.Count + MaxShallowOptions;
+                float keepOutTop = user.head.y + Mathf.Max(0f, s.userKeepOutAboveHead);
+                float highest = user.head.y + s.shallowMaxAboveEye + 1e-4f;
+                for (int hi = 0; hi < shallow.Length && Options.Count < cap; hi++)
+                {
+                    float y = keepOutTop + Mathf.Max(0f, shallow[hi]);
+                    if (y > highest) continue;
+                    for (int oi = 0; oi < offsets.Length && Options.Count < cap; oi++)
+                        for (int di = 0; di < near + wide && Options.Count < cap; di++)
+                        {
+                            float lateral = di < near ? s.inspectSideOptions[di] : s.inspectWideSideOptions[di - near];
+                            TryAddInspection(room, user, right, side, lateral, offsets[oi], y, footprint, s, ref why);
+                        }
                 }
             }
-            if (Options.Count == 0 && string.IsNullOrEmpty(t.besideReason)) t.besideReason = why;
+            if (Options.Count == 0 && string.IsNullOrEmpty(t.besideReason)) t.besideReason = why.Words();
+        }
+
+        /// <summary>At most this many shallow poses per side, after the normal ones.</summary>
+        public const int MaxShallowOptions = 6;
+
+        /// <summary>
+        /// Why no pose beside the user was usable, in words. The first refusal of each kind is kept and
+        /// furniture is named before a wall, a wall before "too close to you": the closest options
+        /// (0.5 to 0.7 m) are tried first and always fail the user keep-out, so naming the first refusal
+        /// said "too close to you" even when the poses that could work were stopped by a screen or a wall.
+        /// </summary>
+        struct BesideReason
+        {
+            public string furniture, wall, user;
+
+            public void Note(CeilingPathBlock kind, string label)
+            {
+                if (kind == CeilingPathBlock.Furniture) { if (furniture == null) furniture = LabelOf(label) + " in the way"; }
+                else if (kind == CeilingPathBlock.User) { if (user == null) user = "too close to you"; }
+                else if (wall == null) wall = "too close to a wall";
+            }
+
+            public string Words() { return furniture ?? wall ?? user; }
+        }
+
+        static void TryAddInspection(IRoomGeometry room, SeatedUser user, Vector3 right, int side, float lateral, float offset,
+                                     float y, Vector2 footprint, CeilingPlacementSettings s, ref BesideReason why)
+        {
+            Vector3 p = user.head + right * (side * lateral) + user.forward * (s.inspectForward + offset);
+            p.y = y;
+            Quaternion r = SpatialGeometry.FaceUserYaw(p, user.head);
+            OrientedRect rect = SpatialGeometry.Footprint(p, r, 1f, footprint, s.footprintCenterOffset);
+            string label;
+            if (OverlapsFurniture(room, rect, p.y - 0.03f, p.y + s.officeHeight, out label))
+            {
+                why.Note(CeilingPathBlock.Furniture, label);
+                return;
+            }
+            RootPose pose = new RootPose(p, r, 1f);
+            CeilingPathCheck c;
+            if (!SweepPath(room, user, pose, pose, footprint, s, out c))
+            {
+                why.Note(c.blockedBy, c.blockingLabel);
+                return;
+            }
+            Options.Add(pose);
         }
 
         static bool OverlapsFurniture(IRoomGeometry room, OrientedRect rect, float minY, float maxY, out string label)
@@ -612,6 +710,33 @@ namespace MuseDesk.Spatial
         static bool[] _excused = new bool[32];
         static float[] _excusedDistance = new float[32];
         static float[] _excusedOverlap = new float[32];
+        static byte[] _kind = new byte[32];
+
+        public const byte KindUsual = 0, KindLow = 1, KindCompact = 2;
+
+        /// <summary>
+        /// How the sweep treats one recognised volume:
+        ///  - KindLow: low floor clutter. Its top is at most lowObstacleMaxHeight above the detected floor
+        ///    under its centre. It keeps lowObstacleMargin (not sweepMarginHorizontal) and never the
+        ///    high-part extra: a sock or a shoe blocks only when it is under the office or next to it.
+        ///    No floor under it: not low (fail closed).
+        ///  - KindCompact: its label is in compactObstacleLabels (a screen). It keeps the ordinary sweep
+        ///    margin everywhere, but not the extra clearance of the high part of a path.
+        ///  - KindUsual: everything else, unchanged.
+        /// </summary>
+        public static byte Classify(IRoomGeometry room, FurnitureBox box, CeilingPlacementSettings s)
+        {
+            if (room != null && s.lowObstacleMaxHeight > 0f)
+            {
+                int fl = SpatialGeometry.FindFloor(room, box.center);
+                if (fl >= 0 && box.maxY <= room.GetFloor(fl).height + s.lowObstacleMaxHeight) return KindLow;
+            }
+            string[] compact = s.compactObstacleLabels;
+            if (compact != null && !string.IsNullOrEmpty(box.label))
+                for (int i = 0; i < compact.Length; i++)
+                    if (string.Equals(compact[i], box.label, StringComparison.OrdinalIgnoreCase)) return KindCompact;
+            return KindUsual;
+        }
 
         /// <summary>
         /// The swept-volume test for a route of one to three straight legs. Every leg is sampled as
@@ -709,6 +834,12 @@ namespace MuseDesk.Spatial
             float highAbove = o.absoluteHigh ? userTop : routeLo + s.highClearanceAboveInspection;
             int furnitureCount = haveRoom ? room.FurnitureCount : 0;
 
+            // Per box, once per sweep: low floor clutter keeps lowObstacleMargin instead of the sweep
+            // margin; a compact fixed object (a screen) never gets the extra clearance of the high part.
+            if (_kind.Length < furnitureCount) _kind = new byte[furnitureCount];
+            float lowMargin = Mathf.Max(0f, s.lowObstacleMargin);
+            for (int f = 0; f < furnitureCount; f++) _kind[f] = Classify(room, room.GetFurniture(f), s);
+
             // The desk-end excuses (see the summary).
             float region = Mathf.Max(0f, s.deskStartRegion);
             float tolerance = Mathf.Max(0f, s.deskContactTolerance);
@@ -744,9 +875,12 @@ namespace MuseDesk.Spatial
                     float lo = Mathf.Max(pathLo, p.position.y - dyHalf);
                     float hiBase = Mathf.Min(pathHi, p.position.y + dyHalf);
                     float hi = hiBase + s.officeHeight * p.scale;
-                    // High part of the path: out of the user's sight and reach, so the larger clearance applies.
+                    // High part of the path: out of the user's sight and reach, so the larger clearance applies
+                    // (not to low clutter or compact fixed objects, see Classify).
                     bool high = hiBase > highAbove;
-                    float need = marginH + pad + (high ? extraHigh : 0f);
+                    float needUsual = marginH + pad + (high ? extraHigh : 0f);
+                    float needCompact = marginH + pad;
+                    float needLow = Mathf.Min(marginH, lowMargin) + pad;
                     // With a mast, everything between a high office and the ceiling is in the way too.
                     float boxTop = o.mast && high && o.mastTop.y > hi ? o.mastTop.y : hi;
                     float travelled = before + k * legTravel;
@@ -759,6 +893,7 @@ namespace MuseDesk.Spatial
                     for (int f = 0; f < furnitureCount; f++)
                     {
                         FurnitureBox box = room.GetFurniture(f);
+                        float need = _kind[f] == KindLow ? needLow : (_kind[f] == KindCompact ? needCompact : needUsual);
                         bool touches = SpatialGeometry.VerticalRangesTouch(lo, boxTop, box.minY, box.maxY, marginV);
                         float d = float.PositiveInfinity;
                         if (touches)

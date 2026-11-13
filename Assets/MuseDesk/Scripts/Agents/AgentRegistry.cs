@@ -57,7 +57,7 @@ namespace MuseDesk.Agents
             // anchor, fall back to a point straight in front of the head.
             if (_researcherMove != null)
             {
-                if (deliveryAnchor != null) _researcherMove.DeliverTo(deliveryAnchor);
+                if (deliveryAnchor != null) _researcherMove.DeliverTo(deliveryAnchor, null, true);
                 else _researcherMove.DeliverInFrontOfUser(0.4f);
             }
             if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(true);

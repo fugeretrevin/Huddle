@@ -252,7 +252,11 @@ namespace MuseDesk.Spatial
             o.handPlaced = handPlaced;
             o.mast = mast;
             o.mastTop = mastTop;
-            bool ok = CeilingPlacementEvaluator.PlanRoute(_room, user, from, to, footprint, ceilingSettings, o, allowStraight, out route, out check);
+            // To or from the dock: the usual shapes first, then the dock side step (worn pass 1), so a dock
+            // beside or behind the shoulder can be reached without turning the office over the head.
+            bool ok = mast
+                ? FloorRoutePlanner.Plan(_room, user, from, to, footprint, ceilingSettings, o, allowStraight, out route, out check)
+                : CeilingPlacementEvaluator.PlanRoute(_room, user, from, to, footprint, ceilingSettings, o, allowStraight, out route, out check);
             LastRoute = route;
             LastRouteCheck = check;
             o.absoluteHigh = true;              // as PlanRoute and FloorRoutePlanner sweep every shape
@@ -485,11 +489,24 @@ namespace MuseDesk.Spatial
 
         bool BeginCeilingPreview()
         {
-            SeatedUser user = _user();
+            SeatedUser user = CeilingUser();
             int keep = ceilingSettings.preferredSide;
             ceilingSettings.preferredSide = _ceilingSide;
             CeilingPlacement fresh;
-            bool ok = CeilingPlacementEvaluator.Evaluate(_room, user, footprint, ceilingSettings, out fresh);
+            // Only a dock the office can be taken up to from where it is now (the check Confirm makes
+            // again), as the floor preview only offers spots with a clear way to them.
+            RootPose current = _mover.CurrentPose;
+            bool fromDesk = Mode == PlacementMode.Desk;
+            Predicate<CeilingPlacement> reachable = p =>
+            {
+                var o = default(PathSweepOptions);
+                o.fromDesk = fromDesk;
+                o.mast = true;
+                o.mastTop = p.mastTop;
+                WorkspaceRoute r; CeilingPathCheck c;
+                return FloorRoutePlanner.Plan(_room, user, current, p.DockPose, footprint, ceilingSettings, o, false, out r, out c);
+            };
+            bool ok = CeilingPlacementEvaluator.Evaluate(_room, user, footprint, ceilingSettings, reachable, out fresh);
             ceilingSettings.preferredSide = keep;
             _roomDirty = false;
             if (!ok)
@@ -762,7 +779,7 @@ namespace MuseDesk.Spatial
                 // The preview may be minutes old: check the dock and the way down again for where
                 // the user sits now, then the way up to it from where the office is.
                 CeilingPlacement fresh;
-                if (!CeilingPlacementEvaluator.ValidateDock(_room, user, _previewCeiling.DockPose, footprint, ceilingSettings, out fresh))
+                if (!CeilingPlacementEvaluator.ValidateDock(_room, CeilingUser(), _previewCeiling.DockPose, footprint, ceilingSettings, out fresh))
                     return Refuse("That ceiling spot is no longer clear: " + fresh.explanation + ". Choose Next, or Cancel.");
                 WorkspaceRoute route; CeilingPathCheck check;
                 if (!PlanMove(user, current, fresh.DockPose, fromDesk, false, false, false, true, fresh.mastTop, out route, out check))
@@ -807,7 +824,7 @@ namespace MuseDesk.Spatial
             if (Held) { bool held = _pod.RequestDescend(); Touch(); return held; }          // the pod says why
             if (GrabBusy) return Refuse(HandsBusyWords);
             CeilingPlacement fresh;
-            if (!CeilingPlacementEvaluator.ValidateDock(_room, _user(), _pod.DockPose, footprint, ceilingSettings, out fresh))
+            if (!CeilingPlacementEvaluator.ValidateDock(_room, CeilingUser(), _pod.DockPose, footprint, ceilingSettings, out fresh))
                 return Refuse("Cannot come down now: " + fresh.explanation + ". Move, clear the way, or return to Desk and choose another spot.");
             _ceiling = fresh;
             _pod.Configure(_pod.DockPose, fresh.InspectionPose);
@@ -1382,7 +1399,7 @@ namespace MuseDesk.Spatial
                 // Docked: look again at the way down, so the words are true before the user asks.
                 // (A descent request checks again anyway.)
                 CeilingPlacement fresh;
-                if (CeilingPlacementEvaluator.ValidateDock(_room, _user(), _pod.DockPose, footprint, ceilingSettings, out fresh))
+                if (CeilingPlacementEvaluator.ValidateDock(_room, CeilingUser(), _pod.DockPose, footprint, ceilingSettings, out fresh))
                 {
                     _ceiling = fresh;
                     _pod.Configure(_pod.DockPose, fresh.InspectionPose);
@@ -1476,6 +1493,20 @@ namespace MuseDesk.Spatial
         }
 
         /// <summary>
+        /// The user for the ceiling search and its re-checks: the head where it is, but "forward" is the
+        /// seat's forward (<see cref="SeatForward"/>), not where the eyes point. Worn pass 1: the user
+        /// looks up and to the side at the pod to bring it down (key, voice or pull gesture), and with
+        /// the gaze as forward the poses "beside you" turned with the head, into the desk and the screen
+        /// in front ("SCREEN in the way") or across the face ("too close to you"). Only head.position
+        /// is used by the sweep itself, so no margin changes.
+        /// </summary>
+        SeatedUser CeilingUser()
+        {
+            SeatedUser u = _user();
+            return new SeatedUser(u.head, SeatForward(u));
+        }
+
+        /// <summary>
         /// The tracking origin moved (system recenter, headset put back on). World coordinates no
         /// longer mean what they did, so nothing is taken on trust:
         ///  - a preview is dropped;
@@ -1528,7 +1559,7 @@ namespace MuseDesk.Spatial
                 if (haveRef)
                 {
                     RootPose dock = WorkspacePlacementCodec.ToWorld(reference, _dockLocalPos, _dockLocalRot, 1f);
-                    valid = CeilingPlacementEvaluator.ValidateDock(_room, _user(), dock, footprint, ceilingSettings, out fresh);
+                    valid = CeilingPlacementEvaluator.ValidateDock(_room, CeilingUser(), dock, footprint, ceilingSettings, out fresh);
                 }
                 if (valid)
                 {
@@ -1624,7 +1655,7 @@ namespace MuseDesk.Spatial
             {
                 if (!saved.hasDock) { reason = "Saved placement has no ceiling dock"; return false; }
                 CeilingPlacement placement;
-                if (!CeilingPlacementEvaluator.ValidateDock(_room, user, dock, footprint, ceilingSettings, out placement))
+                if (!CeilingPlacementEvaluator.ValidateDock(_room, CeilingUser(), dock, footprint, ceilingSettings, out placement))
                 { reason = placement.explanation; return false; }
                 if (!PlanMove(user, current, placement.DockPose, true, false, false, false, true, placement.mastTop, out route, out check))
                 { reason = check.Words("The way up to the saved dock"); return false; }

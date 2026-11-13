@@ -32,7 +32,8 @@ namespace MuseDesk.Spatial
     /// shape on a tie), so the user hears about the cabinet by the spot rather than about a turn
     /// over their head that a side step avoids anyway.
     ///
-    /// Routes from or to the ceiling dock (mast option) keep their own shapes.
+    /// Routes from or to the ceiling dock (mast option) try the usual shapes, then the dock side step
+    /// (<see cref="PlanDockSideStep"/>, worn pass 1): rise, step sideways at the transit height, go to the dock.
     /// </summary>
     public static class FloorRoutePlanner
     {
@@ -73,7 +74,7 @@ namespace MuseDesk.Spatial
         {
             if (CeilingPlacementEvaluator.PlanRoute(room, user, from, to, footprint, s, o, allowStraight, out route, out check))
                 return true;
-            if (o.mast) return false;
+            if (o.mast) return PlanDockSideStep(room, user, from, to, footprint, s, o, ref route, ref check);
 
             float h = CeilingPlacementEvaluator.TransitHeight(room, user, from, to, s);
             bool reverse = o.toDesk && !o.fromDesk;
@@ -111,6 +112,72 @@ namespace MuseDesk.Spatial
                 if (p > best + 1e-4f) { best = p; route = r; check = c; }
             }
             return false;
+        }
+
+        /// <summary>Sideways steps (metres) tried for a trip between a low pose and the ceiling dock.</summary>
+        public static readonly float[] DockSteps = { 0.6f, 0.9f, 1.2f };
+
+        /// <summary>
+        /// A trip between a low pose (the desk, a floor spot) and the ceiling dock when the usual
+        /// up-and-over is refused (worn pass 1). Up-and-over rises at the desk and then crosses to the
+        /// dock while it turns; with the dock beside or behind the shoulder (the only docks left when
+        /// the desk stands against the wall in front) that turn swings the office's near corner to 7 or
+        /// 8 cm from the head's axis and the sweep refuses it, so no dock could be reached at all.
+        ///
+        /// Shape: rise straight up at the low pose without turning (as before: everything below the
+        /// transit height is a pure vertical move), step sideways toward the dock at the transit height
+        /// still without turning (the office moves away from the head, its near edge never closer than
+        /// at the desk), then go to the dock, turning on that last leg. Every shape is judged by the
+        /// unchanged SweepRoute with the caller's options; a trip from the dock is the same shape
+        /// reversed. Nothing is relaxed.
+        /// </summary>
+        static bool PlanDockSideStep(IRoomGeometry room, SeatedUser user, RootPose from, RootPose to, Vector2 footprint,
+                                     CeilingPlacementSettings s, PathSweepOptions o, ref WorkspaceRoute route, ref CeilingPathCheck check)
+        {
+            float h = CeilingPlacementEvaluator.TransitHeight(room, user, from, to, s);
+            bool fromHigh = from.position.y > to.position.y;
+            RootPose low = fromHigh ? to : from;
+            RootPose high = fromHigh ? from : to;
+            // Only a trip between a pose below the transit height and one at or above it (the dock).
+            if (low.position.y >= h - 0.001f || high.position.y < h - 0.001f) return false;
+
+            Vector3 lateral = low.rotation * Vector3.left;
+            lateral.y = 0f;
+            if (lateral.sqrMagnitude < 1e-6f) return false;
+            lateral.Normalize();
+            Vector3 across = high.position - low.position;
+            across.y = 0f;
+            Vector3 side = Vector3.Dot(across, lateral) >= 0f ? lateral : -lateral;
+
+            PathSweepOptions so = o;
+            so.absoluteHigh = true;                     // as PlanRoute sweeps its shapes
+            float best = Progress(check, fromHigh);
+            for (int i = 0; i < DockSteps.Length; i++)
+            {
+                WorkspaceRoute r = BuildDockSideStep(low, high, h, side * DockSteps[i]);
+                if (fromHigh) r = r.Reversed();
+                CeilingPathCheck c;
+                if (CeilingPlacementEvaluator.SweepRoute(room, user, r, footprint, s, so, out c))
+                {
+                    route = r;
+                    check = c;
+                    return true;
+                }
+                float p = Progress(c, fromHigh);
+                if (p > best + 1e-4f) { best = p; route = r; check = c; }
+            }
+            return false;
+        }
+
+        /// <summary>low, (above low at height), (stepped sideways at height, same yaw), high.</summary>
+        public static WorkspaceRoute BuildDockSideStep(RootPose low, RootPose high, float height, Vector3 step)
+        {
+            var r = new WorkspaceRoute();
+            r.Add(low);
+            r.Add(new RootPose(new Vector3(low.position.x, height, low.position.z), low.rotation, low.scale));
+            r.Add(new RootPose(new Vector3(low.position.x + step.x, height, low.position.z + step.z), low.rotation, low.scale));
+            r.Add(high);
+            return r;
         }
 
         /// <summary>How far from the low (desk) end a refused shape got, 0..1.</summary>

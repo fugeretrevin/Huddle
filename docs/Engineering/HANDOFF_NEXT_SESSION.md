@@ -1,4 +1,4 @@
-# Handoff for the next session
+﻿# Handoff for the next session
 
 2026-11-13, about 11:50. Deadline 2026-11-18, noon Pacific.
 
@@ -53,7 +53,7 @@ Automated: every EditMode fixture passes when run one at a time (about 600 tests
 - Git still prints "bad object refs/stash" on maintenance; untouched. `.blend1` files stay uncommitted.
 - No device performance numbers yet. Recorder: `scripts\quest_perf_watch.ps1 -Label desk -CaptureMinutes 4` (start by hand).
 
-## Antigravity ceiling VFX (not in `rc-feedback-1`; INTEGRATED in the ceiling ideas round below — kept for the notes)
+## Antigravity ceiling VFX (not in `rc-feedback-1`; INTEGRATED in the ceiling ideas round below â€” kept for the notes)
 
 Branch `art-spatial-workspace-expansion`, commit `cbd606b`, in `.worktrees/spatial-art` (the earlier merge took `53f7129`). By Antigravity's own report, not checked here:
 - `CeilingMount` rebuilt with a 4-leaf iris docking bay (4 bones `Bone_Iris_F/B/L/R`, 0.44 m canopy, 4,580 tris); `DockedPose` moved to y = -0.388 m.
@@ -77,11 +77,11 @@ Antigravity's `cbd606b` art paths merged (our `Art/Shaders.meta` kept). Built by
 |---|---|---|
 | Ceiling VFX (iris mount, portal cone, halo, rings, particles) | `CeilingVfxBridge` maps `CeilingPodMachine` states onto `CeilingDeploymentVFXController.OnPodState`; switches `vfxEnabled` / `particlesEnabled` (turn particles off first if fill rate hurts) | Builder: mount inside Core's `mountClearance`/`mountDepth`; `mountOffset`, `mastAttachHeight`, `dockDrop` unchanged. PLAY: arrival burst + halo at dock. 11 tests |
 | (4) Three-stage audio | `CeilingPodAudio`: unlock click, travel hum (0.9 down / 1.1 up), lock thunk+chime; procedural clips; Meta XR Audio spatializer | PLAY: cues on all legs incl. the first trip up from the desk (fixed: cue raised a frame before Ceiling mode was set is held 0.3 s). 9 tests. Volumes unheard |
-| (1)+(2) Reach up and pull it down | `CeilingPullGesture`: hand ray or gaze on the pod/mast, pinch, pull down 12 cm → lower; push up when engaged → raise. Calls the core's `RequestPodDescend/Retract` (same sweep as the console) and shows the refusal reason | PLAY via `CeilingPullDrive`: not-targeted, early release, sideways, too slow, busy hand, held all refused; pull down and push up move the pod (false "refused" on push-up fixed). 14 tests |
+| (1)+(2) Reach up and pull it down | `CeilingPullGesture`: hand ray or gaze on the pod/mast, pinch, pull down 12 cm â†’ lower; push up when engaged â†’ raise. Calls the core's `RequestPodDescend/Retract` (same sweep as the console) and shows the refusal reason | PLAY via `CeilingPullDrive`: not-targeted, early release, sideways, too slow, busy hand, held all refused; pull down and push up move the pod (false "refused" on push-up fixed). 14 tests |
 | (3) Scan-reveal grid | `CeilingScanReveal` + `CeilingScanGrid.shader`: teal grid 2 mm under the real ceiling around the candidate mount point during ceiling preview, red when invalid, fades on confirm/cancel | PLAY: shown at ceiling-2 mm, wipe 0.6 s, fade to 0 after confirm. 8 tests |
-| (5) Bounce light | Skipped (cost, uncertain on Quest) | — |
+| (5) Bounce light | Skipped (cost, uncertain on Quest) | â€” |
 
-Ceiling safety fixtures re-run after the builders: Evaluator 5, Pod 8, SweptPath 19, SweptMoves 17, Director 15 — all pass.
+Ceiling safety fixtures re-run after the builders: Evaluator 5, Pod 8, SweptPath 19, SweptMoves 17, Director 15 â€” all pass.
 
 Check on the headset: the effects over passthrough (fill rate), sound levels, whether a 12 cm pull feels right (thresholds in `CeilingPullGesture.settings`), the cue label reads the right way round, grid brightness. Known: a pinch aimed at a paper before the ISDK hovers it can still arm the pull (it needs 12 cm of travel to fire).
 
@@ -103,7 +103,7 @@ Docs still out of date: `ROOM_PLACEMENT_FINDINGS.md` "known mismatch" (wall marg
 
 ## Scene build order (append-only; never re-run older builders after newer)
 
-... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`, then headset feedback 2: `BuildTextFitV1`, `BuildFloorPlaceFixV1`, `BuildPlacementGuideV1`, then rc6 gesture safety: `BuildPlaceHereV1`.
+... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`, then headset feedback 2: `BuildTextFitV1`, `BuildFloorPlaceFixV1`, `BuildPlacementGuideV1`, then rc6 gesture safety: `BuildPlaceHereV1`, then rc6-1 feedback (guide card polish, desk office 9 cm lower: `offDeskDrop` 0.30 -> 0.39): `BuildGuideCardPolishV1` (run AFTER `BuildPlaceHereV1`; check with `GuideCardPolishDrive Heights|Card`).
 
 ## Tools
 
@@ -112,3 +112,6 @@ Docs still out of date: `ROOM_PLACEMENT_FINDINGS.md` "known mismatch" (wall marg
 - Tests: `scripts\tests.ps1 <FixtureName>`.
 - Agents: `.claude/agents/` has `musedesk-scout` (Haiku), `musedesk-builder` (Sonnet), `musedesk-architect` (Opus). Route by cost.
 - Records: `QUEST_HARDWARE_VALIDATION_MATRIX.md` (defect log has this round's seven items as "In progress"; mark them after the owner re-tests), `FINAL_SPATIAL_RELEASE_AUDIT.md` (describes `rc-spatial-1`; not yet updated for this build).
+
+Walk routes (rc6-1 feedback, agents clipped through the Researcher's desk): after BuildPlaceHereV1, run BuildWalkRoutesV1 (Researcher exit waypoints + moves Decor_MiniPlant behind the agents; Revert() undoes). Check with scripts\drv.ps1 WalkClipDrive Measure (edit or Play) and WalkClipDrive Delivery then DeliveryResult (Play).
+

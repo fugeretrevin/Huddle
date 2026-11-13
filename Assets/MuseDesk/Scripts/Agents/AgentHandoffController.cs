@@ -24,6 +24,9 @@ namespace MuseDesk.Agents
 
         [Tooltip("How close (m) the courier stops to the receiver before the give/receive beat.")]
         public float stopDistance = 0.18f;
+        [Tooltip("Metres (station-local, scaled with the workspace) the stop point is pulled back toward the agents' " +
+                 "side so the courier does not stand on the desk edge.")]
+        public float backOffset = 0.015f;
         [Tooltip("Seconds the give/receive pose holds before the courier walks home.")]
         public float exchangeHold = 1.0f;
         [Tooltip("After an approval the Researcher plays its success reaction. The walk to the Developer " +
@@ -210,6 +213,8 @@ namespace MuseDesk.Agents
             toward.y = 0f;
             if (toward.sqrMagnitude < 1e-4f) toward = Vector3.back;
             dest.position = target.transform.position + toward.normalized * stopDistance;
+            var frame = source.transform.parent != null ? source.transform.parent : source.transform;
+            dest.position += frame.TransformVector(Vector3.back * backOffset);
             dest.position = new Vector3(dest.position.x, source.transform.position.y, dest.position.z);
 
             _stage = Stage.Approaching;

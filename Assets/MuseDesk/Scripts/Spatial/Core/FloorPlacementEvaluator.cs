@@ -42,6 +42,15 @@ namespace MuseDesk.Spatial
                  "be shown clear and then refused by the route.")]
         public float placedWallMargin = 0.11f;
 
+        [Header("Low floor clutter (after the first worn pass)")]
+        [Tooltip("A recognised volume whose top is at most this far above the floor counts as low clutter (a sock, " +
+                 "a shoe, a scanned blob a few cm tall). Taller furniture keeps the margins above.")]
+        public float lowObstacleMaxHeight = 0.15f;
+        [Tooltip("Low clutter blocks a spot only within this distance of the footprint: under the office or right " +
+                 "next to it. Just above the sweep's own low-clutter margin at rest (0.03 m + half a sweep step = " +
+                 "0.055 m), so a spot shown clear is one the route can reach.")]
+        public float lowObstaclePad = 0.06f;
+
         [Header("Office footprint")]
         [Tooltip("Footprint centre in root-local XZ at scale 1 (the office is not centred on its root).")]
         public Vector2 footprintCenterOffset = new Vector2(0f, 0.12f);
@@ -259,12 +268,16 @@ namespace MuseDesk.Spatial
             clearance = wall;
 
             float top = plane.height + s.officeHeight * scale;
+            float lowTop = plane.height + Mathf.Max(0f, s.lowObstacleMaxHeight);
+            float lowNeed = Mathf.Min(furnitureClearance, Mathf.Max(0f, s.lowObstaclePad));
             for (int i = 0; i < room.FurnitureCount; i++)
             {
                 FurnitureBox box = room.GetFurniture(i);
                 if (box.maxY <= plane.height + 0.02f || box.minY >= top) continue;   // not at office height
                 float d = rect.DistanceTo(box.Footprint);
-                if (d < furnitureClearance) { why = RejectFurniture; return false; }
+                // Low clutter (worn pass 1): only under the office or right next to it. Taller: unchanged.
+                float need = box.maxY <= lowTop ? lowNeed : furnitureClearance;
+                if (d < need) { why = RejectFurniture; return false; }
                 if (d < clearance) clearance = d;
             }
             if (clearance > 1f) clearance = 1f;

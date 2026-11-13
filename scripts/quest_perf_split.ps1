@@ -50,9 +50,16 @@ if (Test-Path $ulFile) {
 }
 $marks = @($marks | Sort-Object { $_.t })
 
+# The app's process id(s), taken from its own Unity log lines ("I/Unity   ( 9561):"). VrApi also logs
+# seconds for other apps (home shell, lock screen); only the app's own seconds are kept.
+$appPids = @{}
+if (Test-Path $ulFile) { foreach ($line in (Get-Content $ulFile)) { if ($line -match '\[MuseDesk' -and $line -match '\(\s*(\d+)\)\s*:') { $appPids[$matches[1]] = $true } } }
+
 # --- VrApi seconds ---
 $rows = New-Object System.Collections.Generic.List[object]
 foreach ($line in (Get-Content $vrFile)) {
+    if ($line -notmatch 'FPS=(\d+)/(\d+)') { continue }
+    if ($appPids.Count -gt 0 -and $line -match '\(\s*(\d+)\)\s*:' -and -not $appPids.ContainsKey($matches[1])) { continue }
     if ($line -notmatch 'FPS=(\d+)/(\d+)') { continue }
     $r = @{ fps = [double]$matches[1]; app = $null; stale = 0; temp = $null; t = (Get-LineTime $line) }
     if ($line -match '\bApp=([\d.]+)ms')  { $r.app = Num $matches[1] }

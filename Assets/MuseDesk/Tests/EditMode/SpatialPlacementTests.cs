@@ -473,19 +473,30 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsTrue(right && left, "a desk in front leaves both sides free");
 
             // The room RoomPlacementService.UseSyntheticTestRoom builds: 4 x 4 m, ceiling 2.5 m above
-            // the floor, the desk centred 0.75 m ahead. That helper puts the floor 1.15 m below the
-            // eyes, which leaves the desk top exactly 5 cm (the vertical margin) under the default
-            // inspection height: a tie that rounding decides. Here the floor is 1.14 m below, so the
-            // gap is 4 cm and the outcome is certain: the search has to raise the pose, because
-            // the margin does not give.
+            // the floor, the desk centred 0.75 m ahead, here with the floor 1.14 m below the eyes so
+            // the desk top is 0.39 m below them.
+            // CHANGED (worn pass 1): with the old 0.35 m drop the desk top was 4 cm under the pose and
+            // the search had to raise it. The default drop is now 0.25 m: the office stops 14 cm over
+            // the desk top without a raise. The vertical margin is unchanged; the raise is still
+            // there for a higher desk (next block).
             float floorY = user.head.y - 1.14f;
             var play = SyntheticRoomGeometry.Rectangle(0f, 0f, 4f, 4f, floorY, floorY + 2.5f);
             play.AddFurniture("TABLE", new Vector3(0f, floorY + 0.375f, 0.75f), new Vector3(1.4f, 0.75f, 0.7f));
             CeilingPlacement q;
             Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(play, user, Fp, s, out q), q.explanation);
             Assert.IsTrue(q.path.clear);
+            Assert.AreEqual(user.head.y - s.inspectDropBelowEye, q.inspectionPosition.y, 1e-4f, "the normal lowering, no raise needed");
+            Assert.That(q.inspectionPosition.y - (floorY + 0.75f), Is.GreaterThan(s.sweepMarginVertical + 0.05f), "14 cm over the desk");
+
+            // A desk 4 cm under the default pose (top 0.29 m below the eyes): the margin does not give,
+            // the pose is raised.
+            var high = SyntheticRoomGeometry.Rectangle(0f, 0f, 4f, 4f, floorY, floorY + 2.5f);
+            float top = user.head.y - s.inspectDropBelowEye - 0.04f;
+            high.AddFurniture("TABLE", new Vector3(0f, (floorY + top) * 0.5f, 0.75f), new Vector3(1.4f, top - floorY, 0.7f));
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(high, user, Fp, s, out q), q.explanation);
+            Assert.IsTrue(q.path.clear);
             Assert.That(q.inspectionPosition.y, Is.GreaterThan(user.head.y - s.inspectDropBelowEye + 0.04f), "raised clear of the desk top");
-            Assert.That(q.inspectionPosition.y - (floorY + 0.75f), Is.GreaterThan(s.sweepMarginVertical + 0.02f), "4 cm + a 5 cm raise = 9 cm over the desk");
+            Assert.That(q.inspectionPosition.y - top, Is.GreaterThan(s.sweepMarginVertical + 0.02f), "4 cm + a 5 cm raise = 9 cm over the desk");
         }
 
         [Test]
@@ -515,7 +526,9 @@ namespace MuseDesk.Tests.EditMode
             var s = new CeilingPlacementSettings();
 
             // With only the first forward option there is no room beside the user on either side...
-            var narrow = new CeilingPlacementSettings { inspectForwardOffsets = new[] { 0f } };
+            // (the shallow descent is switched off here: this test is about the forward offsets; the
+            // office stopping above the screens is covered in CeilingWornPassTests)
+            var narrow = new CeilingPlacementSettings { inspectForwardOffsets = new[] { 0f }, shallowBaseAboveKeepOut = new float[0] };
             CeilingPlacement none;
             Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, narrow, out none));
             StringAssert.Contains("no room beside you", none.explanation);
@@ -533,14 +546,16 @@ namespace MuseDesk.Tests.EditMode
         public void BlockedWayToTheFirstInspectionPose_TriesTheNextPose_NeverTheBlockedOne()
         {
             var room = SpatialRooms.Office();
-            // A shelf board on each side, 1.36 to 1.40 m high, over the desk 1.0 to 1.1 m ahead. It is
-            // above the resting office (top at 1.30 m) and beyond its far end, so the first
-            // inspection pose is usable on its own; but the office comes down through that height
-            // while still on the high part of its path, where it needs 0.405 m, and it is too close.
-            room.AddFurniture("WALL_SHELF", new Vector3(0.75f, 1.38f, 1.05f), new Vector3(0.2f, 0.04f, 0.1f));
-            room.AddFurniture("WALL_SHELF", new Vector3(-0.75f, 1.38f, 1.05f), new Vector3(0.2f, 0.04f, 0.1f));
             SeatedUser user = SpatialRooms.User();
             var s = new CeilingPlacementSettings();
+            // A shelf board on each side, 6 to 10 cm above the top of the resting office (1.36 to
+            // 1.40 m with the old 0.35 m drop, 1.46 to 1.50 m with today's 0.25 m), over the desk 1.0
+            // to 1.1 m ahead. It is beyond the office's far end, so the first inspection pose is
+            // usable on its own; but the office comes down through that height while still on the
+            // high part of its path, where it needs 0.405 m, and it is too close.
+            float shelfY = user.head.y - s.inspectDropBelowEye + s.officeHeight + 0.08f;
+            room.AddFurniture("WALL_SHELF", new Vector3(0.75f, shelfY, 1.05f), new Vector3(0.2f, 0.04f, 0.1f));
+            room.AddFurniture("WALL_SHELF", new Vector3(-0.75f, shelfY, 1.05f), new Vector3(0.2f, 0.04f, 0.1f));
 
             CeilingPlacement p;
             Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out p), p.explanation);
@@ -548,9 +563,9 @@ namespace MuseDesk.Tests.EditMode
             Assert.AreEqual(-1f, FirstRealContact(room.GetFurniture(1), p.DockPose, p.InspectionPose, s), 1e-6f);
             Assert.AreEqual(-1f, FirstRealContact(room.GetFurniture(2), p.DockPose, p.InspectionPose, s), 1e-6f);
 
-            // The most preferred pose on that side (0.85 m to the side, 0.15 m forward) was usable at
+            // The most preferred pose on that side (the first wide option, 0.15 m forward) was usable at
             // rest, but the way to it from the chosen dock is blocked, so a later pose was taken.
-            RootPose first = Facing(user.head + user.Right * (p.side * 0.85f) + user.forward * s.inspectForward
+            RootPose first = Facing(user.head + user.Right * (p.side * s.inspectWideSideOptions[0]) + user.forward * s.inspectForward
                                     + Vector3.down * s.inspectDropBelowEye);
             CeilingPathCheck check;
             Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, first, first, Fp, s, out check), "usable at rest: " + check.Describe());
@@ -578,7 +593,8 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out none));
             Assert.IsFalse(none.valid);
             StringAssert.Contains("No clear ceiling dock", none.explanation);
-            StringAssert.Contains("24 no room beside you (STORAGE in the way)", none.explanation);
+            int docks = 2 * s.lateralOptions.Length * s.forwardOptions.Length;      // 32 since -0.3 forward was added
+            StringAssert.Contains(docks + " no room beside you (STORAGE in the way)", none.explanation);
             StringAssert.Contains(" 0 path blocked by furniture", none.explanation);
         }
 
@@ -629,7 +645,8 @@ namespace MuseDesk.Tests.EditMode
             Assert.That(check.minUserClearance, Is.InRange(0.10f, 0.35f));
 
             // 3. With only the close options to try there is no candidate, and the words say why.
-            var close = new CeilingPlacementSettings { inspectWideSideOptions = new float[0] };
+            //    (No shallow descent here either: above the keep-out the close options would pass.)
+            var close = new CeilingPlacementSettings { inspectWideSideOptions = new float[0], shallowBaseAboveKeepOut = new float[0] };
             CeilingPlacement none;
             Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, close, out none));
             StringAssert.Contains("no room beside you (too close to you)", none.explanation);

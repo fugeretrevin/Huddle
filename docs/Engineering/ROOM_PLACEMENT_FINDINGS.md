@@ -6,6 +6,31 @@
 
 **A clear swept test means "clear of what the room scan recognised". It does not mean "clear".** Scene geometry may be incomplete, out of date or wrong. The user's Confirm, and a way to cancel or retract that is always available, are part of the safety design and are not replaced by this check.
 
+## W. Worn pass 1 (rc6-1 on the owner's head, 2026-11-13): what was loosened, and why
+
+The owner wore rc6-1 (first worn evidence for Floor and Ceiling). Gate A passed. They asked for three things to be less strict. **Loosened on the owner's request, for these obstacle classes only.** The user keep-out (0.35 m to 0.15 m above the head), the overhead radius (0.20 m), the sweep (sampled swept volume, fail closed), Stop and reverse are unchanged. Evidence: AUTO (EditMode, 724 of 724, full suite once) and PLAY (Editor Play Mode, synthetic room). **Not worn again.**
+
+| Owner's words | Root cause found | Change |
+|---|---|---|
+| Floor: "something's here in the way" for a sock a foot away | That exact text is only `FloorPlacementEvaluator.CheckPlacedPose` refusing a scene volume within `placedFurnitureClearance` (0.11 m) of the 1.0 x 0.7 m footprint, 0.02 to 0.45 m above the floor. A sock is not a scene object, so the scan must have reported a volume there (an OTHER, UNKNOWN or auto-detected box, larger than the sock). The room data was not captured, so the label and size are **not known**. | Low clutter (a volume whose top is at most 0.15 m above the floor) blocks a spot only within 0.06 m of the footprint (`lowObstaclePad`), and the sweep tests it with 0.03 m plus half a step (`lowObstacleMargin`). Taller furniture keeps 0.11 m at the spot and every sweep margin. |
+| Ceiling: few good spots, "screen is in the way" | (1) **The ceiling search used the gaze as "forward".** Looking 30 degrees left in a furnished room, rc6-1 put the "beside you" poses into the monitors: "No room beside you for the office (SCREEN in the way)". (2) A wall screen near the dock column was held to the high-part clearance (0.405 m per sample). (3) With the desk against the wall in front, the front-facing docks are refused near that wall, and the first trip up to every other dock was refused: rising at the desk and then turning on the way across swings the office's corner to 7 or 8 cm from the head's axis. In the typical rooms below, rc6-1 could reach 0 docks when the wall was 1.1 m or less in front. | (1) The ceiling search and every re-check (Confirm, descend, room event, recenter, restore) use the seat's forward (from the head toward the desk pose, as Floor already did for the legs). (2) `compactObstacleLabels` = SCREEN: no high-part extra; the ordinary sweep margin (0.08 m + half a step) applies to the box, its column up to the ceiling and the mast. (3) A dock 0.3 m behind the shoulder line is searched, and a trip to or from the dock may rise, step sideways at the transit height without turning, then go to the dock (`FloorRoutePlanner.PlanDockSideStep`, swept like every shape). The preview only offers a dock whose way up is clear. |
+| Ceiling: "can't come down, you're too close"; stop higher by default | (1) The same gaze bug: looking round at the pod (key, voice or pull gesture), rc6-1 refused at 60 to 90 degrees of head turn with "The way down from the dock passes too close to you". (2) The normal lowering rested 0.85 m to the side with 1.8 cm to spare outside the keep-out, so leaning in a little refused the way back up as well (seen in Play Mode). (3) A dock low above the head (a 2.0 to 2.3 m ceiling) or a user who has moved toward it: the office enters the keep-out cylinder's height range while still near the dock. | The normal lowering stops 0.25 m below the eyes (was 0.35) and 0.9 m to the side first (was 0.85; 1.0 added). If none of those has a clear way down, the pod stops higher instead: with its base 0.05 or 0.10 m above the top of the keep-out (0.20 or 0.25 m above the eyes, never higher, so a paper stays within reach), where the cylinder does not reach it and the 0.20 m overhead radius does. Every engaged pose is at least 0.15 m below its dock. Refused when even that cannot keep the head clearance. The words name a screen or a wall before "too close to you". |
+
+Numbers from the EditMode probes (synthetic rooms, user at (0, 1.2, 0), not a real scan):
+
+| Typical room: desk against the front wall, two monitors, a TV on the right wall | rc6-1 docks offered | reachable from the desk | now offered | reachable |
+|---|---|---|---|---|
+| front wall 0.95 m, right wall 1.6 m | 4 | 0 | 8 | 3 |
+| front wall 1.1 m, right wall 1.6 m | 4 | 0 | 8 | 8 |
+| front wall 1.3 m, right wall 1.6 m | 6 (2 refused for the wall screen) | 2 | 11 | 11 |
+| front wall 1.6 m, right wall 1.9 m | 13 | 7 | 19 | 19 |
+
+PLAY (Editor, synthetic 4 x 4 m room, runtime values applied by `WornPassDrive.Apply`): ceiling Confirm, down (base 0.25 m below the eyes, footprint 0.44 m from the head's axis; with the scene's rc6-1 values it was 0.39 m), up, Stop half way down went back to Docked, pull gesture down and up fired, not-targeted did not. Floor: a 4 cm sock 8 cm beyond the offered spot left the spot offered and Place here moved the office there; a 1.8 m shelf in the same place removed that spot (the preview moved to the other side); DragAndRelease, ReleaseBesideShoulder and ReleaseWhereBlocked as before.
+
+Tests: `Assets/MuseDesk/Tests/EditMode/WornPassLooseningTests.cs` (FloorLowClutterTests 5, CeilingScreenTests 3, CeilingDockRouteTests 3, CeilingSeatFrameTests 3, CeilingShallowDescentTests 4). Changed honestly in `SpatialPlacementTests.cs`: the desk-top raise case (with a 0.25 m drop no raise is needed; the raise is now shown with a higher desk), the wall-shelf heights follow the drop, the dock count in a words assertion follows `forwardOptions`, and two tests that are about the keep-out and the forward offsets switch the shallow descent off.
+
+Scene: `AgentScripts/BuildWornPassLooseningV1.cs` writes the changed and new numbers into `SpatialWorkspaceDirector` (the scene serialises these settings). **Until it is run, the scene keeps 0.35 m, 0.85 m first and three dock offsets**; the new fields take their code defaults.
+
 ## 0. Safety pass 2: every move is swept, every move can be stopped
 
 **Not seen on a headset.** Compiled and run in Unity by the full EditMode suite (701 of 701, 2026-11-13, rc6-1). The standalone run described next was done outside Unity: the Core sources and the test file compiled there with 0 errors and 0 warnings. The last run of the tests there was 84 of 84 passing (67 earlier ones, two of them changed, and 17 new). One edit was made after that run (the director keeps the previewed ceiling dock apart from the confirmed one, `_previewCeiling`); it compiles, but the machine's application control policy then blocked the rebuilt test binary, twice, and that was not worked around. So the final sources are compile-checked and the 84 results are from one edit earlier.
@@ -100,7 +125,7 @@ Pause (`OnPause`) still finishes a move at its destination at once (or at its st
 
 **Ceiling lamps, fans, pendant lights, smoke detectors and beams are generally NOT in Quest scene data.** These rules protect only against geometry the scan recognised. In an ordinary room they will find nothing, and the office will hang where a pendant lamp is if there is one. The preview outline, the user's Confirm and Stop are the safeguard for ceiling fixtures; the code is not.
 
-### New numbers (all code defaults; nothing serialized needs to change)
+### New numbers in pass 2 (all code defaults; see section W for the worn-pass-1 numbers, which the scene needs `BuildWornPassLooseningV1` for)
 
 `CeilingPlacementSettings`: `userOverheadRadius` 0.20, `deskStartRegion` 2.5, `deskApproachAllowance` 0.05, `deskContactTolerance` 0.01, `overRouteAboveHead` 0.25, `mastRadius` 0.03, `mountClearance` 0.30, `mountDepth` 0.30. `WorkspaceTransitionMachine.minReverseSeconds` 0.4. `SpatialWorkspaceDirector.returnToDeskWithoutRoom` false. `SpatialModeStrip.cancelKeyLabel` (found under the Cancel key when empty), `stopWords` "Stop".
 
@@ -108,7 +133,7 @@ Pause (`OnPause`) still finishes a move at its destination at once (or at its st
 
 ### Floor mode
 
-`FloorPlacementEvaluator`, `FloorPlacementSettings`. Candidate search defaults: user 0.6 m, furniture 0.15 m, wall 0.10 m. Chosen-spot margins (`placed*`, changed in `3aa7fc2` and not since): user 0.45 m to the sides and behind, furniture 0.11 m, wall 0.11 m. The route to a spot is planned by `FloorRoutePlanner`, which tries side-step shapes, each through the unchanged `SweepRoute`.
+`FloorPlacementEvaluator`, `FloorPlacementSettings`. Candidate search defaults: user 0.6 m, furniture 0.15 m, wall 0.10 m. Chosen-spot margins (`placed*`, changed in `3aa7fc2` and not since): user 0.45 m to the sides and behind, furniture 0.11 m, wall 0.11 m. **Low clutter (worn pass 1): a volume whose top is at most 0.15 m above the floor keeps only 0.06 m (`lowObstaclePad`) at the spot, in the search and for a chosen spot, and 0.03 m plus half a step in the sweep (`lowObstacleMargin`); everything taller is unchanged.** The route to a spot is planned by `FloorRoutePlanner`, which tries side-step shapes, each through the unchanged `SweepRoute`.
 
 - Candidates on both sides at 50, 70, 90, 110 and 130 degrees from the user's forward, 1.0 to 2.2 m away in 0.3 m steps, on a detected floor outline only.
 - Rejected (candidate defaults): off the floor outline; footprint (1.0 x 0.7 m, centred 0.12 m toward the user, times scale) within 0.10 m of the outline; within 0.15 m of a furniture box that overlaps the office's height; within 0.6 m of the point under the user's head; within 35 degrees of forward; all three sight lines from the head blocked.
@@ -118,13 +143,17 @@ Pause (`OnPause`) still finishes a move at its destination at once (or at its st
 
 `CeilingPlacementEvaluator`, `CeilingPlacementSettings` defaults.
 
-Dock (unchanged): 1.0, 1.2, 0.85, 1.4 m to the side and 0.3, 0.6, 0 m forward, preferred side first (24 candidates). Rejected when closer than 0.8 m horizontally to the head ("not overhead"), not under a ceiling outline, footprint within 0.35 m of that outline, ceiling less than 0.6 m above the eyes, or the docked office overlaps a furniture box. The root hangs 0.5 m below the ceiling.
+All ceiling searches and re-checks use the seat's forward (head toward the desk pose), not the gaze (worn pass 1).
+
+Dock: 1.0, 1.2, 0.85, 1.4 m to the side and 0.3, 0.6, 0, -0.3 m forward (-0.3 added in worn pass 1), preferred side first (32 candidates). The preview only offers a dock whose way up from where the office is is clear. Rejected when closer than 0.8 m horizontally to the head ("not overhead"), not under a ceiling outline, footprint within 0.35 m of that outline, ceiling less than 0.6 m above the eyes, or the docked office overlaps a furniture box. The root hangs 0.5 m below the ceiling.
 
 Inspection pose (the search is wider, the acceptance is stricter): tried in this order, at most 12 usable poses per side.
 
-1. raise: 0, then 0.05, then 0.10 m above "0.35 m below the eyes" (`inspectRaiseOptions`);
+1. raise: 0, then 0.05, then 0.10 m above "0.25 m below the eyes" (`inspectDropBelowEye`, 0.35 m until worn pass 1; `inspectRaiseOptions`);
 2. forward: 0.15, then 0, then -0.15 m from the head (`inspectForward` + `inspectForwardOffsets`);
-3. sideways: 0.6, 0.7, 0.5 m (`inspectSideOptions`, as before), then 0.85, 0.9, 0.8 m (`inspectWideSideOptions`).
+3. sideways: 0.6, 0.7, 0.5 m (`inspectSideOptions`, as before), then 0.9, 0.85, 1.0, 0.8 m (`inspectWideSideOptions`; was 0.85, 0.9, 0.8).
+
+Then, at most 6 more per side (worn pass 1), the shallow descent: the same forward and sideways options with the office base 0.05, then 0.10 m above the top of the user keep-out (`shallowBaseAboveKeepOut`), never higher than 0.25 m above the eyes (`shallowMaxAboveEye`). Every engaged pose must be at least 0.15 m below its dock (`minDescent`); when every pose is closer than that, the dock is refused for the user.
 
 A pose is usable when the office standing there overlaps no furniture (the old footprint test, kept) and, tested as a path of zero length, passes the swept test below.
 
@@ -133,14 +162,14 @@ Descent path, swept volume, fail closed (`CeilingPlacementEvaluator.SweepPath`):
 - The path is `RootPose.Lerp(dock, inspection, k)` for k from 0 to 1: a straight line with the yaw slerped. This is the same function `WorkspaceTransitionMachine.Tick` uses, so the poses tested are the poses travelled (section 4).
 - The office's box (the footprint rectangle from `SpatialGeometry.Footprint` at the interpolated position and yaw, from its base to base + 0.45 m) is tested at every `sweepStep` (0.05 m) of travel or less, both end poses included. "Travel" is the translation plus the arc of the footprint corner farthest from the root (0.69 m lever arm) while the office turns. There is no untested stretch.
 - Each sample must keep `sweepMarginHorizontal` (0.08 m) from every furniture box that is at its height or within `sweepMarginVertical` (0.05 m) of it. Half a step (0.025 m) is added to the horizontal margin of every sample, and the sample's vertical extent is stretched by half the height change per step each way, so the motion between two samples is covered. A sample is therefore tested with 0.105 m; the guarantee for the continuous motion is 0.08 m.
-- High part: while the office base is more than `highClearanceAboveInspection` (0.5 m) above the lower end of the path, `descentClearance` (0.30 m) is added, giving 0.405 m per sample. Up there the user cannot see or stop the office.
+- High part: while the office base is more than `highClearanceAboveInspection` (0.5 m) above the lower end of the path, `descentClearance` (0.30 m) is added, giving 0.405 m per sample. Up there the user cannot see or stop the office. **Not added for a label in `compactObstacleLabels` (SCREEN; worn pass 1)**: a screen keeps 0.105 m per sample everywhere, including from the column up to the ceiling and the mast. **Low floor clutter** (top at most 0.15 m above the floor under it) keeps 0.03 m plus half a step; no floor under it means it is not low.
 - User keep-out: no sample may come within `userKeepOutRadius` (0.35 m, plus the half step) of the head's vertical axis while any part of it is between the floor and `userKeepOutAboveHead` (0.15 m) above the head. If there is no floor outline under the user the cylinder has no lower end.
 - Room outline: every sample must be inside the floor outline around the user (or, failing that, a ceiling outline over either end) by the same horizontal margin. No outline: the path counts as blocked.
 - Touching a margin counts as blocked. A path that cannot be checked (no room, no outline, more than 4096 samples) counts as blocked.
 - For each dock the usable inspection poses are tried in order and the first whose whole path is clear is taken. The first dock with a clear path is used.
 - `ValidateDock` (restoring a saved dock, and the recenter) runs the same search and the same sweep. It now also refuses a dock that furniture overlaps.
 
-When nothing survives the answer is "no", with the counts in words: "... N dock blocked by furniture, N path blocked by furniture (first: LABEL), N path too close to you, N path too close to a wall, N no room beside you (LABEL in the way | too close to you | too close to a wall)". To get more candidates, lengthen the search lists. Do not shrink the margins.
+When nothing survives the answer is "no", with the counts in words: "... N dock blocked by furniture, N path blocked by furniture (first: LABEL), N path too close to you, N path too close to a wall, N no room beside you (LABEL in the way | too close to a wall | too close to you)[, N no clear way up from where the office is]". Since worn pass 1 the reason beside you names furniture first, then a wall, then "too close to you" (the closest options always fail the keep-out first and used to hide the real obstacle). To get more candidates, lengthen the search lists. Margins were loosened only for the two classes above, on the owner's request.
 
 `CeilingPlacement.path` (`CeilingPathCheck`) describes the path that was validated, or the first one refused: start, end, yaw at both ends, sample count, travel, the padding used, the smallest clearance found to furniture (with its label), to the user and to the outline, what blocked it, the blocking label and where along the path. `Describe()` gives it as one line for a log or a debug view. `EvaluateAll` returns every surviving dock.
 
