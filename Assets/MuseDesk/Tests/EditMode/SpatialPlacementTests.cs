@@ -40,6 +40,8 @@ namespace MuseDesk.Tests.EditMode
         public bool deskReady = true;
         public int writes;
         public int changes;
+        /// <summary>When set, every pose written to the root is recorded (the path actually travelled).</summary>
+        public List<RootPose> trace;
 
         public readonly WorkspaceTransitionMachine mover;
         public readonly CeilingPodMachine pod;
@@ -47,7 +49,7 @@ namespace MuseDesk.Tests.EditMode
 
         public SpatialRig(IRoomGeometry room)
         {
-            mover = new WorkspaceTransitionMachine(clock, () => root, p => { root = p; writes++; }, () => held, () => agentsBusy);
+            mover = new WorkspaceTransitionMachine(clock, () => root, p => { root = p; writes++; if (trace != null) trace.Add(p); }, () => held, () => agentsBusy);
             pod = new CeilingPodMachine(clock, mover, () => held);
             core = new SpatialDirectorCore(flags, mover, pod, () => user, () => held, () => deskReady);
             core.Changed += () => changes++;
@@ -243,11 +245,17 @@ namespace MuseDesk.Tests.EditMode
             Assert.AreEqual(2.6f - s.dockDrop, p.dockPosition.y, 1e-4f, "hangs from the REAL ceiling height");
             Assert.AreEqual(2.6f, p.ceilingHeight, 1e-4f);
 
+            // CHANGED with the swept-volume rule: this used to demand 0.5 to 0.7 m to the side. At that
+            // distance the office's near edge is 0.03 to 0.25 m from the head's vertical axis, inside
+            // the user keep-out (0.35 m), so the search now goes on to inspectWideSideOptions (up to 0.9 m).
             Vector3 d = p.inspectionPosition - user.head;
             float side = Mathf.Abs(Vector3.Dot(d, user.Right));
-            Assert.That(side, Is.InRange(0.5f - 1e-4f, 0.7f + 1e-4f), "beside the user");
+            Assert.That(side, Is.InRange(0.5f - 1e-4f, 0.9f + 1e-4f), "beside the user");
             Assert.That(Vector3.Dot(d, user.forward), Is.LessThan(side), "not in front of the face");
             Assert.AreEqual(user.head.y - s.inspectDropBelowEye, p.inspectionPosition.y, 1e-4f);
+            OrientedRect atRest = SpatialGeometry.Footprint(p.inspectionPosition, p.inspectionRotation, 1f, SpatialRooms.Footprint, s.footprintCenterOffset);
+            Assert.That(atRest.DistanceToPoint(new Vector2(user.head.x, user.head.z)), Is.GreaterThan(s.userKeepOutRadius), "outside the user keep-out");
+            Assert.IsTrue(p.path.clear, "the descent was swept and found clear");
             Assert.AreEqual((p.dockPosition - p.inspectionPosition).magnitude, p.descentDistance, 1e-4f);
             Assert.That(p.descentDistance, Is.GreaterThan(0.5f));
         }

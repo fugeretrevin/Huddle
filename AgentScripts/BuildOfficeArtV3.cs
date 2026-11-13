@@ -24,7 +24,7 @@ public static class BuildOfficeArtV3
 {
     // ───────────────────────────── switches and thresholds ─────────────────────────────
     const bool EnableFactory = true, EnableTrays = true, EnablePlates = true, EnableDock = true,
-               EnableReceipt = true, EnablePaper = true, EnableCard = true;
+               EnableReceipt = true, EnablePaper = false /* lit folio body renders grey against the unlit cream plates: revisit with an unlit paper material */, EnableCard = true;
 
     const float MaxNonUniform = 0.05f;          // x scale vs y scale of a fitted body
     const float MaxScaleDeviation = 0.35f;      // how far from 1.0 a fit scale may be (plates, trays)
