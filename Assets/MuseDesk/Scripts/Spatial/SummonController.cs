@@ -47,8 +47,14 @@ namespace MuseDesk.Spatial
         [Tooltip("Height of an agent ray target's centre above its station, in office-root metres.")]
         public float agentTargetHeight = 0.17f;
 
-        const string BringWords = "Bring it\nhere";
-        const string SendWords = "Send it\nback";
+        [Header("Words on the bring / send key")]
+        public string bringWords = "Bring it\nhere";
+        public string sendWords = "Send it\nback";
+
+        [Header("Mode console (AgentScripts/BuildModeConsoleV1)")]
+        [Tooltip("When set, the Bring and Status keys are on the mode console (which shows and hides them itself) and " +
+                 "keysRoot is empty: this component then only keeps the Bring key's words right and takes the presses.")]
+        public ModeConsole console;
 
         readonly ScaleEase _ease = new ScaleEase();
         bool _eased, _wasAnimating, _placed, _targetsShown;
@@ -59,7 +65,7 @@ namespace MuseDesk.Spatial
         Action<InteractableStateChangeArgs>[] _agentHandlers;
 
         /// <summary>True while the near-user keys are shown.</summary>
-        public bool KeysShown => _eased && _ease.Shown;
+        public bool KeysShown => keysRoot != null ? _eased && _ease.Shown : console != null && console.SummonKeysShown;
 
         void Awake()
         {
@@ -123,15 +129,17 @@ namespace MuseDesk.Spatial
             bool remote = SpatialWorkspaceState.IsRemote;
 
             // Keys: only outside Desk mode, and not while the office is on the move.
-            bool show = keysRoot != null && spatial && !SpatialWorkspaceState.IsTransitioning;
+            bool applies = spatial && !SpatialWorkspaceState.IsTransitioning;
+            // The words are kept right wherever the key is (here or on the mode console).
+            if (applies && bringLabel != null && (!_labelSet || _labelIsBring != remote))
+            {
+                bringLabel.text = remote ? bringWords : sendWords;
+                _labelIsBring = remote;
+                _labelSet = true;
+            }
+            bool show = keysRoot != null && applies;
             if (show)
             {
-                if (bringLabel != null && (!_labelSet || _labelIsBring != remote))
-                {
-                    bringLabel.text = remote ? BringWords : SendWords;
-                    _labelIsBring = remote;
-                    _labelSet = true;
-                }
                 if (!_ease.Shown) { _placed = false; PlaceKeys(true); }
                 _ease.Show();
             }

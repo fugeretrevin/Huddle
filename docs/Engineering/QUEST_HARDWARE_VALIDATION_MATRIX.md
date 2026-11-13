@@ -36,7 +36,7 @@ Record with each session: build commit (see `FINAL_SPATIAL_RELEASE_AUDIT.md`), A
 | A6 | Researcher brings the DECISION cover | PLAY | | |
 | A7 | Grab the paper; it unfolds | PLAY (via `TakeNow`) | | New layout; real grab untested |
 | A8 | Approve by key | PLAY | | Wide keys: press both ends |
-| A9 | Approve by stamp | NT | | New target, provisional mark, stamp return |
+| A9 | Approve by stamp | WORN | WORN ok 2026-11-13: registered. Stamp stays on the desk afterwards (see defect log) | New target, provisional mark, stamp return |
 | A10 | Reject by key | PLAY | | No failure animation expected |
 | A11 | Details slides out and back | PLAY | | |
 | A12 | Completion sequence, one chime | PLAY | | |
@@ -112,4 +112,12 @@ For each headset defect: build commit, APK, mode, step number, what happened, ev
 
 | Date | Build | Mode / step | What happened | Evidence | Fix | Re-test |
 |---|---|---|---|---|---|---|
-| | | | | | | |
+| 2026-11-13 | `8a5f931` (`rc-spatial-1`) | Desk / A9 | Stamp approve registered (WORN ok). The green stamp then stayed on the desk; owner wants it to leave with a short poof after a few seconds | Owner's words | In progress | |
+| 2026-11-13 | `8a5f931` | Floor / B3-B4 | Hand placement needs bending down; owner wants to point from the seat, see the area highlighted on the floor, and drag it | Owner's words | In progress | |
+| 2026-11-13 | `8a5f931` | Ceiling / C6-C8 | "Looked nice". Some props out of place; physics props lagged behind the moving platform | Owner's words | In progress | |
+| 2026-11-13 | `8a5f931` | Ceiling / beacon | "Needs you" indicator tilted and in a central spot that makes no sense while the pod is up | Owner's words | In progress | |
+| 2026-11-13 | `8a5f931` | Ceiling / C9 | Near-user control cards (dock etc.) intersect the lowered office; owner wants them movable by a grab bar under each, like Meta's windows | Owner's words | In progress | |
+| 2026-11-13 | `8a5f931` | All / A20 | Floor / Ceiling mode keys look stacked at odd angles and cheap; wants a more sophisticated key model | Owner's words | In progress | |
+| 2026-11-13 | `8a5f931` | All | Voice and interactivity need real work | Owner's words | In progress | |
+
+Session 2026-11-13 (owner, build `8a5f931`): the owner reported only the items above. Rows he did not mention are **not** marked as passed.

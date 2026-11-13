@@ -6,33 +6,60 @@ namespace MuseDesk.Spatial
     /// <summary>
     /// Keeps the user's own controls where they are when the office goes away.
     ///
-    /// The task dock, stamps, mode plaque, receipt, Focus key, task board and artifact viewer are
-    /// children of the office root, so in Floor or Ceiling mode they would travel 1 to 2 m away with
-    /// it and the seated user would have nothing to press. When the office leaves Desk mode this
-    /// component moves those objects under a rig that stays at the office's desk pose, keeping every
-    /// local position unchanged (so stamp rest poses, the board's open pose and layout code keep
-    /// working), and moves them back when the office is at the desk again and at rest.
+    /// Two kinds of things stay with the user, both through one rig (Spatial/NearUserRig) that
+    /// stands at the office's DESK pose:
+    ///
+    ///  1. MOVABLE PANELS (<see cref="MovablePanel"/>: the task dock with its board, the mode plaque,
+    ///     the mode console with the Focus key, the completion receipt) live under the rig
+    ///     PERMANENTLY. While the office is at the desk and at rest this component copies the office
+    ///     root's pose, scale and active state onto the rig every frame, so a panel the user never
+    ///     moved is exactly where it was as a child of the root (a panel holder has identity local
+    ///     pose), and it follows a new desk placement or a recenter. When the office leaves for the
+    ///     floor or the ceiling the rig simply stops following: nothing is re-parented, so a panel
+    ///     keeps whatever pose the user gave it, and its saved pose stays relative to the desk.
+    ///
+    ///  2. LOOSE ITEMS (the stamps and their pad, the artifact viewer) are still children of the
+    ///     office root, because their own scripts reference it. As before, they are moved under the
+    ///     rig when the office leaves Desk mode, keeping every local position unchanged, and moved
+    ///     back when the office is at the desk again and at rest. The stamps are additionally shown
+    ///     only while a decision waits (<see cref="decisionOnly"/>), by scale, exactly as before.
     ///
     /// Presentation only. It never touches session or task state.
     /// </summary>
+    [DefaultExecutionOrder(-50)]
     public class NearUserKit : MonoBehaviour
     {
-        [Tooltip("Objects that stay with the user while the office is away. Direct or indirect children of the office root.")]
+        [Tooltip("Loose objects that stay with the user while the office is away. Direct or indirect children of the office root. Movable panels are NOT listed here: they live under the rig.")]
         public Transform[] items;
-        [Tooltip("Rig that holds the items while the office is away. Not a child of the office root.")]
+        [Tooltip("Rig that stands at the office's desk pose. Not a child of the office root. Movable panels are its children.")]
         public Transform rig;
+        [Tooltip("The office root, used until the director has published it. Optional.")]
+        public Transform workspaceRoot;
+        [Tooltip("Keep the rig on the office root while the office is at the desk and at rest (needed for movable panels). " +
+                 "Off: the rig is only placed when the office leaves, as before the panels existed.")]
+        public bool followDesk = true;
 
         readonly List<Transform> _homes = new List<Transform>();
         readonly List<int> _siblingIndex = new List<int>();
         bool _detached;
         bool _subscribed;
+        bool _hasDeskPose;
 
         /// <summary>True while the items are parked at the desk and the office is elsewhere.</summary>
         public bool Detached => _detached;
+        /// <summary>True once the rig has taken the office's desk pose at least once.</summary>
+        public bool HasDeskPose => _hasDeskPose;
+
+        Transform Root()
+        {
+            Transform root = SpatialWorkspaceState.WorkspaceRoot;
+            return root != null ? root : workspaceRoot;
+        }
 
         void OnEnable()
         {
             if (!_subscribed) { SpatialWorkspaceState.Changed += Sync; _subscribed = true; }
+            FollowDesk();
             Sync();
         }
 
@@ -50,24 +77,57 @@ namespace MuseDesk.Spatial
             else if (!away && _detached && !SpatialWorkspaceState.IsTransitioning) Reattach();
         }
 
+        /// <summary>
+        /// While the office is at the desk and at rest: the rig takes the root's pose, scale and
+        /// active state. Otherwise the rig keeps the last desk pose and stays active.
+        /// </summary>
+        void FollowDesk()
+        {
+            if (!followDesk || rig == null) return;
+            Transform root = Root();
+            if (root == null) return;
+            bool atDesk = SpatialWorkspaceState.Mode == WorkspaceMode.Desk && !SpatialWorkspaceState.IsTransitioning && !_detached;
+            if (!atDesk)
+            {
+                if (!rig.gameObject.activeSelf) rig.gameObject.SetActive(true);
+                return;
+            }
+            if (rig.position != root.position || rig.rotation != root.rotation)
+                rig.SetPositionAndRotation(root.position, root.rotation);
+            Vector3 scale = root.lossyScale;
+            if (rig.localScale != scale) rig.localScale = scale;
+            // The office is hidden until the desk is placed; its controls are hidden with it.
+            bool on = root.gameObject.activeInHierarchy;
+            if (rig.gameObject.activeSelf != on) rig.gameObject.SetActive(on);
+            _hasDeskPose = true;
+        }
+
         void Detach()
         {
-            Transform root = SpatialWorkspaceState.WorkspaceRoot;
-            if (root == null || rig == null || items == null) return;
-            // The rig takes the office's current pose and scale, so re-parenting changes no local value.
-            rig.SetPositionAndRotation(root.position, root.rotation);
-            rig.localScale = root.lossyScale;
-            _homes.Clear(); _siblingIndex.Clear();
-            for (int i = 0; i < items.Length; i++)
+            Transform root = Root();
+            if (root == null || rig == null) return;
+            // The rig stands at the desk pose. If it has been following the root it already has it
+            // (and the root may have started to move this frame); otherwise take the root's pose now.
+            if (!(followDesk && _hasDeskPose))
             {
-                Transform t = items[i];
-                _homes.Add(t != null ? t.parent : null);
-                _siblingIndex.Add(t != null ? t.GetSiblingIndex() : 0);
-                if (t == null) continue;
-                Vector3 lp = t.localPosition; Quaternion lr = t.localRotation; Vector3 ls = t.localScale;
-                // Only items directly under the root keep identical locals; deeper ones keep world pose.
-                if (t.parent == root) { t.SetParent(rig, false); t.localPosition = lp; t.localRotation = lr; t.localScale = ls; }
-                else t.SetParent(rig, true);
+                rig.SetPositionAndRotation(root.position, root.rotation);
+                rig.localScale = root.lossyScale;
+            }
+            if (!rig.gameObject.activeSelf) rig.gameObject.SetActive(true);
+            _homes.Clear(); _siblingIndex.Clear();
+            if (items != null)
+            {
+                for (int i = 0; i < items.Length; i++)
+                {
+                    Transform t = items[i];
+                    _homes.Add(t != null ? t.parent : null);
+                    _siblingIndex.Add(t != null ? t.GetSiblingIndex() : 0);
+                    if (t == null) continue;
+                    Vector3 lp = t.localPosition; Quaternion lr = t.localRotation; Vector3 ls = t.localScale;
+                    // Only items directly under the root keep identical locals; deeper ones keep world pose.
+                    if (t.parent == root) { t.SetParent(rig, false); t.localPosition = lp; t.localRotation = lr; t.localScale = ls; }
+                    else t.SetParent(rig, true);
+                }
             }
             _detached = true;
         }
@@ -76,7 +136,7 @@ namespace MuseDesk.Spatial
         {
             if (items != null)
             {
-                Transform root = SpatialWorkspaceState.WorkspaceRoot;
+                Transform root = Root();
                 for (int i = 0; i < items.Length && i < _homes.Count; i++)
                 {
                     Transform t = items[i]; Transform home = _homes[i];
@@ -135,6 +195,7 @@ namespace MuseDesk.Spatial
             // disabled at the time) pick it up here; cheap, and only while detached.
             if (_detached && SpatialWorkspaceState.Mode == WorkspaceMode.Desk && !SpatialWorkspaceState.IsTransitioning)
                 Reattach();
+            FollowDesk();
         }
     }
 }

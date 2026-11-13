@@ -30,9 +30,28 @@ namespace MuseDesk.Spatial
     /// the existing "!" above the agent (AgentView.alert) is in plain view. In remote modes that
     /// small "!" is still shown by AgentRegistry; this plate is the version that can be read
     /// from across the room.
+    ///
+    /// Where the office cue is (decided per frame, placed in LateUpdate after the office's mover
+    /// has written the root, so it travels with the office with no lag):
+    ///   Desk             above the concerned station, as before (only if showInDeskMode);
+    ///   Floor            above the office's front edge, <see cref="aboveClearance"/> over the
+    ///                    tallest thing in the office;
+    ///   Ceiling, up high hanging just below the pod's underside at its front edge (the side that
+    ///                    faces the user), so it reads as "the pod wants you" from the seat;
+    ///   Ceiling, lowered above the front edge, as on the floor.
+    /// "Up high" is the office root being above the user's eyes (with hysteresis). When the place
+    /// changes while the cue is shown it pops out and pops in again at the new place; it never
+    /// slides through the pod.
+    ///
+    /// Both cues are always upright: world up, turned about the vertical only to face the head.
+    /// They are never pitched or rolled and are not children of anything that animates.
     /// </summary>
+    [DefaultExecutionOrder(9000)]
     public class AttentionBeacon : MonoBehaviour
     {
+        /// <summary>Where the office cue is anchored.</summary>
+        public enum CuePlacement { Station = 0, AboveFront = 1, BelowPod = 2 }
+
         public AttentionController attention;
 
         [Header("Modes")]
@@ -61,6 +80,32 @@ namespace MuseDesk.Spatial
         public float maxSizerScale = 5f;
         [Tooltip("Seconds the Done plate stays before it leaves by itself. Blocking and Problem stay.")]
         public float completedSeconds = 20f;
+
+        [Header("Office cue placement (remote modes)")]
+        [Tooltip("Anchor the cue to the office itself in Floor and Ceiling mode. Off: above the concerned station in every mode (the old behaviour).")]
+        public bool anchorToOffice = true;
+        [Tooltip("Root-local height of the tallest thing in the office (m). Measured by the builder.")]
+        public float officeTopHeight = 0.36f;
+        [Tooltip("Height of the cue's plate above the tallest thing, Floor mode and the lowered pod (m).")]
+        public float aboveClearance = 0.35f;
+        [Tooltip("Root-local x of the office's centre and z of its front edge (the side toward the user). Measured by the builder.")]
+        public Vector2 officeFrontLocal = new Vector2(0f, 0.36f);
+        [Tooltip("Above the front edge, stand over the concerned station's x instead of the office centre.")]
+        public bool followStationX = true;
+        [Tooltip("Root-local y of the ceiling pod's underside (negative: below the office root). Measured by the builder.")]
+        public float podUndersideY = -0.06f;
+        [Tooltip("Root-local z of the pod's front edge. Measured by the builder.")]
+        public float podFrontZ = 0.34f;
+        [Tooltip("How far in from the pod's front edge the cue hangs (m).")]
+        public float hangInset = 0.03f;
+        [Tooltip("Gap between the pod's underside and the top of the hanging cue (m).")]
+        public float hangGap = 0.04f;
+        [Tooltip("Top of the whole cue (plate and model) above the cue's origin at sizer scale 1 (m). Measured by the builder.")]
+        public float cueTopAtUnitScale = 0.16f;
+        [Tooltip("Ceiling mode: the cue hangs below the pod once the office root is this far above the eyes (m)...")]
+        public float hangWhenAboveEyes = 0.05f;
+        [Tooltip("...and goes back above the front edge once the root is this far below the eyes (m, positive).")]
+        public float standWhenBelowEyes = 0.15f;
 
         [Header("Mirror cue (near the user)")]
         public Transform mirrorCue;
@@ -98,6 +143,15 @@ namespace MuseDesk.Spatial
         bool _artStateSet;
         Vector3[] _alertScales;
         bool _alertsHidden;
+        CuePlacement _placement = CuePlacement.Station;
+        bool _placementSet;
+        bool _wantOffice;        // the office cue should be showing (set by Refresh)
+        bool _swapping;          // popping out before moving to a new placement
+
+        /// <summary>Where the office cue is anchored right now.</summary>
+        public CuePlacement Placement => _placement;
+        /// <summary>The sizer scale chosen for the viewing distance (or -1 before the first placement).</summary>
+        public float SizerScale => _sizerScale;
 
         /// <summary>The art model's state for an attention level. Suggestion is unreachable (no
         /// backend event); Disconnected is used only when there is no session to read.</summary>
@@ -119,7 +173,7 @@ namespace MuseDesk.Spatial
         public bool ArtBeaconShown => artBeacon != null && artBeacon.gameObject.activeSelf;
 
         /// <summary>True while the office cue is shown (or on its way to being shown).</summary>
-        public bool OfficeCueShown => _eased && _officeEase.Shown;
+        public bool OfficeCueShown => _eased && (_officeEase.Shown || (_swapping && _wantOffice));
         /// <summary>True while the mirror cue is shown.</summary>
         public bool MirrorCueShown => _eased && _mirrorEase.Shown;
         /// <summary>The level the cue is currently presenting (None when hidden).</summary>
@@ -163,15 +217,72 @@ namespace MuseDesk.Spatial
                 _completedExpired = true;
                 Refresh();
             }
-            if (officeCue != null && _officeEase.Shown) PlaceOfficeCue();
-            if (mirrorCue != null && _mirrorEase.Shown) PlaceMirrorCue();
+            UpdatePlacement();
 
             // The cue has finished leaving: switch the model (and its animator) off.
-            if (artBeacon != null && !_officeEase.Shown && !_officeEase.Animating && artBeacon.gameObject.activeSelf)
+            if (artBeacon != null && !_swapping && !_officeEase.Shown && !_officeEase.Animating && artBeacon.gameObject.activeSelf)
             {
                 artBeacon.gameObject.SetActive(false);
                 _artStateSet = false;
             }
+        }
+
+        // After every mover (the director, the transition controller and the pod all write the
+        // office in Update), so the cue is exactly on the office in the frame that is drawn.
+        void LateUpdate()
+        {
+            if (officeCue != null && (_officeEase.Shown || _officeEase.Animating)) PlaceOfficeCue();
+            if (mirrorCue != null && (_mirrorEase.Shown || _mirrorEase.Animating)) PlaceMirrorCue();
+        }
+
+        /// <summary>Where the cue belongs for the current mode and height of the office.</summary>
+        CuePlacement WantedPlacement()
+        {
+            WorkspaceMode mode = SpatialWorkspaceState.Mode;
+            Transform ws = SpatialWorkspaceState.WorkspaceRoot;
+            if (!anchorToOffice || mode == WorkspaceMode.Desk || ws == null) return CuePlacement.Station;
+            if (mode == WorkspaceMode.Ceiling)
+            {
+                Transform head = RemoteNearUser.Head();
+                if (head == null)
+                    return SpatialWorkspaceState.IsRemote ? CuePlacement.BelowPod : CuePlacement.AboveFront;
+                float above = ws.position.y - head.position.y;      // office root over the eyes
+                bool hanging = _placementSet && _placement == CuePlacement.BelowPod;
+                if (hanging ? above > -standWhenBelowEyes : above > hangWhenAboveEyes) return CuePlacement.BelowPod;
+            }
+            return CuePlacement.AboveFront;
+        }
+
+        /// <summary>Follow the wanted placement. A change while the cue is visible is a pop out,
+        /// a move, and a pop in; it never slides from under the pod to above it.</summary>
+        void UpdatePlacement()
+        {
+            if (officeCue == null) return;
+            CuePlacement want = WantedPlacement();
+            if (_swapping)
+            {
+                if (_officeEase.Animating) return;               // still popping out
+                _swapping = false;
+                _placement = want; _placementSet = true;
+                _sizerScale = -1f;                               // re-size for the new distance at once
+                if (_wantOffice)
+                {
+                    ShowArtState(BeaconStateFor(_lastLevel, attention != null && attention.controller != null));
+                    _officeEase.Show();
+                    PlaceOfficeCue();
+                }
+                return;
+            }
+            if (_placementSet && want == _placement) return;
+            bool visible = _officeEase.Shown || _officeEase.Animating;
+            if (!_placementSet || !visible)
+            {
+                _placement = want; _placementSet = true;
+                _sizerScale = -1f;
+                return;
+            }
+            _swapping = true;
+            _officeEase.Hide();
         }
 
         void OnAttentionChanged(AttentionLevel level) { Refresh(); }
@@ -198,15 +309,21 @@ namespace MuseDesk.Spatial
             // The agents' own small "!" is replaced by this cue while the office is far away.
             HideAgentAlerts(remote && hideAgentAlertsWhenRemote && officeCue != null);
 
+            _wantOffice = show;
             if (show)
             {
                 _anchor = AnchorFor(attention.AgentId);
                 SetFaces(officeBlocking, officeCompleted, officeError, level);   // Passive: no plate
                 ShowArtState(BeaconStateFor(level, attention.controller != null));
                 bool was = _officeEase.Shown;
-                _officeEase.Show();
-                if (levelChanged || !was) _officeEase.Pulse(0.08f, 0.35f);     // once, then steady
-                PlaceOfficeCue();
+                if (!_swapping)
+                {
+                    // Not yet visible: take the right place before it pops in.
+                    if (!was && !_officeEase.Animating) { _placement = WantedPlacement(); _placementSet = true; _sizerScale = -1f; }
+                    _officeEase.Show();
+                    if (levelChanged || !was) _officeEase.Pulse(0.08f, 0.35f);     // once, then steady
+                    PlaceOfficeCue();
+                }
                 // Sound only for the two levels that need the user, and only when the level changed.
                 // FeedbackController sounds the same cue itself when the reducer reports the event;
                 // that is detected from the event's time stamp, not from handler order or frame, so
@@ -228,7 +345,11 @@ namespace MuseDesk.Spatial
                     }
                 }
             }
-            else _officeEase.Hide();
+            else
+            {
+                _swapping = false;
+                _officeEase.Hide();
+            }
 
             bool mirror = show && cue && showMirror && remote && mirrorCue != null;   // never an empty mirror for "working"
             if (mirror)
@@ -294,28 +415,85 @@ namespace MuseDesk.Spatial
             return null;
         }
 
-        void PlaceOfficeCue()
+        /// <summary>
+        /// Upright rotation that turns an object's local -Z (its printed side) to the head: a turn
+        /// about the world vertical only. The object's up is exactly world up whatever the height
+        /// difference to the head, so a cue high above or far below the eyes is never pitched or
+        /// rolled. With no head, or the head straight above or below, the current heading is kept
+        /// (made upright).
+        /// </summary>
+        public static Quaternion UprightFacing(Vector3 position, Vector3 headPosition, bool hasHead, Quaternion current)
+        {
+            Vector3 d = hasHead ? position - headPosition : Vector3.zero;
+            d.y = 0f;
+            if (d.sqrMagnitude < 1e-6f)
+            {
+                d = current * Vector3.forward;
+                d.y = 0f;
+                if (d.sqrMagnitude < 1e-6f) d = Vector3.forward;
+            }
+            return Quaternion.LookRotation(d.normalized, Vector3.up);
+        }
+
+        static Quaternion Upright(Vector3 position, Quaternion current)
+        {
+            Transform head = RemoteNearUser.Head();
+            return UprightFacing(position, head != null ? head.position : Vector3.zero, head != null, current);
+        }
+
+        /// <summary>The point the cue is anchored to for a placement, before the cue's own size is
+        /// taken into account. False when there is nothing to anchor to.</summary>
+        bool AnchorPoint(CuePlacement placement, out Vector3 point)
         {
             Transform ws = SpatialWorkspaceState.WorkspaceRoot;
-            Vector3 basePos;
-            if (_anchor != null) basePos = _anchor.position;
-            else if (ws != null) basePos = ws.position;          // agent unknown: above the office centre
-            else return;
+            point = Vector3.zero;
             float rootScale = ws != null ? Mathf.Abs(ws.lossyScale.y) : 1f;
-            Vector3 pos = basePos + Vector3.up * (heightAboveStation * rootScale);
-            officeCue.SetPositionAndRotation(pos, RemoteNearUser.FacingHead(pos, officeCue.rotation));
+            if (placement == CuePlacement.Station || ws == null)
+            {
+                if (_anchor != null) point = _anchor.position;
+                else if (ws != null) point = ws.position;        // agent unknown: above the office centre
+                else return false;
+                point += Vector3.up * (heightAboveStation * rootScale);
+                return true;
+            }
+            if (placement == CuePlacement.BelowPod)
+            {
+                // Under the pod's front edge: the side of the office that faces the user.
+                point = ws.TransformPoint(new Vector3(officeFrontLocal.x, podUndersideY, podFrontZ - hangInset));
+                return true;
+            }
+            float x = officeFrontLocal.x;
+            if (followStationX && _anchor != null) x = ws.InverseTransformPoint(_anchor.position).x;
+            point = ws.TransformPoint(new Vector3(x, officeTopHeight + aboveClearance, officeFrontLocal.y));
+            return true;
+        }
+
+        void PlaceOfficeCue()
+        {
+            if (!AnchorPoint(_placement, out Vector3 pos)) return;
 
             // Size for the viewing distance: the plate's height subtends targetDegrees.
             Transform head = RemoteNearUser.Head();
-            if (head == null || officeSizer == null) return;
-            float d = Vector3.Distance(head.position, pos);
-            float wanted = 2f * d * Mathf.Tan(targetDegrees * 0.5f * Mathf.Deg2Rad) / Mathf.Max(1e-4f, plateHeight);
-            wanted = Mathf.Clamp(wanted, minSizerScale, maxSizerScale);
-            if (_sizerScale < 0f || Mathf.Abs(wanted - _sizerScale) > 0.03f * _sizerScale)
+            if (head != null && officeSizer != null)
             {
-                _sizerScale = wanted;
-                officeSizer.localScale = new Vector3(wanted, wanted, wanted);
+                float d = Vector3.Distance(head.position, pos);
+                float wanted = 2f * d * Mathf.Tan(targetDegrees * 0.5f * Mathf.Deg2Rad) / Mathf.Max(1e-4f, plateHeight);
+                wanted = Mathf.Clamp(wanted, minSizerScale, maxSizerScale);
+                if (_sizerScale < 0f || Mathf.Abs(wanted - _sizerScale) > 0.03f * _sizerScale)
+                {
+                    _sizerScale = wanted;
+                    officeSizer.localScale = new Vector3(wanted, wanted, wanted);
+                }
             }
+
+            if (_placement == CuePlacement.BelowPod)
+            {
+                // Hang: the top of the whole cue (model included, at its current size) stays a
+                // fixed gap under the pod, so nothing pokes up into the deck.
+                float size = _sizerScale > 0f ? _sizerScale : 1f;
+                pos += Vector3.down * (hangGap + cueTopAtUnitScale * size);
+            }
+            officeCue.SetPositionAndRotation(pos, Upright(pos, officeCue.rotation));
         }
 
         void PlaceMirrorCue()
@@ -326,7 +504,7 @@ namespace MuseDesk.Spatial
             if (_mirrorHasPlace && (pos - _mirrorPlaced).sqrMagnitude < 0.15f * 0.15f) return;
             _mirrorPlaced = pos;
             _mirrorHasPlace = true;
-            mirrorCue.SetPositionAndRotation(pos, RemoteNearUser.FacingHead(pos, mirrorCue.rotation));
+            mirrorCue.SetPositionAndRotation(pos, Upright(pos, mirrorCue.rotation));
         }
     }
 }

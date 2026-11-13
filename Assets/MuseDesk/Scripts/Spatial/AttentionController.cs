@@ -52,6 +52,12 @@ namespace MuseDesk.Spatial
         /// <summary>Raised (main thread) when the level, its agent, the quiet count or a count above changed.</summary>
         public event Action<AttentionLevel> Changed;
 
+        /// <summary>Decisions withdrawn because the session no longer reported them as waiting
+        /// (see <see cref="AttentionPendingLedger"/>). Zero is the expected value.</summary>
+        public int WithdrawnDecisions { get; private set; }
+
+        readonly AttentionPendingLedger _ledger = new AttentionPendingLedger();
+        Func<string, bool> _stillPending;
         SessionReducer _reducer;
         bool _bound;
         bool _wasRunning;
@@ -86,6 +92,7 @@ namespace MuseDesk.Spatial
             _reducer.TaskFailed += OnTaskFailed;
             _reducer.SessionReset += OnSessionReset;
             _reducer.SnapshotLoaded += ProjectSnapshot;
+            _reducer.Applied += OnApplied;
             controller.RunStateChanged += OnRunStateChanged;
             _wasRunning = controller.RunInProgress;
             _bound = true;
@@ -104,6 +111,7 @@ namespace MuseDesk.Spatial
                 _reducer.TaskFailed -= OnTaskFailed;
                 _reducer.SessionReset -= OnSessionReset;
                 _reducer.SnapshotLoaded -= ProjectSnapshot;
+                _reducer.Applied -= OnApplied;
             }
             if (controller != null) controller.RunStateChanged -= OnRunStateChanged;
             _reducer = null;
@@ -141,12 +149,45 @@ namespace MuseDesk.Spatial
             int version = Model.Version;
             bool had = ClearCompleted();
             Model.Reset();
+            _ledger.Clear();
             RaiseIfOnlyCountChanged(had, version);
             if (_reducer == null) return;
             DecisionView pending = _reducer.FirstPendingDecision();
             if (pending != null)
+            {
+                _ledger.Add(pending.DecisionId);
                 Model.DecisionRequested(pending.DecisionId,
                     string.IsNullOrEmpty(pending.AgentId) ? AgentIds.Researcher : pending.AgentId);
+            }
+        }
+
+        /// <summary>True while the session's own record of this decision is still "requested".</summary>
+        bool StillPending(string decisionId)
+        {
+            if (_reducer == null || _reducer.Snapshot == null) return false;
+            var decisions = _reducer.Snapshot.Decisions;
+            if (decisions == null) return false;
+            for (int i = 0; i < decisions.Count; i++)
+            {
+                DecisionView d = decisions[i];
+                if (d != null && d.DecisionId == decisionId) return d.State == "requested";
+            }
+            return false;
+        }
+
+        // After every applied event: "Needs you" may only stand while the session still has that
+        // decision waiting. Normally a no-op (the resolved event already cleared it).
+        void OnApplied(EventEnvelope e)
+        {
+            if (_ledger.Count == 0) return;
+            if (_stillPending == null) _stillPending = StillPending;
+            int dropped = _ledger.Reconcile(Model, _stillPending);
+            if (dropped > 0)
+            {
+                WithdrawnDecisions += dropped;
+                Debug.LogWarning("[MuseDesk] Attention: withdrew " + dropped + " decision cue(s) the session no longer reports as waiting"
+                                 + (e != null ? " (after " + e.Type + " seq " + e.Seq + ")." : "."));
+            }
         }
 
         void OnAgentChanged(AgentDto agent)
@@ -161,10 +202,15 @@ namespace MuseDesk.Spatial
             // (the same convention AgentNameplate uses).
             string asker = e != null && !string.IsNullOrEmpty(e.AgentId) ? e.AgentId : AgentIds.Researcher;
             LastDecisionRequestedAt = Time.unscaledTime;     // before the model raises Changed
+            _ledger.Add(decisionId);
             Model.DecisionRequested(decisionId, asker);
         }
 
-        void OnDecisionResolved(string decisionId, string state) { Model.DecisionResolved(decisionId); }
+        void OnDecisionResolved(string decisionId, string state)
+        {
+            _ledger.Remove(decisionId);
+            Model.DecisionResolved(decisionId);
+        }
 
         void OnWorkDelivered(EventEnvelope e)
         {
@@ -187,6 +233,7 @@ namespace MuseDesk.Spatial
         {
             int version = Model.Version;
             bool had = ClearCompleted();
+            _ledger.Clear();
             Model.Reset();
             RaiseIfOnlyCountChanged(had, version);
         }

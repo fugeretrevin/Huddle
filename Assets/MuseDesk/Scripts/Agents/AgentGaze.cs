@@ -156,6 +156,28 @@ namespace MuseDesk.Agents
             _nextDecide = 0f;
         }
 
+        // A small extra head pose (a curious tilt, a nod, a wobble) set by AgentPresence. It goes
+        // through this component so exactly one writer touches the Head bone, and it is clamped
+        // together with the aim so the head never turns past the hard limits.
+        float _exprRoll, _exprPitch, _exprYaw;
+        const float MaxExprRoll = 14f, MaxExprPitch = 12f, MaxExprYaw = 15f;
+
+        /// <summary>Extra head pose in degrees, in the agent's frame (roll = tilt to a side,
+        /// pitch = nod, positive down; yaw = turn). Stays until changed; pass zeros to clear.
+        /// Applied on this component's next LateUpdate, on top of the aim.</summary>
+        public void SetExpression(float rollDeg, float pitchDeg, float yawDeg)
+        {
+            _exprRoll = Mathf.Clamp(rollDeg, -MaxExprRoll, MaxExprRoll);
+            _exprPitch = Mathf.Clamp(pitchDeg, -MaxExprPitch, MaxExprPitch);
+            _exprYaw = Mathf.Clamp(yawDeg, -MaxExprYaw, MaxExprYaw);
+        }
+
+        /// <summary>True while an explicit attention (SetAttention / SetAttentionOnUser) is running.</summary>
+        public bool HasExplicitAttention => _attention != null && Time.time < _attentionUntil;
+
+        /// <summary>The user's head, once found (Camera.main), or null.</summary>
+        public Transform UserHead { get { ResolveUser(); return _user; } }
+
         /// <summary>Voice: the user is talking to this agent. A still, attentive head tilt toward the user.</summary>
         public void SetListening(bool on)
         {
@@ -231,6 +253,7 @@ namespace MuseDesk.Agents
             _neckLayer.Release(neck);
             _headLayer.Release(head);
             _yaw = _pitch = _weight = _roll = _bobAmp = 0f;
+            _exprRoll = _exprPitch = _exprYaw = 0f;
             _target = null; _targetWeight = 0f; _nearAgent = null; _hand = null;
         }
 
@@ -438,7 +461,8 @@ namespace MuseDesk.Agents
                 bob = Mathf.Sin(t * speakBobRate * 6.2831853f) * _bobAmp * (0.65f + 0.35f * Mathf.Sin(t * 1.7f));
             }
 
-            if (Mathf.Abs(yawOut) < 0.02f && Mathf.Abs(pitchOut) < 0.02f && Mathf.Abs(_roll) < 0.02f && bob == 0f)
+            bool expr = _exprRoll != 0f || _exprPitch != 0f || _exprYaw != 0f;
+            if (Mathf.Abs(yawOut) < 0.02f && Mathf.Abs(pitchOut) < 0.02f && Mathf.Abs(_roll) < 0.02f && bob == 0f && !expr)
             {
                 _neckLayer.Release(neck);
                 _headLayer.Release(head);
@@ -456,7 +480,16 @@ namespace MuseDesk.Agents
                 _neckLayer.Apply(neck, dn);
             }
             float hs = 1f - ns;
-            Quaternion dh = rootRot * Quaternion.Euler(pitchOut * hs + bob, yawOut * hs, _roll * hs) * rootInv;
+            // The expression rides on the head only. The sum with the aim (head and neck together)
+            // stays inside the same hard limits as the aim alone.
+            float headYaw = yawOut * hs, headPitch = pitchOut * hs + bob;
+            if (expr)
+            {
+                float neckYaw = yawOut * ns, neckPitch = pitchOut * ns;
+                headYaw = Mathf.Clamp(headYaw + _exprYaw, -HardMaxYaw - neckYaw, HardMaxYaw - neckYaw);
+                headPitch = Mathf.Clamp(headPitch + _exprPitch, -HardMaxPitch - neckPitch, HardMaxPitch - neckPitch);
+            }
+            Quaternion dh = rootRot * Quaternion.Euler(headPitch, headYaw, _roll * hs + _exprRoll) * rootInv;
             _headLayer.Apply(head, dh);
         }
     }

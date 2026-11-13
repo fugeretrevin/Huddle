@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 #if UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine.Android;
@@ -10,47 +12,72 @@ using Meta.WitAi.Json;
 namespace MuseDesk.Voice
 {
     /// <summary>
-    /// Wit.ai-backed IVoiceCommandSource using the Meta Voice SDK's AppVoiceExperience. On each NLU
-    /// response it reads the transcription (and any recognized intent) and maps it to approve / reject /
-    /// request-changes / ask-why. Drives off spoken text so it works with an untrained Wit app, while
-    /// preserving the rule that voice NEVER bypasses backend authorization.
+    /// The Meta Voice SDK (Wit.ai) as a transcript source. It opens the microphone, reports the
+    /// level, the partial words and the final sentence, and nothing else: no intent matching is
+    /// done here or expected from Wit, so any app token works. Needs internet and a client token in
+    /// the WitConfiguration; it does not need the desktop backend.
+    ///
+    /// The microphone permission is requested on the first request, never at launch.
+    /// The token is never read into a log or a message; only whether one is present is checked.
     /// </summary>
-    [RequireComponent(typeof(AppVoiceExperience))]
-    public class WitVoiceSource : MonoBehaviour, IVoiceCommandSource
+    public class WitVoiceSource : MonoBehaviour, IVoiceTranscriptSource, IVoiceCommandSource
     {
+        [Tooltip("The Voice SDK service. Optional: without it the source reports NoRecognizer and stays inert.")]
         public AppVoiceExperience appVoice;
+        [Tooltip("Longest one request may record (s).")]
+        public float maxRecordingSeconds = 6f;
+        [Tooltip("Silence after speech that ends the request (s).")]
+        public float silenceSeconds = 1.4f;
 
+        public event Action<string> PartialTranscript;
+        public event Action<string> FinalTranscript;
+        public event Action<bool> ListeningChanged;
+        public event Action<float> MicLevelChanged;
+        public event Action<VoiceProblem, string> Problem;
+
+        // IVoiceCommandSource: kept for the paper's chip and the old router; never raised.
+#pragma warning disable 67
         public event Action Approve;
         public event Action Reject;
         public event Action RequestChanges;
         public event Action<string> AskWhy;
-        public event Action<bool> ListeningChanged;
         public event Action<string> StatusChanged;
+#pragma warning restore 67
 
-        static readonly string[] YesWords =
-        {
-            "approve", "approved", "yes", "yes please", "ship it", "ship", "confirm", "confirmed",
-            "go ahead", "accept", "sounds good", "looks good", "lgtm", "do it", "sure"
-        };
-        static readonly string[] NoWords =
-        {
-            "reject", "rejected", "no", "no thanks", "nope", "deny", "denied", "don't", "do not",
-            "stop", "cancel", "decline"
-        };
-        static readonly string[] ChangeWords =
-        {
-            "request changes", "request change", "make changes", "changes", "change", "revise",
-            "revision", "modify", "edit"
-        };
-        static readonly string[] WhyWords =
-        {
-            "why", "explain", "reason", "tell me", "what if", "how come", "justify"
-        };
+        /// <summary>The microphone key calls this when it exists, so every way of starting voice
+        /// goes through the same checks and the same feedback. Set by VoiceCommandCenter.</summary>
+        public Action ToggleHandler;
 
-        public bool IsAvailable => appVoice != null;
+        public bool IsListening { get; private set; }
+        public bool IsAvailable => Availability == VoiceProblem.None;
 
-        bool _listening;
-        bool _gotResult;
+        public VoiceProblem Availability
+        {
+            get
+            {
+                if (appVoice == null || !appVoice.isActiveAndEnabled) return VoiceProblem.NoRecognizer;
+                if (!HasToken()) return VoiceProblem.NoToken;
+                if (Application.internetReachability == NetworkReachability.NotReachable) return VoiceProblem.NoInternet;
+                if (_permissionDenied) return VoiceProblem.PermissionDenied;
+                return VoiceProblem.None;
+            }
+        }
+
+        // SDK callbacks are queued and handed out in Update, so listeners always run on the main
+        // thread whatever thread the SDK used.
+        enum Ev { Partial, Full, Start, Stop, Error, Done, Inactive }
+        struct Queued { public Ev Kind; public string A, B; }
+        readonly Queue<Queued> _queue = new Queue<Queued>();
+        readonly object _lock = new object();
+        volatile float _level;
+        float _levelShown = -1f;
+
+        bool _hooked;
+        bool _requestOpen;          // between BeginRequest and its transcript / problem
+        bool _gotFinal;
+        bool _aborted;
+        bool _permissionDenied;
+        bool _tokenChecked, _hasToken;
 
         void Reset() { appVoice = GetComponent<AppVoiceExperience>(); }
 
@@ -58,182 +85,268 @@ namespace MuseDesk.Voice
         {
             if (appVoice == null) appVoice = GetComponent<AppVoiceExperience>();
             if (appVoice == null) return;
-            appVoice.VoiceEvents.OnResponse.AddListener(OnResponse);
-            appVoice.VoiceEvents.OnError.AddListener(OnError);
-            appVoice.VoiceEvents.OnStartListening.AddListener(OnSdkStartListening);
-            appVoice.VoiceEvents.OnStoppedListening.AddListener(OnSdkStoppedListening);
-            appVoice.VoiceEvents.OnAborted.AddListener(OnSdkStopped);
-            appVoice.VoiceEvents.OnCanceled.AddListener(OnSdkCanceled);
-            appVoice.VoiceEvents.OnPartialTranscription.AddListener(OnPartial);
-            appVoice.VoiceEvents.OnFullTranscription.AddListener(OnFull);
+            try
+            {
+                var rc = appVoice.RuntimeConfiguration;
+                if (rc != null)
+                {
+                    if (maxRecordingSeconds > 0f) rc.maxRecordingTime = maxRecordingSeconds;
+                    if (silenceSeconds > 0f) rc.minKeepAliveTimeInSeconds = silenceSeconds;
+                }
+                var ev = appVoice.VoiceEvents;
+                ev.OnPartialTranscription.AddListener(SdkPartial);
+                ev.OnFullTranscription.AddListener(SdkFull);
+                ev.OnStartListening.AddListener(SdkStart);
+                ev.OnStoppedListening.AddListener(SdkStop);
+                ev.OnStoppedListeningDueToInactivity.AddListener(SdkInactive);
+                ev.OnResponse.AddListener(SdkResponse);
+                ev.OnError.AddListener(SdkError);
+                ev.OnRequestCompleted.AddListener(SdkDone);
+                ev.OnAborted.AddListener(SdkDone);
+                ev.OnMicLevelChanged.AddListener(SdkLevel);
+                _hooked = true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[MuseDesk] voice: the speech service could not be hooked (" + e.GetType().Name + "). Voice stays off.");
+                _hooked = false;
+            }
         }
 
         void OnDisable()
         {
-            if (appVoice == null) return;
-            appVoice.VoiceEvents.OnResponse.RemoveListener(OnResponse);
-            appVoice.VoiceEvents.OnError.RemoveListener(OnError);
-            appVoice.VoiceEvents.OnStartListening.RemoveListener(OnSdkStartListening);
-            appVoice.VoiceEvents.OnStoppedListening.RemoveListener(OnSdkStoppedListening);
-            appVoice.VoiceEvents.OnAborted.RemoveListener(OnSdkStopped);
-            appVoice.VoiceEvents.OnCanceled.RemoveListener(OnSdkCanceled);
-            appVoice.VoiceEvents.OnPartialTranscription.RemoveListener(OnPartial);
-            appVoice.VoiceEvents.OnFullTranscription.RemoveListener(OnFull);
+            if (appVoice != null && _hooked)
+            {
+                try
+                {
+                    var ev = appVoice.VoiceEvents;
+                    ev.OnPartialTranscription.RemoveListener(SdkPartial);
+                    ev.OnFullTranscription.RemoveListener(SdkFull);
+                    ev.OnStartListening.RemoveListener(SdkStart);
+                    ev.OnStoppedListening.RemoveListener(SdkStop);
+                    ev.OnStoppedListeningDueToInactivity.RemoveListener(SdkInactive);
+                    ev.OnResponse.RemoveListener(SdkResponse);
+                    ev.OnError.RemoveListener(SdkError);
+                    ev.OnRequestCompleted.RemoveListener(SdkDone);
+                    ev.OnAborted.RemoveListener(SdkDone);
+                    ev.OnMicLevelChanged.RemoveListener(SdkLevel);
+                }
+                catch { }
+            }
+            _hooked = false;
+            _requestOpen = false;
+            SetListening(false);
+            lock (_lock) _queue.Clear();
         }
 
-        public void StartListening()
+        bool HasToken()
         {
-            if (appVoice == null)
+            if (_tokenChecked) return _hasToken;
+            _tokenChecked = true;
+            _hasToken = false;
+            try
             {
-                StatusChanged?.Invoke("Voice error: Voice SDK missing");
-                return;
+                var cfg = appVoice != null ? appVoice.Configuration : null;
+                _hasToken = cfg != null && !string.IsNullOrEmpty(cfg.GetClientAccessToken());
             }
-            if (_listening)
-            {
-                StopListening();
-                return;
-            }
+            catch { _hasToken = false; }
+            return _hasToken;
+        }
+
+        // ───────────────────────── IVoiceTranscriptSource ─────────────────────────
+
+        public void BeginRequest()
+        {
+            if (IsListening || _requestOpen) return;
+            VoiceProblem p = Availability;
+            // A denied permission is asked for again: the user may have changed their mind.
+            if (p != VoiceProblem.None && p != VoiceProblem.PermissionDenied) { Raise(p, null); return; }
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
             {
-                StatusChanged?.Invoke("Mic permission needed — allow and tap Voice again");
                 var cb = new PermissionCallbacks();
-                cb.PermissionGranted += _ => ActivateNow();
-                cb.PermissionDenied += _ => StatusChanged?.Invoke("Mic permission denied");
+                cb.PermissionGranted += _ => { _permissionDenied = false; Activate(); };
+                cb.PermissionDenied += _ => { _permissionDenied = true; Raise(VoiceProblem.PermissionDenied, null); };
                 Permission.RequestUserPermission(Permission.Microphone, cb);
                 return;
             }
+            _permissionDenied = false;
 #endif
-            ActivateNow();
+            Activate();
         }
 
-        void ActivateNow()
+        void Activate()
         {
-            if (appVoice == null) return;
-            _gotResult = false;
-            SetListening(true);
-            StatusChanged?.Invoke("Listening… say Approve, Reject, Changes, or Why?");
-            appVoice.Activate();
+            if (appVoice == null || !_hooked) { Raise(VoiceProblem.NoRecognizer, null); return; }
+            _requestOpen = true;
+            _requestAt = Time.unscaledTime;
+            _gotFinal = false;
+            _aborted = false;
+            try { appVoice.Activate(); }
+            catch (Exception e)
+            {
+                _requestOpen = false;
+                Debug.LogWarning("[MuseDesk] voice: could not open the microphone (" + e.GetType().Name + ").");
+                Raise(VoiceProblem.ServiceError, "The microphone could not be opened.");
+            }
         }
 
-        public void StopListening()
+        public void EndRequest()
+        {
+            if (appVoice == null || !_requestOpen) return;
+            try { appVoice.Deactivate(); } catch { }
+        }
+
+        public void AbortRequest()
         {
             if (appVoice == null) return;
-            appVoice.Deactivate();
+            _aborted = true;
+            _requestOpen = false;
+            try { appVoice.DeactivateAndAbortRequest(); } catch { }
             SetListening(false);
-            StatusChanged?.Invoke("");
+        }
+
+        // ───────────────────────── IVoiceCommandSource (the paper's Voice chip) ─────────────────────────
+
+        /// <summary>The paper's Voice chip: the same thing as the microphone key.</summary>
+        public void StartListening()
+        {
+            if (ToggleHandler != null) { ToggleHandler(); return; }
+            if (IsListening) EndRequest(); else BeginRequest();
+        }
+
+        public void StopListening() { EndRequest(); }
+
+        // ───────────────────────── SDK callbacks (any thread) ─────────────────────────
+
+        void Push(Ev kind, string a = null, string b = null)
+        {
+            lock (_lock) _queue.Enqueue(new Queued { Kind = kind, A = a, B = b });
+        }
+
+        void SdkPartial(string text) { Push(Ev.Partial, text); }
+        void SdkFull(string text) { Push(Ev.Full, text); }
+        void SdkStart() { Push(Ev.Start); }
+        void SdkStop() { Push(Ev.Stop); }
+        void SdkInactive() { Push(Ev.Inactive); }
+        void SdkError(string error, string message) { Push(Ev.Error, error, message); }
+        void SdkDone() { Push(Ev.Done); }
+        void SdkLevel(float level) { _level = level; }
+
+        void SdkResponse(WitResponseNode node)
+        {
+            // Some paths deliver the sentence only with the response.
+            string text = null;
+            try { text = node != null ? node.GetTranscription() : null; } catch { }
+            Push(Ev.Full, text);
+        }
+
+        // ───────────────────────── main thread ─────────────────────────
+
+        float _requestAt;
+
+        void Update()
+        {
+            // A request the service never acknowledged (no microphone opened, no answer, no error)
+            // must not block the next one.
+            if (_requestOpen && Time.unscaledTime - _requestAt > maxRecordingSeconds + 12f)
+            {
+                _requestOpen = false;
+                try { appVoice.DeactivateAndAbortRequest(); } catch { }
+                SetListening(false);
+                Raise(VoiceProblem.Timeout, null);
+            }
+            if (IsListening)
+            {
+                float level = Mathf.Clamp01(_level);
+                if (Mathf.Abs(level - _levelShown) > 0.01f) { _levelShown = level; MicLevelChanged?.Invoke(level); }
+            }
+            while (true)
+            {
+                Queued q;
+                lock (_lock)
+                {
+                    if (_queue.Count == 0) break;
+                    q = _queue.Dequeue();
+                }
+                try { Handle(q); }
+                catch (Exception e) { Debug.LogException(e); }
+            }
+        }
+
+        void Handle(Queued q)
+        {
+            switch (q.Kind)
+            {
+                case Ev.Start:
+                    if (!_aborted) SetListening(true);
+                    break;
+                case Ev.Stop:
+                    SetListening(false);
+                    break;
+                case Ev.Partial:
+                    if (_requestOpen && !string.IsNullOrWhiteSpace(q.A)) PartialTranscript?.Invoke(q.A.Trim());
+                    break;
+                case Ev.Full:
+                    if (!_requestOpen || _gotFinal || string.IsNullOrWhiteSpace(q.A)) break;
+                    _gotFinal = true;
+                    _requestOpen = false;
+                    SetListening(false);
+                    FinalTranscript?.Invoke(q.A.Trim());
+                    break;
+                case Ev.Inactive:
+                    // The SDK closed the microphone because nobody spoke; Done follows.
+                    break;
+                case Ev.Done:
+                    if (!_requestOpen) break;
+                    _requestOpen = false;
+                    SetListening(false);
+                    if (!_gotFinal && !_aborted) Raise(VoiceProblem.NoSpeech, null);
+                    break;
+                case Ev.Error:
+                    {
+                        bool was = _requestOpen;
+                        _requestOpen = false;
+                        SetListening(false);
+                        string code = q.A ?? "", message = q.B ?? "";
+                        Debug.LogWarning("[MuseDesk] voice: speech service error: " + Scrub(code) + " " + Scrub(message));
+                        if (!was || _gotFinal || _aborted) break;
+                        string all = (code + " " + message).ToLowerInvariant();
+                        if (Application.internetReachability == NetworkReachability.NotReachable
+                            || all.Contains("resolve") || all.Contains("network") || all.Contains("connect"))
+                            Raise(VoiceProblem.NoInternet, null);
+                        else if (all.Contains("401") || all.Contains("unauthor") || all.Contains("token") || all.Contains("403"))
+                            Raise(VoiceProblem.NoToken, "The speech service refused this build's token.");
+                        else if (all.Contains("timeout") || all.Contains("timed out"))
+                            Raise(VoiceProblem.Timeout, null);
+                        else if (all.Contains("permission") || all.Contains("mic"))
+                            Raise(VoiceProblem.ServiceError, "The microphone could not be used.");
+                        else Raise(VoiceProblem.ServiceError, null);
+                        break;
+                    }
+            }
         }
 
         void SetListening(bool on)
         {
-            if (_listening == on) return;
-            _listening = on;
+            if (IsListening == on) return;
+            IsListening = on;
+            if (!on) { _level = 0f; _levelShown = -1f; }
             ListeningChanged?.Invoke(on);
         }
 
-        void OnSdkStartListening() => SetListening(true);
-
-        void OnSdkStoppedListening()
+        void Raise(VoiceProblem problem, string detail)
         {
-            SetListening(false);
+            Problem?.Invoke(problem, detail);
         }
 
-        void OnSdkStopped()
+        // Nothing that looks like a credential ever reaches the log.
+        static readonly Regex LongToken = new Regex("[A-Za-z0-9_\\-]{20,}");
+        static string Scrub(string s)
         {
-            SetListening(false);
-            if (!_gotResult) StatusChanged?.Invoke("");
-        }
-
-        void OnSdkCanceled(string _) => OnSdkStopped();
-
-        void OnPartial(string text)
-        {
-            if (!string.IsNullOrWhiteSpace(text))
-                StatusChanged?.Invoke("Hearing: “" + text.Trim() + "”");
-        }
-
-        void OnFull(string text)
-        {
-            if (!string.IsNullOrWhiteSpace(text))
-                StatusChanged?.Invoke("Heard: “" + text.Trim() + "”");
-        }
-
-        void OnResponse(WitResponseNode node)
-        {
-            SetListening(false);
-            if (node == null) return;
-
-            string intent = SafeIntent(node);
-            string raw = node.GetTranscription() ?? "";
-            string text = raw.Trim().ToLowerInvariant();
-            var cmd = Classify(text, intent);
-            _gotResult = cmd != VoiceCommand.None;
-
-            switch (cmd)
-            {
-                case VoiceCommand.Approve:        Approve?.Invoke(); break;
-                case VoiceCommand.Reject:         Reject?.Invoke(); break;
-                case VoiceCommand.RequestChanges: RequestChanges?.Invoke(); break;
-                case VoiceCommand.Ask:            AskWhy?.Invoke(raw); break;
-                default:
-                    if (!string.IsNullOrEmpty(text))
-                        StatusChanged?.Invoke($"Heard “{raw.Trim()}” (say approve, reject, changes, or why?)");
-                    break;
-            }
-        }
-
-        public enum VoiceCommand { None, Approve, Reject, RequestChanges, Ask }
-
-        /// <summary>
-        /// Map a transcript (lower-case) and optional Wit intent to a command. Approval is the
-        /// consequential action, so it is the HARDEST to trigger: questions first, then changes,
-        /// then negation/reject, then short unambiguous affirmative. Whole-word/phrase matching only.
-        /// </summary>
-        public static VoiceCommand Classify(string text, string intent)
-        {
-            text = (text ?? "").Trim().ToLowerInvariant();
-            intent = (intent ?? "").ToLowerInvariant();
-            if (text.Length == 0 && intent.Length == 0) return VoiceCommand.None;
-
-            bool question = HasAny(text, WhyWords) || text.EndsWith("?");
-            bool changes = HasAny(text, ChangeWords);
-            bool negated = HasAny(text, NegationWords);
-            bool no = HasAny(text, NoWords);
-            bool yes = HasAny(text, YesWords);
-
-            if (question) return VoiceCommand.Ask;
-            if (changes && !negated) return VoiceCommand.RequestChanges;
-            if (no && !yes) return VoiceCommand.Reject;
-            if (intent.Contains("reject") || intent.Contains("negat")) return VoiceCommand.Reject;
-            if (negated || (no && yes)) return VoiceCommand.None;
-            int words = text.Length == 0 ? 0 : text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
-            if ((yes || intent.Contains("confirm")) && words <= 6) return VoiceCommand.Approve;
-            return VoiceCommand.None;
-        }
-
-        static readonly string[] NegationWords = { "don't", "dont", "do not", "not", "never", "no", "isn't", "wait", "hold on", "unsure", "maybe" };
-
-        static bool HasAny(string text, string[] phrases)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            string padded = " " + System.Text.RegularExpressions.Regex.Replace(text, @"[^\w' ]+", " ") + " ";
-            padded = System.Text.RegularExpressions.Regex.Replace(padded, @"\s+", " ");
-            foreach (var p in phrases)
-                if (padded.Contains(" " + p + " ")) return true;
-            return false;
-        }
-
-        void OnError(string error, string message)
-        {
-            SetListening(false);
-            Debug.LogWarning($"[MuseDesk] voice error: {error} {message}");
-            StatusChanged?.Invoke($"Voice error: {(string.IsNullOrEmpty(error) ? message : error)}");
-        }
-
-        static string SafeIntent(WitResponseNode node)
-        {
-            try { return (node.GetIntentName() ?? "").ToLowerInvariant(); }
-            catch { return ""; }
+            if (string.IsNullOrEmpty(s)) return "";
+            if (s.Length > 160) s = s.Substring(0, 160);
+            return LongToken.Replace(s, "***");
         }
     }
 }

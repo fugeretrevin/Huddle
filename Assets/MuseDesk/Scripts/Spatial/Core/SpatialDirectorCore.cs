@@ -99,6 +99,14 @@ namespace MuseDesk.Spatial
         [Tooltip("Off (default): with no room data the way back to the desk cannot be checked and is refused. " +
                  "On: it is then travelled with the user rules only (an escape hatch, said in words).")]
         public bool returnToDeskWithoutRoom;
+        [Tooltip("Pointing at the floor: the spot is kept at least this far (horizontally) from the user.")]
+        public float aimMinDistance = 0.8f;
+        [Tooltip("Pointing at the floor: the spot is kept at most this far (horizontally) from the user.")]
+        public float aimMaxDistance = 3.5f;
+        /// <summary>Set by the host when the headset reports a floor-level tracking origin: manual
+        /// placement (no room scan) then starts on that floor instead of a guessed eye height.</summary>
+        public bool hasTrackedFloor;
+        public float trackedFloorHeight;
 
         public PlacementMode Mode { get; private set; }
         public DirectorPhase Phase { get; private set; }
@@ -360,6 +368,8 @@ namespace MuseDesk.Spatial
             Phase = DirectorPhase.Previewing;
             _index = 0;
             _previewProblem = null;
+            _aimDragging = false;               // a drag on the old preview is over (the room changed under it)
+            _aimMoved = false;
             if (_candidates.Count > 0)
             {
                 PreviewIsDetected = true;
@@ -420,7 +430,7 @@ namespace MuseDesk.Spatial
         {
             int side = floorSettings.preferredSide < 0 ? -1 : 1;
             Vector3 p = user.head + user.Right * (side * manualSideDistance) + user.forward * 0.2f;
-            p.y = user.head.y - manualAssumedEyeHeight;
+            p.y = hasTrackedFloor ? trackedFloorHeight : user.head.y - manualAssumedEyeHeight;
             return new RootPose(p, SpatialGeometry.FaceUserYaw(p, user.head), 1f);
         }
 
@@ -448,10 +458,15 @@ namespace MuseDesk.Spatial
                 }
                 return;
             }
-            if (!PreviewIsDetected || _candidates.Count < 2) return;
+            if (_candidates.Count == 0) return;
+            // A spot that was dragged away by pointing can always go back to a scored one.
+            if (!_aimMoved && !_aimDragging && (!PreviewIsDetected || _candidates.Count < 2)) return;
+            _aimDragging = false;
+            _aimMoved = false;
             _index = (_index + 1) % _candidates.Count;
             _previewOrigin = _candidates[_index].Pose;
             PreviewPose = _previewOrigin;
+            PreviewIsDetected = true;
             PreviewValid = true;
             _previewProblem = null;
             StatusText = DetectedStatus();
@@ -463,6 +478,7 @@ namespace MuseDesk.Spatial
         public void Nudge(float right, float forward, float up = 0f)
         {
             if (Phase != DirectorPhase.Previewing || PendingMode != PlacementMode.Floor) return;
+            _aimDragging = false;               // a key takes over from a drag: the spot stays at its last clear place
             SeatedUser user = _user();
             RootPose p = PreviewPose;
             p.position += user.Right * right + user.forward * forward;
@@ -474,6 +490,7 @@ namespace MuseDesk.Spatial
         public void Rotate(float degrees)
         {
             if (Phase != DirectorPhase.Previewing || PendingMode != PlacementMode.Floor) return;
+            _aimDragging = false;
             RootPose p = PreviewPose;
             p.rotation = Quaternion.AngleAxis(degrees, Vector3.up) * p.rotation;
             ApplyPreviewEdit(p, _user());
@@ -484,7 +501,15 @@ namespace MuseDesk.Spatial
             if (PreviewIsDetected)
             {
                 string reason;
-                PreviewValid = FloorPlacementEvaluator.ValidatePose(_room, user, p, footprint, floorSettings, true, out reason);
+                if (_aimMoved)
+                {
+                    // A spot the user pointed at is held to the rules it was accepted under
+                    // (no forward-cone preference), so a nudge does not turn it invalid for a new reason.
+                    FloorPoseProblem problem;
+                    PreviewValid = FloorPlacementEvaluator.CheckPlacedPose(_room, user, p, footprint, floorSettings, out problem);
+                    reason = FloorPlacementEvaluator.ShortReason(problem);
+                }
+                else PreviewValid = FloorPlacementEvaluator.ValidatePose(_room, user, p, footprint, floorSettings, true, out reason);
                 if (!PreviewValid) _previewProblem = reason + ". Move it back onto clear floor.";
                 else
                 {
@@ -510,9 +535,14 @@ namespace MuseDesk.Spatial
         {
             if (Phase == DirectorPhase.Previewing)
             {
+                _aimDragging = false;
+                _aimMoved = false;
                 PreviewPose = _previewOrigin;
                 PreviewValid = true;
                 _previewProblem = null;
+                // Pointing may have turned a hand-placed spot into a room-checked one or back: the
+                // spot as first offered is detected exactly when the room gave candidates.
+                if (PendingMode == PlacementMode.Floor) PreviewIsDetected = _candidates.Count > 0;
                 if (PendingMode == PlacementMode.Floor && PreviewIsDetected) StatusText = DetectedStatus();
                 Touch();
                 return;
@@ -576,6 +606,8 @@ namespace MuseDesk.Spatial
             _candidates.Clear();
             _index = 0;
             _previewProblem = null;
+            _aimDragging = false;
+            _aimMoved = false;
         }
 
         /// <summary>Accept the previewed spot: only now does the office move, and only along a route
@@ -584,6 +616,10 @@ namespace MuseDesk.Spatial
         {
             if (Phase != DirectorPhase.Previewing) return false;
             if (!Enabled(PendingMode)) { EndPreview(); StatusText = ""; Touch(); return false; }
+            // Pointing: while the footprint is held over a spot that is not clear, nothing can be
+            // confirmed (an extra refusal only; every check below is unchanged and still decides).
+            if (_aimDragging && !AimValid)
+                return Refuse((string.IsNullOrEmpty(AimProblem) ? "That spot is not clear" : AimProblem) + ". Move it to a clear spot first.");
             if (PreviewIsDetected && !PreviewValid)
                 return Refuse(string.IsNullOrEmpty(_previewProblem) ? "That spot is not clear floor. Move it or choose Next." : _previewProblem);
             if (Held) return Refuse("Put the paper down first, then the office can move");
@@ -695,6 +731,241 @@ namespace MuseDesk.Spatial
             SyncPod();
             Touch();
             return ok;
+        }
+
+        // ───────────────────────── pointing at the floor (preview only) ─────────────────────────
+        //
+        // The user points at the floor, pinches the footprint and drags it. Everything here edits the
+        // PREVIEW: PreviewPose, its validity and the words. Nothing here plans a move that is then
+        // made, and nothing writes the office: Confirm, unchanged, is still the only way it moves and
+        // its swept-route check is still the final authority.
+        //
+        //  - During a drag the spot under the hand is checked on every call against the floor rules
+        //    (FloorPlacementEvaluator.CheckPlacedPose with a room; the user's chair and the distance
+        //    limits without one). AimPose / AimValid / AimProblem describe what is under the hand;
+        //    PreviewPose only ever follows to spots that passed, so it is always the LAST CLEAR one.
+        //  - On release the route to the spot is planned once (the same PlanToFloor the nudge keys
+        //    use). No clear way: the preview goes back to where it was before the drag, with the reason.
+
+        struct AimRestore
+        {
+            public RootPose pose;
+            public bool detected, valid, moved;
+            public string problem, status;
+        }
+
+        bool _aimDragging, _aimMoved, _aimDragMoved;
+        AimRestore _aimStart;
+
+        const string AimDragWords = "Move your hand to slide it across the floor. Let go to drop it.";
+        const string AimConfirmHint = "Confirm, or pinch and hold on it.";
+
+        /// <summary>True while a floor preview is open and can be pointed at.</summary>
+        public bool CanAim => Phase == DirectorPhase.Previewing && PendingMode == PlacementMode.Floor && !IsTransitioning;
+        /// <summary>True between <see cref="BeginAimDrag"/> and the drop.</summary>
+        public bool AimDragging => _aimDragging;
+        /// <summary>The spot under the hand during a drag (it may be one that is not clear).</summary>
+        public RootPose AimPose { get; private set; }
+        public bool AimValid { get; private set; }
+        /// <summary>Why the spot under the hand cannot be used, in a few words; null when it can.</summary>
+        public string AimProblem { get; private set; }
+        /// <summary>True when the spot under the hand was checked against room data.</summary>
+        public bool AimRoomChecked { get; private set; }
+        /// <summary>True when the previewed spot was put there by pointing (not a scored candidate as offered).</summary>
+        public bool PlacedByAim => _aimMoved;
+
+        /// <summary>What the ghost should show: the spot under the hand during a drag, else the preview.</summary>
+        public RootPose ShownPose => _aimDragging ? AimPose : PreviewPose;
+        public bool ShownValid => _aimDragging ? AimValid : (!PreviewIsDetected || PreviewValid);
+        public bool ShownRoomChecked => _aimDragging ? AimRoomChecked : PreviewIsDetected;
+
+        /// <summary>True when Next has somewhere to go (another candidate, the other ceiling side, or
+        /// back to a scored spot after the footprint was dragged away).</summary>
+        public bool CanCycle => Phase == DirectorPhase.Previewing
+                                && (PendingMode == PlacementMode.Ceiling || _candidates.Count > 1
+                                    || (_candidates.Count > 0 && (_aimMoved || _aimDragging)));
+
+        /// <summary>Raised when only the pose on show moved (a drag frame with no change of validity or
+        /// words). <see cref="Changed"/> is raised instead when anything else changed too.</summary>
+        public event Action PreviewMoved;
+
+        bool RoomUsable => _room != null && _room.HasRoom && _room.Availability == RoomAvailability.Available && _room.FloorCount > 0;
+
+        /// <summary>
+        /// The height of the plane a pointer ray is intersected with: the detected floor under the
+        /// user (or under the preview, or the first floor) when there is a room; otherwise the height
+        /// the hand-placed preview already has (tracked floor level or the stated guess, plus any
+        /// nudge up or down). False when no floor preview is open.
+        /// </summary>
+        public bool TryGetAimFloorHeight(out float height)
+        {
+            height = 0f;
+            if (!CanAim) return false;
+            height = PreviewPose.position.y;
+            if (!RoomUsable) return true;
+            SeatedUser user = _user();
+            int floor = SpatialGeometry.FindFloor(_room, new Vector2(user.head.x, user.head.z));
+            if (floor < 0) floor = SpatialGeometry.FindFloor(_room, new Vector2(PreviewPose.position.x, PreviewPose.position.z));
+            if (floor < 0) floor = 0;
+            height = _room.GetFloor(floor).height;
+            return true;
+        }
+
+        /// <summary>Keep a floor point within the allowed distance from the user (height unchanged).</summary>
+        public Vector3 ClampAimPoint(Vector3 point)
+        {
+            return FloorAimMath.ClampToRing(point, _user().head, aimMinDistance, aimMaxDistance);
+        }
+
+        /// <summary>True when the floor point lies on the footprint on show, or within <paramref name="margin"/> of it.</summary>
+        public bool FootprintContains(Vector3 point, float margin)
+        {
+            if (Phase != DirectorPhase.Previewing) return false;
+            RootPose p = ShownPose;
+            OrientedRect rect = SpatialGeometry.Footprint(p.position, p.rotation, p.scale, footprint, floorSettings.footprintCenterOffset);
+            return rect.Inflated(Mathf.Max(0f, margin)).Contains(new Vector2(point.x, point.z));
+        }
+
+        /// <summary>The footprint was grabbed. Nothing moves yet. False when no floor preview is open
+        /// or a drag is already running.</summary>
+        public bool BeginAimDrag()
+        {
+            if (!CanAim || _aimDragging) return false;
+            _aimStart.pose = PreviewPose;
+            _aimStart.detected = PreviewIsDetected;
+            _aimStart.valid = PreviewValid;
+            _aimStart.moved = _aimMoved;
+            _aimStart.problem = _previewProblem;
+            _aimStart.status = StatusText;
+            _aimDragging = true;
+            _aimDragMoved = false;
+            AimPose = PreviewPose;
+            AimValid = !PreviewIsDetected || PreviewValid;
+            AimProblem = AimValid ? null : "That spot is not clear";
+            AimRoomChecked = PreviewIsDetected;
+            StatusText = AimDragWords;
+            Touch();
+            return true;
+        }
+
+        /// <summary>
+        /// The hand moved the footprint to this point on the floor. The office faces the user from
+        /// there. The spot is checked at once; the preview follows only if it is clear.
+        /// </summary>
+        public void AimDragTo(Vector3 floorPoint)
+        {
+            if (!_aimDragging) return;
+            if (!CanAim) { _aimDragging = false; return; }
+            SeatedUser user = _user();
+            Vector3 p = FloorAimMath.ClampToRing(floorPoint, user.head, aimMinDistance, aimMaxDistance);
+            bool roomChecked = RoomUsable;
+            if (roomChecked)
+            {
+                int floor = SpatialGeometry.FindFloor(_room, new Vector2(p.x, p.z));
+                if (floor >= 0) p.y = _room.GetFloor(floor).height;
+            }
+            RootPose pose = new RootPose(p, SpatialGeometry.FaceUserYaw(p, user.head), PreviewPose.scale);
+
+            string problem;
+            bool valid = CheckAimPose(user, pose, roomChecked, out problem);
+            bool changed = valid != AimValid || problem != AimProblem || roomChecked != AimRoomChecked;
+            AimPose = pose;
+            AimValid = valid;
+            AimProblem = problem;
+            AimRoomChecked = roomChecked;
+            if (valid)
+            {
+                PreviewPose = pose;
+                PreviewIsDetected = roomChecked;
+                PreviewValid = true;
+                _previewProblem = null;
+                _aimDragMoved = true;
+                _aimMoved = true;
+            }
+            if (changed)
+            {
+                StatusText = valid ? AimDragWords : problem + ". Slide it to a clear spot.";
+                Touch();
+            }
+            else
+            {
+                var h = PreviewMoved;
+                if (h != null) h();
+            }
+        }
+
+        /// <summary>The floor rules for a spot chosen by pointing. With a room: the evaluator's rules.
+        /// Without one: only the user's chair (the distance limits are applied by the clamp).</summary>
+        bool CheckAimPose(SeatedUser user, RootPose pose, bool roomChecked, out string problem)
+        {
+            problem = null;
+            if (roomChecked)
+            {
+                FloorPoseProblem why;
+                if (FloorPlacementEvaluator.CheckPlacedPose(_room, user, pose, footprint, floorSettings, out why)) return true;
+                problem = FloorPlacementEvaluator.ShortReason(why);
+                return false;
+            }
+            OrientedRect rect = SpatialGeometry.Footprint(pose.position, pose.rotation, pose.scale, footprint, floorSettings.footprintCenterOffset);
+            if (rect.DistanceToPoint(new Vector2(user.head.x, user.head.z)) < floorSettings.userClearance)
+            {
+                problem = FloorPlacementEvaluator.ShortReason(FloorPoseProblem.NearUser);
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// The footprint was let go. It stays on the last clear spot it reached (which is where the
+        /// hand is, unless the hand was over a spot that is not clear). The way there is planned
+        /// once; if there is no clear way the preview goes back to where it was before the drag.
+        /// Returns true when the footprint stayed exactly where it was released.
+        /// </summary>
+        public bool EndAimDrag()
+        {
+            if (!_aimDragging) return false;
+            _aimDragging = false;
+            bool overBadSpot = !AimValid;
+            string badWords = AimProblem;
+            if (!_aimDragMoved)
+            {
+                // It never reached a clear spot: nothing changed.
+                RestoreAimStart();
+                if (overBadSpot && !string.IsNullOrEmpty(badWords)) StatusText = badWords + ". It stays where it was.";
+                Touch();
+                return false;
+            }
+            WorkspaceRoute route; CeilingPathCheck check;
+            if (!PlanToFloor(_user(), PreviewPose, !PreviewIsDetected, out route, out check))
+            {
+                RestoreAimStart();
+                StatusText = check.Words("The way to that spot") + ". It went back to where it was.";
+                Touch();
+                return false;
+            }
+            string placed = PreviewIsDetected ? "Placed by pointing. " : "Placed by pointing (not checked against your room). ";
+            StatusText = overBadSpot ? badWords + " there: it is on the last clear spot. " + AimConfirmHint : placed + AimConfirmHint;
+            Touch();
+            return !overBadSpot;
+        }
+
+        /// <summary>Call a drag off: the preview is exactly as it was before the footprint was grabbed.</summary>
+        public void CancelAimDrag()
+        {
+            if (!_aimDragging) return;
+            _aimDragging = false;
+            if (Phase == DirectorPhase.Previewing && PendingMode == PlacementMode.Floor) RestoreAimStart();
+            Touch();
+        }
+
+        void RestoreAimStart()
+        {
+            PreviewPose = _aimStart.pose;
+            PreviewIsDetected = _aimStart.detected;
+            PreviewValid = _aimStart.valid;
+            _aimMoved = _aimStart.moved;
+            _previewProblem = _aimStart.problem;
+            StatusText = _aimStart.status ?? "";
         }
 
         bool Refuse(string why)

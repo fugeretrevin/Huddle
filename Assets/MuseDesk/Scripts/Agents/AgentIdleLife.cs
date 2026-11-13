@@ -93,6 +93,34 @@ namespace MuseDesk.Agents
             else if (bone == spine) { _extSpine = Quaternion.identity; _hasExtSpine = false; }
         }
 
+        // A second extra rotation, for AgentPresence (turning the upper body to the user, a duck, a
+        // stretch). Separate from the slot above so a hand push (AgentTilt) and a reaction compose
+        // instead of overwriting each other.
+        Quaternion _reactSpine = Quaternion.identity, _reactChest = Quaternion.identity;
+        bool _hasReact;
+        float _noFidgetUntil;
+
+        /// <summary>World-space rotations added on the Spine and the Chest on top of everything
+        /// else here. Stay until changed or cleared. Applied in this component's LateUpdate.</summary>
+        public void SetReaction(Quaternion spineWorldDelta, Quaternion chestWorldDelta)
+        {
+            _reactSpine = spineWorldDelta; _reactChest = chestWorldDelta; _hasReact = true;
+        }
+
+        /// <summary>Remove the rotations set with <see cref="SetReaction"/>.</summary>
+        public void ClearReaction()
+        {
+            _reactSpine = _reactChest = Quaternion.identity; _hasReact = false;
+        }
+
+        /// <summary>No weight shifts for this long, and the one in progress ends (the agent was
+        /// addressed and holds still).</summary>
+        public void SuppressFidgets(float seconds)
+        {
+            _noFidgetUntil = Mathf.Max(_noFidgetUntil, Time.time + Mathf.Max(0f, seconds));
+            _fidgetStart = -100f;
+        }
+
         float _phase;
         float _amount;          // smoothed breathing amount, 0..1
         float _lean;            // smoothed forward lean, degrees
@@ -130,6 +158,8 @@ namespace MuseDesk.Agents
             _lean = 0f;
             _extSpine = _extChest = Quaternion.identity;
             _hasExtSpine = _hasExtChest = false;
+            _reactSpine = _reactChest = Quaternion.identity;
+            _hasReact = false;
         }
 
         void LateUpdate()
@@ -172,7 +202,7 @@ namespace MuseDesk.Agents
             {
                 float slow = MuseDesk.Workspace.FocusModeController.Active ? Mathf.Max(1f, focusFidgetSlowdown) : 1f;
                 _nextFidget = now + Random.Range(fidgetIntervalMin, fidgetIntervalMax) * slow;
-                if (restful)
+                if (restful && now >= _noFidgetUntil)
                 {
                     _fidgetStart = now;
                     _fidgetLength = Random.Range(1.2f, 1.9f);
@@ -195,13 +225,14 @@ namespace MuseDesk.Agents
             if (spine != null)
             {
                 bool own = Mathf.Abs(rock) >= 0.005f || Mathf.Abs(fidget) >= 0.005f;
-                if (!own && !_hasExtSpine) _spineLayer.Release(spine);
+                if (!own && !_hasExtSpine && !_hasReact) _spineLayer.Release(spine);
                 else
                 {
                     Quaternion d = own
                         ? rootRot * Quaternion.Euler(rock, _fidgetYaw ? fidget : 0f, _fidgetYaw ? 0f : fidget) * rootInv
                         : Quaternion.identity;
                     if (_hasExtSpine) d = _extSpine * d;
+                    if (_hasReact) d = _reactSpine * d;
                     _spineLayer.Apply(spine, d);
                 }
             }
@@ -209,11 +240,12 @@ namespace MuseDesk.Agents
             if (chest != null)
             {
                 bool own = Mathf.Abs(_lean) >= 0.01f;
-                if (!own && !_hasExtChest) _chestLayer.Release(chest);
+                if (!own && !_hasExtChest && !_hasReact) _chestLayer.Release(chest);
                 else
                 {
                     Quaternion d = own ? rootRot * Quaternion.Euler(_lean, 0f, 0f) * rootInv : Quaternion.identity;
                     if (_hasExtChest) d = _extChest * d;
+                    if (_hasReact) d = _reactChest * d;
                     _chestLayer.Apply(chest, d);
                 }
 

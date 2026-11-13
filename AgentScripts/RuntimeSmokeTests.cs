@@ -174,30 +174,7 @@ public static class RuntimeSmokeTests
 
     static void Voice()
     {
-        var approve = new[] { "approve", "yes", "ship it", "go ahead", "sounds good", "yes approve it" };
-        foreach (var s in approve)
-            Check(WitVoiceSource.Classify(s, "") == WitVoiceSource.VoiceCommand.Approve, $"voice '{s}' approves");
-
-        var reject = new[] { "reject", "no", "deny it", "cancel", "decline" };
-        foreach (var s in reject)
-            Check(WitVoiceSource.Classify(s, "") == WitVoiceSource.VoiceCommand.Reject, $"voice '{s}' rejects");
-
-        // The dangerous ones: none of these may approve.
-        var never = new[] { "don't approve", "do not approve this", "not sure", "i'm not sure about that",
-            "no approve it", "maybe approve", "wait don't ship it", "disapprove", "unapproved",
-            "yes but first tell me about the other option and what the developer would need to change", "" };
-        foreach (var s in never)
-            Check(WitVoiceSource.Classify(s, "") != WitVoiceSource.VoiceCommand.Approve, $"voice '{s}' must NOT approve");
-
-        var ask = new[] { "why", "why do you recommend this", "explain the risk", "developer what are you changing?" };
-        foreach (var s in ask)
-            Check(WitVoiceSource.Classify(s, "") == WitVoiceSource.VoiceCommand.Ask, $"voice '{s}' asks");
-        Check(WitVoiceSource.Classify("why should i approve", "") == WitVoiceSource.VoiceCommand.Ask,
-            "a question containing 'approve' is a question");
-
-        Check(VoiceDecisionController.AgentFor("Developer, what are you changing?") == "developer", "question targets developer");
-        Check(VoiceDecisionController.AgentFor("Tester, why did the tests fail?") == "tester", "question targets tester");
-        Check(VoiceDecisionController.AgentFor("why do you recommend this") == "researcher", "unaddressed question goes to researcher");
+        // Voice grammar moved to VoiceIntentParser; covered by the EditMode fixtures VoiceIntentParserTests and VoiceAnswersTests.
     }
 
     // ───────────── demo board connected to the scripted session ─────────────

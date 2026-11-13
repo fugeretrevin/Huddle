@@ -50,6 +50,12 @@ namespace MuseDesk.Spatial
         public bool returnToDeskWithoutRoom;
         public float nudgeStep = 0.10f;
         public float rotateStep = 15f;
+        [Tooltip("Pointing at the floor (FloorAimController): the spot is kept between these distances from the user, in metres.")]
+        public float aimMinDistance = 0.8f;
+        public float aimMaxDistance = 3.5f;
+        [Tooltip("With no room scan, start hand placement on the tracked floor (floor-level tracking origin) instead of a guessed eye height. " +
+                 "Used only when the head is a plausible seated or standing height above it.")]
+        public bool useTrackedFloorWithoutRoom = true;
 
         [Header("Near-user pose (where a remote paper comes to rest)")]
         public float nearAhead = 0.45f;
@@ -102,7 +108,10 @@ namespace MuseDesk.Spatial
             _core.floorSettings = floorSettings;
             _core.ceilingSettings = ceilingSettings;
             _core.footprint = footprint;
+            _core.aimMinDistance = aimMinDistance;
+            _core.aimMaxDistance = aimMaxDistance;
             _core.Changed += OnCoreChanged;
+            _core.PreviewMoved += OnPreviewMoved;
         }
 
         void OnEnable()
@@ -130,7 +139,7 @@ namespace MuseDesk.Spatial
 
         void OnDestroy()
         {
-            if (_core != null) _core.Changed -= OnCoreChanged;
+            if (_core != null) { _core.Changed -= OnCoreChanged; _core.PreviewMoved -= OnPreviewMoved; }
         }
 
         // ───────────────────────── flags ─────────────────────────
@@ -176,7 +185,44 @@ namespace MuseDesk.Spatial
         {
             if (_core == null) return false;
             if (flags.Any) SyncRoom();
+            if (mode == WorkspaceMode.Floor) UpdateTrackedFloor();
             return _core.RequestMode((PlacementMode)(int)mode);
+        }
+
+        /// <summary>
+        /// Tell the core where the tracked floor is, for hand placement without a room scan. The
+        /// tracking space's origin is on the floor only with a floor-level (or stage) tracking
+        /// origin; the value is used only when the head is 0.5 to 2.2 m above it, so an Editor run
+        /// with the camera at the origin falls back to the stated guess.
+        /// </summary>
+        void UpdateTrackedFloor()
+        {
+            _core.hasTrackedFloor = false;
+            if (!useTrackedFloorWithoutRoom) return;
+            EnsureHead();
+            if (head == null || OVRManager.instance == null) return;
+            OVRManager.TrackingOrigin origin = OVRManager.instance.trackingOriginType;
+            if (origin != OVRManager.TrackingOrigin.FloorLevel && origin != OVRManager.TrackingOrigin.Stage) return;
+            Transform space = head.parent;          // CenterEyeAnchor sits directly under TrackingSpace
+            if (space == null) return;
+            float above = head.position.y - space.position.y;
+            if (above < 0.5f || above > 2.2f) return;
+            _core.hasTrackedFloor = true;
+            _core.trackedFloorHeight = space.position.y;
+        }
+
+        // ───────────────────────── pointing at the floor (preview only) ─────────────────────────
+
+        /// <summary>True while the floor preview is open and can be pointed at (FloorAimController reads this).</summary>
+        public bool CanAim => _core != null && _core.CanAim;
+        /// <summary>The seated user as the placement logic sees them (head position, flattened forward).</summary>
+        public SeatedUser CurrentUser => ReadUser();
+
+        void OnPreviewMoved()
+        {
+            // A drag frame: only the ghost moves. Mode, keys, words and saved state are untouched.
+            if (ghost != null && _core.HasPreview)
+                ghost.Show(_core.ShownPose, _core.ShownValid, _core.PendingMode == PlacementMode.Ceiling, _core.ShownRoomChecked);
         }
 
         public void RequestFloor()
@@ -421,15 +467,17 @@ namespace MuseDesk.Spatial
             if (_core == null) return;
             if (ghost != null)
             {
+                // During a drag by pointing the ghost shows the spot under the hand (teal or coral);
+                // otherwise ShownPose / ShownValid are the preview exactly as before.
                 if (_core.HasPreview)
-                    ghost.Show(_core.PreviewPose, !_core.PreviewIsDetected || _core.PreviewValid,
-                               _core.PendingMode == PlacementMode.Ceiling, _core.PreviewIsDetected);
+                    ghost.Show(_core.ShownPose, _core.ShownValid,
+                               _core.PendingMode == PlacementMode.Ceiling, _core.ShownRoomChecked);
                 else ghost.Hide();
             }
             if (strip != null)
             {
                 bool previewing = _core.Phase == DirectorPhase.Previewing;
-                bool canCycle = previewing && (_core.PendingMode == PlacementMode.Ceiling || _core.CandidateCount > 1);
+                bool canCycle = _core.CanCycle;     // also true after the footprint was dragged off its only candidate
                 bool transitioning = _core.IsTransitioning;
                 // Beside the Focus key while the office is at the desk or down beside the user;
                 // within reach at the near-user pose while it is away or travelling.

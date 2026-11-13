@@ -66,6 +66,8 @@ namespace MuseDesk.Spatial
         void WriteRoot(RootPose pose)
         {
             if (workspaceRoot == null) return;
+            // Prop-carrying hook: loose physics props are frozen to the office before it moves.
+            WorkspacePropCarrier.NotifyRootWrite();
             workspaceRoot.SetPositionAndRotation(pose.position, pose.rotation);
             workspaceRoot.localScale = new Vector3(pose.scale, pose.scale, pose.scale);
             _lastWritten = pose;

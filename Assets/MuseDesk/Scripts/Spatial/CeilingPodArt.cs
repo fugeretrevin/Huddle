@@ -38,6 +38,16 @@ namespace MuseDesk.Spatial
         public float shelfSeconds = 0.85f;
         public float settleSeconds = 0.7f;
 
+        [Header("Props with nowhere to stand on the pod")]
+        [Tooltip("Loose desk props that stand beside the office on the real desk, outside the pod's deck (measured by the builder). On the pod they would hang in the air beside it or over the folding wings, so they are scaled away while the mode is Ceiling and put back afterwards. Their physics state is not touched.")]
+        public Transform[] offDeckProps;
+
+        Vector3[] _propScales;
+        bool _propsHidden;
+
+        /// <summary>True while the off-deck props are scaled away (Ceiling mode).</summary>
+        public bool OffDeckPropsHidden => _propsHidden;
+
         static readonly int PodDockedIdle = Animator.StringToHash(CeilingWorkspacePodController.ClipDockedIdle);
         static readonly int PodUnlock = Animator.StringToHash(CeilingWorkspacePodController.ClipUnlock);
         static readonly int PodBeginDescent = Animator.StringToHash(CeilingWorkspacePodController.ClipBeginDescent);
@@ -93,6 +103,27 @@ namespace MuseDesk.Spatial
             if (_bound && _machine != null) _machine.StateChanged -= OnPodChanged;
             _machine = null;
             _bound = false;
+            HideOffDeckProps(false);         // never leave a desk prop scaled away
+        }
+
+        /// <summary>Scale the off-deck props away (true) or put their scale back (false). Only
+        /// the scale is touched, the same way the rest of the office hides things.</summary>
+        void HideOffDeckProps(bool hide)
+        {
+            if (hide == _propsHidden || offDeckProps == null) return;
+            if (_propScales == null || _propScales.Length != offDeckProps.Length) _propScales = new Vector3[offDeckProps.Length];
+            for (int i = 0; i < offDeckProps.Length; i++)
+            {
+                Transform t = offDeckProps[i];
+                if (t == null) continue;
+                if (hide)
+                {
+                    _propScales[i] = t.localScale;
+                    t.localScale = _propScales[i] * ScaleEase.HiddenFactor;
+                }
+                else if (_propScales[i].sqrMagnitude > 0f) t.localScale = _propScales[i];
+            }
+            _propsHidden = hide;
         }
 
         void Update()
@@ -132,7 +163,12 @@ namespace MuseDesk.Spatial
 
         void Refresh()
         {
-            if (!_ready || podVisual == null) return;
+            if (!_ready) return;
+            // With the pod: the props that have no deck under them leave when it appears and come
+            // back when it goes (the pod appears at the desk before the office leaves, and is hidden
+            // again the moment the mode stops being Ceiling).
+            HideOffDeckProps(podVisual != null && SpatialWorkspaceState.Mode == WorkspaceMode.Ceiling);
+            if (podVisual == null) return;
             if (SpatialWorkspaceState.Mode == WorkspaceMode.Ceiling)
             {
                 if (!podVisual.gameObject.activeSelf) podVisual.gameObject.SetActive(true);

@@ -195,7 +195,7 @@ namespace MuseDesk.Spatial
             Quaternion rot = SpatialGeometry.FaceUserYaw(pos, user.head);
 
             float clearance; int why;
-            if (!CheckPose(room, user, plane, pos, rot, scale, footprint, s, true, out clearance, out why))
+            if (!CheckPose(room, user, plane, pos, rot, scale, footprint, s, true, true, out clearance, out why))
             {
                 if (why == RejectFootprint) report.footprintOffFloor++;
                 else if (why == RejectFurniture) report.furniture++;
@@ -226,7 +226,7 @@ namespace MuseDesk.Spatial
         const int RejectNone = 0, RejectFootprint = 1, RejectFurniture = 2, RejectNearUser = 3, RejectCone = 4;
 
         static bool CheckPose(IRoomGeometry room, SeatedUser user, RoomPlane plane, Vector3 pos, Quaternion rot, float scale,
-                              Vector2 footprint, FloorPlacementSettings s, bool checkUser, out float clearance, out int why)
+                              Vector2 footprint, FloorPlacementSettings s, bool checkUser, bool checkCone, out float clearance, out int why)
         {
             why = RejectNone;
             clearance = 0f;
@@ -251,6 +251,9 @@ namespace MuseDesk.Spatial
             {
                 Vector2 feet = new Vector2(user.head.x, user.head.z);
                 if (rect.DistanceToPoint(feet) < s.userClearance) { why = RejectNearUser; return false; }
+            }
+            if (checkCone)
+            {
                 Vector3 to = pos - user.head; to.y = 0f;
                 if (to.sqrMagnitude > 1e-6f && Vector3.Angle(user.forward, to) < s.forwardConeHalfAngleDeg) { why = RejectCone; return false; }
             }
@@ -322,7 +325,7 @@ namespace MuseDesk.Spatial
             RoomPlane plane = room.GetFloor(floor);
             if (Mathf.Abs(pose.position.y - plane.height) > 0.10f) { reason = "Not at floor height"; return false; }
             float clearance; int why;
-            if (CheckPose(room, user, plane, pose.position, pose.rotation, pose.scale, footprint, s, checkUser, out clearance, out why))
+            if (CheckPose(room, user, plane, pose.position, pose.rotation, pose.scale, footprint, s, checkUser, checkUser, out clearance, out why))
                 return true;
             switch (why)
             {
@@ -334,5 +337,58 @@ namespace MuseDesk.Spatial
             }
             return false;
         }
+
+        /// <summary>
+        /// The same floor rules as <see cref="ValidatePose"/> for a spot the USER chose by pointing:
+        /// on the detected floor and at its height, the footprint inside the outline by the wall
+        /// margin, clear of furniture, and clear of the user's chair. The forward-cone rule is NOT
+        /// applied: it is a preference of the automatic search ("not toward your desk"), and a
+        /// desk that is really there is refused as furniture anyway. Returns false with the kind of
+        /// problem; <see cref="ShortReason"/> gives it in a few words for the status line.
+        /// Cheap enough to run on every frame of a drag (no allocation, no route planning).
+        /// </summary>
+        public static bool CheckPlacedPose(IRoomGeometry room, SeatedUser user, RootPose pose, Vector2 footprint,
+                                           FloorPlacementSettings s, out FloorPoseProblem problem)
+        {
+            problem = FloorPoseProblem.None;
+            if (room == null || !room.HasRoom || room.Availability != RoomAvailability.Available) { problem = FloorPoseProblem.NoRoom; return false; }
+            if (pose.scale < s.minScale || pose.scale > s.maxScale) { problem = FloorPoseProblem.Scale; return false; }
+            int floor = SpatialGeometry.FindFloor(room, new Vector2(pose.position.x, pose.position.z));
+            if (floor < 0) { problem = FloorPoseProblem.OffFloor; return false; }
+            RoomPlane plane = room.GetFloor(floor);
+            if (Mathf.Abs(pose.position.y - plane.height) > 0.10f) { problem = FloorPoseProblem.Height; return false; }
+            float clearance; int why;
+            if (CheckPose(room, user, plane, pose.position, pose.rotation, pose.scale, footprint, s, true, false, out clearance, out why))
+                return true;
+            problem = why == RejectFootprint ? FloorPoseProblem.Wall
+                    : why == RejectFurniture ? FloorPoseProblem.Furniture
+                    : why == RejectNearUser ? FloorPoseProblem.NearUser
+                    : FloorPoseProblem.Other;
+            return false;
+        }
+
+        /// <summary>A few words for the status line (no full stop).</summary>
+        public static string ShortReason(FloorPoseProblem problem)
+        {
+            switch (problem)
+            {
+                case FloorPoseProblem.None: return "";
+                case FloorPoseProblem.NoRoom: return "Room scan not available";
+                case FloorPoseProblem.Scale: return "Scale outside the safe range";
+                case FloorPoseProblem.OffFloor: return "Off the scanned floor";
+                case FloorPoseProblem.Height: return "Not at floor height";
+                case FloorPoseProblem.Wall: return "Too close to the wall";
+                case FloorPoseProblem.Furniture: return "Something is in the way";
+                case FloorPoseProblem.NearUser: return "Too close to you";
+                case FloorPoseProblem.TooFar: return "Too far away";
+                default: return "Not a clear floor spot";
+            }
+        }
+    }
+
+    /// <summary>Why a floor spot chosen by pointing cannot be used.</summary>
+    public enum FloorPoseProblem
+    {
+        None = 0, NoRoom = 1, Scale = 2, OffFloor = 3, Height = 4, Wall = 5, Furniture = 6, NearUser = 7, TooFar = 8, Other = 9,
     }
 }

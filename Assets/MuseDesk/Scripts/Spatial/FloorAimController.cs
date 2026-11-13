@@ -1,0 +1,454 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Rendering;
+using Oculus.Interaction;
+using Oculus.Interaction.Input;
+using MuseDesk.Workspace;
+
+namespace MuseDesk.Spatial
+{
+    /// <summary>
+    /// Placing the floor office from the seat, by pointing. While the floor preview is open either
+    /// hand can aim at the floor: a thin arc runs from the hand to a point on the floor plane, the
+    /// office footprint is highlighted there (a rounded rectangle, teal when the spot is clear,
+    /// coral when it is not, with the reason on the status line), a pinch on the footprint grabs
+    /// it, moving the hand slides it across the floor, letting go drops it. A pinch held still on
+    /// the footprint fills a ring and confirms, so no key has to be reached.
+    ///
+    /// This component only READS the hands (the pointer pose and the index pinch of the Interaction
+    /// SDK hands that are already in the rig; it adds no rig, no interactor and no collider) and
+    /// DRAWS. Every decision is in <see cref="FloorAimSession"/> and <see cref="SpatialDirectorCore"/>,
+    /// which edit the preview only. It never writes the office: Confirm (the same call the key
+    /// makes) is the only thing that moves it, through the unchanged swept-route check.
+    ///
+    /// With no floor preview open it does nothing per frame beyond one property read, and its
+    /// visuals are inactive. The meshes are generated once at run time (no asset dependency).
+    /// </summary>
+    public class FloorAimController : MonoBehaviour
+    {
+        [Header("Wiring")]
+        public SpatialWorkspaceDirector director;
+        [Tooltip("The rig's hand visuals (their IHand gives the pointer pose and the pinch). Found by handedness at run time when empty.")]
+        public HandVisual leftHandVisual;
+        public HandVisual rightHandVisual;
+
+        [Header("Behaviour")]
+        public FloorAimSettings settings = new FloorAimSettings();
+        [Tooltip("The arc is drawn for a hand whose aim point is on the footprint or within this distance of it (and always for the hand that is dragging).")]
+        public float rayShowDistance = 0.9f;
+
+        [Header("Visuals (built by BuildFloorAimV1; no interactables inside)")]
+        [Tooltip("Parent of everything drawn. Inactive unless a floor preview is open.")]
+        public GameObject visuals;
+        [Tooltip("Follows the footprint on show (root pose of the office-to-be). Fill, rim and hold ring are its children.")]
+        public Transform footprintRoot;
+        public MeshFilter footprintFill;
+        public MeshFilter footprintRim;
+        public MeshFilter holdTrack;
+        public MeshFilter holdFill;
+        public MeshFilter leftCursor;
+        public MeshFilter rightCursor;
+        public LineRenderer leftRay;
+        public LineRenderer rightRay;
+
+        [Header("Shape (metres, office scale 1)")]
+        [Tooltip("Office footprint (width, depth). Taken from the director when it has one.")]
+        public Vector2 footprint = new Vector2(1.0f, 0.7f);
+        public Vector2 footprintCenterOffset = new Vector2(0f, 0.12f);
+        public float cornerRadius = 0.09f;
+        public float rimWidth = 0.018f;
+        [Tooltip("Height of the highlight above the floor plane.")]
+        public float lift = 0.0025f;
+        public float holdRingRadius = 0.13f;
+        public float holdRingWidth = 0.032f;
+        public float holdRingLift = 0.02f;
+        public float cursorRadius = 0.03f;
+        public float rayWidth = 0.004f;
+        [Range(0f, 1f)] public float fillAlpha = 0.22f;
+        [Range(0f, 1f)] public float fillAlphaHover = 0.40f;
+        [Tooltip("Off: only the rim is drawn (if a translucent surface composites badly over passthrough).")]
+        public bool showFill = true;
+
+        const int RingSegments = 48;
+        const int RayPoints = 14;
+
+        FloorAimSession _session;
+        MaterialPropertyBlock _block;
+        Mesh _fillMesh, _rimMesh, _trackMesh, _ringMesh, _dotMesh;
+        bool _built, _visible;
+        int _colorKey = -1;
+        int _ringShown = -1;
+        float _nextHandSearch;
+        readonly AimHandSample[] _sim = new AimHandSample[2];
+        readonly bool[] _simOn = new bool[2];
+        readonly Vector3[] _rayBuffer = new Vector3[RayPoints];
+
+        /// <summary>The interaction logic (null until the first step with a director).</summary>
+        public FloorAimSession Session => _session;
+        /// <summary>True while the highlight is on show.</summary>
+        public bool Shown => _visible;
+
+        void Awake()
+        {
+            if (visuals != null) visuals.SetActive(false);
+        }
+
+        void OnDisable()
+        {
+            if (_session != null) _session.Reset();     // a drag in progress is called off; the preview is as it was
+            Show(false);
+        }
+
+        void OnDestroy()
+        {
+            DestroyMesh(_fillMesh); DestroyMesh(_rimMesh); DestroyMesh(_trackMesh); DestroyMesh(_ringMesh); DestroyMesh(_dotMesh);
+        }
+
+        static void DestroyMesh(Mesh m) { if (m != null) Destroy(m); }
+
+        void Update()
+        {
+            if (director == null) return;
+            // No floor preview and nothing on show: nothing to do.
+            if (!_visible && !director.CanAim) return;
+            Step(Time.unscaledDeltaTime);
+        }
+
+        /// <summary>One frame of aiming. Update calls it; a Play Mode driver may call it with its own time step.</summary>
+        public void Step(float dt)
+        {
+            if (director == null) return;
+            SpatialDirectorCore core = director.Core;
+            if (core == null) return;
+            if (_session == null) _session = new FloorAimSession(core);
+            _session.settings = settings;
+
+            AimHandSample left = _simOn[0] ? _sim[0] : ReadHand(0);
+            AimHandSample right = _simOn[1] ? _sim[1] : ReadHand(1);
+            _session.Tick(dt, left, right);
+            Render(core);
+        }
+
+        // ───────────────────────── hands ─────────────────────────
+
+        AimHandSample ReadHand(int index)
+        {
+            HandVisual visual = index == 0 ? leftHandVisual : rightHandVisual;
+            if (visual == null)
+            {
+                if (Time.unscaledTime < _nextHandSearch) return AimHandSample.None;
+                _nextHandSearch = Time.unscaledTime + 1f;       // at most once a second, and only while a preview is open
+                ResolveHands();
+                visual = index == 0 ? leftHandVisual : rightHandVisual;
+                if (visual == null) return AimHandSample.None;
+            }
+            IHand hand = visual.Hand;
+            if (hand == null || !hand.IsTrackedDataValid || !hand.IsPointerPoseValid) return AimHandSample.None;
+            Pose pointer;
+            if (!hand.GetPointerPose(out pointer)) return AimHandSample.None;
+            return AimHandSample.Ray(pointer.position, pointer.rotation * Vector3.forward, hand.GetIndexFingerIsPinching());
+        }
+
+        /// <summary>Find the rig's two hand visuals by handedness. Uses what is in the scene; adds nothing.</summary>
+        public void ResolveHands()
+        {
+            HandVisual[] all = FindObjectsByType<HandVisual>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < all.Length; i++)
+            {
+                HandVisual v = all[i];
+                if (v == null || v.Hand == null) continue;
+                bool isLeft = v.Hand.Handedness == Handedness.Left;
+                if (isLeft && leftHandVisual == null) leftHandVisual = v;
+                else if (!isLeft && rightHandVisual == null) rightHandVisual = v;
+            }
+        }
+
+        // ───────────────────────── simulation (Play Mode driver, no hands needed) ─────────────────────────
+
+        /// <summary>Stand in for a hand (0 = left, 1 = right) until <see cref="ClearSimulation"/>.</summary>
+        public void SimulateHand(int hand, Vector3 origin, Vector3 direction, bool pinching)
+        {
+            if (hand < 0 || hand > 1) return;
+            _simOn[hand] = true;
+            _sim[hand] = AimHandSample.Ray(origin, direction, pinching);
+        }
+
+        /// <summary>Stand in for a hand that is not tracked.</summary>
+        public void SimulateHandLost(int hand)
+        {
+            if (hand < 0 || hand > 1) return;
+            _simOn[hand] = true;
+            _sim[hand] = AimHandSample.None;
+        }
+
+        public bool Simulating(int hand) { return hand >= 0 && hand <= 1 && _simOn[hand]; }
+        public AimHandSample SimulatedSample(int hand) { return _sim[hand]; }
+
+        public void ClearSimulation() { _simOn[0] = _simOn[1] = false; }
+
+        // ───────────────────────── drawing ─────────────────────────
+
+        void Show(bool on)
+        {
+            if (on == _visible) return;
+            _visible = on;
+            _colorKey = -1;
+            _ringShown = -1;
+            if (visuals != null) visuals.SetActive(on);
+        }
+
+        void Render(SpatialDirectorCore core)
+        {
+            bool on = _session.State != FloorAimState.Off;
+            if (on && !_built) BuildMeshes(core);
+            Show(on);
+            if (!on) return;
+
+            RootPose shown = core.ShownPose;
+            if (footprintRoot != null)
+            {
+                footprintRoot.SetPositionAndRotation(shown.position + Vector3.up * lift, shown.rotation);
+                footprintRoot.localScale = new Vector3(shown.scale, shown.scale, shown.scale);
+            }
+
+            bool valid = core.ShownValid;
+            bool dragging = _session.State == FloorAimState.Dragging;
+            bool hover = dragging || _session.State == FloorAimState.Pressing || _session.AnyOverFootprint;
+            int key = (valid ? 1 : 0) | (hover ? 2 : 0) | (dragging ? 4 : 0);
+            if (key != _colorKey)
+            {
+                _colorKey = key;
+                if (_block == null) _block = new MaterialPropertyBlock();
+                // Teal = this spot can be used; coral = it cannot (the status line says why, in words).
+                Color c = valid ? OfficeTokens.Teal : OfficeTokens.Coral;
+                Color rim = hover ? Color.Lerp(c, OfficeTokens.OnPlate, 0.35f) : c;
+                Tint(footprintRim, rim, 1f);
+                Tint(footprintFill, c, hover ? fillAlphaHover : fillAlpha);
+                Tint(holdFill, OfficeTokens.OnPlate, 1f);
+                Tint(holdTrack, OfficeTokens.Plate, 1f);
+                Tint(leftCursor, rim, 1f);
+                Tint(rightCursor, rim, 1f);
+                if (leftRay != null) OfficeTokens.Tint(leftRay, _block, rim);
+                if (rightRay != null) OfficeTokens.Tint(rightRay, _block, rim);
+            }
+            if (footprintFill != null && footprintFill.gameObject.activeSelf != showFill) footprintFill.gameObject.SetActive(showFill);
+
+            DrawHoldRing(_session.HoldProgress);
+            DrawHand(0, core, leftRay, leftCursor);
+            DrawHand(1, core, rightRay, rightCursor);
+        }
+
+        void Tint(MeshFilter filter, Color c, float alpha)
+        {
+            if (filter == null) return;
+            Renderer r = filter.GetComponent<Renderer>();
+            if (r == null) return;
+            c.a = alpha;
+            OfficeTokens.Tint(r, _block, c);
+        }
+
+        void DrawHoldRing(float progress)
+        {
+            int segments = progress <= 0f ? 0 : Mathf.Clamp(Mathf.CeilToInt(progress * RingSegments), 1, RingSegments);
+            if (segments == _ringShown) return;
+            _ringShown = segments;
+            bool show = segments > 0;
+            if (holdTrack != null && holdTrack.gameObject.activeSelf != show) holdTrack.gameObject.SetActive(show);
+            if (holdFill != null && holdFill.gameObject.activeSelf != show) holdFill.gameObject.SetActive(show);
+            if (show && _ringMesh != null)
+                _ringMesh.SetSubMesh(0, new SubMeshDescriptor(0, segments * 6, MeshTopology.Triangles));
+        }
+
+        void DrawHand(int hand, SpatialDirectorCore core, LineRenderer ray, MeshFilter cursor)
+        {
+            bool has = _session.HasCursor(hand);
+            bool busy = _session.State == FloorAimState.Pressing || _session.State == FloorAimState.Dragging;
+            bool show = has && (busy ? _session.ActiveHand == hand : core.FootprintContains(_session.Cursor(hand), rayShowDistance));
+
+            if (cursor != null)
+            {
+                if (cursor.gameObject.activeSelf != show) cursor.gameObject.SetActive(show);
+                if (show) cursor.transform.SetPositionAndRotation(_session.Cursor(hand) + Vector3.up * (lift + 0.002f), Quaternion.identity);
+            }
+            if (ray == null) return;
+            if (ray.enabled != show) ray.enabled = show;
+            if (!show) return;
+
+            // A gentle arc: it leaves the hand along the pointer direction and lands on the
+            // (smoothed, clamped) aim point, so smoothing never shows as a ray that misses its end.
+            Vector3 p0 = _session.RayOrigin(hand);
+            Vector3 p2 = _session.Cursor(hand) + Vector3.up * lift;
+            Vector3 dir = _session.RayDirection(hand);
+            float reach = (p2 - p0).magnitude;
+            Vector3 p1 = dir.sqrMagnitude > 1e-8f ? p0 + dir.normalized * (reach * 0.5f) : (p0 + p2) * 0.5f;
+            for (int i = 0; i < RayPoints; i++)
+            {
+                float t = i / (float)(RayPoints - 1), u = 1f - t;
+                _rayBuffer[i] = p0 * (u * u) + p1 * (2f * u * t) + p2 * (t * t);
+            }
+            if (ray.positionCount != RayPoints) ray.positionCount = RayPoints;
+            ray.SetPositions(_rayBuffer);
+        }
+
+        // ───────────────────────── meshes (generated once) ─────────────────────────
+
+        void BuildMeshes(SpatialDirectorCore core)
+        {
+            _built = true;
+            if (core != null) { footprint = core.footprint; footprintCenterOffset = core.floorSettings.footprintCenterOffset; }
+            Vector3 centre = new Vector3(footprintCenterOffset.x, 0f, footprintCenterOffset.y);
+            float hw = footprint.x * 0.5f, hd = footprint.y * 0.5f;
+            float r = Mathf.Clamp(cornerRadius, 0.005f, Mathf.Min(hw, hd) - 0.005f);
+            float w = Mathf.Clamp(rimWidth, 0.002f, Mathf.Min(hw, hd) * 0.5f);
+
+            var outer = new List<Vector3>(40);
+            var inner = new List<Vector3>(40);
+            RoundedRect(outer, hw, hd, r, 8, centre);
+            RoundedRect(inner, hw - w, hd - w, Mathf.Max(0.003f, r - w), 8, centre);
+
+            _fillMesh = Fan("FloorAimFill", centre, inner);
+            _rimMesh = Strip("FloorAimRim", outer, inner);
+
+            var ringOuter = new List<Vector3>(RingSegments + 1);
+            var ringInner = new List<Vector3>(RingSegments + 1);
+            float ro = Mathf.Max(0.02f, holdRingRadius), ri = Mathf.Max(0.005f, holdRingRadius - holdRingWidth);
+            for (int i = 0; i <= RingSegments; i++)
+            {
+                // Starts on the side nearest the user (+Z of the root) and fills clockwise seen from above.
+                float a = i / (float)RingSegments * Mathf.PI * 2f;
+                Vector3 d = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+                ringOuter.Add(d * ro);
+                ringInner.Add(d * ri);
+            }
+            _ringMesh = Strip("FloorAimHoldFill", ringOuter, ringInner);
+            _ringMesh.MarkDynamic();
+            _trackMesh = Strip("FloorAimHoldTrack", ringOuter, ringInner);
+
+            var dot = new List<Vector3>(20);
+            for (int i = 0; i < 20; i++)
+            {
+                float a = i / 20f * Mathf.PI * 2f;
+                dot.Add(new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)) * Mathf.Max(0.005f, cursorRadius));
+            }
+            dot.Add(dot[0]);
+            _dotMesh = Fan("FloorAimCursor", Vector3.zero, dot);
+
+            if (footprintFill != null) footprintFill.sharedMesh = _fillMesh;
+            if (footprintRim != null) footprintRim.sharedMesh = _rimMesh;
+            if (holdFill != null)
+            {
+                holdFill.sharedMesh = _ringMesh;
+                holdFill.transform.localPosition = centre + Vector3.up * (holdRingLift + 0.001f);
+                holdFill.transform.localRotation = Quaternion.identity;
+            }
+            if (holdTrack != null)
+            {
+                holdTrack.sharedMesh = _trackMesh;
+                holdTrack.transform.localPosition = centre + Vector3.up * holdRingLift;
+                holdTrack.transform.localRotation = Quaternion.identity;
+            }
+            if (leftCursor != null) leftCursor.sharedMesh = _dotMesh;
+            if (rightCursor != null) rightCursor.sharedMesh = _dotMesh;
+            SetupRay(leftRay);
+            SetupRay(rightRay);
+        }
+
+        void SetupRay(LineRenderer ray)
+        {
+            if (ray == null) return;
+            ray.useWorldSpace = true;
+            ray.positionCount = RayPoints;
+            ray.startWidth = rayWidth;
+            ray.endWidth = rayWidth * 0.6f;
+            ray.numCapVertices = 2;
+            ray.shadowCastingMode = ShadowCastingMode.Off;
+            ray.receiveShadows = false;
+            ray.enabled = false;
+        }
+
+        /// <summary>Outline of a rounded rectangle in the XZ plane, clockwise seen from above, closed
+        /// (the first point is repeated at the end).</summary>
+        static void RoundedRect(List<Vector3> pts, float hw, float hd, float r, int segmentsPerCorner, Vector3 centre)
+        {
+            pts.Clear();
+            r = Mathf.Min(r, Mathf.Min(hw, hd));
+            for (int corner = 0; corner < 4; corner++)
+            {
+                float cx = (corner == 0 || corner == 1) ? hw - r : -(hw - r);
+                float cz = (corner == 0 || corner == 3) ? hd - r : -(hd - r);
+                for (int i = 0; i <= segmentsPerCorner; i++)
+                {
+                    float a = (corner + i / (float)segmentsPerCorner) * Mathf.PI * 0.5f;
+                    pts.Add(centre + new Vector3(cx + Mathf.Sin(a) * r, 0f, cz + Mathf.Cos(a) * r));
+                }
+            }
+            pts.Add(pts[0]);
+        }
+
+        /// <summary>A filled shape: triangles from a centre point to a closed outline. Faces up.</summary>
+        static Mesh Fan(string name, Vector3 centre, List<Vector3> outline)
+        {
+            int n = outline.Count;
+            var verts = new Vector3[n + 1];
+            var normals = new Vector3[n + 1];
+            verts[0] = centre; normals[0] = Vector3.up;
+            for (int i = 0; i < n; i++) { verts[i + 1] = outline[i]; normals[i + 1] = Vector3.up; }
+            var tris = new int[(n - 1) * 3];
+            for (int i = 0; i < n - 1; i++)
+            {
+                tris[i * 3] = 0; tris[i * 3 + 1] = i + 1; tris[i * 3 + 2] = i + 2;
+            }
+            return Make(name, verts, normals, tris);
+        }
+
+        /// <summary>A band between two outlines with the same number of points. Faces up. Segment k
+        /// uses indices k*6 .. k*6+5, so a prefix of the index buffer is a prefix of the band.</summary>
+        static Mesh Strip(string name, List<Vector3> outer, List<Vector3> inner)
+        {
+            int n = Mathf.Min(outer.Count, inner.Count);
+            var verts = new Vector3[n * 2];
+            var normals = new Vector3[n * 2];
+            for (int i = 0; i < n; i++)
+            {
+                verts[i * 2] = outer[i]; verts[i * 2 + 1] = inner[i];
+                normals[i * 2] = normals[i * 2 + 1] = Vector3.up;
+            }
+            var tris = new int[(n - 1) * 6];
+            for (int i = 0; i < n - 1; i++)
+            {
+                int o0 = i * 2, i0 = o0 + 1, o1 = o0 + 2, i1 = o0 + 3, t = i * 6;
+                tris[t] = o0; tris[t + 1] = o1; tris[t + 2] = i0;
+                tris[t + 3] = i0; tris[t + 4] = o1; tris[t + 5] = i1;
+            }
+            return Make(name, verts, normals, tris);
+        }
+
+        static Mesh Make(string name, Vector3[] verts, Vector3[] normals, int[] tris)
+        {
+            var m = new Mesh { name = name, hideFlags = HideFlags.DontSave };
+            m.vertices = verts;
+            m.normals = normals;
+            m.triangles = tris;
+            m.RecalculateBounds();
+            return m;
+        }
+
+        /// <summary>One line for a Play Mode driver.</summary>
+        public string Describe()
+        {
+            if (_session == null) return "aim: not started";
+            SpatialDirectorCore core = director != null ? director.Core : null;
+            string s = "aim: state=" + _session.State + " hand=" + _session.ActiveHand + " hold=" + _session.HoldProgress.ToString("F2")
+                       + " drops=" + _session.Drops + " holdConfirms=" + _session.HoldConfirms + "/" + _session.HoldConfirmAttempts
+                       + " shown=" + _visible
+                       + " L(cursor=" + _session.HasCursor(0) + " over=" + _session.OverFootprint(0) + (_session.HasCursor(0) ? " at " + _session.Cursor(0).ToString("F2") : "") + ")"
+                       + " R(cursor=" + _session.HasCursor(1) + " over=" + _session.OverFootprint(1) + (_session.HasCursor(1) ? " at " + _session.Cursor(1).ToString("F2") : "") + ")"
+                       + " hands=" + (leftHandVisual != null ? "L" : "-") + (rightHandVisual != null ? "R" : "-");
+            if (core != null && core.HasPreview)
+                s += " | footprint at " + core.ShownPose.position.ToString("F2") + " yaw=" + core.ShownPose.rotation.eulerAngles.y.ToString("F0")
+                     + " valid=" + core.ShownValid + " roomChecked=" + core.ShownRoomChecked + " dragging=" + core.AimDragging
+                     + (string.IsNullOrEmpty(core.AimProblem) ? "" : " problem='" + core.AimProblem + "'");
+            return s;
+        }
+    }
+}

@@ -132,6 +132,62 @@ namespace MuseDesk.Documents
             Play(_nope);
         }
 
+        // ── used by StampPoof (the stamp leaving after a decision and coming back for the next) ──
+
+        /// <summary>True while a hand is holding this stamp.</summary>
+        public bool Held => IsHeld();
+
+        /// <summary>While true the released stamp stays where it is (no glide back to the pad).
+        /// StampPoof sets it while the stamp is leaving, so it vanishes from where it was let go.</summary>
+        public bool HoldInPlace { get; set; }
+
+        /// <summary>Put the stamp on its rest pose at once and end any glide. Clears <see cref="HoldInPlace"/>.</summary>
+        public void SnapHome()
+        {
+            HoldInPlace = false;
+            _returning = false;
+            _wasHeld = false;
+            if (!_homeCaptured) return;
+            transform.localPosition = _homePos;
+            transform.localRotation = _homeRot;
+        }
+
+        /// <summary>A quiet puff of air for the stamp leaving or arriving. Synthesised once and shared;
+        /// two stamps asking in the same moment make one sound. No audio asset.</summary>
+        public void PlayPoof(bool arriving)
+        {
+            if (_audio == null) return;
+            if (Time.unscaledTime - s_lastPoofAt < 0.08f) return;
+            s_lastPoofAt = Time.unscaledTime;
+            if (s_poof == null) s_poof = Poof();
+            _audio.pitch = arriving ? 1.25f : 1f;
+            _audio.PlayOneShot(s_poof, volume * (arriving ? 0.30f : 0.45f));
+        }
+
+        static AudioClip s_poof;
+        static float s_lastPoofAt = -10f;
+
+        // Soft low-passed noise with a quick swell and decay: air, not a tone.
+        static AudioClip Poof()
+        {
+            int rate = 44100, n = (int)(rate * 0.20f);
+            var d = new float[n];
+            uint seed = 0x9E3779B9u;
+            float lp = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                seed = seed * 1664525u + 1013904223u;
+                float white = ((seed >> 8) & 0xFFFF) / 32767.5f - 1f;
+                float t = (float)i / rate;
+                // The filter closes as the sound dies, so it ends dull, not hissy.
+                float a = Mathf.Lerp(0.22f, 0.04f, t / 0.20f);
+                lp += a * (white - lp);
+                float env = (1f - Mathf.Exp(-t / 0.008f)) * Mathf.Exp(-18f * t);
+                d[i] = 1.6f * env * lp;
+            }
+            var c = AudioClip.Create("stamp_poof", n, 1, rate, false); c.SetData(d, 0); return c;
+        }
+
         bool IsHeld()
         {
             if (grabbable == null) return false;
@@ -163,7 +219,7 @@ namespace MuseDesk.Documents
         // Released: one eased move back to the rest pad (no physics; the stamp is kinematic).
         void TickReturn()
         {
-            if (!returnHome || !_homeCaptured) return;
+            if (!returnHome || !_homeCaptured || HoldInPlace) return;
             if (returnSeconds <= 0f)
             {
                 float k = 1f - Mathf.Exp(-returnLerp * Time.deltaTime);
@@ -300,7 +356,7 @@ namespace MuseDesk.Documents
             tr.localScale = _headBaseScale;
         }
 
-        void Play(AudioClip c) { if (c != null && _audio != null) _audio.PlayOneShot(c, volume); }
+        void Play(AudioClip c) { if (c != null && _audio != null) { _audio.pitch = 1f; _audio.PlayOneShot(c, volume); } }
 
         // ── procedural cues (self-contained; FeedbackController's Play is private + event-bound) ──
         static AudioClip Thunk()

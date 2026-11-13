@@ -61,6 +61,11 @@ namespace MuseDesk.Spatial
         public Vector3 statusPlateScale = Vector3.one;
         public TMP_Text statusLabel;
 
+        [Header("Mode console (AgentScripts/BuildModeConsoleV1)")]
+        [Tooltip("When set, the console shows the modes and this strip only forwards the director's calls to it: " +
+                 "its own loose keys are switched off in the scene and it no longer moves. Empty: the strip works as before.")]
+        public ModeConsole console;
+
         const float HiddenFactor = 0.001f;   // same as ScaleEase.HiddenFactor: never zero
 
         bool _anyShown;
@@ -73,7 +78,7 @@ namespace MuseDesk.Spatial
         string _cancelWords = "Cancel";
 
         /// <summary>True while the Cancel key reads "Stop" (the office is moving).</summary>
-        public bool CancelKeyStops => _cancelSaysStop;
+        public bool CancelKeyStops => console != null ? console.StopShown : _cancelSaysStop;
 
         void Awake()
         {
@@ -91,6 +96,12 @@ namespace MuseDesk.Spatial
         /// </summary>
         public void SetFloorKeySendsBack(bool sendsBack)
         {
+            if (console != null)
+            {
+                _floorSendsBack = sendsBack;
+                console.SetFloorSendsBack(sendsBack);
+                return;
+            }
             if (sendsBack == _floorSendsBack) return;
             _floorSendsBack = sendsBack;
             if (floorKeyLabel != null) floorKeyLabel.text = sendsBack ? sendBackWords : floorWords;
@@ -103,6 +114,7 @@ namespace MuseDesk.Spatial
         public void HideAll()
         {
             _anyShown = false;
+            if (console != null) { console.ApplyIdle(); return; }
             Place(floorKey, slot0, false);
             Place(ceilingKey, slot1, false);
             Place(deskKey, slot0, false);
@@ -117,6 +129,14 @@ namespace MuseDesk.Spatial
         public void Apply(bool floorEnabled, bool ceilingEnabled, PlacementMode mode, bool previewing, bool canCycle,
                           bool transitioning, CeilingPodState podState, bool podWaiting, string status)
         {
+            if (console != null)
+            {
+                // The console is a movable panel under the near-user rig: it is always within reach,
+                // so the strip neither lays keys out nor follows the root or the near-user pose.
+                _anyShown = false;
+                console.Apply(floorEnabled, ceilingEnabled, mode, previewing, canCycle, transitioning, podState, podWaiting, status);
+                return;
+            }
             if (!floorEnabled && !ceilingEnabled && mode == PlacementMode.Desk && !previewing && !transitioning)
             {
                 HideAll();
