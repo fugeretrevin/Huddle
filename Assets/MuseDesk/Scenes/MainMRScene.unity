@@ -24898,7 +24898,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 815305086}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: 0.9659259, z: 0.25881907, w: 0}
+  m_LocalRotation: {x: -0, y: 1, z: -0, w: 0}
   m_LocalPosition: {x: 0, y: 0.103000045, z: 0.14999998}
   m_LocalScale: {x: 1.4, y: 1.4, z: 1.4}
   m_ConstrainProportionsScale: 0
@@ -28165,9 +28165,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 7525513150515322894, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       insertIndex: -1
       addedObject: {fileID: 494415770}
-    - targetCorrespondingSourceObject: {fileID: 2575762184565586316, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
 --- !u!4 &913268388 stripped
 Transform:
@@ -43078,7 +43075,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1420862712}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.06778901, y: 0.93220586, z: 0.2497838, w: -0.25299203}
+  m_LocalRotation: {x: -0, y: 0.9650905, z: -0, w: -0.26191664}
   m_LocalPosition: {x: -0.3, y: 0.09099996, z: 0.10799998}
   m_LocalScale: {x: 1.4, y: 1.4, z: 1.4}
   m_ConstrainProportionsScale: 0
@@ -45988,9 +45985,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 6531669666124215792, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       insertIndex: -1
       addedObject: {fileID: 110951257}
-    - targetCorrespondingSourceObject: {fileID: 3386568390871045394, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
 --- !u!4 &1515650340 stripped
 Transform:
@@ -54011,7 +54005,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1746728370}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.06778901, y: 0.93220586, z: 0.2497838, w: 0.25299203}
+  m_LocalRotation: {x: -0, y: 0.9650905, z: -0, w: 0.26191664}
   m_LocalPosition: {x: 0.3, y: 0.095999956, z: 0.10799998}
   m_LocalScale: {x: 1.4, y: 1.4, z: 1.4}
   m_ConstrainProportionsScale: 0
@@ -60909,9 +60903,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 7103143501487198613, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
       insertIndex: -1
       addedObject: {fileID: 147681135}
-    - targetCorrespondingSourceObject: {fileID: 5056326148888096942, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
 --- !u!4 &1905904049 stripped
 Transform:

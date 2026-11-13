@@ -38,16 +38,16 @@
         PASS [1 legibility] WorkspaceRoot/TaskDock/Mode: em 6.3 mm (font 6.25, lossy 0.0100) auto-size floor 5.5 mm [5.5..6.5] dist 0.40 m "SCRIPTED DEMO"
         PASS [1 legibility] WorkspaceRoot/TaskDock/DockStartKey/Visuals/ButtonVisual/ButtonLabel: em 8.5 mm (font 212.50, lossy 0.0004) auto-size floor 5.5 mm [137.5..212.5] dist 0.37 m "Start"
         PASS [1 legibility] WorkspaceRoot/TaskDock/DockBoardKey/Visuals/ButtonVisual/ButtonLabel: em 8.5 mm (font 212.50, lossy 0.0004) auto-size floor 5.5 mm [137.5..212.5] dist 0.38 m "Board"
-        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.62 m "Researcher"
-        PASS [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: capital height 6.6 mm at 0.62 m = 0.60 deg
-        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.64 m "Idle"
-        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: capital height 5.5 mm at 0.64 m = 0.50 deg < 0.60 deg
-        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.50 m "Developer"
-        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.52 m "Idle"
-        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.62 m "Tester"
-        PASS [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: capital height 6.6 mm at 0.62 m = 0.60 deg
-        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.64 m "Idle"
-        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: capital height 5.5 mm at 0.64 m = 0.50 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.63 m "Researcher"
+        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: capital height 6.6 mm at 0.63 m = 0.60 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.63 m "Idle"
+        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: capital height 5.5 mm at 0.63 m = 0.50 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.51 m "Developer"
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.51 m "Idle"
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.63 m "Tester"
+        PASS [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: capital height 6.6 mm at 0.63 m = 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.63 m "Idle"
+        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: capital height 5.5 mm at 0.63 m = 0.50 deg < 0.60 deg
         PASS [1 legibility] WorkspaceRoot/OfficeV2/ModePlaque/Mode: em 6.5 mm (font 6.50, lossy 0.0100) auto-size floor 5.5 mm [5.5..6.5] dist 0.40 m "STARTING"
         PASS [1 legibility] WorkspaceRoot/OfficeV2/ModePlaque/Status: em 5.5 mm (font 5.50, lossy 0.0100) dist 0.40 m "" (empty in the Editor: size only)
         
@@ -138,12 +138,12 @@
         PASS [4 facing] WorkspaceRoot/TaskDock/Mode: readable side is 8 deg off the line to the eye "SCRIPTED DEMO"
         PASS [4 facing] WorkspaceRoot/TaskDock/DockStartKey/Visuals/ButtonVisual/ButtonLabel: readable side is 3 deg off the line to the eye "Start"
         PASS [4 facing] WorkspaceRoot/TaskDock/DockBoardKey/Visuals/ButtonVisual/ButtonLabel: readable side is 9 deg off the line to the eye "Board"
-        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: readable side is 49 deg off the line to the eye "Researcher"
-        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: readable side is 50 deg off the line to the eye "Idle"
-        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: readable side is 52 deg off the line to the eye "Developer"
-        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: readable side is 54 deg off the line to the eye "Idle"
-        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: readable side is 49 deg off the line to the eye "Tester"
-        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: readable side is 50 deg off the line to the eye "Idle"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: readable side is 19 deg off the line to the eye "Researcher"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: readable side is 21 deg off the line to the eye "Idle"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: readable side is 22 deg off the line to the eye "Developer"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: readable side is 24 deg off the line to the eye "Idle"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: readable side is 19 deg off the line to the eye "Tester"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: readable side is 20 deg off the line to the eye "Idle"
         PASS [4 facing] WorkspaceRoot/OfficeV2/ModePlaque/Mode: readable side is 5 deg off the line to the eye "STARTING"
         PASS [4 facing] WorkspaceRoot/OfficeV2/ModePlaque/Status: readable side is 1 deg off the line to the eye ""
         
@@ -235,9 +235,9 @@
         group Nameplate_Developer (under OfficeV2): centre(root-local) (0.000,0.103,0.150) size (0.126,0.036,0.000) m, 2 renderers
         group Nameplate_Tester (under OfficeV2): centre(root-local) (0.300,0.096,0.108) size (0.126,0.036,0.000) m, 2 renderers
         group ModePlaque (under OfficeV2): centre(root-local) (0.000,0.016,0.340) size (0.120,0.024,0.000) m, 2 renderers
-        INFO [8 overlap] (pair): ResearchStation  x  Nameplate_Researcher (under OfficeV2): boxes intersect, penetration 70.2 mm (on the allow-list)
-        INFO [8 overlap] (pair): DevStation  x  Nameplate_Developer (under OfficeV2): boxes intersect, penetration 48.1 mm (on the allow-list)
-        INFO [8 overlap] (pair): QAStation  x  Nameplate_Tester (under OfficeV2): boxes intersect, penetration 71.9 mm (on the allow-list)
+        INFO [8 overlap] (pair): ResearchStation  x  Nameplate_Researcher (under OfficeV2): boxes intersect, penetration 72.5 mm (on the allow-list)
+        INFO [8 overlap] (pair): DevStation  x  Nameplate_Developer (under OfficeV2): boxes intersect, penetration 50.4 mm (on the allow-list)
+        INFO [8 overlap] (pair): QAStation  x  Nameplate_Tester (under OfficeV2): boxes intersect, penetration 74.2 mm (on the allow-list)
         PASS [8 overlap] (scene): 252 pairs of major groups tested, none intersect
         PASS [8 key spacing] (scene): 4 neighbouring key pairs tested, all at least 8 mm apart
         
@@ -414,10 +414,10 @@
         run XrVisualQa.RunExpanded to measure groups that are collapsed by scale at their authored size
         
         === SUMMARY ===
-        PASS=172 WARN=53 FAIL=0 INFO=15
+        PASS=171 WARN=54 FAIL=0 INFO=15
         scene dirtyBefore=False dirtyAfter=False (this script never marks the scene dirty and never saves)
         No FAIL lines.
 diagnostics: []
-compileMs: 321
-executeMs: 98
-assemblyName: PipelineRunScript_XrVisualQa_884f4c1ce8cb408785028e6dd6d6924c
+compileMs: 222
+executeMs: 91
+assemblyName: PipelineRunScript_XrVisualQa_c52f79ea7c9f4b62834d9d33440ec08f

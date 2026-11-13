@@ -50,7 +50,7 @@ public static class IntegrateV2
             t.localScale = Vector3.one * 1.4f;
             Vector3 eye = new Vector3(0, 0.30f, 0.62f);
             Vector3 away = p - eye; away.y = 0;
-            t.rotation = ws.rotation * Quaternion.LookRotation(away.normalized, Vector3.up) * Quaternion.Euler(-30f, 0, 0);
+            t.rotation = ws.rotation * Quaternion.LookRotation(away.normalized, Vector3.up);   // upright: on head the 30 degree lean read as tilted down
             var np = t.GetComponent("AgentNameplate");
             if (np != null) { var so = new SerializedObject(np); var sp = so.FindProperty("shownScale"); if (sp != null) { sp.vector3Value = Vector3.one * 1.4f; so.ApplyModifiedPropertiesWithoutUndo(); } }
             sb.AppendLine($"{n} -> {p} euler {t.localEulerAngles}");
