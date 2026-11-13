@@ -34,9 +34,9 @@ namespace MuseDesk.Spatial
         public Animator mountAnimator;
         public float revealSeconds = 0.35f;
         [Tooltip("Seconds of a one-shot clip before the loop or idle that follows it.")]
-        public float beginSeconds = 0.5f;
-        public float shelfSeconds = 0.85f;
-        public float settleSeconds = 0.7f;
+        public float beginSeconds = 0.625f;
+        public float shelfSeconds = 0.833f;
+        public float settleSeconds = 0.667f;
 
         [Header("Props with nowhere to stand on the pod")]
         [Tooltip("Loose desk props that stand beside the office on the real desk, outside the pod's deck (measured by the builder). On the pod they would hang in the air beside it or over the folding wings, so they are scaled away while the mode is Ceiling and put back afterwards. Their physics state is not touched.")]
@@ -199,17 +199,17 @@ namespace MuseDesk.Spatial
                     _podWant = PodBeginDescent; Queue(PodDescending, beginSeconds); _mountWant = MountSpool;
                     break;
                 case CeilingPodState.Stabilizing:
-                    _podWant = PodStabilize; _mountWant = MountIdle;
+                    _podWant = PodStabilize; _mountWant = MountSpool;
                     break;
                 case CeilingPodState.Engaged:
-                    // Beside the user and steady: the inspection shelf slides out.
-                    _podWant = PodShelfOpen; Queue(PodDeployedIdle, shelfSeconds); _mountWant = MountIdle;
+                    // Beside the user and steady: the inspection shelf slides out while iris bay stays open around mast.
+                    _podWant = PodShelfOpen; Queue(PodDeployedIdle, shelfSeconds); _mountWant = MountSpool;
                     break;
                 case CeilingPodState.PreparingToRetract:
                     // The shelf closes during the wind-up, before the office starts back up. On the
-                    // first trip up from the desk there is no open shelf to close.
+                    // first trip up from the desk there is no open shelf to close. Keep iris bay open around mast.
                     _podWant = !first && prev == CeilingPodState.Engaged ? PodShelfClose : PodBeginAscent;
-                    _mountWant = MountIdle;
+                    _mountWant = MountSpool;
                     break;
                 case CeilingPodState.Retracting:
                     _podWant = PodBeginAscent; Queue(PodReturningDock, beginSeconds); _mountWant = MountSpool;

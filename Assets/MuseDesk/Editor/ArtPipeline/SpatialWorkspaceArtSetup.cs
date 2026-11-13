@@ -199,8 +199,31 @@ namespace MuseDesk.Editor.ArtPipeline
             }
             portalMat.SetColor("_BaseColor", new Color(0.184f, 0.78f, 0.76f, 0.42f));
             portalMat.SetFloat("_Intensity", 1.25f);
+            portalMat.SetFloat("_Cull", 0f);
+            portalMat.SetFloat("_LiteMode", 0f);
+            portalMat.DisableKeyword("_LITE_MODE");
             EditorUtility.SetDirty(portalMat);
             map["Mat_Spatial_PortalCone"] = portalMat;
+
+            // Mat_Spatial_PortalCone_Lite (Reversible Quest 3 optimization variant: Cull Back + _LITE_MODE skips Fresnel pow & trig bands)
+            string portalLitePath = $"{MatsDir}/Mat_Spatial_PortalCone_Lite.mat";
+            Material portalLiteMat = AssetDatabase.LoadAssetAtPath<Material>(portalLitePath);
+            if (portalLiteMat == null)
+            {
+                portalLiteMat = new Material(portalShader) { name = "Mat_Spatial_PortalCone_Lite" };
+                AssetDatabase.CreateAsset(portalLiteMat, portalLitePath);
+            }
+            else if (portalLiteMat.shader != portalShader)
+            {
+                portalLiteMat.shader = portalShader;
+            }
+            portalLiteMat.SetColor("_BaseColor", new Color(0.184f, 0.78f, 0.76f, 0.42f));
+            portalLiteMat.SetFloat("_Intensity", 1.25f);
+            portalLiteMat.SetFloat("_Cull", (float)CullMode.Back);
+            portalLiteMat.SetFloat("_LiteMode", 1f);
+            portalLiteMat.EnableKeyword("_LITE_MODE");
+            EditorUtility.SetDirty(portalLiteMat);
+            map["Mat_Spatial_PortalCone_Lite"] = portalLiteMat;
 
             // Mat_Spatial_SoftParticle (URP Particles/Unlit Additive with soft circular radial texture)
             Shader partShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Universal Render Pipeline/Unlit");
@@ -774,7 +797,7 @@ namespace MuseDesk.Editor.ArtPipeline
             // Low-profile collider matching the pod deck
             var bc = go.AddComponent<BoxCollider>();
             bc.center = new Vector3(0f, 0.020f, 0f);
-            bc.size = new Vector3(0.58f, 0.040f, 0.34f);
+            bc.size = new Vector3(0.60f, 0.040f, 0.35f);
 
             // Small front slate status display TMP readout attached cleanly at InfoDisplaySocket
             Transform dispSock = FindChildRecursive(go.transform, "InfoDisplaySocket");
@@ -959,6 +982,10 @@ namespace MuseDesk.Editor.ArtPipeline
 
             var vfxCtrl = root.AddComponent<CeilingDeploymentVFXController>();
             vfxCtrl.ResolveReferences();
+            if (matMap.TryGetValue("Mat_Spatial_PortalCone", out var fullPortalMat))
+                SetPrivateField(vfxCtrl, "portalConeFullMaterial", fullPortalMat);
+            if (matMap.TryGetValue("Mat_Spatial_PortalCone_Lite", out var litePortalMat))
+                SetPrivateField(vfxCtrl, "portalConeLiteMaterial", litePortalMat);
             vfxCtrl.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.DockedIdle, 0f);
 
             return SavePrefab(root, "Spatial_CeilingWorkspaceAssembly");
@@ -1546,6 +1573,48 @@ namespace MuseDesk.Editor.ArtPipeline
             SampleAnimationState(ceilDeployed, "SuspendedOfficePod", $"{ModelsDir}/SuspendedOfficePod.fbx", "Pod_Deployed_Idle");
             ceilDeployed.GetComponent<CeilingDeploymentVFXController>()?.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.DeployedIdle, 0f);
 
+            // 4c. Full vs LowCostNoParticles vs MinimalIrisHalo VFX comparison strip (separate beam away from main trio)
+            CreateStudioBox("Studio_CeilingBeam_VfxCompare", new Vector3(3.45f, 2.43f, 0f), new Vector3(2.9f, 0.06f, 0.9f), ceilMat);
+            var ceilFullCmp = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["Spatial_CeilingPod_Complete"]);
+            ceilFullCmp.name = "Showcase_04c0_CeilingPod_VFX_Full";
+            ceilFullCmp.transform.position = new Vector3(2.65f, 2.40f, -0.05f);
+            var fullCmpCtrl = ceilFullCmp.GetComponent<CeilingWorkspacePodController>();
+            fullCmpCtrl.ConfigureRoomPoses(new Vector3(2.65f, 2.012f, -0.05f), new Vector3(2.65f, 1.56f, -0.05f), Quaternion.identity);
+            fullCmpCtrl.SnapToPoseImmediate(true);
+            SampleAnimationState(ceilFullCmp, "CeilingMount", $"{ModelsDir}/CeilingMount.fbx", "Mount_Spool_Spin");
+            SampleAnimationState(ceilFullCmp, "SuspendedOfficePod", $"{ModelsDir}/SuspendedOfficePod.fbx", "Pod_Descending");
+            ceilFullCmp.GetComponent<CeilingDeploymentVFXController>()?.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.Descending, 0.35f);
+
+            var ceilLite = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["Spatial_CeilingPod_Complete"]);
+            ceilLite.name = "Showcase_04c_CeilingPod_VFX_LowCost";
+            ceilLite.transform.position = new Vector3(3.45f, 2.40f, -0.05f);
+            var liteCtrl = ceilLite.GetComponent<CeilingWorkspacePodController>();
+            liteCtrl.ConfigureRoomPoses(new Vector3(3.45f, 2.012f, -0.05f), new Vector3(3.45f, 1.56f, -0.05f), Quaternion.identity);
+            liteCtrl.SnapToPoseImmediate(true);
+            SampleAnimationState(ceilLite, "CeilingMount", $"{ModelsDir}/CeilingMount.fbx", "Mount_Spool_Spin");
+            SampleAnimationState(ceilLite, "SuspendedOfficePod", $"{ModelsDir}/SuspendedOfficePod.fbx", "Pod_Descending");
+            var liteVfx = ceilLite.GetComponent<CeilingDeploymentVFXController>();
+            if (liteVfx != null)
+            {
+                liteVfx.SetQualityPreset(CeilingVfxQualityPreset.LowCostNoParticles);
+                liteVfx.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.Descending, 0.35f);
+            }
+
+            var ceilMin = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["Spatial_CeilingPod_Complete"]);
+            ceilMin.name = "Showcase_04d_CeilingPod_VFX_MinimalHalo";
+            ceilMin.transform.position = new Vector3(4.25f, 2.40f, -0.05f);
+            var minCtrl = ceilMin.GetComponent<CeilingWorkspacePodController>();
+            minCtrl.ConfigureRoomPoses(new Vector3(4.25f, 2.012f, -0.05f), new Vector3(4.25f, 1.56f, -0.05f), Quaternion.identity);
+            minCtrl.SnapToPoseImmediate(true);
+            SampleAnimationState(ceilMin, "CeilingMount", $"{ModelsDir}/CeilingMount.fbx", "Mount_Spool_Spin");
+            SampleAnimationState(ceilMin, "SuspendedOfficePod", $"{ModelsDir}/SuspendedOfficePod.fbx", "Pod_Descending");
+            var minVfx = ceilMin.GetComponent<CeilingDeploymentVFXController>();
+            if (minVfx != null)
+            {
+                minVfx.SetQualityPreset(CeilingVfxQualityPreset.MinimalIrisHalo);
+                minVfx.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.Descending, 0.35f);
+            }
+
             // 5. Attention Beacon 7-State Showcase Row (on desk height shelf for close-up inspection)
             var beaconStates = (SpatialBeaconVisualController.BeaconState[])Enum.GetValues(
                 typeof(SpatialBeaconVisualController.BeaconState));
@@ -1638,7 +1707,9 @@ namespace MuseDesk.Editor.ArtPipeline
                 CaptureCameraShot(cam, "05_Courier_And_Perch_Showcase.png",
                     new Vector3(-0.04f, 1.08f, 1.18f), new Vector3(-0.04f, 0.88f, 0.56f), 1280, 720),
                 CaptureCameraShot(cam, "06_Mailbox_And_GhostPreviews.png",
-                    new Vector3(1.55f, 0.90f, 3.05f), new Vector3(1.55f, 0.72f, 0.55f), 1280, 720)
+                    new Vector3(1.55f, 0.90f, 3.05f), new Vector3(1.55f, 0.72f, 0.55f), 1280, 720),
+                CaptureCameraShot(cam, "07_CeilingVFX_Full_vs_LowCost.png",
+                    new Vector3(3.45f, 1.88f, 2.75f), new Vector3(3.45f, 1.88f, -0.05f), 1280, 720)
             };
 
             // Reset Main Camera to clean overview pose before saving final scene

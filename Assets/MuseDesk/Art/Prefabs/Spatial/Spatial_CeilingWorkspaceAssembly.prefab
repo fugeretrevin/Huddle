@@ -5082,6 +5082,9 @@ MonoBehaviour:
   ceilingApertureParticles: {fileID: 957442076572032584}
   tetherFlowParticles: {fileID: 6018313248721323977}
   arrivalBurstParticles: {fileID: 5047616446740465018}
+  portalConeFullMaterial: {fileID: 2100000, guid: 9c1eddd4866d0544c9bb34e4135f3a4b, type: 2}
+  portalConeLiteMaterial: {fileID: 2100000, guid: 73108673173ea4b4b8c6965c59f674f7, type: 2}
+  qualityPreset: 0
 --- !u!1 &6094833937694480277
 GameObject:
   m_ObjectHideFlags: 0

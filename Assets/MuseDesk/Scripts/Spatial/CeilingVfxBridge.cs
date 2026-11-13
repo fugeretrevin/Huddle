@@ -27,6 +27,8 @@ namespace MuseDesk.Spatial
         public bool vfxEnabled = true;
         [Tooltip("Off: only the particle systems are removed (the cheaper option); cone, halo and rings stay.")]
         public bool particlesEnabled = true;
+        [Tooltip("Reversible quality preset. Switch to LowCostNoParticles or MinimalIrisHalo if Quest GPU profiling shows overdraw cost.")]
+        public CeilingVfxQualityPreset qualityPreset = CeilingVfxQualityPreset.Full;
 
         CeilingPodMachine _machine;
         bool _bound;
@@ -36,6 +38,7 @@ namespace MuseDesk.Spatial
         bool _applied;               // the hidden or shown state has been applied at least once
         bool _lastParticles = true;
         bool _particlesApplied;
+        CeilingVfxQualityPreset _lastPreset = CeilingVfxQualityPreset.Full;
 
         ParticleSystem[] _systems;
         ParticleSystemRenderer[] _systemRenderers;
@@ -98,7 +101,7 @@ namespace MuseDesk.Spatial
                 }
             }
             // The pod switches its visuals in LateUpdate, and the two switches can be flipped in Play Mode.
-            if (ShouldShow() != _shown || particlesEnabled != _lastParticles) Refresh();
+            if (ShouldShow() != _shown || particlesEnabled != _lastParticles || qualityPreset != _lastPreset) Refresh();
         }
 
         bool ShouldShow()
@@ -117,7 +120,13 @@ namespace MuseDesk.Spatial
                 Apply(show);
                 if (show) vfx.OnPodState(ToArt(_phase));
             }
-            if (!_particlesApplied || particlesEnabled != _lastParticles) ApplyParticles();
+            bool wantParticles = particlesEnabled && qualityPreset == CeilingVfxQualityPreset.Full;
+            if (!_particlesApplied || wantParticles != _lastParticles || qualityPreset != _lastPreset)
+            {
+                _lastPreset = qualityPreset;
+                vfx.SetQualityPreset(qualityPreset);
+                ApplyParticles(wantParticles);
+            }
         }
 
         void OnPodChanged()
@@ -137,13 +146,15 @@ namespace MuseDesk.Spatial
             if (vfx == null) return;
             Collect();
             vfx.enabled = show;
+            _lastPreset = qualityPreset;
+            vfx.SetQualityPreset(qualityPreset);
             if (!show) StopAll();
-            ApplyParticles();
+            ApplyParticles(particlesEnabled && qualityPreset == CeilingVfxQualityPreset.Full);
         }
 
-        void ApplyParticles()
+        void ApplyParticles(bool enableParticles)
         {
-            _lastParticles = particlesEnabled;
+            _lastParticles = enableParticles;
             _particlesApplied = true;
             if (_systems == null) return;
             for (int i = 0; i < _systems.Length; i++)
@@ -151,9 +162,9 @@ namespace MuseDesk.Spatial
                 var ps = _systems[i];
                 if (ps == null) continue;
                 var em = ps.emission;
-                em.enabled = particlesEnabled;
-                if (_systemRenderers[i] != null) _systemRenderers[i].enabled = particlesEnabled;
-                if (!particlesEnabled) ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                em.enabled = enableParticles;
+                if (_systemRenderers[i] != null) _systemRenderers[i].enabled = enableParticles;
+                if (!enableParticles) ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
         }
 
@@ -186,7 +197,7 @@ namespace MuseDesk.Spatial
         public string Describe()
         {
             var sb = new StringBuilder();
-            sb.Append($"bridge bound={_bound} shown={_shown} vfxEnabled={vfxEnabled} particlesEnabled={particlesEnabled} podState={_state} phase={_phase} controller={(vfx != null ? vfx.CurrentVfxState.ToString() : "MISSING")} enabled={(vfx != null && vfx.enabled)}");
+            sb.Append($"bridge bound={_bound} shown={_shown} preset={qualityPreset} vfxEnabled={vfxEnabled} particlesEnabled={particlesEnabled} podState={_state} phase={_phase} controller={(vfx != null ? vfx.CurrentVfxState.ToString() : "MISSING")} enabled={(vfx != null && vfx.enabled)}");
             if (_meshEffects != null)
                 foreach (var go in _meshEffects) if (go != null) sb.Append($"\n  {go.name}: {(go.activeSelf ? "ACTIVE" : "off")}");
             if (_systems != null)

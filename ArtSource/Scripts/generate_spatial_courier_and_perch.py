@@ -271,8 +271,8 @@ def build_document_courier():
         sc.push_action_to_nla(arm_obj, cname, 1, end_f)
 
     def pose_clamps_open():
-        arm_obj.pose.bones["Bone_Clamp_L"].rotation_euler = (0, math.radians(38), 0)
-        arm_obj.pose.bones["Bone_Clamp_R"].rotation_euler = (0, math.radians(-38), 0)
+        arm_obj.pose.bones["Bone_Clamp_L"].rotation_euler = (0, math.radians(46), 0)
+        arm_obj.pose.bones["Bone_Clamp_R"].rotation_euler = (0, math.radians(-46), 0)
 
     def c_docked_idle():
         pose_clamps_open()
@@ -335,7 +335,7 @@ def build_document_courier():
 
     sc.make_anchor("CourierRoot",                (0.0, 0.000, 0.000), arm_obj)
     sc.make_anchor("DockBaseSocket",             (0.0, 0.000, 0.000), arm_obj)
-    sc.make_anchor("DocumentAttachSocket",       (0.0, 0.008, 0.048), arm_obj, rot_deg=(-22, 0, 0))
+    sc.make_anchor("DocumentAttachSocket",       (0.0, 0.006, 0.056), arm_obj, rot_deg=(-28, 0, 0))
     sc.make_anchor("PresentationColliderCenter", (0.0, 0.006, 0.045), arm_obj)
 
     return sc.export_animated_asset(
