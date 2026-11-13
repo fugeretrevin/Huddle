@@ -53,6 +53,22 @@ Automated: every EditMode fixture passes when run one at a time (about 600 tests
 - Git still prints "bad object refs/stash" on maintenance; untouched. `.blend1` files stay uncommitted.
 - No device performance numbers yet. Recorder: `scripts\quest_perf_watch.ps1 -Label desk -CaptureMinutes 4` (start by hand).
 
+## Waiting to be integrated: Antigravity ceiling VFX (not in `rc-feedback-1`)
+
+Branch `art-spatial-workspace-expansion`, commit `cbd606b`, in `.worktrees/spatial-art` (the earlier merge took `53f7129`). By Antigravity's own report, not checked here:
+- `CeilingMount` rebuilt with a 4-leaf iris docking bay (4 bones `Bone_Iris_F/B/L/R`, 0.44 m canopy, 4,580 tris); `DockedPose` moved to y = -0.388 m.
+- `SpatialPortalCone.shader` (additive, single-pass instanced), `Mat_Spatial_PortalCone`, `Mat_Spatial_SoftParticle`, cone and ring meshes, `Tex_SoftGlowDot.png`.
+- `CeilingDeploymentVFXController.cs`: halo, ripple, portal cone, tether motes, aperture particles, air-cushion ring, arrival burst. It binds to `CeilingWorkspacePodController.StateChanged`.
+
+Integration notes for whoever does it:
+- This project does **not** use `CeilingWorkspacePodController` (it moves transforms the logic owns). The VFX controller needs a small adapter driven by `CeilingPodMachine` states through `CeilingPodArt`, or its `ApplySnapshotImmediate(...)` called from there.
+- The mount changed size and `DockedPose` moved: `mountOffset`, `mastAttachHeight` and the mount/mast part of the swept volume must be re-measured (`BuildCeilingPolishV1` measures them; re-run it after the art is placed) and the ceiling safety tests re-run.
+- `BuildSpatialArtV1` placed the old mount; write a new builder (`BuildCeilingVfxV1`) rather than re-running it.
+- Additive transparents over passthrough and two more particle systems cost fill rate: check on the headset before keeping them on.
+- Tag a restore point before merging; merge only the art paths, as last time.
+
+Antigravity's follow-up ideas, in the order worth doing: (4) three-stage spatial audio for unlock, travel and lock; (1) pinch-and-pull on the tether to lower the pod; (2) look up and pinch to summon; (3) scan-reveal grid on the real ceiling during placement; (5) bounce light on real furniture (most cost, least certain on Quest).
+
 ## Scene build order (append-only; never re-run older builders after newer)
 
 ... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`.
