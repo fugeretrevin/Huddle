@@ -147,7 +147,39 @@ namespace MuseDesk.Documents
         {
             // Once fully taken, keep it at full size so nothing shrinks it back.
             if (_scaleLocked && !_filing) transform.localScale = _fullScale;
+
+            // While the agent still has it: the sheet sits IN the agent's hand. It follows the hand
+            // socket's animated position every frame (so it moves with the offer / walk clips), with
+            // its lower edge in the hand, and keeps its printed side turned to the user. Only the
+            // position comes from the bone; taking orientation from an animated hand bone would
+            // leave the sheet edge-on or upside down in most poses.
+            if (!_taken && !_filing && agentHoldPoint != null && followHand != null)
+            {
+                float half = _fullScale.y * heldScale * 0.5f * sheetHeight;
+                Vector3 pos = followHand.position + Vector3.up * (half * 0.85f);
+                if (_head == null && Time.unscaledTime >= _nextHeadLookup)
+                {
+                    _nextHeadLookup = Time.unscaledTime + 0.5f;
+                    var cam = Camera.main;
+                    if (cam != null) _head = cam.transform;
+                }
+                Quaternion rot = transform.rotation;
+                if (_head != null)
+                {
+                    Vector3 away = pos - _head.position; away.y = 0f;
+                    if (away.sqrMagnitude > 1e-6f)
+                        rot = Quaternion.LookRotation(away.normalized, Vector3.up) * Quaternion.Euler(-12f, 0f, 0f);
+                }
+                transform.SetPositionAndRotation(pos, rot);
+            }
         }
+
+        [Tooltip("Hand socket the carried sheet rides in (position only). If empty the sheet stays at the hold point.")]
+        public Transform followHand;
+        [Tooltip("Height of the sheet at full size, in metres per unit of this object's scale (the Card quad's local Y scale).")]
+        public float sheetHeight = 0.34f;
+        Transform _head;
+        float _nextHeadLookup;
 
         void Update()
         {

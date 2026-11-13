@@ -28,6 +28,8 @@ public static class Preview
         {
             ("Region_Backlog", new TaskCardV2 { TaskId = "t2-ab12cd34", Title = "Write the login tests", TaskState = TaskStates.Queued, Priority = 2, Revision = 0, SourceMode = SourceModes.Demo }),
             ("Region_Backlog", new TaskCardV2 { TaskId = "t2-ef56ab78", Title = "Investigate the flaky token refresh on slow networks and document the root cause", TaskState = TaskStates.Blocked, AgentId = "researcher", Priority = 1, Revision = 3, SourceMode = SourceModes.Demo }),
+            ("Region_Backlog", new TaskCardV2 { TaskId = "t2-aa11bb22", Title = "Write release notes", TaskState = TaskStates.Queued, Priority = 1, Revision = 0, SourceMode = SourceModes.Demo }),
+            ("Region_Backlog", new TaskCardV2 { TaskId = "t2-cc33dd44", Title = "Profile the cold start", TaskState = TaskStates.Queued, Priority = 0, Revision = 0, SourceMode = SourceModes.Demo }),
             ("Region_Working", new TaskCardV2 { TaskId = "t2-0911aa22", Title = "Implement OAuth scaffold", TaskState = TaskStates.Running, AgentId = "developer", Priority = 3, Revision = 5, SourceMode = SourceModes.Live }),
             ("Region_NeedsMe", new TaskCardV2 { TaskId = "t2-77c0de11", Title = "Approve auth approach", TaskState = TaskStates.AwaitingApproval, AgentId = "researcher", Priority = 3, Revision = 2, SourceMode = SourceModes.Live }),
             ("Region_Completed", new TaskCardV2 { TaskId = "t2-5150beef", Title = "Baseline test run", TaskState = TaskStates.Completed, AgentId = "tester", Priority = 0, Revision = 4, SourceMode = SourceModes.Demo }),
@@ -42,7 +44,7 @@ public static class Preview
             foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.hideFlags = HideFlags.DontSave;
             rows.TryGetValue(regionName, out int row);
             rows[regionName] = row + 1;
-            go.transform.localPosition = new Vector3(0f, -row * 0.10f, 0f);
+            go.transform.localPosition = new Vector3(0f, -row * new SerializedObject(board.GetComponent("BoardPresenter")).FindProperty("cardSpacing").vector2Value.y, 0f);   // the presenter's own row pitch
             go.transform.localRotation = Quaternion.identity;
             go.SetActive(true);
             go.GetComponent<TaskCardView>().SetData(data);

@@ -352,16 +352,16 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 16346655}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.016}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.003100046}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2132201909}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0.08, y: 0.16}
-  m_SizeDelta: {x: 0.3, y: 0.1}
+  m_AnchoredPosition: {x: 0.078889996, y: 0.16695994}
+  m_SizeDelta: {x: 12.967993, y: 3.3520026}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &16346657
 MonoBehaviour:
@@ -410,12 +410,12 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 0.2
+  m_fontSize: 19
   m_fontSizeBase: 0.2
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 18
-  m_fontSizeMax: 72
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 10
+  m_fontSizeMax: 19
   m_fontStyle: 1
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
@@ -427,9 +427,9 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 1
+  m_TextWrappingMode: 0
   m_wordWrappingRatios: 0.4
-  m_overflowMode: 0
+  m_overflowMode: 1
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 0
@@ -2063,7 +2063,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 79995626}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.012000054}
+  m_LocalPosition: {x: 0, y: 0, z: -0.012}
   m_LocalScale: {x: 0.050000004, y: 0.05, z: 0.050000004}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2602,7 +2602,7 @@ Transform:
   m_GameObject: {fileID: 117070562}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: -0.0000025331974, y: 0.0000008940697, z: 0.04249897}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2873,7 +2873,7 @@ Transform:
   m_GameObject: {fileID: 131348846}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.0000014901159, y: -0.000000745058, z: 0.042501457}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -4312,7 +4312,7 @@ Transform:
   m_GameObject: {fileID: 239352697}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -4566,7 +4566,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &241645588
 GameObject:
@@ -6596,7 +6596,7 @@ Transform:
   m_GameObject: {fileID: 320459835}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -6851,7 +6851,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &335254809
 GameObject:
@@ -9481,16 +9481,16 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 419224929}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.016}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.0031000227}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2132201909}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -0.08, y: 0.16}
-  m_SizeDelta: {x: 0.3, y: 0.1}
+  m_AnchoredPosition: {x: -0.07889001, y: 0.16695994}
+  m_SizeDelta: {x: 12.967993, y: 3.3520026}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &419224931
 MonoBehaviour:
@@ -9539,12 +9539,12 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 0.2
+  m_fontSize: 19
   m_fontSizeBase: 0.2
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 18
-  m_fontSizeMax: 72
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 10
+  m_fontSizeMax: 19
   m_fontStyle: 1
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
@@ -9556,9 +9556,9 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 1
+  m_TextWrappingMode: 0
   m_wordWrappingRatios: 0.4
-  m_overflowMode: 0
+  m_overflowMode: 1
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 0
@@ -10171,16 +10171,16 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 441188443}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.016}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.0031000013}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2132201909}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0.24, y: 0.16}
-  m_SizeDelta: {x: 0.3, y: 0.1}
+  m_AnchoredPosition: {x: 0.23667, y: 0.16695994}
+  m_SizeDelta: {x: 12.967993, y: 3.3520026}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &441188445
 MonoBehaviour:
@@ -10229,12 +10229,12 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 0.2
+  m_fontSize: 19
   m_fontSizeBase: 0.2
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 18
-  m_fontSizeMax: 72
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 10
+  m_fontSizeMax: 19
   m_fontStyle: 1
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
@@ -10246,9 +10246,9 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 1
+  m_TextWrappingMode: 0
   m_wordWrappingRatios: 0.4
-  m_overflowMode: 0
+  m_overflowMode: 1
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 0
@@ -11104,7 +11104,7 @@ Transform:
   m_GameObject: {fileID: 493333326}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -11359,7 +11359,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &494415768 stripped
 GameObject:
@@ -12258,7 +12258,7 @@ Transform:
   m_GameObject: {fileID: 530434590}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -12513,7 +12513,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &530597241
 GameObject:
@@ -12962,7 +12962,7 @@ Transform:
   m_GameObject: {fileID: 556210474}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -13217,7 +13217,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &559469685
 GameObject:
@@ -13246,7 +13246,7 @@ Transform:
   m_GameObject: {fileID: 559469685}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: -0.00000073574483, y: -0.0000010430813, z: 0.042500354}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -13730,7 +13730,7 @@ Transform:
   m_GameObject: {fileID: 586990297}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.0000016556846, y: 0.0000014487241, z: 0.042502083}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -13910,7 +13910,7 @@ Transform:
   m_GameObject: {fileID: 595224998}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: -0.0000014901159, y: -0.000000745058, z: 0.042499967}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -14309,7 +14309,7 @@ Transform:
   m_GameObject: {fileID: 615398956}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: -0.00000043826944, z: 0.04249963}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -14738,7 +14738,7 @@ Transform:
   m_GameObject: {fileID: 643226971}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.155, y: -0.17, z: -0.012}
+  m_LocalPosition: {x: -0.16, y: -0.24900001, z: -0.012}
   m_LocalScale: {x: 0.05, y: 0.05, z: 0.05}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -15667,7 +15667,7 @@ Transform:
   m_GameObject: {fileID: 664167314}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.0000006123446, y: -0.0000010430813, z: 0.042499643}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -16726,7 +16726,7 @@ Transform:
   m_GameObject: {fileID: 710420214}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: -0.00000043826944, z: 0.04249963}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -18681,7 +18681,7 @@ Transform:
   m_GameObject: {fileID: 759732723}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -18936,7 +18936,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &762735559
 GameObject:
@@ -19047,7 +19047,7 @@ Transform:
   m_GameObject: {fileID: 762791338}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -19302,7 +19302,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &764655220
 GameObject:
@@ -19835,16 +19835,16 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 788696567}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.014}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.00070001703}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2132201909}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0.19}
-  m_SizeDelta: {x: 0.3, y: 0.1}
+  m_AnchoredPosition: {x: 0, y: 0.23992002}
+  m_SizeDelta: {x: 40, y: 3}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &788696569
 MonoBehaviour:
@@ -19893,12 +19893,12 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 0.24
+  m_fontSize: 20
   m_fontSizeBase: 0.24
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 18
-  m_fontSizeMax: 72
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 12
+  m_fontSizeMax: 20
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
@@ -19910,7 +19910,7 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 1
+  m_TextWrappingMode: 0
   m_wordWrappingRatios: 0.4
   m_overflowMode: 0
   m_linkedTextComponent: {fileID: 0}
@@ -21761,7 +21761,7 @@ Transform:
   m_GameObject: {fileID: 878313621}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.24, y: -0.17, z: -0.012}
+  m_LocalPosition: {x: -0.24, y: -0.24900001, z: -0.012}
   m_LocalScale: {x: 0.05, y: 0.05, z: 0.05}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -22743,7 +22743,7 @@ Transform:
   m_GameObject: {fileID: 902212524}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.00000020023435, y: -0.0000010430813, z: 0.042499527}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -23505,6 +23505,11 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+--- !u!4 &913268388 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7186207604390175219, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+  m_PrefabInstance: {fileID: 913268387}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &913268389 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5599818946812637758, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
@@ -24401,7 +24406,7 @@ Transform:
   m_GameObject: {fileID: 968015263}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -24656,7 +24661,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &976105024
 GameObject:
@@ -24715,7 +24720,7 @@ Transform:
   m_GameObject: {fileID: 981219643}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.08, y: 0.1, z: -0.012}
+  m_LocalPosition: {x: -0.07889003, y: 0.101755634, z: -0.012}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -24830,7 +24835,7 @@ Transform:
   m_GameObject: {fileID: 988532101}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -25085,7 +25090,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1001 &991568557
 PrefabInstance:
@@ -25339,7 +25344,7 @@ Transform:
   m_GameObject: {fileID: 996128709}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: -0.00000043826944, z: 0.04249963}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -29857,7 +29862,7 @@ Transform:
   m_GameObject: {fileID: 1157750259}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: -0.00000009429641, y: -0.0000010430813, z: 0.042499695}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -30383,7 +30388,7 @@ Transform:
   m_GameObject: {fileID: 1159962573}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -30638,7 +30643,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &1169420558
 GameObject:
@@ -31002,7 +31007,7 @@ Transform:
   m_GameObject: {fileID: 1209634365}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.0000016556846, y: -0.0000014487241, z: 0.042502083}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -31342,7 +31347,7 @@ Transform:
   m_GameObject: {fileID: 1218294282}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.00000019324943, y: -0.0000010430813, z: 0.04250018}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -31915,7 +31920,7 @@ Transform:
   m_GameObject: {fileID: 1233350563}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -32170,7 +32175,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1001 &1239121699
 PrefabInstance:
@@ -33845,7 +33850,7 @@ Transform:
   m_GameObject: {fileID: 1287692771}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: -0.00000043826944, z: 0.04249963}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -33935,7 +33940,7 @@ Transform:
   m_GameObject: {fileID: 1296349271}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.0000014901161, y: 0.0000008940697, z: 0.04250001}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -34149,7 +34154,7 @@ Transform:
   m_GameObject: {fileID: 1306521995}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.00000059604645, y: 0.0000008940697, z: 0.042500608}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -34529,7 +34534,7 @@ Transform:
   m_GameObject: {fileID: 1328202713}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: -0.00000043826944, z: 0.04249963}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -35299,7 +35304,7 @@ Transform:
   m_GameObject: {fileID: 1351505296}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.24, y: 0.1, z: -0.012}
+  m_LocalPosition: {x: 0.23666997, y: 0.101755634, z: -0.012}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -35330,7 +35335,7 @@ Transform:
   m_GameObject: {fileID: 1365988718}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.24, y: 0.1, z: -0.012}
+  m_LocalPosition: {x: -0.23667002, y: 0.101755634, z: -0.012}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -35445,7 +35450,7 @@ Transform:
   m_GameObject: {fileID: 1376531587}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -35700,7 +35705,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1001 &1378019159
 PrefabInstance:
@@ -36182,7 +36187,7 @@ Transform:
   m_GameObject: {fileID: 1427167996}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -36437,7 +36442,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &1427265728
 GameObject:
@@ -38655,7 +38660,7 @@ Transform:
   m_GameObject: {fileID: 1543067502}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -38910,7 +38915,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &1543507058
 GameObject:
@@ -41256,7 +41261,7 @@ Transform:
   m_GameObject: {fileID: 1641086380}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -41511,7 +41516,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &1645179259
 GameObject:
@@ -41723,7 +41728,7 @@ Transform:
   m_GameObject: {fileID: 1648904107}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.08, y: 0.1, z: -0.012}
+  m_LocalPosition: {x: 0.07888997, y: 0.101755634, z: -0.012}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -41757,7 +41762,7 @@ Transform:
   m_GameObject: {fileID: 1655914212}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.06999999, y: -0.17, z: -0.012}
+  m_LocalPosition: {x: -0.08, y: -0.24900001, z: -0.012}
   m_LocalScale: {x: 0.05, y: 0.05, z: 0.05}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -42438,7 +42443,7 @@ Transform:
   m_GameObject: {fileID: 1664653235}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.00000009429641, y: -0.0000010430813, z: 0.042499695}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -43487,7 +43492,7 @@ Transform:
   m_GameObject: {fileID: 1684059676}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -43742,7 +43747,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!21 &1716296881
 Material:
@@ -44307,7 +44312,7 @@ Transform:
   m_GameObject: {fileID: 1750698616}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0.00000009313224, y: -0.000000745058, z: 0.042502306}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -44402,7 +44407,7 @@ Transform:
   m_GameObject: {fileID: 1753648271}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -44657,7 +44662,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &1759207768
 GameObject:
@@ -44728,7 +44733,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: -0.30000007, z: 0}
-  m_LocalScale: {x: 1.5, y: 1.5, z: 1.5}
+  m_LocalScale: {x: 1.3, y: 1.3, z: 1.3}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 536522317}
@@ -45061,7 +45066,7 @@ Transform:
   m_GameObject: {fileID: 1766174930}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.09, y: -0.3, z: -0.012}
+  m_LocalPosition: {x: 0.12, y: -0.275, z: -0.012}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -48572,16 +48577,16 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1899897341}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.016}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.003100031}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2132201909}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -0.24, y: 0.16}
-  m_SizeDelta: {x: 0.3, y: 0.1}
+  m_AnchoredPosition: {x: -0.23666999, y: 0.16695994}
+  m_SizeDelta: {x: 12.967993, y: 3.3520026}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1899897343
 MonoBehaviour:
@@ -48630,12 +48635,12 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 0.2
+  m_fontSize: 19
   m_fontSizeBase: 0.2
   m_fontWeight: 400
-  m_enableAutoSizing: 0
-  m_fontSizeMin: 18
-  m_fontSizeMax: 72
+  m_enableAutoSizing: 1
+  m_fontSizeMin: 10
+  m_fontSizeMax: 19
   m_fontStyle: 1
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
@@ -48647,9 +48652,9 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 1
+  m_TextWrappingMode: 0
   m_wordWrappingRatios: 0.4
-  m_overflowMode: 0
+  m_overflowMode: 1
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 0
@@ -49759,7 +49764,7 @@ Transform:
   m_GameObject: {fileID: 1918486260}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: 0, z: 0.042499304}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -50032,7 +50037,7 @@ Transform:
   m_GameObject: {fileID: 1948887795}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -50287,7 +50292,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &1950223962
 GameObject:
@@ -50666,7 +50671,7 @@ MonoBehaviour:
   delivery: {fileID: 1998025113}
   reFaceOnRelease: 1
   agentHoldPoint: {fileID: 203000318}
-  heldScale: 0.24
+  heldScale: 0.22
   heldLocalEuler: {x: -12, y: 180, z: 0}
   expandSeconds: 0.35
   hideWhileHeld:
@@ -50680,6 +50685,8 @@ MonoBehaviour:
   - {fileID: 259077136}
   - {fileID: 1275147668}
   minReadSeconds: 0.8
+  followHand: {fileID: 913268388}
+  sheetHeight: 0.34
 --- !u!114 &1956182067
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -51941,7 +51948,7 @@ Transform:
   m_GameObject: {fileID: 2014358329}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -52197,7 +52204,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &2031906015
 GameObject:
@@ -53395,7 +53402,7 @@ Transform:
   m_GameObject: {fileID: 2086279647}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -53650,7 +53657,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &2092764505
 GameObject:
@@ -54634,7 +54641,7 @@ Transform:
   m_GameObject: {fileID: 2124497941}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.1648}
+  m_LocalPosition: {x: 0, y: 0, z: 0.042499833}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -54811,7 +54818,7 @@ Transform:
   m_GameObject: {fileID: 2125415901}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.3}
+  m_LocalPosition: {x: 0, y: 0, z: -0.22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -55066,7 +55073,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 68d633b84eb46904e8812d1b5d4a901a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Workspace.PokeVisualRestGuard
-  restLocalPosition: {x: 0, y: 0, z: -0.3}
+  restLocalPosition: {x: 0, y: 0, z: -0.22}
   hasAuthoredRest: 1
 --- !u!1 &2126502007
 GameObject:
@@ -55287,7 +55294,7 @@ Transform:
   m_GameObject: {fileID: 2132201908}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.78569734, z: 0, w: 0.6186111}
-  m_LocalPosition: {x: 0.58, y: 0.36, z: 0.48}
+  m_LocalPosition: {x: 0.58, y: 0.4, z: 0.48}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -55334,7 +55341,7 @@ MonoBehaviour:
   workingRegion: {fileID: 981219644}
   needsMeRegion: {fileID: 1648904108}
   completedRegion: {fileID: 1351505297}
-  cardSpacing: {x: 0.09, y: 0.06}
+  cardSpacing: {x: 0.15967992, y: 0.081844315}
   columns: 1
 --- !u!114 &2132201911
 MonoBehaviour:
