@@ -60,3 +60,7 @@ $mem = Adb @('shell', '"dumpsys meminfo com.musedesk.quest | grep -E ''TOTAL PSS
 $shot = Join-Path $outDir "device_$Label.png"
 [void](Adb @('pull', '/sdcard/musedesk_shot.png', "`"$shot`"") 40)
 if (Test-Path $shot) { "screenshot: $shot ($((Get-Item $shot).Length) bytes)" }
+
+# Always hand the proximity sensor back, or the headset stays awake with nobody wearing it.
+[void](Adb @('shell', 'am', 'broadcast', '-a', 'com.oculus.vrpowermanager.automation_disable'))
+"proximity override: restored"

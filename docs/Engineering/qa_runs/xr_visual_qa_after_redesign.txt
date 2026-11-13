@@ -1,0 +1,423 @@
+﻿result: XR VISUAL QA  (Run: scene as it is at idle)
+        scene=Assets/MuseDesk/Scenes/MainMRScene.unity dirtyBefore=False
+        gameObjects=3030 eye(world)=(0.000,1.300,1.120)
+        
+        === 1. TEXT LEGIBILITY (em height in mm; angular size beyond 0.60 m) ===
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/Title: em 20.0 mm (font 20.00, lossy 0.0100) auto-size floor 12.0 mm [12.0..20.0] dist 0.69 m "TASK BOARD"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/Title: capital height 14.4 mm at 0.69 m = 1.20 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/Label_Backlog: em 19.0 mm (font 19.00, lossy 0.0100) auto-size floor 10.0 mm [10.0..19.0] dist 0.70 m "Backlog"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/Label_Backlog: capital height 13.7 mm at 0.70 m = 1.12 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/Label_Working: em 19.0 mm (font 19.00, lossy 0.0100) auto-size floor 10.0 mm [10.0..19.0] dist 0.66 m "Working"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/Label_Working: capital height 13.7 mm at 0.66 m = 1.19 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/Label_NeedsMe: em 19.0 mm (font 19.00, lossy 0.0100) auto-size floor 10.0 mm [10.0..19.0] dist 0.66 m "Needs me"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/Label_NeedsMe: capital height 13.7 mm at 0.66 m = 1.19 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/Label_Completed: em 19.0 mm (font 19.00, lossy 0.0100) auto-size floor 10.0 mm [10.0..19.0] dist 0.70 m "Completed"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/Label_Completed: capital height 13.7 mm at 0.70 m = 1.12 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/NewTaskButton/Visuals/ButtonVisual/ButtonLabel: em 7.5 mm (font 250.00, lossy 0.0003) auto-size floor 5.5 mm [183.3..250.0] dist 0.61 m "+ New"
+        WARN [1 angular] WorkspaceRoot/TaskBoard/NewTaskButton/Visuals/ButtonVisual/ButtonLabel: capital height 5.4 mm at 0.61 m = 0.51 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/AssignDock/Caption: em 8.5 mm (font 8.50, lossy 0.0100) auto-size floor 6.5 mm [6.5..8.5] dist 0.61 m "Drop the card on a name"
+        WARN [1 angular] WorkspaceRoot/TaskBoard/AssignDock/Caption: capital height 6.1 mm at 0.61 m = 0.58 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/AssignDock/Dock_Researcher/Name: em 13.0 mm (font 13.00, lossy 0.0100) auto-size floor 9.0 mm [9.0..13.0] dist 0.61 m "Researcher"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/AssignDock/Dock_Researcher/Name: capital height 9.4 mm at 0.61 m = 0.88 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/AssignDock/Dock_Developer/Name: em 13.0 mm (font 13.00, lossy 0.0100) auto-size floor 9.0 mm [9.0..13.0] dist 0.62 m "Developer"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/AssignDock/Dock_Developer/Name: capital height 9.4 mm at 0.62 m = 0.86 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/AssignDock/Dock_Tester/Name: em 13.0 mm (font 13.00, lossy 0.0100) auto-size floor 9.0 mm [9.0..13.0] dist 0.66 m "Tester"
+        PASS [1 angular] WorkspaceRoot/TaskBoard/AssignDock/Dock_Tester/Name: capital height 9.4 mm at 0.66 m = 0.82 deg
+        PASS [1 legibility] .../TaskBoard/CardToolbar/PauseResumeButton/Visuals/ButtonVisual/ButtonLabel: em 8.5 mm (font 212.50, lossy 0.0004) auto-size floor 5.5 mm [137.5..212.5] dist 0.64 m "Pause"
+        WARN [1 angular] .../TaskBoard/CardToolbar/PauseResumeButton/Visuals/ButtonVisual/ButtonLabel: capital height 6.1 mm at 0.64 m = 0.55 deg < 0.60 deg
+        PASS [1 legibility] .../TaskBoard/CardToolbar/PriorityButton/Visuals/ButtonVisual/ButtonLabel: em 8.5 mm (font 212.50, lossy 0.0004) auto-size floor 5.5 mm [137.5..212.5] dist 0.62 m "Priority"
+        WARN [1 angular] .../TaskBoard/CardToolbar/PriorityButton/Visuals/ButtonVisual/ButtonLabel: capital height 6.1 mm at 0.62 m = 0.57 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/TaskBoard/CardToolbar/CardConsoleLabel: em 5.5 mm (font 5.50, lossy 0.0100) auto-size floor 5.5 mm [5.5..7.5] dist 0.65 m "" (empty in the Editor: size only)
+        WARN [1 angular] WorkspaceRoot/TaskBoard/CardToolbar/CardConsoleLabel: capital height 4.0 mm at 0.65 m = 0.35 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Badge: em 12.8 mm (font 10.00, lossy 0.0128) auto-size floor 9.0 mm [7.0..10.0] dist 0.51 m "" (empty in the Editor: size only)
+        WARN [1 legibility] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Log: em 5.8 mm (font 4.50, lossy 0.0128) auto-size floor 4.0 mm [3.2..4.5] dist 0.54 m "" (empty in the Editor: size only): fine now, but auto-size may shrink it below 4.5 mm with longer runtime text
+        PASS [1 legibility] WorkspaceRoot/Phase6/FocusToggle/Visuals/ButtonVisual/ButtonLabel: em 13.8 mm (font 275.20, lossy 0.0005) auto-size floor 6.2 mm [124.2..276.0] dist 0.40 m "Focus"
+        PASS [1 legibility] WorkspaceRoot/TaskDock/Summary: em 6.5 mm (font 6.50, lossy 0.0100) auto-size floor 5.5 mm [5.5..6.5] dist 0.40 m "Task board"
+        PASS [1 legibility] WorkspaceRoot/TaskDock/Title: em 10.0 mm (font 10.00, lossy 0.0100) auto-size floor 7.2 mm [7.2..10.0] dist 0.40 m "Starting"
+        PASS [1 legibility] WorkspaceRoot/TaskDock/State: em 7.5 mm (font 7.50, lossy 0.0100) auto-size floor 5.5 mm [5.5..7.5] dist 0.40 m "Connecting to the task boa~"
+        PASS [1 legibility] WorkspaceRoot/TaskDock/Mode: em 6.3 mm (font 6.25, lossy 0.0100) auto-size floor 5.5 mm [5.5..6.5] dist 0.40 m "SCRIPTED DEMO"
+        PASS [1 legibility] WorkspaceRoot/TaskDock/DockStartKey/Visuals/ButtonVisual/ButtonLabel: em 8.5 mm (font 212.50, lossy 0.0004) auto-size floor 5.5 mm [137.5..212.5] dist 0.37 m "Start"
+        PASS [1 legibility] WorkspaceRoot/TaskDock/DockBoardKey/Visuals/ButtonVisual/ButtonLabel: em 8.5 mm (font 212.50, lossy 0.0004) auto-size floor 5.5 mm [137.5..212.5] dist 0.38 m "Board"
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.62 m "Researcher"
+        PASS [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: capital height 6.6 mm at 0.62 m = 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.64 m "Idle"
+        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: capital height 5.5 mm at 0.64 m = 0.50 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.50 m "Developer"
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.52 m "Idle"
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: em 9.1 mm (font 6.50, lossy 0.0140) auto-size floor 7.7 mm [5.5..6.5] dist 0.62 m "Tester"
+        PASS [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: capital height 6.6 mm at 0.62 m = 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: em 7.7 mm (font 5.50, lossy 0.0140) dist 0.64 m "Idle"
+        WARN [1 angular] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: capital height 5.5 mm at 0.64 m = 0.50 deg < 0.60 deg
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/ModePlaque/Mode: em 6.5 mm (font 6.50, lossy 0.0100) auto-size floor 5.5 mm [5.5..6.5] dist 0.40 m "STARTING"
+        PASS [1 legibility] WorkspaceRoot/OfficeV2/ModePlaque/Status: em 5.5 mm (font 5.50, lossy 0.0100) dist 0.40 m "" (empty in the Editor: size only)
+        
+        === 2. TEXT OVERFLOW ===
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/Title: rect 400.0 x 30.0 mm, overflowMode Overflow, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "TASK BOARD"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/Label_Backlog: rect 129.7 x 33.5 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Backlog"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/Label_Working: rect 129.7 x 33.5 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Working"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/Label_NeedsMe: rect 129.7 x 33.5 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Needs me"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/Label_Completed: rect 129.7 x 33.5 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Completed"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/NewTaskButton/Visuals/ButtonVisual/ButtonLabel: rect 25.8 x 13.8 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.3 mm y 0.0 mm "+ New"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/AssignDock/Caption: rect 290.0 x 15.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Drop the card on a name"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/AssignDock/Dock_Researcher/Name: rect 104.0 x 34.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Researcher"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/AssignDock/Dock_Developer/Name: rect 104.0 x 34.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Developer"
+        PASS [2 overflow] WorkspaceRoot/TaskBoard/AssignDock/Dock_Tester/Name: rect 104.0 x 34.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Tester"
+        PASS [2 overflow] .../TaskBoard/CardToolbar/PauseResumeButton/Visuals/ButtonVisual/ButtonLabel: rect 34.4 x 18.4 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Pause"
+        PASS [2 overflow] .../TaskBoard/CardToolbar/PriorityButton/Visuals/ButtonVisual/ButtonLabel: rect 34.4 x 18.4 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Priority"
+        INFO [2 overflow] WorkspaceRoot/TaskBoard/CardToolbar/CardConsoleLabel: empty in the Editor: not measured (runtime text may be longer than any placeholder)
+        INFO [2 overflow] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Badge: empty in the Editor: not measured (runtime text may be longer than any placeholder)
+        INFO [2 overflow] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Log: empty in the Editor: not measured (runtime text may be longer than any placeholder)
+        WARN [2 overflow] WorkspaceRoot/Phase6/FocusToggle/Visuals/ButtonVisual/ButtonLabel: rendered text slightly past its rect; rect 43.0 x 23.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 1.0 mm y 0.0 mm "Focus"
+        PASS [2 overflow] WorkspaceRoot/TaskDock/Summary: rect 150.0 x 11.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Task board"
+        PASS [2 overflow] WorkspaceRoot/TaskDock/Title: rect 150.0 x 15.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Starting"
+        PASS [2 overflow] WorkspaceRoot/TaskDock/State: rect 150.0 x 11.0 mm, overflowMode Ellipsis, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Connecting to the task boa~"
+        WARN [2 overflow] WorkspaceRoot/TaskDock/Mode: rendered text slightly past its rect; rect 56.0 x 14.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.4 mm y 0.0 mm "SCRIPTED DEMO"
+        PASS [2 overflow] WorkspaceRoot/TaskDock/DockStartKey/Visuals/ButtonVisual/ButtonLabel: rect 34.4 x 18.4 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Start"
+        PASS [2 overflow] WorkspaceRoot/TaskDock/DockBoardKey/Visuals/ButtonVisual/ButtonLabel: rect 34.4 x 18.4 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Board"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: rect 109.2 x 14.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Researcher"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: rect 109.2 x 12.6 mm, overflowMode Ellipsis, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Idle"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: rect 109.2 x 14.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Developer"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: rect 109.2 x 12.6 mm, overflowMode Ellipsis, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Idle"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: rect 109.2 x 14.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Tester"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: rect 109.2 x 12.6 mm, overflowMode Ellipsis, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "Idle"
+        PASS [2 overflow] WorkspaceRoot/OfficeV2/ModePlaque/Mode: rect 108.0 x 10.0 mm, overflowMode Truncate, wrap NoWrap, lines 1, past rect x 0.0 mm y 0.0 mm "STARTING"
+        INFO [2 overflow] WorkspaceRoot/OfficeV2/ModePlaque/Status: empty in the Editor: not measured (runtime text may be longer than any placeholder)
+        
+        === 3. TEXT DEPTH OFFSET (gap from the text plane to the surface behind it) ===
+        PASS [3 depth] WorkspaceRoot/TaskBoard/Title: gap 0.50 mm to 'Kanban_Static_CharcoalVisor', across the label 0.50..0.50 mm (5 samples) "TASK BOARD"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/Label_Backlog: gap 0.50 mm to 'Header_Completed', across the label 0.50..0.50 mm (5 samples) "Backlog"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/Label_Working: gap 0.50 mm to 'Header_Blocked', across the label 0.50..0.50 mm (5 samples) "Working"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/Label_NeedsMe: gap 0.50 mm to 'Header_InProgress', across the label 0.50..0.50 mm (5 samples) "Needs me"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/Label_Completed: gap 0.50 mm to 'Header_Queued', across the label 0.50..0.50 mm (5 samples) "Completed"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/NewTaskButton/Visuals/ButtonVisual/ButtonLabel: gap 0.87 mm to 'Cap3D', across the label 0.87..0.87 mm (5 samples) "+ New"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/AssignDock/Caption: gap 0.50 mm to 'CaptionPlate', across the label 0.50..0.50 mm (5 samples) "Drop the card on a name"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/AssignDock/Dock_Researcher/Name: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "Researcher"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/AssignDock/Dock_Developer/Name: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "Developer"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/AssignDock/Dock_Tester/Name: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "Tester"
+        PASS [3 depth] .../TaskBoard/CardToolbar/PauseResumeButton/Visuals/ButtonVisual/ButtonLabel: gap 0.50 mm to 'Cap3D', across the label 0.50..0.50 mm (5 samples) "Pause"
+        PASS [3 depth] .../TaskBoard/CardToolbar/PriorityButton/Visuals/ButtonVisual/ButtonLabel: gap 0.50 mm to 'Cap3D', across the label 0.50..0.50 mm (5 samples) "Priority"
+        PASS [3 depth] WorkspaceRoot/TaskBoard/CardToolbar/CardConsoleLabel: gap 0.50 mm to 'CaptionPlate', across the label 0.50..0.50 mm (5 samples) ""
+        INFO [3 depth] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Badge: no surface found within 6.0 mm in front / 30.0 mm behind the text centre (free-floating text) ""
+        INFO [3 depth] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Log: no surface found within 6.0 mm in front / 30.0 mm behind the text centre (free-floating text) ""
+        PASS [3 depth] WorkspaceRoot/Phase6/FocusToggle/Visuals/ButtonVisual/ButtonLabel: gap 0.50 mm to 'Cap3D', across the label 0.50..0.50 mm (5 samples) "Focus"
+        PASS [3 depth] WorkspaceRoot/TaskDock/Summary: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "Task board"
+        PASS [3 depth] WorkspaceRoot/TaskDock/Title: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "Starting"
+        PASS [3 depth] WorkspaceRoot/TaskDock/State: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "Connecting to the task boa~"
+        PASS [3 depth] WorkspaceRoot/TaskDock/Mode: gap 0.50 mm to 'ModeChip', across the label 0.50..0.50 mm (5 samples) "SCRIPTED DEMO"
+        PASS [3 depth] WorkspaceRoot/TaskDock/DockStartKey/Visuals/ButtonVisual/ButtonLabel: gap 0.50 mm to 'Cap3D', across the label 0.50..0.50 mm (5 samples) "Start"
+        PASS [3 depth] WorkspaceRoot/TaskDock/DockBoardKey/Visuals/ButtonVisual/ButtonLabel: gap 0.50 mm to 'Cap3D', across the label 0.50..0.50 mm (5 samples) "Board"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: gap 0.70 mm to 'Plate', across the label 0.70..0.70 mm (5 samples) "Researcher"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: gap 0.70 mm to 'Plate', across the label 0.70..0.70 mm (5 samples) "Idle"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: gap 0.70 mm to 'Plate', across the label 0.70..0.70 mm (5 samples) "Developer"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: gap 0.70 mm to 'Plate', across the label 0.70..0.70 mm (5 samples) "Idle"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: gap 0.70 mm to 'Plate', across the label 0.70..0.70 mm (5 samples) "Tester"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: gap 0.70 mm to 'Plate', across the label 0.70..0.70 mm (5 samples) "Idle"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/ModePlaque/Mode: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) "STARTING"
+        PASS [3 depth] WorkspaceRoot/OfficeV2/ModePlaque/Status: gap 0.50 mm to 'Plate', across the label 0.50..0.50 mm (5 samples) ""
+        
+        === 4. TEXT FACING ===
+        PASS [4 facing] WorkspaceRoot/TaskBoard/Title: readable side is 30 deg off the line to the eye "TASK BOARD"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/Label_Backlog: readable side is 31 deg off the line to the eye "Backlog"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/Label_Working: readable side is 25 deg off the line to the eye "Working"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/Label_NeedsMe: readable side is 25 deg off the line to the eye "Needs me"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/Label_Completed: readable side is 31 deg off the line to the eye "Completed"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/NewTaskButton/Visuals/ButtonVisual/ButtonLabel: readable side is 18 deg off the line to the eye "+ New"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/AssignDock/Caption: readable side is 17 deg off the line to the eye "Drop the card on a name"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/AssignDock/Dock_Researcher/Name: readable side is 17 deg off the line to the eye "Researcher"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/AssignDock/Dock_Developer/Name: readable side is 20 deg off the line to the eye "Developer"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/AssignDock/Dock_Tester/Name: readable side is 27 deg off the line to the eye "Tester"
+        PASS [4 facing] .../TaskBoard/CardToolbar/PauseResumeButton/Visuals/ButtonVisual/ButtonLabel: readable side is 25 deg off the line to the eye "Pause"
+        PASS [4 facing] .../TaskBoard/CardToolbar/PriorityButton/Visuals/ButtonVisual/ButtonLabel: readable side is 21 deg off the line to the eye "Priority"
+        PASS [4 facing] WorkspaceRoot/TaskBoard/CardToolbar/CardConsoleLabel: readable side is 25 deg off the line to the eye ""
+        WARN [4 facing] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Badge: readable side is 137 deg off the line to the eye "" (has a FaceUser billboard: re-oriented at runtime, check on the headset)
+        WARN [4 facing] WorkspaceRoot/Phase6/InboxTray/InboxReadout/Log: readable side is 134 deg off the line to the eye "" (has a FaceUser billboard: re-oriented at runtime, check on the headset)
+        PASS [4 facing] WorkspaceRoot/Phase6/FocusToggle/Visuals/ButtonVisual/ButtonLabel: readable side is 43 deg off the line to the eye "Focus"
+        PASS [4 facing] WorkspaceRoot/TaskDock/Summary: readable side is 10 deg off the line to the eye "Task board"
+        PASS [4 facing] WorkspaceRoot/TaskDock/Title: readable side is 8 deg off the line to the eye "Starting"
+        PASS [4 facing] WorkspaceRoot/TaskDock/State: readable side is 4 deg off the line to the eye "Connecting to the task boa~"
+        PASS [4 facing] WorkspaceRoot/TaskDock/Mode: readable side is 8 deg off the line to the eye "SCRIPTED DEMO"
+        PASS [4 facing] WorkspaceRoot/TaskDock/DockStartKey/Visuals/ButtonVisual/ButtonLabel: readable side is 3 deg off the line to the eye "Start"
+        PASS [4 facing] WorkspaceRoot/TaskDock/DockBoardKey/Visuals/ButtonVisual/ButtonLabel: readable side is 9 deg off the line to the eye "Board"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: readable side is 49 deg off the line to the eye "Researcher"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: readable side is 50 deg off the line to the eye "Idle"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: readable side is 52 deg off the line to the eye "Developer"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: readable side is 54 deg off the line to the eye "Idle"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: readable side is 49 deg off the line to the eye "Tester"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: readable side is 50 deg off the line to the eye "Idle"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/ModePlaque/Mode: readable side is 5 deg off the line to the eye "STARTING"
+        PASS [4 facing] WorkspaceRoot/OfficeV2/ModePlaque/Status: readable side is 1 deg off the line to the eye ""
+        
+        === 5. PARENT SCALE HAZARDS ===
+        INFO [5 scale] .../Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L: collider inside a scaled-up parent, world size plausible: CapsuleCollider ancestor 'Chest' has lossy scale 100.0 (rig armature scale); world size (0.044,0.070,0.044) m, trigger=True
+        INFO [5 scale] .../Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R: collider inside a scaled-up parent, world size plausible: CapsuleCollider ancestor 'Chest' has lossy scale 100.0 (rig armature scale); world size (0.044,0.070,0.044) m, trigger=True
+        INFO [5 scale] .../Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L: collider inside a scaled-up parent, world size plausible: CapsuleCollider ancestor 'Chest' has lossy scale 100.0 (rig armature scale); world size (0.044,0.070,0.044) m, trigger=True
+        INFO [5 scale] .../Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R: collider inside a scaled-up parent, world size plausible: CapsuleCollider ancestor 'Chest' has lossy scale 100.0 (rig armature scale); world size (0.044,0.070,0.044) m, trigger=True
+        INFO [5 scale] .../Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L: collider inside a scaled-up parent, world size plausible: CapsuleCollider ancestor 'Chest' has lossy scale 100.0 (rig armature scale); world size (0.044,0.070,0.044) m, trigger=True
+        INFO [5 scale] .../Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R: collider inside a scaled-up parent, world size plausible: CapsuleCollider ancestor 'Chest' has lossy scale 100.0 (rig armature scale); world size (0.044,0.070,0.044) m, trigger=True
+        WARN [5 scale] [BuildingBlock] Grabbable Item/GrabLabel/Backdrop: ancestor 'GrabLabel' has lossy scale 0.0072 (< 0.02): sizes and font sizes under it are easy to get wrong; own lossy scale 0.0881 [inactive]
+        examined 1046 objects with a renderer, collider or text; 8 rig/model parts under a scaled ancestor ignored; 7 reported
+        
+        === 6. POKE KEYS ===
+        PASS [6 key travel] WorkspaceRoot/TaskBoard/NewTaskButton: travel 6.6 mm (ButtonVisual rest local (0.000,0.000,-0.220), key lossy scale 0.030)
+        PASS [6 key rim] WorkspaceRoot/TaskBoard/NewTaskButton: cap face at rest 6.5 mm, at full press -0.1 mm, housing rim -0.6 mm (all in front of the poke surface plane), cap proud of rim by 0.5 mm when pressed
+        PASS [6 key guard] WorkspaceRoot/TaskBoard/NewTaskButton: restLocalPosition (0.000,0.000,-0.220) vs authored (0.000,0.000,-0.220) (0.00 mm apart)
+        PASS [6 key size] WorkspaceRoot/TaskBoard/NewTaskButton: face 29.4 x 29.4 mm
+        PASS [6 key label] WorkspaceRoot/TaskBoard/NewTaskButton: "+ New" on ButtonVisual
+        PASS [6 key facing] WorkspaceRoot/TaskBoard/NewTaskButton: key normal is 18 deg off the line to the eye
+        PASS [6 key travel] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: travel 8.8 mm (ButtonVisual rest local (0.000,0.000,-0.220), key lossy scale 0.040)
+        PASS [6 key rim] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: cap face at rest 8.6 mm, at full press -0.2 mm, housing rim -0.8 mm (all in front of the poke surface plane), cap proud of rim by 0.6 mm when pressed
+        PASS [6 key guard] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: restLocalPosition (0.000,0.000,-0.220) vs authored (0.000,0.000,-0.220) (0.00 mm apart)
+        PASS [6 key size] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: face 39.2 x 39.2 mm
+        PASS [6 key label] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: "Pause" on ButtonVisual
+        PASS [6 key facing] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: key normal is 25 deg off the line to the eye
+        PASS [6 key travel] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: travel 8.8 mm (ButtonVisual rest local (0.000,0.000,-0.220), key lossy scale 0.040)
+        PASS [6 key rim] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: cap face at rest 8.6 mm, at full press -0.2 mm, housing rim -0.8 mm (all in front of the poke surface plane), cap proud of rim by 0.6 mm when pressed
+        PASS [6 key guard] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: restLocalPosition (0.000,0.000,-0.220) vs authored (0.000,0.000,-0.220) (0.00 mm apart)
+        PASS [6 key size] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: face 39.2 x 39.2 mm
+        PASS [6 key label] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: "Priority" on ButtonVisual
+        PASS [6 key facing] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: key normal is 21 deg off the line to the eye
+        PASS [6 key travel] WorkspaceRoot/Phase6/FocusToggle: travel 11.0 mm (ButtonVisual rest local (0.000,0.000,-0.220), key lossy scale 0.050)
+        PASS [6 key rim] WorkspaceRoot/Phase6/FocusToggle: cap face at rest 10.8 mm, at full press -0.2 mm, housing rim -1.0 mm (all in front of the poke surface plane), cap proud of rim by 0.8 mm when pressed
+        PASS [6 key guard] WorkspaceRoot/Phase6/FocusToggle: restLocalPosition (0.000,0.000,-0.220) vs authored (0.000,0.000,-0.220) (0.00 mm apart)
+        PASS [6 key size] WorkspaceRoot/Phase6/FocusToggle: face 49.0 x 49.0 mm
+        PASS [6 key label] WorkspaceRoot/Phase6/FocusToggle: "Focus" on ButtonVisual
+        PASS [6 key facing] WorkspaceRoot/Phase6/FocusToggle: key normal is 43 deg off the line to the eye
+        PASS [6 key travel] WorkspaceRoot/TaskDock/DockStartKey: travel 8.8 mm (ButtonVisual rest local (0.000,0.000,-0.220), key lossy scale 0.040)
+        PASS [6 key rim] WorkspaceRoot/TaskDock/DockStartKey: cap face at rest 8.6 mm, at full press -0.2 mm, housing rim -0.8 mm (all in front of the poke surface plane), cap proud of rim by 0.6 mm when pressed
+        PASS [6 key guard] WorkspaceRoot/TaskDock/DockStartKey: restLocalPosition (0.000,0.000,-0.220) vs authored (0.000,0.000,-0.220) (0.00 mm apart)
+        PASS [6 key size] WorkspaceRoot/TaskDock/DockStartKey: face 39.2 x 39.2 mm
+        PASS [6 key label] WorkspaceRoot/TaskDock/DockStartKey: "Start" on ButtonVisual
+        PASS [6 key facing] WorkspaceRoot/TaskDock/DockStartKey: key normal is 3 deg off the line to the eye
+        PASS [6 key travel] WorkspaceRoot/TaskDock/DockBoardKey: travel 8.8 mm (ButtonVisual rest local (0.000,0.000,-0.220), key lossy scale 0.040)
+        PASS [6 key rim] WorkspaceRoot/TaskDock/DockBoardKey: cap face at rest 8.6 mm, at full press -0.2 mm, housing rim -0.8 mm (all in front of the poke surface plane), cap proud of rim by 0.6 mm when pressed
+        PASS [6 key guard] WorkspaceRoot/TaskDock/DockBoardKey: restLocalPosition (0.000,0.000,-0.220) vs authored (0.000,0.000,-0.220) (0.00 mm apart)
+        PASS [6 key size] WorkspaceRoot/TaskDock/DockBoardKey: face 39.2 x 39.2 mm
+        PASS [6 key label] WorkspaceRoot/TaskDock/DockBoardKey: "Board" on ButtonVisual
+        PASS [6 key facing] WorkspaceRoot/TaskDock/DockBoardKey: key normal is 8 deg off the line to the eye
+        poke keys: 25 in the scene, 6 visible and measured
+        
+        === 7. REACH (metres from the eye; warn 0.55, fail 0.65) ===
+        WARN [7 reach] WorkspaceRoot/TaskBoard/NewTaskButton: key face 0.606 m from the eye, root-local (0.582,0.138,0.567) > 0.55 m: a stretch for something pressed often
+        WARN [7 reach] WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: key face 0.636 m from the eye, root-local (0.612,0.144,0.699) > 0.55 m: a stretch for something pressed often
+        WARN [7 reach] WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: key face 0.618 m from the eye, root-local (0.597,0.144,0.640) > 0.55 m: a stretch for something pressed often
+        PASS [7 reach] WorkspaceRoot/Phase6/FocusToggle: key face 0.400 m from the eye, root-local (-0.251,0.030,0.466)
+        PASS [7 reach] WorkspaceRoot/TaskDock/DockStartKey: key face 0.374 m from the eye, root-local (0.215,0.040,0.459)
+        PASS [7 reach] WorkspaceRoot/TaskDock/DockBoardKey: key face 0.377 m from the eye, root-local (0.184,0.040,0.417)
+        WARN [7 reach] WorkspaceRoot/Phase6/Decor_MiniPlant: centre 0.777 m from the eye (nearest point 0.742 m) [Grabbable+HandGrabInteractable] decor > 0.65 m and no distance grab (acceptable only because the flow never needs it)
+        WARN [7 reach] WorkspaceRoot/Phase6/Decor_DeskLamp: centre 0.771 m from the eye (nearest point 0.719 m) [Grabbable+HandGrabInteractable] decor > 0.65 m and no distance grab (acceptable only because the flow never needs it)
+        WARN [7 reach] WorkspaceRoot/Phase6/Decor_BookStack: centre 0.877 m from the eye (nearest point 0.836 m) [Grabbable+HandGrabInteractable] decor > 0.65 m and no distance grab (acceptable only because the flow never needs it)
+        WARN [7 reach] WorkspaceRoot/Phase6/Decor_MiniClock: centre 0.849 m from the eye (nearest point 0.831 m) [Grabbable+HandGrabInteractable] decor > 0.65 m and no distance grab (acceptable only because the flow never needs it)
+        PASS [7 reach] WorkspaceRoot/StampApprove: centre 0.323 m from the eye (nearest point 0.281 m) [Grabbable+HandGrabInteractable+DistanceHandGrabInteractable] core item
+        PASS [7 reach] WorkspaceRoot/StampReject: centre 0.323 m from the eye (nearest point 0.281 m) [Grabbable+HandGrabInteractable+DistanceHandGrabInteractable] core item
+        
+        === 8. OVERLAPS (oriented boxes of the major groups; key spacing) ===
+        group ResearchStation: centre(root-local) (-0.296,0.073,0.095) size (0.276,0.145,0.132) m, 16 renderers
+        group Agent_Researcher (under ResearchStation): centre(root-local) (-0.300,0.117,-0.002) size (0.140,0.245,0.094) m, 1 renderers
+        group DevStation: centre(root-local) (-0.021,0.068,0.141) size (0.250,0.135,0.149) m, 17 renderers
+        group Agent_Developer (under DevStation): centre(root-local) (0.000,0.109,0.046) size (0.140,0.230,0.096) m, 1 renderers
+        group QAStation: centre(root-local) (0.279,0.076,0.091) size (0.250,0.152,0.149) m, 24 renderers
+        group Agent_Tester (under QAStation): centre(root-local) (0.300,0.107,0.007) size (0.140,0.226,0.111) m, 1 renderers
+        group SoftwareFactory: centre(root-local) (-0.034,0.058,0.264) size (0.455,0.116,0.086) m, 1 renderers
+        group TaskBoard: centre(root-local) (0.603,0.379,0.474) size (0.707,0.565,0.114) m, 11 renderers
+        group WorkspaceRoot/TaskBoard/NewTaskButton: centre(root-local) (0.591,0.138,0.565) size (0.036,0.036,0.018) m, 2 renderers
+        group AssignDock (under TaskBoard): centre(root-local) (0.539,0.137,0.366) size (0.360,0.082,0.002) m, 4 renderers
+        group WorkspaceRoot/TaskBoard/CardToolbar/PauseResumeButton: centre(root-local) (0.623,0.144,0.696) size (0.048,0.048,0.023) m, 2 renderers
+        group WorkspaceRoot/TaskBoard/CardToolbar/PriorityButton: centre(root-local) (0.609,0.144,0.638) size (0.048,0.048,0.023) m, 2 renderers
+        group InboxTray (under Phase6): centre(root-local) (-0.320,0.012,0.250) size (0.078,0.023,0.096) m, 5 renderers
+        group OutboxTray (under Phase6): centre(root-local) (0.320,0.012,0.250) size (0.078,0.023,0.096) m, 5 renderers
+        group WorkspaceRoot/Phase6/FocusToggle: centre(root-local) (-0.263,0.030,0.458) size (0.060,0.060,0.029) m, 2 renderers
+        group StampApprove: centre(root-local) (-0.036,0.052,0.416) size (0.048,0.072,0.039) m, 5 renderers
+        group StampReject: centre(root-local) (0.036,0.052,0.416) size (0.048,0.072,0.039) m, 5 renderers
+        group TaskDock: centre(root-local) (0.240,0.040,0.440) size (0.168,0.098,0.001) m, 3 renderers
+        group WorkspaceRoot/TaskDock/DockStartKey: centre(root-local) (0.222,0.033,0.453) size (0.048,0.048,0.023) m, 2 renderers
+        group WorkspaceRoot/TaskDock/DockBoardKey: centre(root-local) (0.191,0.033,0.412) size (0.048,0.048,0.023) m, 2 renderers
+        group Nameplate_Researcher (under OfficeV2): centre(root-local) (-0.300,0.091,0.108) size (0.126,0.036,0.000) m, 2 renderers
+        group Nameplate_Developer (under OfficeV2): centre(root-local) (0.000,0.103,0.150) size (0.126,0.036,0.000) m, 2 renderers
+        group Nameplate_Tester (under OfficeV2): centre(root-local) (0.300,0.096,0.108) size (0.126,0.036,0.000) m, 2 renderers
+        group ModePlaque (under OfficeV2): centre(root-local) (0.000,0.016,0.340) size (0.120,0.024,0.000) m, 2 renderers
+        INFO [8 overlap] (pair): ResearchStation  x  Nameplate_Researcher (under OfficeV2): boxes intersect, penetration 70.2 mm (on the allow-list)
+        INFO [8 overlap] (pair): DevStation  x  Nameplate_Developer (under OfficeV2): boxes intersect, penetration 48.1 mm (on the allow-list)
+        INFO [8 overlap] (pair): QAStation  x  Nameplate_Tester (under OfficeV2): boxes intersect, penetration 71.9 mm (on the allow-list)
+        PASS [8 overlap] (scene): 252 pairs of major groups tested, none intersect
+        PASS [8 key spacing] (scene): 4 neighbouring key pairs tested, all at least 8 mm apart
+        
+        === 9. OCCLUSION FROM THE EYE ===
+        WARN [9 occlusion] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Role: the line from the eye to this text "Researcher" passes through the box of: ResearchStation
+        WARN [9 occlusion] WorkspaceRoot/OfficeV2/Nameplate_Researcher/Activity: the line from the eye to this text "Idle" passes through the box of: ResearchStation
+        WARN [9 occlusion] WorkspaceRoot/OfficeV2/Nameplate_Developer/Role: the line from the eye to this text "Developer" passes through the box of: DevStation
+        WARN [9 occlusion] WorkspaceRoot/OfficeV2/Nameplate_Developer/Activity: the line from the eye to this text "Idle" passes through the box of: DevStation
+        WARN [9 occlusion] WorkspaceRoot/OfficeV2/Nameplate_Tester/Role: the line from the eye to this text "Tester" passes through the box of: QAStation
+        WARN [9 occlusion] WorkspaceRoot/OfficeV2/Nameplate_Tester/Activity: the line from the eye to this text "Idle" passes through the box of: QAStation
+        36 keys and texts tested against 8 occluder boxes (boxes, not exact shapes: confirm each warning in a capture from the eye point)
+        
+        === 10. CARD LANES ===
+        card template 'CardTemplate' localScale 1.300: footprint 113.6 x 73.8 mm; cardSpacing 159.7 x 81.8 mm; columns 1 (regions' parent world scale 1.000)
+        PASS [10 lanes] WorkspaceRoot/TaskBoard: row gap 8.0 mm (card 73.8, pitch 81.8)
+        PASS [10 lanes] WorkspaceRoot/TaskBoard: Region_Backlog -> Region_Working: lane pitch 157.8 mm, cards need 113.6 mm, gap 44.2 mm
+        PASS [10 lanes] WorkspaceRoot/TaskBoard: Region_Working -> Region_NeedsMe: lane pitch 157.8 mm, cards need 113.6 mm, gap 44.2 mm
+        PASS [10 lanes] WorkspaceRoot/TaskBoard: Region_NeedsMe -> Region_Completed: lane pitch 157.8 mm, cards need 113.6 mm, gap 44.2 mm
+        PASS [10 lanes] WorkspaceRoot/TaskBoard/KanbanFrame_Visual/Header_Blocked: Header_Blocked is 141.7 mm wide, cards need 113.6 mm
+        PASS [10 lanes] WorkspaceRoot/TaskBoard/KanbanFrame_Visual/Header_Completed: Header_Completed is 141.7 mm wide, cards need 113.6 mm
+        PASS [10 lanes] WorkspaceRoot/TaskBoard/KanbanFrame_Visual/Header_InProgress: Header_InProgress is 141.7 mm wide, cards need 113.6 mm
+        PASS [10 lanes] WorkspaceRoot/TaskBoard/KanbanFrame_Visual/Header_Queued: Header_Queued is 141.7 mm wide, cards need 113.6 mm
+        
+        === 11. COUNTS ===
+        PASS [11 counts] (scene): 6 poke keys visible at idle (target at most 6): NewTaskButton, PauseResumeButton, PriorityButton, FocusToggle, DockStartKey, DockBoardKey
+        active renderers=400 (skinned 38, solid measured 339, hidden or tiny skipped 569)
+        materials=71 (text materials 1); transparent non-text materials=8: OculusCursorMaterial, OculusRayMaterial, TransparentStandard, DistanceReticle, ProceduralArcMaterial, OculusHandWire, LocomotionIndicatorMaterial, OculusHand
+        active TextMeshPro texts=38; missing scripts on active objects=0
+        PASS [11 counts] (scene): no missing scripts on active objects
+        
+        === SKIPPED AS HIDDEN (inactive, collapsed by scale, disabled or invisible) ===
+        key WorkspaceRoot/TaskBoard/CardTemplate/SH_PokePauseResume: inactive
+        key WorkspaceRoot/TaskBoard/CardTemplate/SH_PokePriority: inactive
+        key WorkspaceRoot/Phase6/ExplainToggle: inactive
+        WARN [hidden] WorkspaceRoot/Phase6/ExplainToggle: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/Phase6/FiledKey: inactive
+        WARN [hidden] WorkspaceRoot/Phase6/FiledKey: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/Phase6/StartKey: inactive
+        WARN [hidden] WorkspaceRoot/Phase6/StartKey: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/Phase6/ReplayKey: inactive
+        WARN [hidden] WorkspaceRoot/Phase6/ReplayKey: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/Phase6/TipsKey: inactive
+        WARN [hidden] WorkspaceRoot/Phase6/TipsKey: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/ArtifactPanel/Root/PrevPoke: inactive
+        WARN [hidden] WorkspaceRoot/ArtifactPanel/Root/PrevPoke: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/ArtifactPanel/Root/NextPoke: inactive
+        WARN [hidden] WorkspaceRoot/ArtifactPanel/Root/NextPoke: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/ArtifactPanel/Root/ClosePoke: inactive
+        WARN [hidden] WorkspaceRoot/ArtifactPanel/Root/ClosePoke: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key WorkspaceRoot/OfficeV2/CompletionReceipt/RunAgainKey: collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        key WorkspaceRoot/OfficeV2/FiledPoke: collapsed by scale at 'FiledPoke' (localScale 0.0000)
+        key Poke Interaction/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] Poke Interaction/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key DecisionDocument/Actions/Btn_Approve/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] DecisionDocument/Actions/Btn_Approve/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key DecisionDocument/Actions/Btn_Reject/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] DecisionDocument/Actions/Btn_Reject/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key DecisionDocument/Actions/Btn_Ask_why/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] DecisionDocument/Actions/Btn_Ask_why/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key DecisionDocument/Actions/Btn_Details/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] DecisionDocument/Actions/Btn_Details/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key DecisionDocument/Actions/Btn_Voice/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] DecisionDocument/Actions/Btn_Voice/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        key DecisionDocument/Actions/Btn_Changes/[BuildingBlock] ISDK_PokeInteraction: inactive
+        WARN [hidden] DecisionDocument/Actions/Btn_Changes/[BuildingBlock] ISDK_PokeInteraction: PokeInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown (hide by scale instead, or list it)
+        WARN [hidden] WorkspaceRoot/PhysicsTray/Prop_Block: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/PhysicsTray/Prop_Mug: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/TaskBoard/CardTemplate: ReRegisterInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/Decor_CoffeeMug: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/OfficeProps_Collection/Decor_Toolbox: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/OfficeProps_Collection/Decor_ProgressAward: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/OfficeProps_Collection/Doc_ApprovalStamp: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/OfficeProps_Collection/Doc_SignaturePen: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/OfficeProps_Collection/Doc_RolledBlueprint: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] WorkspaceRoot/Phase6/OfficeProps_Collection/Collab_PackageBox: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] [BuildingBlock] Grabbable Item: HandGrabInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        WARN [hidden] DecisionDocument: ReRegisterInteractable is inactive in the scene and not listed in any ReRegisterInteractable: it may not register when shown
+        text AppServices/DiagnosticsText "MuseDesk diagnostics": text component disabled
+        text WorkspaceRoot/ResearchStation/Agent_Researcher/NameTag "Researcher": inactive
+        text WorkspaceRoot/ResearchStation/Agent_Researcher/Alert "!": inactive
+        text WorkspaceRoot/ResearchStation/Agent_Researcher/TouchSummaryCard/Text "Agent_Researcher": inactive
+        text WorkspaceRoot/ResearchStation/Monitor/Status "<b>RESEARCH</b>|<size=70%>~": inactive
+        text WorkspaceRoot/DevStation/Agent_Developer/NameTag "Developer": inactive
+        text WorkspaceRoot/DevStation/Agent_Developer/Alert "!": inactive
+        text WorkspaceRoot/DevStation/Agent_Developer/TouchSummaryCard/Text "Agent_Developer": inactive
+        text WorkspaceRoot/DevStation/Monitor/Status "<b>DEVELOP</b>|<size=70%>I~": inactive
+        text WorkspaceRoot/QAStation/Agent_Tester/NameTag "Tester": inactive
+        text WorkspaceRoot/QAStation/Agent_Tester/Alert "!": inactive
+        text WorkspaceRoot/QAStation/Agent_Tester/TouchSummaryCard/Text "Agent_Tester": inactive
+        text WorkspaceRoot/QAStation/Monitor/Status "<b>TEST</b>|<size=70%>Idle~": inactive
+        text WorkspaceRoot/TaskBoard/CardTemplate/Title "Task": inactive
+        text WorkspaceRoot/TaskBoard/CardTemplate/SH_IdRev "t · r0": inactive
+        text WorkspaceRoot/TaskBoard/CardTemplate/SH_Role "Unassigned": inactive
+        text WorkspaceRoot/TaskBoard/CardTemplate/SH_Priority "P1": inactive
+        text WorkspaceRoot/TaskBoard/CardTemplate/SH_State "Queued": inactive
+        text WorkspaceRoot/TaskBoard/CardTemplate/SH_Source "SCRIPTED DEMO": inactive
+        text .../TaskBoard/CardTemplate/SH_PokePauseResume/Visuals/ButtonVisual/ButtonLabel "Pause": inactive
+        text .../TaskBoard/CardTemplate/SH_PokePriority/Visuals/ButtonVisual/ButtonLabel "Prio": inactive
+        text WorkspaceRoot/Phase6/ExplainToggle/Visuals/ButtonVisual/ButtonLabel "Explain": inactive
+        text WorkspaceRoot/Phase6/FiledKey/Visuals/ButtonVisual/ButtonLabel "Filed": inactive
+        text WorkspaceRoot/Phase6/StartKey/Visuals/ButtonVisual/ButtonLabel "Start": inactive
+        text WorkspaceRoot/Phase6/ReplayKey/Visuals/ButtonVisual/ButtonLabel "Replay": inactive
+        text WorkspaceRoot/Phase6/TipsKey/Visuals/ButtonVisual/ButtonLabel "Hide tips": inactive
+        text WorkspaceRoot/ArtifactPanel/Root/Title "Artifact": inactive
+        text WorkspaceRoot/ArtifactPanel/Root/Body "": inactive
+        text WorkspaceRoot/ArtifactPanel/Root/Page "1 / 1": inactive
+        text .../ArtifactPanel/Root/PrevPoke/Visuals/ButtonVisual/ButtonLabel "< Prev": inactive
+        text .../ArtifactPanel/Root/NextPoke/Visuals/ButtonVisual/ButtonLabel "Next >": inactive
+        text .../ArtifactPanel/Root/ClosePoke/Visuals/ButtonVisual/ButtonLabel "Close": inactive
+        text WorkspaceRoot/GuideSign/Text "Welcome to your agent offi~": inactive
+        text WorkspaceRoot/ArchiveReadout/Text "": inactive
+        text WorkspaceRoot/OfficeV2/ModePlaque/GuideLine/Text "Press Start on the task do~": collapsed by scale at 'GuideLine' (localScale 0.0010)
+        text WorkspaceRoot/OfficeV2/CompletionReceipt/Mode "": collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        text WorkspaceRoot/OfficeV2/CompletionReceipt/Heading "": collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        text WorkspaceRoot/OfficeV2/CompletionReceipt/Body "": collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        text WorkspaceRoot/OfficeV2/CompletionReceipt/Detail "": collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        text WorkspaceRoot/OfficeV2/CompletionReceipt/Hint "": collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        text .../OfficeV2/CompletionReceipt/RunAgainKey/Visuals/ButtonVisual/ButtonLabel "Run again": collapsed by scale at 'CompletionReceipt' (localScale 0.0010)
+        text WorkspaceRoot/OfficeV2/FiledPoke/Visuals/ButtonVisual/ButtonLabel "Filed": collapsed by scale at 'FiledPoke' (localScale 0.0000)
+        text [BuildingBlock] Grabbable Item/GrabLabel "grab me": inactive
+        text DecisionDocument/Badge "SCRIPTED DEMO": inactive
+        text DecisionDocument/Title "Deploy auth service to sta~": inactive
+        text DecisionDocument/Summary "OAuth login flow passed 12~": inactive
+        text DecisionDocument/Reco "Recommended: APPROVE": inactive
+        text DecisionDocument/Status "": inactive
+        text .../Actions/Btn_Approve/[BuildingBlock] ISDK_PokeInteraction/Visuals/ButtonVisual/Label "Approve": inactive
+        text .../Actions/Btn_Reject/[BuildingBlock] ISDK_PokeInteraction/Visuals/ButtonVisual/Label "Reject": inactive
+        text .../Actions/Btn_Ask_why/[BuildingBlock] ISDK_PokeInteraction/Visuals/ButtonVisual/Label "Why": inactive
+        text .../Actions/Btn_Details/[BuildingBlock] ISDK_PokeInteraction/Visuals/ButtonVisual/Label "Details": inactive
+        text .../Actions/Btn_Voice/[BuildingBlock] ISDK_PokeInteraction/Visuals/ButtonVisual/Label "Voice": inactive
+        text .../Actions/Btn_Changes/[BuildingBlock] ISDK_PokeInteraction/Visuals/ButtonVisual/Label "Changes": inactive
+        text DecisionDocument/Details/Body "Why: All tests green; conf~": inactive
+        text DecisionDocument/Details/Answer "": inactive
+        text DecisionDocument/StampMark "APPROVED": inactive
+        text DecisionDocument/StampZone/StampHere "Stamp here": inactive
+        text DecisionDocument/StampZone/StampHint "Use a stamp instead of a k~": inactive
+        text DecisionDocument/Provenance "Scripted sample. Nothing i~": inactive
+        text DecisionDocument/NeedsLabel "Needs your decision": inactive
+        text DecisionDocument/Pending/GhostApproveLabel "Approve": inactive
+        text DecisionDocument/Pending/GhostRejectLabel "Reject": inactive
+        text DecisionDocument/Outcome/OutcomeTitle "Approved": inactive
+        text DecisionDocument/Outcome/OutcomeDetail "The developer is continuin~": inactive
+        text DecisionDocument/Cover/CoverMode "SCRIPTED DEMO": inactive
+        text DecisionDocument/Cover/CoverTitle "DECISION": inactive
+        text DecisionDocument/Cover/GrabTabLabel "TAKE": inactive
+        grabbable WorkspaceRoot/PhysicsTray/Prop_Block [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/PhysicsTray/Prop_Mug [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/TaskBoard/CardTemplate [Grabbable+HandGrabInteractable+DistanceHandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/Decor_CoffeeMug [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/OfficeProps_Collection/Decor_Toolbox [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/OfficeProps_Collection/Decor_ProgressAward [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/OfficeProps_Collection/Doc_ApprovalStamp [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/OfficeProps_Collection/Doc_SignaturePen [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/OfficeProps_Collection/Doc_RolledBlueprint [Grabbable+HandGrabInteractable]: inactive
+        grabbable WorkspaceRoot/Phase6/OfficeProps_Collection/Collab_PackageBox [Grabbable+HandGrabInteractable]: inactive
+        grabbable [BuildingBlock] Grabbable Item [Grabbable+HandGrabInteractable]: inactive
+        grabbable DecisionDocument [Grabbable+HandGrabInteractable+DistanceHandGrabInteractable]: inactive
+        group NameTag (under Agent_Researcher): no visible solid renderer (inactive)
+        group Monitor (under ResearchStation): no visible solid renderer (inactive)
+        group NameTag (under Agent_Developer): no visible solid renderer (inactive)
+        group Monitor (under DevStation): no visible solid renderer (inactive)
+        group NameTag (under Agent_Tester): no visible solid renderer (inactive)
+        group Monitor (under QAStation): no visible solid renderer (inactive)
+        group Award_Plaque (under ProjectShelf): no visible solid renderer (inactive)
+        group Decor_Plaque_Display (under OfficeProps_Collection): no visible solid renderer (inactive)
+        group Diagram_LabelPlaque (under SpatialDiagram_DeskLayout): no visible solid renderer (inactive)
+        group ArtifactPanel: no visible solid renderer (renderers hidden or none)
+        group GuideSign: no visible solid renderer (inactive)
+        group ArchiveReadout: no visible solid renderer (inactive)
+        group CompletionReceipt (under OfficeV2): no visible solid renderer (collapsed by scale at 'CompletionReceipt' (localScale 0.0010))
+        group DecisionDocument: no visible solid renderer (inactive)
+        group DecisionPanel (under DecisionDocument): no visible solid renderer (inactive)
+        hidden totals: keys 19, texts 68 (text component disabled=1 inactive=59 collapsed by scale=8), renderers 569, other 27
+        run XrVisualQa.RunExpanded to measure groups that are collapsed by scale at their authored size
+        
+        === SUMMARY ===
+        PASS=172 WARN=53 FAIL=0 INFO=15
+        scene dirtyBefore=False dirtyAfter=False (this script never marks the scene dirty and never saves)
+        No FAIL lines.
+diagnostics: []
+compileMs: 321
+executeMs: 98
+assemblyName: PipelineRunScript_XrVisualQa_884f4c1ce8cb408785028e6dd6d6924c
