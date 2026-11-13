@@ -634,13 +634,22 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, close, out none));
             StringAssert.Contains("no room beside you (too close to you)", none.explanation);
 
-            // 4. A path straight across the user at head height is refused; the same path with the
-            //    office base above the top of the cylinder (head + 0.15 m = 1.35 m) is not.
+            // 4. A path straight across the user at head height is refused.
             var empty = EmptyRoom();
             Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.30f, 0f), Unrotated(-0.9f, 1.30f, 0f), Fp, s, out check));
             Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
             Assert.That(check.blockedAtFraction, Is.InRange(0.001f, 0.5f));
-            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.40f, 0f), Unrotated(-0.9f, 1.40f, 0f), Fp, s, out check), check.Describe());
+            // CHANGED (safety pass 2): this used to assert that the same path with the office base above
+            // the top of the cylinder (1.40 m) was ACCEPTED, that is, that the office may pass straight
+            // over the user's head. It may not: above the cylinder the "never overhead" radius applies.
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.40f, 0f), Unrotated(-0.9f, 1.40f, 0f), Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+            // The same crossing 0.75 m in front of the user (nearest edge 0.52 m from the head's axis):
+            // refused inside the cylinder's height, accepted above it.
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.40f, 0.75f), Unrotated(-0.9f, 1.40f, 0.75f), Fp, s, out check), check.Describe());
+            // And the overhead radius is honoured at its boundary: nearest edge 0.23 m, then 0.22 m (need 0.20 + 0.025).
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.40f, 0.46f), Unrotated(-0.9f, 1.40f, 0.46f), Fp, s, out check), check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.40f, 0.45f), Unrotated(-0.9f, 1.40f, 0.45f), Fp, s, out check));
         }
 
         [Test]
@@ -1492,6 +1501,9 @@ namespace MuseDesk.Tests.EditMode
             var room = SyntheticRoomGeometry.Rectangle(1f, 0f, 5f, 5f, 0f, 2.6f);
             var second = new SpatialRig(room);
             second.user = new SeatedUser(new Vector3(1f, 1.2f, 0f), Vector3.forward);
+            // CHANGED (safety pass 2): the desk office moves with the user, as it does in reality. Before,
+            // it was left 1 m to the user's side and the unswept move passed through the user.
+            second.root = new RootPose(new Vector3(1f, 0.9f, 0.6f), Quaternion.Euler(0f, 180f, 0f), 1f);
             string reason;
             Assert.IsTrue(second.core.TryRestore(saved, out reason), reason);
             second.Run(4f);
@@ -1606,6 +1618,800 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsFalse(third.core.TryRestore(saved, out reason));
             Assert.AreEqual(PlacementMode.Desk, third.core.Mode);
             Assert.AreEqual(0, third.writes);
+        }
+    }
+
+    // ───────────────────────── every move is swept; every move can be stopped ─────────────────────────
+
+    /// <summary>
+    /// Safety pass 2. The rig's desk pose is root (0, 0.9, 0.6) turned to face the user at
+    /// (0, 1.2, 0): the office covers x -0.5 .. 0.5, z 0.13 .. 0.83, y 0.9 .. 1.35. Its near edge is
+    /// 0.13 m from the head's vertical axis, inside the 0.35 m keep-out, as the real desk pose is.
+    /// </summary>
+    [Category("MuseDesk")]
+    public class SpatialSweptMovesTests
+    {
+        static readonly Vector2 Fp = SpatialRooms.Footprint;
+        static readonly RootPose Desk = new RootPose(new Vector3(0f, 0.9f, 0.6f), Quaternion.Euler(0f, 180f, 0f), 1f);
+
+        static SyntheticRoomGeometry EmptyRoom() { return SyntheticRoomGeometry.Rectangle(0f, 0f, 5f, 5f, 0f, 2.6f); }
+        static RootPose At(float x, float y, float z) { return new RootPose(new Vector3(x, y, z), Desk.rotation, 1f); }
+        static PathSweepOptions FromDesk() { var o = default(PathSweepOptions); o.fromDesk = true; return o; }
+
+        /// <summary>An 8 x 8 m empty room, and a floor preview nudged 1 m further out, so that there is
+        /// free floor between the desk office and the spot to stand an obstacle on (well clear of both).</summary>
+        static SyntheticRoomGeometry BigRoom() { return SyntheticRoomGeometry.Rectangle(0f, 0f, 8f, 8f, 0f, 2.6f); }
+
+        static RootPose PreviewFarSpot(SpatialRig rig)
+        {
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Floor));
+            Assert.AreEqual(1, rig.core.GetCandidate(0).side, "on the user's right");
+            rig.core.Nudge(1.0f, 0f);
+            Assert.IsTrue(rig.core.PreviewValid, rig.core.StatusText);
+            return rig.core.PreviewPose;
+        }
+
+        /// <summary>The pose lies on one of the route's legs (1 mm, and the yaw of that point of the leg).</summary>
+        static void AssertOnRoute(WorkspaceRoute route, RootPose pose, string what)
+        {
+            float best = float.MaxValue;
+            for (int l = 0; l < route.LegCount; l++)
+            {
+                RootPose a = route[l], b = route[l + 1];
+                Vector3 ab = b.position - a.position;
+                float k = ab.sqrMagnitude > 1e-10f ? Mathf.Clamp01(Vector3.Dot(pose.position - a.position, ab) / ab.sqrMagnitude) : 0f;
+                RootPose q = CeilingPlacementEvaluator.PathPose(a, b, k);
+                float err = (q.position - pose.position).magnitude + Quaternion.Angle(q.rotation, pose.rotation) * 0.002f;
+                if (err < best) best = err;
+            }
+            Assert.That(best, Is.LessThan(0.002f), what);
+        }
+
+        static void AssertOnRoute(WorkspaceRoute route, List<RootPose> trace, string what)
+        {
+            Assert.That(trace.Count, Is.GreaterThan(5), what + ": the move was recorded");
+            for (int i = 0; i < trace.Count; i++) AssertOnRoute(route, trace[i], what + ", write " + i);
+        }
+
+        static SpatialRig Docked(SyntheticRoomGeometry room, out CeilingPlacement placement)
+        {
+            var rig = new SpatialRig(room);
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Ceiling), rig.core.StatusText);
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            placement = rig.core.LastCeiling;
+            rig.Run(7f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+            SpatialRooms.AssertPose(placement.DockPose, rig.root);
+            return rig;
+        }
+
+        // ── item 1: the first trip up to the dock ──
+
+        [Test]
+        public void FirstTripToTheDock_IsSwept_RisesBeforeItTravels_AndTheMoverTravelsExactlyThat()
+        {
+            var rig = new SpatialRig(SpatialRooms.Office());
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Ceiling), rig.core.StatusText);
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            WorkspaceRoute route = rig.core.LastRoute;
+            CeilingPlacement placement = rig.core.LastCeiling;
+            Assert.IsTrue(rig.core.LastRouteCheck.clear, "the way up was swept and found clear");
+
+            // Two legs: straight up at the desk, without turning, until the base is above the
+            // keep-out cylinder (eyes + 0.25 m); only then across and up to the dock.
+            Assert.AreEqual(3, route.count);
+            SpatialRooms.AssertPose(Desk, route[0]);
+            Assert.AreEqual(Desk.position.x, route[1].position.x, 1e-5f);
+            Assert.AreEqual(Desk.position.z, route[1].position.z, 1e-5f);
+            Assert.AreEqual(1.2f + 0.25f, route[1].position.y, 1e-4f);
+            Assert.That(Quaternion.Angle(Desk.rotation, route[1].rotation), Is.LessThan(0.01f), "no turn on the way up");
+            SpatialRooms.AssertPose(placement.DockPose, route[2]);
+
+            rig.Run(7f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+            SpatialRooms.AssertPose(placement.DockPose, rig.root);
+            AssertOnRoute(route, rig.trace, "first trip");
+
+            // Below the top of the keep-out the office never turned and never moved sideways.
+            foreach (RootPose p in rig.trace)
+            {
+                if (p.position.y >= 1.2f + 0.25f - 1e-3f) continue;
+                Assert.AreEqual(Desk.position.x, p.position.x, 1e-4f);
+                Assert.AreEqual(Desk.position.z, p.position.z, 1e-4f);
+                Assert.That(Quaternion.Angle(Desk.rotation, p.rotation), Is.LessThan(0.05f));
+            }
+        }
+
+        [Test]
+        public void FirstTripToTheDock_Blocked_IsRefusedWithWords_AndNothingMoves()
+        {
+            var room = SpatialRooms.Office();
+            var rig = new SpatialRig(room);
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Ceiling), rig.core.StatusText);
+            // A lamp hanging over the left half of the desk office, 1.65 to 1.75 m: clear of every
+            // descent on the right, but the office would rise into it.
+            room.AddFurniture("LAMP", new Vector3(-0.3f, 1.7f, 0.5f), new Vector3(0.1f, 0.1f, 0.1f));
+            Assert.IsFalse(rig.core.Confirm());
+            StringAssert.Contains("blocked by LAMP", rig.core.StatusText);
+            StringAssert.Contains("Next", rig.core.StatusText);
+            Assert.AreEqual(CeilingPathBlock.Furniture, rig.core.LastRouteCheck.blockedBy);
+            rig.Run(3f);
+            Assert.AreEqual(0, rig.writes);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.IsFalse(rig.pod.Active);
+            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase, "the preview stays open: choose again or cancel");
+        }
+
+        [Test]
+        public void DeskStartRule_Boundaries()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            var empty = EmptyRoom();
+            CeilingPathCheck check;
+            RootPose up = At(0f, 1.45f, 0.6f);
+
+            // The desk pose is inside the keep-out: as an ordinary path the rise is refused at once...
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Desk, up, Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+            Assert.AreEqual(0f, check.blockedAtFraction, 1e-6f);
+            // ...and as a path that starts at the desk it is excused, because it never comes closer.
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Desk, up, Fp, s, FromDesk(), out check), check.Describe());
+            // The same path travelled downward (ending at the desk) is the same sweep.
+            var toDesk = default(PathSweepOptions); toDesk.toDesk = true;
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, up, Desk, Fp, s, toDesk, out check), check.Describe());
+
+            // It may come at most deskApproachAllowance (0.05 m) closer than its desk distance (0.13 m).
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Desk, At(0f, 0.9f, 0.56f), Fp, s, FromDesk(), out check), check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Desk, At(0f, 0.9f, 0.54f), Fp, s, FromDesk(), out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+
+            // The excuse ends after deskStartRegion of travel, whether the keep-out was left or not.
+            var shortRegion = new CeilingPlacementSettings { deskStartRegion = 0.30f };
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Desk, up, Fp, shortRegion, FromDesk(), out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+            Assert.That(check.blockedAtFraction, Is.InRange(0.5f, 0.7f), "0.30 m into a 0.55 m rise");
+
+            // Once the keep-out has been left it applies: the office may not come back into it.
+            WorkspaceRoute outAndBack = new WorkspaceRoute();
+            outAndBack.Add(Desk); outAndBack.Add(At(1.5f, 0.9f, 0.6f)); outAndBack.Add(At(0.6f, 0.9f, 0.6f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Desk, At(1.5f, 0.9f, 0.6f), Fp, s, FromDesk(), out check), check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepRoute(empty, user, outAndBack, Fp, s, FromDesk(), out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+            Assert.That(check.blockedAtFraction, Is.GreaterThan(0.6f), "on the way back");
+
+            // Furniture the office already stands against at the desk (a screen 2 cm behind it) is
+            // excused while the office leaves it, and only then.
+            var screen = EmptyRoom();
+            screen.AddFurniture("SCREEN", new Vector3(0f, 1.0f, 0.95f), new Vector3(0.6f, 0.45f, 0.2f));
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(screen, user, Desk, up, Fp, s, out check));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(screen, user, Desk, up, Fp, s, FromDesk(), out check), check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(screen, user, Desk, At(0f, 0.9f, 0.66f), Fp, s, FromDesk(), out check), "moving INTO the screen");
+            Assert.AreEqual("SCREEN", check.blockingLabel);
+            // A desk top the office stands just above (2 cm, inside the vertical margin): it may rise, not sink.
+            var desk = EmptyRoom();
+            desk.AddFurniture("TABLE", new Vector3(0f, 0.44f, 0.8f), new Vector3(1.4f, 0.88f, 0.7f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(desk, user, Desk, up, Fp, s, FromDesk(), out check), check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(desk, user, Desk, At(0f, 0.8f, 0.6f), Fp, s, FromDesk(), out check), "sinking into the desk");
+            Assert.AreEqual("TABLE", check.blockingLabel);
+        }
+
+        // ── item 2: floor moves and the way back ──
+
+        [Test]
+        public void FloorMove_StraightWhenClear_UpAndOverWhenTheDeskIsInTheWay()
+        {
+            // No furniture: the straight line is clear and is used.
+            var open = new SpatialRig(EmptyRoom());
+            Assert.IsTrue(open.core.RequestMode(PlacementMode.Floor));
+            RootPose spot = open.core.PreviewPose;
+            open.trace = new List<RootPose>();
+            Assert.IsTrue(open.core.Confirm(), open.core.StatusText);
+            Assert.AreEqual(2, open.core.LastRoute.count, "straight");
+            open.Run(4f);
+            SpatialRooms.AssertPose(spot, open.root);
+            AssertOnRoute(open.core.LastRoute, open.trace, "straight floor move");
+
+            // The user's desk under the office: a straight line would sink through its edge, so the
+            // office rises, crosses above head height and comes down on the spot.
+            var rig = new SpatialRig(SpatialRooms.Office());
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Floor));
+            spot = rig.core.PreviewPose;
+            CeilingPathCheck straight;
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(rig.core.Room, rig.user, Desk, spot, Fp, rig.core.ceilingSettings, FromDesk(), out straight));
+            Assert.AreEqual("TABLE", straight.blockingLabel);
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            WorkspaceRoute route = rig.core.LastRoute;
+            Assert.AreEqual(4, route.count, "up, across, down");
+            Assert.AreEqual(1.45f, route[1].position.y, 1e-4f);
+            Assert.AreEqual(1.45f, route[2].position.y, 1e-4f);
+            Assert.IsTrue(rig.core.LastRouteCheck.clear);
+            rig.Run(4f);
+            SpatialRooms.AssertPose(spot, rig.root);
+            AssertOnRoute(route, rig.trace, "up-and-over floor move");
+
+            // The way back is swept too, and is the same shape reversed.
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Desk), rig.core.StatusText);
+            Assert.AreEqual(4, rig.core.LastRoute.count);
+            rig.Run(4f);
+            Assert.IsTrue(rig.root.position.Equals(Desk.position));
+            AssertOnRoute(rig.core.LastRoute, rig.trace, "way back");
+        }
+
+        [Test]
+        public void FloorMove_BlockedBothWays_IsRefusedWithWords_LowObstacleIsCrossedOver()
+        {
+            // A waist-high bin between the desk and the spot, in a room with no desk volume: the
+            // straight line is blocked, up and over is clear and is taken.
+            var room = BigRoom();
+            var rig = new SpatialRig(room);
+            RootPose spot = PreviewFarSpot(rig);
+            Vector3 mid = (Desk.position + spot.position) * 0.5f;
+            room.AddFurniture("BIN", new Vector3(mid.x, 0.35f, mid.z), new Vector3(0.3f, 0.7f, 0.3f));
+            CeilingPathCheck straight;
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, rig.user, Desk, spot, Fp, rig.core.ceilingSettings, FromDesk(), out straight));
+            Assert.AreEqual("BIN", straight.blockingLabel);
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            Assert.AreEqual(4, rig.core.LastRoute.count);
+            rig.Run(4f);
+            SpatialRooms.AssertPose(spot, rig.root);
+
+            // A cabinet 2.2 m tall in the same place: no way round, no way over. Refused, nothing moves.
+            var room2 = BigRoom();
+            var rig2 = new SpatialRig(room2);
+            PreviewFarSpot(rig2);
+            room2.AddFurniture("STORAGE", new Vector3(mid.x, 1.1f, mid.z), new Vector3(0.3f, 2.2f, 0.3f));
+            Assert.IsFalse(rig2.core.Confirm());
+            StringAssert.Contains("blocked by STORAGE", rig2.core.StatusText);
+            StringAssert.Contains("Next", rig2.core.StatusText);
+            rig2.Run(3f);
+            Assert.AreEqual(0, rig2.writes);
+            Assert.AreEqual(PlacementMode.Desk, rig2.core.Mode);
+            Assert.IsFalse(rig2.core.IsTransitioning);
+
+            // When the room reports it, the preview is rebuilt and no longer offers that spot.
+            room2.RaiseChanged();
+            Assert.AreEqual(DirectorPhase.Previewing, rig2.core.Phase);
+            for (int i = 0; i < rig2.core.CandidateCount; i++)
+            {
+                WorkspaceRoute r; CeilingPathCheck c;
+                Assert.IsTrue(CeilingPlacementEvaluator.PlanRoute(room2, rig2.user, Desk, rig2.core.GetCandidate(i).Pose, Fp,
+                                                                 rig2.core.ceilingSettings, FromDesk(), true, out r, out c), "every offered spot can be reached");
+            }
+        }
+
+        [Test]
+        public void WayBackToTheDesk_Blocked_IsRefused_AndTheOfficeStays()
+        {
+            var room = BigRoom();
+            var rig = new SpatialRig(room);
+            PreviewFarSpot(rig);
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            rig.Run(4f);
+            RootPose spot = rig.root;
+            Vector3 mid = (Desk.position + spot.position) * 0.5f;
+            room.AddFurniture("STORAGE", new Vector3(mid.x, 1.1f, mid.z), new Vector3(0.3f, 2.2f, 0.3f));
+            int writes = rig.writes;
+            Assert.IsFalse(rig.core.RequestMode(PlacementMode.Desk));
+            StringAssert.Contains("blocked by STORAGE", rig.core.StatusText);
+            StringAssert.Contains("press Desk again", rig.core.StatusText);
+            rig.Run(2f);
+            Assert.AreEqual(writes, rig.writes);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+            SpatialRooms.AssertPose(spot, rig.root);
+        }
+
+        // ── item 3: the way down is checked again when it is asked for ──
+
+        [Test]
+        public void Descent_IsRevalidated_ForWhereTheUserSitsNow_AndRefusedWhenBlocked()
+        {
+            CeilingPlacement placement;
+            var room = SpatialRooms.Office();
+            var rig = Docked(room, out placement);
+
+            // The user rolled the chair 0.3 m back: the office comes down beside where they sit NOW.
+            rig.user = new SeatedUser(new Vector3(0f, 1.2f, -0.3f), Vector3.forward);
+            Assert.IsTrue(rig.core.RequestPodDescend(), rig.core.StatusText);
+            Assert.AreEqual(placement.inspectionPosition.z - 0.3f, rig.pod.InspectionPose.position.z, 1e-3f);
+            SpatialRooms.AssertPose(placement.DockPose, rig.pod.DockPose);
+            rig.trace = new List<RootPose>();
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Engaged, rig.pod.State);
+            SpatialRooms.AssertPose(rig.pod.InspectionPose, rig.root);
+            AssertOnRoute(WorkspaceRoute.Straight(rig.pod.DockPose, rig.pod.InspectionPose), rig.trace, "the fresh path");
+            Assert.IsTrue(rig.core.RequestPodRetract());
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+
+            // A lamp now stands in the way down (the scan has it, no room event was raised).
+            room.AddFurniture("LAMP", new Vector3(1.05f, 1.0f, 0.75f), new Vector3(0.3f, 2.0f, 0.3f));
+            int writes = rig.writes;
+            Assert.IsFalse(rig.core.RequestPodDescend());
+            StringAssert.Contains("LAMP", rig.core.StatusText);
+            StringAssert.Contains("Desk", rig.core.StatusText);
+            rig.Run(3f);
+            Assert.AreEqual(writes, rig.writes);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+
+            // A room event while docked says so without being asked; removing the lamp clears it.
+            room.RaiseChanged();
+            StringAssert.Contains("The room changed", rig.core.StatusText);
+            room.ClearFurniture();
+            room.RaiseChanged();
+            Assert.AreEqual("", rig.core.StatusText);
+            Assert.IsTrue(rig.core.RequestPodDescend(), rig.core.StatusText);
+        }
+
+        // ── item 4: recenter fails closed ──
+
+        [Test]
+        public void Recenter_WithADockThatNoLongerValidates_NeverMovesTheOffice()
+        {
+            CeilingPlacement placement;
+            var room = SpatialRooms.Office();
+            var rig = Docked(room, out placement);
+            Assert.IsTrue(rig.core.RequestPodDescend());
+            rig.Run(1.5f);
+            Assert.AreEqual(CeilingPodState.Descending, rig.pod.State);
+            RootPose where = rig.root;
+
+            // The room reference moved 1 m: the dock would now be above the user's head.
+            room.referencePose = new Pose(room.referencePose.position + new Vector3(-1f, 0f, 0f), room.referencePose.rotation);
+            rig.trace = new List<RootPose>();
+            rig.core.OnRecenter();
+            rig.Run(3f);
+
+            Assert.AreEqual(0, rig.trace.Count, "not one pose was written after the recenter");
+            Assert.IsTrue(rig.root.position.Equals(where.position));
+            Assert.IsFalse(rig.mover.IsRunning);
+            Assert.IsFalse(rig.core.IsTransitioning);
+            Assert.IsTrue(rig.core.PlacementNeedsConfirmation);
+            StringAssert.Contains("recentered", rig.core.StatusText);
+            StringAssert.Contains("Return to Desk", rig.core.StatusText);
+            Assert.IsNull(rig.core.BuildSave("b"), "an unconfirmed placement is not saved");
+
+            // The pod will not move it from there, whoever asks.
+            Assert.IsFalse(rig.core.RequestPodDescend());
+            Assert.IsFalse(rig.core.RequestPodRetract());
+            Assert.IsFalse(rig.pod.RequestDescend());
+            Assert.IsFalse(rig.pod.RequestRetract());
+            rig.Run(3f);
+            Assert.AreEqual(0, rig.trace.Count);
+
+            // Desk is the way out, and it is a swept route like any other (or a refusal in words).
+            if (rig.core.RequestMode(PlacementMode.Desk))
+            {
+                WorkspaceRoute route = rig.core.LastRoute;
+                Assert.IsTrue(rig.core.LastRouteCheck.clear);
+                rig.Run(5f);
+                AssertOnRoute(route, rig.trace, "way out");
+                Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            }
+            else Assert.IsFalse(string.IsNullOrEmpty(rig.core.StatusText));
+        }
+
+        [Test]
+        public void Recenter_InFloorMode_WithASpotThatNoLongerValidates_HoldsPosition()
+        {
+            var room = SpatialRooms.Office();
+            var rig = new SpatialRig(room);
+            rig.core.RequestMode(PlacementMode.Floor);
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            rig.Run(4f);
+            RootPose placed = rig.root;
+
+            // After the recenter the spot would lie outside the room.
+            room.referencePose = new Pose(room.referencePose.position + new Vector3(3f, 0f, 0f), room.referencePose.rotation);
+            rig.trace = new List<RootPose>();
+            rig.core.OnRecenter();
+            rig.Run(2f);
+            Assert.AreEqual(0, rig.trace.Count);
+            Assert.IsTrue(rig.root.position.Equals(placed.position));
+            Assert.IsTrue(rig.core.PlacementNeedsConfirmation);
+            StringAssert.Contains("recentered", rig.core.StatusText);
+
+            // The same during the move out: it stops where it is, and the mode is Desk again.
+            var room2 = SpatialRooms.Office();
+            var rig2 = new SpatialRig(room2);
+            rig2.core.RequestMode(PlacementMode.Floor);
+            Assert.IsTrue(rig2.core.Confirm());
+            rig2.Run(0.6f);
+            Assert.IsTrue(rig2.mover.IsMoving);
+            RootPose midAir = rig2.root;
+            room2.referencePose = new Pose(room2.referencePose.position + new Vector3(3f, 0f, 0f), room2.referencePose.rotation);
+            rig2.trace = new List<RootPose>();
+            rig2.core.OnRecenter();
+            rig2.Run(2f);
+            Assert.AreEqual(0, rig2.trace.Count);
+            Assert.IsTrue(rig2.root.position.Equals(midAir.position));
+            Assert.IsFalse(rig2.core.IsTransitioning);
+            Assert.IsTrue(rig2.core.PlacementNeedsConfirmation);
+        }
+
+        [Test]
+        public void Restore_WithABlockedWay_StaysAtTheDesk()
+        {
+            var first = new SpatialRig(BigRoom());
+            PreviewFarSpot(first);
+            Assert.IsTrue(first.core.Confirm());
+            first.Run(4f);
+            SavedPlacement saved = first.core.BuildSave("b");
+            Assert.IsNotNull(saved);
+            Vector3 mid = (Desk.position + first.root.position) * 0.5f;
+
+            // The spot itself is still clear floor, but a cabinet now stands on the way to it.
+            var room = BigRoom();
+            room.AddFurniture("STORAGE", new Vector3(mid.x, 1.1f, mid.z), new Vector3(0.3f, 2.2f, 0.3f));
+            var rig = new SpatialRig(room);
+            string reason;
+            Assert.IsFalse(rig.core.TryRestore(saved, out reason));
+            StringAssert.Contains("blocked by STORAGE", reason);
+            rig.Run(2f);
+            Assert.AreEqual(0, rig.writes);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+        }
+
+        // ── item 5: stop ──
+
+        [Test]
+        public void Stop_DuringDescent_GoesBackUpAlongTheTravelledPath_AndEndsDocked()
+        {
+            CeilingPlacement placement;
+            var rig = Docked(SpatialRooms.Office(), out placement);
+            var seen = new List<CeilingPodState>();
+            rig.pod.StateChanged += () => { if (seen.Count == 0 || seen[seen.Count - 1] != rig.pod.State) seen.Add(rig.pod.State); };
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.RequestPodDescend());
+            rig.Run(2.0f);
+            Assert.AreEqual(CeilingPodState.Descending, rig.pod.State);
+            int atStop = rig.trace.Count;
+            RootPose lowest = rig.root;
+            Assert.That((lowest.position - placement.dockPosition).magnitude, Is.GreaterThan(0.2f), "it had come some way down");
+            Assert.That((lowest.position - placement.inspectionPosition).magnitude, Is.GreaterThan(0.2f), "and had not arrived");
+
+            Assert.IsTrue(rig.core.StopMove());
+            Assert.AreEqual(CeilingPodState.Retracting, rig.pod.State);
+            Assert.IsFalse(rig.pod.RetractPending, "nothing is queued");
+            Assert.IsFalse(rig.core.StopMove(), "a second Stop changes nothing");
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+            SpatialRooms.AssertPose(placement.DockPose, rig.root);
+            Assert.IsFalse(rig.core.IsTransitioning);
+
+            // Every pose is on the validated path, and after the stop the office only went back up.
+            WorkspaceRoute path = WorkspaceRoute.Straight(placement.DockPose, placement.InspectionPose);
+            AssertOnRoute(path, rig.trace, "stopped descent");
+            float last = lowest.position.y;
+            for (int i = atStop; i < rig.trace.Count; i++)
+            {
+                Assert.That(rig.trace[i].position.y, Is.GreaterThanOrEqualTo(last - 1e-5f), "never lower than where it was stopped");
+                last = rig.trace[i].position.y;
+            }
+            CollectionAssert.AreEqual(new[]
+            {
+                CeilingPodState.PreparingToDescend, CeilingPodState.Descending, CeilingPodState.Retracting,
+                CeilingPodState.ReturningToDock, CeilingPodState.Docked,
+            }, seen);
+
+            // "Send back" while it comes down is the same Stop: at once, nothing queued.
+            Assert.IsTrue(rig.core.RequestPodDescend());
+            rig.Run(1.5f);
+            Assert.IsTrue(rig.core.RequestPodRetract());
+            Assert.AreEqual(CeilingPodState.Retracting, rig.pod.State);
+            Assert.IsFalse(rig.pod.RetractPending);
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+            // And "Bring" while it goes up is refused rather than queued.
+            Assert.IsTrue(rig.core.RequestPodDescend());
+            rig.Run(6f);
+            Assert.IsTrue(rig.core.RequestPodRetract());
+            rig.Run(1.2f);
+            Assert.AreEqual(CeilingPodState.Retracting, rig.pod.State);
+            Assert.IsFalse(rig.core.RequestPodDescend());
+            Assert.IsFalse(rig.core.StopMove(), "going up is moving away from the user: it is left to finish");
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+        }
+
+        [Test]
+        public void Stop_DuringADeskToFloorMove_ReturnsToTheDeskPose_AndTheModeStaysDesk()
+        {
+            var rig = new SpatialRig(SpatialRooms.Office());
+            rig.core.RequestMode(PlacementMode.Floor);
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.Confirm());
+            WorkspaceRoute route = rig.core.LastRoute;
+            rig.Run(1.2f);
+            Assert.IsTrue(rig.mover.IsMoving);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+            RootPose where = rig.root;
+
+            Assert.IsTrue(rig.core.StopMove());
+            Assert.IsTrue(rig.core.IsTransitioning, "still moving: now on its way back");
+            StringAssert.Contains("Stopped", rig.core.StatusText);
+            rig.core.Tick();                                    // no time has passed: it has halted, not jumped
+            SpatialRooms.AssertPose(where, rig.root, 0.001f);
+            Assert.IsFalse(rig.core.StopMove());
+            Assert.IsFalse(rig.core.RequestMode(PlacementMode.Floor), "no new move while it goes back");
+            rig.Run(4f);
+
+            Assert.IsFalse(rig.core.IsTransitioning);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.IsFalse(rig.core.IsRemote);
+            Assert.IsTrue(rig.root.position.Equals(Desk.position), "exactly the desk pose");
+            Assert.IsTrue(rig.root.rotation.Equals(Desk.rotation));
+            Assert.IsNull(rig.core.BuildSave("b"));
+            AssertOnRoute(route, rig.trace, "stopped floor move");
+
+            // The way back from the floor can be stopped too: the office returns to the floor spot, mode Floor.
+            rig.core.RequestMode(PlacementMode.Floor);
+            Assert.IsTrue(rig.core.Confirm());
+            rig.Run(4f);
+            RootPose spot = rig.root;
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Desk));
+            rig.Run(1.0f);
+            Assert.IsTrue(rig.core.StopMove());
+            rig.Run(4f);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+            SpatialRooms.AssertPose(spot, rig.root, 1e-4f);
+            Assert.IsNotNull(rig.core.BuildSave("b"), "the floor placement is whole again");
+        }
+
+        [Test]
+        public void Stop_DuringTheFirstTripUp_ReturnsToTheDesk_AndLeavesCeilingMode()
+        {
+            var rig = new SpatialRig(SpatialRooms.Office());
+            rig.core.RequestMode(PlacementMode.Ceiling);
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.Confirm());
+            WorkspaceRoute route = rig.core.LastRoute;
+            rig.Run(2.5f);
+            Assert.AreEqual(CeilingPodState.Retracting, rig.pod.State);
+            Assert.That(rig.root.position.y, Is.GreaterThan(1.0f));
+            Assert.IsTrue(rig.core.StopMove());
+            rig.Run(6f);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.IsFalse(rig.pod.Active);
+            Assert.IsFalse(rig.core.IsTransitioning);
+            Assert.IsTrue(rig.root.position.Equals(Desk.position));
+            AssertOnRoute(route, rig.trace, "stopped first trip");
+            StringAssert.Contains("Stopped", rig.core.StatusText);
+
+            // Stopped during the wind-up, before anything moved.
+            rig.core.RequestMode(PlacementMode.Ceiling);
+            int writes = rig.writes;
+            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
+            rig.Run(0.2f);
+            Assert.IsTrue(rig.core.StopMove());
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            rig.Run(2f);
+            Assert.AreEqual(writes, rig.writes);
+        }
+
+        [Test]
+        public void Stop_IsSafeAndIdempotent_InEveryPhase()
+        {
+            var rig = new SpatialRig(SpatialRooms.Office());
+            // Desk, at rest.
+            Assert.IsFalse(rig.core.StopMove());
+            rig.core.Cancel();
+            Assert.AreEqual(0, rig.changes);
+            // Previewing: Stop does nothing, Cancel leaves the preview.
+            rig.core.RequestMode(PlacementMode.Floor);
+            Assert.IsFalse(rig.core.StopMove());
+            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
+            rig.core.Cancel();
+            Assert.AreEqual(DirectorPhase.Idle, rig.core.Phase);
+            // Waiting for agents (nothing has moved): the move is dropped.
+            rig.agentsBusy = true;
+            rig.core.RequestMode(PlacementMode.Floor);
+            Assert.IsTrue(rig.core.Confirm());
+            rig.Run(0.5f);
+            Assert.IsTrue(rig.core.StopMove());
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.IsFalse(rig.core.IsTransitioning);
+            Assert.AreEqual(0, rig.writes);
+            rig.agentsBusy = false;
+            // Floor, at rest.
+            rig.core.RequestMode(PlacementMode.Floor);
+            Assert.IsTrue(rig.core.Confirm());
+            rig.Run(4f);
+            int writes = rig.writes;
+            Assert.IsFalse(rig.core.StopMove());
+            rig.core.Cancel(); rig.core.Cancel();
+            rig.Run(1f);
+            Assert.AreEqual(writes, rig.writes);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+
+            // Ceiling: docked, the wind-up, engaged, settling.
+            CeilingPlacement placement;
+            var pod = Docked(SpatialRooms.Office(), out placement);
+            Assert.IsFalse(pod.core.StopMove());
+            Assert.IsTrue(pod.core.RequestPodDescend());
+            pod.Run(0.2f);
+            Assert.AreEqual(CeilingPodState.PreparingToDescend, pod.pod.State);
+            Assert.IsTrue(pod.core.StopMove());
+            Assert.AreEqual(CeilingPodState.Docked, pod.pod.State);
+            pod.Run(2f);
+            SpatialRooms.AssertPose(placement.DockPose, pod.root);
+            Assert.IsTrue(pod.core.RequestPodDescend());
+            pod.Run(6f);
+            Assert.AreEqual(CeilingPodState.Engaged, pod.pod.State);
+            Assert.IsFalse(pod.core.StopMove());
+            Assert.IsTrue(pod.core.RequestPodRetract());
+            pod.Run(0.2f);
+            Assert.AreEqual(CeilingPodState.PreparingToRetract, pod.pod.State);
+            Assert.IsTrue(pod.core.StopMove(), "the wind-up is called off");
+            Assert.AreEqual(CeilingPodState.Engaged, pod.pod.State);
+            pod.Run(3f);
+            Assert.AreEqual(CeilingPodState.Engaged, pod.pod.State);
+            SpatialRooms.AssertPose(placement.InspectionPose, pod.root);
+
+            // The bare machine: Reverse and Abort when idle do nothing.
+            Assert.IsFalse(pod.mover.Reverse());
+            Assert.IsFalse(pod.mover.Abort("x"));
+        }
+
+        [Test]
+        public void Stop_WhileAPaperIsHeld_HaltsInPlace_AndGoesBackOnlyWhenItIsPutDown()
+        {
+            // A mode change in flight.
+            var rig = new SpatialRig(SpatialRooms.Office());
+            rig.core.RequestMode(PlacementMode.Floor);
+            Assert.IsTrue(rig.core.Confirm());
+            rig.Run(1.0f);
+            rig.held = true;                        // the user took a paper while the office was moving
+            int writes = rig.writes;
+            RootPose where = rig.root;
+            Assert.IsTrue(rig.core.StopMove(), "Stop always stops");
+            Assert.IsTrue(rig.mover.IsHalted);
+            StringAssert.Contains("Put the paper down", rig.core.StatusText);
+            rig.Run(3f);
+            Assert.AreEqual(writes, rig.writes, "halted: the office is not taken away from the held paper");
+            Assert.IsTrue(rig.root.position.Equals(where.position));
+            Assert.IsTrue(rig.core.IsTransitioning, "Stop stays on the strip");
+            Assert.IsFalse(rig.core.StopMove());
+            rig.held = false;
+            rig.Run(4f);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.IsTrue(rig.root.position.Equals(Desk.position));
+
+            // The pod coming down.
+            CeilingPlacement placement;
+            var pod = Docked(SpatialRooms.Office(), out placement);
+            Assert.IsTrue(pod.core.RequestPodDescend());
+            pod.Run(2f);
+            pod.held = true;
+            writes = pod.writes;
+            Assert.IsTrue(pod.core.StopMove());
+            Assert.AreEqual(CeilingPodState.Retracting, pod.pod.State);
+            StringAssert.Contains("Put the paper down", pod.pod.StatusText);
+            pod.Run(3f);
+            Assert.AreEqual(writes, pod.writes);
+            pod.held = false;
+            pod.Run(6f);
+            Assert.AreEqual(CeilingPodState.Docked, pod.pod.State);
+            SpatialRooms.AssertPose(placement.DockPose, pod.root);
+        }
+
+        [Test]
+        public void TransitionMachine_ReversesAMultiLegRoute_Deterministically()
+        {
+            var rig = new SpatialRig(null);
+            RootPose a = rig.root;
+            WorkspaceRoute route = WorkspaceRoute.UpAndOver(a, new RootPose(new Vector3(1.5f, 0f, 0.5f), Quaternion.Euler(0f, -90f, 0f), 1f), 1.45f);
+            Assert.AreEqual(4, route.count);
+            rig.trace = new List<RootPose>();
+            bool? reached = null;
+            rig.mover.MoveFinished += r => reached = r;
+
+            // A route that does not start where the root is, is refused.
+            Assert.AreEqual(TransitionStartResult.OffPath, rig.mover.TryMoveRoute(WorkspaceRoute.Straight(route[1], route[3]), 2f));
+            Assert.AreEqual(0, rig.writes);
+
+            Assert.AreEqual(TransitionStartResult.Started, rig.mover.TryMoveRoute(route, 2f));
+            for (int i = 0; i < 12; i++) { rig.clock.Advance(0.1f); rig.mover.Tick(); }      // 1.2 s of 2 s: on the second leg
+            Assert.That(rig.root.position.y, Is.InRange(1.449f, 1.451f));
+            int forward = rig.trace.Count;
+            Assert.IsTrue(rig.mover.Reverse());
+            Assert.IsTrue(rig.mover.IsReversing);
+            Assert.IsTrue(rig.mover.Reverse(), "idempotent");
+            for (int i = 0; i < 40 && rig.mover.IsRunning; i++) { rig.clock.Advance(0.1f); rig.mover.Tick(); }
+            Assert.IsFalse(rig.mover.IsRunning);
+            Assert.AreEqual(false, reached, "a stopped move did not reach its target");
+            Assert.IsTrue(rig.root.position.Equals(a.position), "ends exactly where it started");
+            Assert.IsTrue(rig.root.rotation.Equals(a.rotation));
+            Assert.AreEqual(0, rig.mover.CompletedMoves);
+            AssertOnRoute(route, rig.trace, "there and back");
+            Assert.That(rig.trace.Count - forward, Is.GreaterThan(5), "the way back was eased, not a jump");
+
+            // The same inputs give the same poses.
+            var again = new SpatialRig(null);
+            again.trace = new List<RootPose>();
+            again.mover.TryMoveRoute(route, 2f);
+            for (int i = 0; i < 12; i++) { again.clock.Advance(0.1f); again.mover.Tick(); }
+            again.mover.Reverse();
+            for (int i = 0; i < 40 && again.mover.IsRunning; i++) { again.clock.Advance(0.1f); again.mover.Tick(); }
+            Assert.AreEqual(rig.trace.Count, again.trace.Count);
+            for (int i = 0; i < rig.trace.Count; i++) Assert.IsTrue(rig.trace[i].position.Equals(again.trace[i].position));
+
+            // A completed route ends exactly on its last pose.
+            var whole = new SpatialRig(null);
+            whole.mover.TryMoveRoute(route, 2f);
+            for (int i = 0; i < 25; i++) { whole.clock.Advance(0.1f); whole.mover.Tick(); }
+            Assert.IsTrue(whole.root.position.Equals(route[3].position));
+            Assert.AreEqual(1, whole.mover.CompletedMoves);
+        }
+
+        // ── item 6: the mast and the mount ──
+
+        [Test]
+        public void Mast_AndTheSpaceUnderTheCeiling_AreSwept()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            RootPose inspect = new RootPose(new Vector3(0.85f, 0.85f, 0.15f), SpatialGeometry.FaceUserYaw(new Vector3(0.85f, 0.85f, 0.15f), user.head), 1f);
+            // A dock hanging 0.7 m below the ceiling, so there is a gap above the office (top at 2.35 m).
+            RootPose dock = new RootPose(new Vector3(1.0f, 1.9f, 0.3f), SpatialGeometry.FaceUserYaw(new Vector3(1.0f, 1.9f, 0.3f), user.head), 1f);
+            Vector3 mastTop = CeilingPlacementEvaluator.MastTop(dock, 2.6f, s);
+            Assert.AreEqual(2.6f, mastTop.y, 1e-6f);
+            PathSweepOptions withMast = CeilingPlacementEvaluator.PodPathOptions(mastTop);
+            CeilingPathCheck check;
+
+            var room = EmptyRoom();
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, dock, inspect, Fp, s, withMast, out check), check.Describe());
+
+            // 1. A pendant lamp hanging in the gap between the docked office and the ceiling
+            //    (2.45 to 2.6 m): the office box alone misses it; the volume up to the ceiling does not.
+            room.AddFurniture("PENDANT", new Vector3(mastTop.x + 0.3f, 2.525f, mastTop.z), new Vector3(0.2f, 0.15f, 0.2f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, dock, inspect, Fp, s, out check), "without the mast rule it passed");
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, dock, inspect, Fp, s, withMast, out check));
+            Assert.AreEqual("PENDANT", check.blockingLabel);
+            Assert.That(check.blockedAtFraction, Is.LessThan(0.1f), "at the dock end");
+            string label;
+            Assert.IsTrue(CeilingPlacementEvaluator.MountBlocked(room, dock, mastTop, s, out label), "and it is inside the mount's clearance");
+            Assert.AreEqual("PENDANT", label);
+
+            // 2. The mast itself: the office standing at the inspection pose, a small box in mid-air
+            //    on the line from its top to the mount. Only the mast touches it.
+            var room2 = EmptyRoom();
+            OrientedRect rest = SpatialGeometry.Footprint(inspect.position, inspect.rotation, 1f, Fp, s.footprintCenterOffset);
+            Vector3 foot = new Vector3(rest.center.x, inspect.position.y + s.officeHeight, rest.center.y);
+            Vector3 on = foot + (mastTop - foot) * 0.5f;
+            room2.AddFurniture("MOBILE", on, new Vector3(0.06f, 0.06f, 0.06f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room2, user, inspect, inspect, Fp, s, out check), check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room2, user, inspect, inspect, Fp, s, withMast, out check));
+            Assert.IsTrue(check.blockedByMast);
+            Assert.AreEqual("MOBILE", check.blockingLabel);
+            // The same box 0.5 m to the side of the mast is not in its way.
+            var room3 = EmptyRoom();
+            room3.AddFurniture("MOBILE", on + new Vector3(0f, 0f, 0.5f), new Vector3(0.06f, 0.06f, 0.06f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room3, user, inspect, inspect, Fp, s, withMast, out check), check.Describe());
+
+            // 3. Through the evaluator: a box hanging from the ceiling where the first dock's mount
+            //    would be. That dock is not offered; what is offered has a clear mount and mast.
+            CeilingPlacement clean;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(SpatialRooms.Office(), user, Fp, s, out clean), clean.explanation);
+            Assert.That((clean.mastTop - CeilingPlacementEvaluator.MastTop(clean.DockPose, 2.6f, s)).magnitude, Is.LessThan(1e-5f));
+            var hung = SpatialRooms.Office();
+            hung.AddFurniture("FAN", new Vector3(clean.mastTop.x, 2.5f, clean.mastTop.z), new Vector3(0.3f, 0.2f, 0.3f));
+            var all = new List<CeilingPlacement>();
+            string summary;
+            CeilingPlacementEvaluator.EvaluateAll(hung, user, Fp, s, all, out summary);
+            foreach (CeilingPlacement p in all)
+            {
+                Assert.That((p.dockPosition - clean.dockPosition).magnitude, Is.GreaterThan(0.05f), "the dock under the fan is not offered");
+                Assert.IsFalse(CeilingPlacementEvaluator.MountBlocked(hung, p.DockPose, p.mastTop, s, out label));
+                Assert.IsTrue(p.path.clear);
+            }
+            StringAssert.Contains("dock blocked by furniture", summary);
+            CeilingPlacement restored;
+            Assert.IsFalse(CeilingPlacementEvaluator.ValidateDock(hung, user, clean.DockPose, Fp, s, out restored));
+            StringAssert.Contains("FAN", restored.explanation);
         }
     }
 

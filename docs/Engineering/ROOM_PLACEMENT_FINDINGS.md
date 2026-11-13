@@ -1,10 +1,106 @@
 # Room placement findings
 
-2026-11-13. Written by the Spatial-Safety agent. Covers what the floor and ceiling placement rules are now, the audit of the relaxed descent check and what replaced it, the numbers from the synthetic rooms, what the mover does that the check does not cover, and what only a real room can tell.
+2026-11-13. Written by the Spatial-Safety agent; **section 0 and the notes marked "pass 2" were added the same day by the Spatial-Safety-2 agent**, which could edit the director and the machines and closed the gaps listed in section 5. Covers what the floor and ceiling placement rules are now, the audit of the relaxed descent check and what replaced it, the numbers from the synthetic rooms, what the mover does that the check does not cover, and what only a real room can tell.
 
 **Nothing here has been compiled or run in Unity, and nothing has been tried on a headset.** The numbers and the test results below come from compiling the real `MuseDesk.Spatial.Core` sources and the real test file outside Unity against a hand-written stand-in for the `UnityEngine` math types and for NUnit (see "How the numbers were produced"). That is good evidence for the geometry and weak evidence for anything that depends on Unity itself.
 
 **A clear swept test means "clear of what the room scan recognised". It does not mean "clear".** Scene geometry may be incomplete, out of date or wrong. The user's Confirm, and a way to cancel or retract that is always available, are part of the safety design and are not replaced by this check.
+
+## 0. Safety pass 2: every move is swept, every move can be stopped
+
+Same caveat as the rest of this file: **not compiled in Unity, not run in Unity, not seen on a headset.** The Core sources and the test file compile outside Unity with 0 errors and 0 warnings. The last run of the tests there was 84 of 84 passing (67 earlier ones, two of them changed, and 17 new). One edit was made after that run (the director keeps the previewed ceiling dock apart from the confirmed one, `_previewCeiling`); it compiles, but the machine's application control policy then blocked the rebuilt test binary, twice, and that was not worked around. So the final sources are compile-checked and the 84 results are from one edit earlier.
+
+**The office is a hologram.** Nothing here can hurt anyone. "Clear" means the picture does not pass through recognised furniture or the user. It still means "clear of what the scan recognised", never "clear".
+
+### What moves how
+
+| Move | Route | Who drives it |
+|---|---|---|
+| Desk, floor spot or inspection pose to the ceiling dock (first trip) | straight up without turning until the office base is 0.25 m above the eyes, then one straight leg to the dock (the turn happens on that leg) | the pod (`BeginArrival`): PreparingToRetract, Retracting, ReturningToDock, Docked |
+| Dock to inspection pose and back | one straight leg, as before, now with the mast | the pod |
+| Desk to floor spot, floor spot to desk, inspection pose to desk | the straight line if its sweep is clear; otherwise up, across at 0.25 m above the eyes, down | the director |
+| Dock to desk or floor spot | across to the point above the destination, then straight down (the straight line is tried first for a floor spot) | the director |
+
+All of them go through `CeilingPlacementEvaluator.PlanRoute` and `SweepRoute` immediately before the move starts. No route clear: the move is refused with words, nothing is teleported, no margin is made smaller. `WorkspaceTransitionMachine.TryMoveRoute` refuses a route that does not start where the root is (2 mm), and gives a move up if the root was moved while it waited for agents.
+
+### The rule for the desk end (item 1), and why
+
+The desk pose breaks the margins by design: the office sits 0.6 to 0.7 m in front of the seated user with its near edge 0.13 to 0.15 m from the head's vertical axis (keep-out radius 0.35 m), and it usually stands on or against the user's real desk and screen, which the scan reports as solid boxes. Demanding the margins there refuses every move. Ignoring them there would allow anything. The rule chosen (`SweepRoute`, options `fromDesk` / `toDesk`):
+
+- A margin that is **already broken at the desk pose** (the user keep-out, one particular furniture box, the room outline) is **excused until the office first keeps it**. From then on it applies in full: the office may not come back.
+- While excused the office **may not make it worse**. User: never closer to the head's axis than its desk distance less `deskApproachAllowance` (0.05 m), and never closer than half its desk distance. Furniture: not closer to that box and not deeper into its height range, by more than `deskContactTolerance` (0.01 m). Wall: not closer.
+- After `deskStartRegion` (2.5 m) of travel from the desk end every margin applies, kept or not.
+- A box that was NOT inside its margin at the desk pose is never excused.
+- A path that ends at the desk is swept as the same path starting there.
+
+Why not a fixed "first N cm are free": the office would be free to move toward the user inside those centimetres. Why not a tighter cylinder: the desk pose is 0.13 m from the axis, so the cylinder would have to be about a head wide and would then mean nothing on the rest of the path. Why the allowance is not zero: the office turns to face the user from its new place while it leaves, and in the test office that brings its near edge from 0.130 m to roughly 0.10 m from the axis for a moment, above head height, before it moves away (a hand calculation, not a measured number; the tests only show that the trip is accepted with 0.05 m).
+
+Candid limits of this rule: 2.5 m is nearly the length of a whole first trip, so the distance bound does little; the real protection is "never worse, and never back in once out". A tall cabinet the desk office already overlaps stays excused while the office rises through it. Whether 0.05 m is right is a headset question.
+
+### Two legs instead of a diagonal (item 1)
+
+Adopted. On a diagonal from the desk to the dock the office turns about 70 degrees and slides sideways while it is still at the user's head height, 0.13 to 0.3 m from the head. With the rise first, everything below "eyes + 0.25 m" is a pure vertical move in front of the user: no turn, no approach, in view. A test records every pose written and checks both things. The diagonal is not tried as a fallback for a trip to the dock.
+
+New since pass 1: above the keep-out cylinder the office must stay `userOverheadRadius` (0.20 m) from the head's axis at any height. It never passes straight over the head. One earlier test asserted the opposite and was changed.
+
+### Floor moves and the way back (item 2)
+
+Swept with the same margins (the numbers live in `ceilingSettings`, which is now also "the path settings"). In the test office the straight line from the desk pose to the first floor spot is refused: the office would sink through the edge of the user's own desk (only the first spot was looked at). Up-and-over is clear and is used; so is the way back. With no desk volume the straight line is used. A bin between is crossed over; a 2.2 m cabinet between is a refusal. The larger clearance (0.405 m per sample) applies wherever the office base is above the top of the user keep-out.
+
+The floor preview only offers spots that can be reached by a clear route from where the office is, a nudged spot whose route is blocked turns invalid with the reason, and Confirm plans again for where the user is then.
+
+Hand-placed spots (no usable scan): the user rules are always applied; furniture is applied when a scan exists; the room outline is not (the spot is by definition not vouched for). The status keeps saying "not checked against your room".
+
+Known mismatch: floor spots are accepted 0.10 m from a wall, the sweep wants more than 0.105 m. A spot in that 5 mm band is offered by the evaluator and then filtered out or refused for "too close to a wall".
+
+### Re-validation (item 3)
+
+`RequestPodDescend` runs `ValidateDock` for the head pose and room of that moment, gives the pod the fresh inspection pose, or refuses with the reason and what to do. `RequestPodRetract` from beside the user sweeps the way up first. A room event while docked re-runs the check and puts the result in the status line. Confirm re-validates the previewed dock. Not done: nothing re-checks a move that is already in flight when the room changes.
+
+### Recenter and restore (item 4)
+
+After a recenter the office is written only to a pose validated after the recenter: the floor spot (floor checks plus chair clearance), the dock and a fresh inspection pose (`ValidateDock`), or the desk pose recomputed from the room reference. Otherwise any move is ended where it is (`WorkspaceTransitionMachine.Abort`, `CeilingPodMachine.Hold`), `PlacementNeedsConfirmation` becomes true, the pod refuses to move the office, the record is not saved, and the words say "Return to Desk, then place it again". Desk is itself a swept route from wherever the office stopped. `TryRestore` sweeps the way to the saved spot or dock and refuses with the reason. The pod's `ErrorRecovery` no longer travels a line of its own from an arbitrary point: at the dock it rests, at the inspection pose it uses the validated path, anywhere else it holds.
+
+Dead ends this creates, on purpose, and worth knowing before a demo:
+
+- If the room scan disappears while the office is on the floor or at the ceiling, the way back to the desk cannot be checked and is refused ("Press Desk again when the room scan is back"). `SpatialWorkspaceDirector.returnToDeskWithoutRoom` (default off) allows that one move with the user rules only.
+- If the way back is blocked by furniture the user can only clear the way or sit back and press Desk again.
+- After a recenter with no room reference the stored desk pose is a stale world pose; the route to it is still swept against the room as it is.
+
+### Stop (item 5)
+
+`SpatialDirectorCore.StopMove()` / `SpatialWorkspaceDirector.StopMove()`; the Cancel key calls `CancelPlacement()`, which leaves a preview or, with no preview, stops the move.
+
+| When | What Stop does |
+|---|---|
+| A mode change in flight (director-driven) | halts, goes back along the poses already travelled (eased), ends exactly on the start pose; the mode and the saved-placement bookkeeping go back too |
+| First trip up, wind-up | called off, nothing had moved, Ceiling mode is left |
+| First trip up, travelling | goes back to where it started, then Ceiling mode is left |
+| Pod: wind-up before coming down | back to Docked |
+| Pod: coming down | Descending -> Retracting -> ReturningToDock -> Docked, back up the same path |
+| Pod: wind-up before going up | called off, stays Engaged |
+| Pod: going up | nothing: it is moving away from the user and is left to finish |
+| Settling, at rest, previewing, already going back | nothing |
+| Waiting for agents | the move is dropped; nothing had moved |
+
+Held paper: a taken paper is a scene root and is never dragged by the office. What a reverse would do is take the office away from the paper the user still has to file. So **while a transition hold is set, Stop only halts the office where it is**; it goes back when the paper is put down, and the status says so. The halt itself is never refused.
+
+Requests during a move queue nothing: "Send back" while the pod comes down is the same Stop; "Bring" while it goes up is refused; a mode request while anything moves is refused with "Press Stop, or wait". One exception, kept: "Send back" during the half second the pod settles beside the user is remembered and acted on when it has settled.
+
+Pause (`OnPause`) still finishes a move at its destination at once (or at its start if it had been stopped). Both ends were validated; the path between is skipped, which for a hologram sweeps nothing.
+
+### The mast and the mount (item 6)
+
+- Mast: at every sample of a path with the mast option, a line from the top centre of the office box to the mount point (above the dock's footprint centre, at ceiling height) is tested against every furniture box grown by `mastRadius` (0.03 m) plus the sample margin. Used for the pod's path, the first trip and leaving Ceiling mode.
+- Under the ceiling: on the high part of such a path the office box is extended up to the ceiling, so a recognised object hanging in the gap above the office blocks it.
+- Mount: no recognised volume within `mountClearance` (0.30 m) of the mount point in the top `mountDepth` (0.30 m) under the ceiling (`MountBlocked`, in the dock search and in `ValidateDock`).
+- The dock counts of the table in section 3 did not change with these rules (same 13 rooms, run before the last edit).
+
+**Ceiling lamps, fans, pendant lights, smoke detectors and beams are generally NOT in Quest scene data.** These rules protect only against geometry the scan recognised. In an ordinary room they will find nothing, and the office will hang where a pendant lamp is if there is one. The preview outline, the user's Confirm and Stop are the safeguard for ceiling fixtures; the code is not.
+
+### New numbers (all code defaults; nothing serialized needs to change)
+
+`CeilingPlacementSettings`: `userOverheadRadius` 0.20, `deskStartRegion` 2.5, `deskApproachAllowance` 0.05, `deskContactTolerance` 0.01, `overRouteAboveHead` 0.25, `mastRadius` 0.03, `mountClearance` 0.30, `mountDepth` 0.30. `WorkspaceTransitionMachine.minReverseSeconds` 0.4. `SpatialWorkspaceDirector.returnToDeskWithoutRoom` false. `SpatialModeStrip.cancelKeyLabel` (found under the Cancel key when empty), `stopWords` "Stop".
 
 ## 1. The rules now
 
@@ -14,7 +110,7 @@
 
 - Candidates on both sides at 50, 70, 90, 110 and 130 degrees from the user's forward, 1.0 to 2.2 m away in 0.3 m steps, on a detected floor outline only.
 - Rejected: off the floor outline; footprint (1.0 x 0.7 m, centred 0.12 m toward the user, times scale) within 0.10 m of the outline; within 0.15 m of a furniture box that overlaps the office's height; within 0.6 m of the point under the user's head; within 35 degrees of forward; all three sight lines from the head blocked.
-- The move to a floor spot is a straight eased line from the desk pose. **That path is not checked against anything** (see section 5).
+- Pass 2: the move to a floor spot and back is now a swept route (section 0).
 
 ### Ceiling mode
 
@@ -109,7 +205,7 @@ Yes for descent and retraction, with these facts read from the code:
 
 `ThePodTravels_ExactlyTheValidatedPath_DownAndUp` records every pose written to the root during a descent and a retraction and checks each against `PathPose` at the same fraction (1 mm, 0.5 degrees). `GoingUp_IsTheSamePathReversed` checks that the reverse sweep tests the same poses and returns the same numbers.
 
-## 5. What the check does not cover (needs changes in files this task could not edit)
+## 5. What the check did not cover after pass 1 (items 1 to 6 and 8 are closed by pass 2, see section 0; item 7 stands)
 
 1. **The first trip up to the dock is not swept.** `SpatialDirectorCore.Confirm` and `TryRestore` call `_pod.Configure(...)` then `_pod.RequestRetract()`, which moves the office in a straight line from wherever it is (the desk pose, or a floor spot) to the dock. Nothing validates that line. Fix in `SpatialDirectorCore.cs`: before `_pod.Configure`, call `CeilingPlacementEvaluator.SweepPath(_room, user, _mover.CurrentPose, _ceiling.DockPose, footprint, ceilingSettings, out check)` and refuse the Confirm when it is false; or route the first trip desk -> inspection pose -> dock, both of which can be swept.
 2. **Leaving Ceiling mode and every Floor move are not swept.** `ReturnToDesk` and the Floor branch of `Confirm` move straight between the desk pose and the dock, inspection pose or floor spot. Same fix, same file. The start pose at the desk will usually be inside the 0.35 m user keep-out (the desk pose has the office at the user's chest by design), so a sweep for those moves needs its own rule for the desk end; that is a design decision, not made here.
@@ -122,10 +218,10 @@ Yes for descent and retraction, with these facts read from the code:
 
 ## 6. Limits of the swept test itself
 
-- The office is a box: footprint times `officeHeight` above the root. The mast, the ceiling mount and the 12 mm shelf under the office (`CeilingPodController`) are not part of it. The shelf sits below the root; the 0.05 m vertical margin covers it. The mast runs from the ceiling above the dock to the office and is not tested against anything.
+- The office is a box: footprint times `officeHeight` above the root. The 12 mm shelf under the office sits below the root; the 0.05 m vertical margin covers it. Pass 2: the mast is a line with a 0.03 m radius and the mount a clearance square (section 0). The mount point is taken above the footprint centre; `CeilingPodController.mountOffset` in the scene is not read by the check.
 - Agents, papers and anything else that sticks out of the footprint or above 0.45 m are not part of the box.
 - Furniture is an upright box. A table is a solid block from its underside to its top, so the legroom under a desk counts as blocked (conservative), and an L-shaped or round piece is whatever box the scan gave it.
-- The user is a cylinder under the head position at the moment of the check. Arms, a raised hand, legs stretched to the side, a second person and pets are not in it. The cylinder ends 0.15 m above the head: a path that crosses directly over the user above that height is not refused by the keep-out (the "not overhead" rule only constrains where the dock is). No current candidate does that, because dock and inspection pose are on the same side.
+- The user is a cylinder under the head position at the moment of the check. Arms, a raised hand, legs stretched to the side, a second person and pets are not in it. The cylinder ends 0.15 m above the head; pass 2: above it the office must stay 0.20 m from the head's axis (`userOverheadRadius`), so it never crosses directly over the user.
 - The inspection pose rests over the corner of the user's own desk in most rooms: 0.10 m above it in the test office, 0.10 m in the Editor room after the raise. Anything standing on that part of the desk that the scan does not report is inside the office.
 - Walls are the floor outline. Doors, windows and openings are ignored, and a wall-mounted object without a volume is not furniture.
 

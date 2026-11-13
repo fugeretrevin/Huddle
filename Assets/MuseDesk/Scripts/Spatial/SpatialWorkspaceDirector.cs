@@ -45,6 +45,9 @@ namespace MuseDesk.Spatial
         public Vector2 footprint = new Vector2(1.0f, 0.7f);
         [Tooltip("Off: the office always keeps scale 1. On: the floor search may also try floorSettings.scaleOptions.")]
         public bool allowScaleChange;
+        [Tooltip("Off (default): with no room data the way back to the desk cannot be checked and is refused, in words. " +
+                 "On: it is then travelled with the user rules only. An escape hatch for a headset whose room scan comes and goes.")]
+        public bool returnToDeskWithoutRoom;
         public float nudgeStep = 0.10f;
         public float rotateStep = 15f;
 
@@ -146,6 +149,7 @@ namespace MuseDesk.Spatial
             if (_core == null) return;
             _appliedFloor = flags.floorModeEnabled;
             _appliedCeiling = flags.ceilingModeEnabled;
+            _core.returnToDeskWithoutRoom = returnToDeskWithoutRoom;
             floorSettings.scaleOptions = allowScaleChange && _authoredScales != null && _authoredScales.Length > 0 ? _authoredScales : UnitScale;
             if (roomService != null)
             {
@@ -203,8 +207,17 @@ namespace MuseDesk.Spatial
 
         public bool Confirm() { return _core != null && _core.Confirm(); }
         public void ConfirmPlacement() { Confirm(); }
+        /// <summary>Previewing: leave the preview. The office is moving: stop the move (see <see cref="StopMove"/>).</summary>
         public void Cancel() { if (_core != null) _core.Cancel(); }
+        /// <summary>The Cancel key's target. The same key reads "Stop" while the office moves, and this stops it.</summary>
         public void CancelPlacement() { Cancel(); }
+        /// <summary>
+        /// Stop whatever is moving the office: a mode change goes back along the path it travelled and
+        /// the mode goes back with it; a descending pod goes back up to the dock; a pod going up is left
+        /// to finish. While a paper is held the office only halts, and goes back when it is put down.
+        /// Does nothing when nothing moves. Safe to call at any time.
+        /// </summary>
+        public void StopMove() { if (_core != null) _core.StopMove(); }
         public void NextCandidate() { if (_core != null) _core.NextCandidate(); }
         public void ResetPlacement() { if (_core != null) _core.ResetPlacement(); }
 
@@ -385,12 +398,13 @@ namespace MuseDesk.Spatial
                 _publishedMode = mode;
                 if (mode != PlacementMode.Desk) { _parkedValid = false; _parked = null; }   // a new placement replaces a parked one
                 PublishNearUserPose();              // a mode was just confirmed
-                if (mode == PlacementMode.Ceiling && pod != null && _core.LastCeiling.valid)
-                    pod.SetCeilingHeight(_core.LastCeiling.ceilingHeight);
                 Save();
             }
             else if (_wasTransitioning && !transitioning) Save();   // arrived
             _wasTransitioning = transitioning;
+            // The dock can change without the mode changing (a new ceiling spot, a recenter).
+            if (mode == PlacementMode.Ceiling && pod != null && _core.LastCeiling.valid)
+                pod.SetCeilingHeight(_core.LastCeiling.ceilingHeight);
 
             if (_core.PlacementCleared)
             {
@@ -419,8 +433,10 @@ namespace MuseDesk.Spatial
                 bool transitioning = _core.IsTransitioning;
                 // Beside the Focus key while the office is at the desk or down beside the user;
                 // within reach at the near-user pose while it is away or travelling.
-                bool followRoot = (_core.Mode == PlacementMode.Desk && !transitioning)
-                                  || (_core.Mode == PlacementMode.Ceiling && _core.Pod.State == CeilingPodState.Engaged);
+                // Never on the root while it moves: the Stop key has to stay still and within reach.
+                bool followRoot = !transitioning
+                                  && (_core.Mode == PlacementMode.Desk
+                                      || (_core.Mode == PlacementMode.Ceiling && _core.Pod.State == CeilingPodState.Engaged));
                 strip.SetFollowRoot(followRoot);
                 string status = _core.StatusText;
                 if (string.IsNullOrEmpty(status) && _core.Pod.Active) status = _core.Pod.StatusText;

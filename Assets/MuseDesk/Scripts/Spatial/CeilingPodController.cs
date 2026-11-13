@@ -89,11 +89,17 @@ namespace MuseDesk.Spatial
         /// <summary>World height of the real ceiling above the dock (from the room data).</summary>
         public void SetCeilingHeight(float height) { _ceilingHeight = height; _hasCeilingHeight = true; }
 
-        /// <summary>Bring the office down beside the user. Does nothing unless Ceiling mode is active and docked.</summary>
-        public void BringDown() { if (_machine != null) _machine.RequestDescend(); }
+        /// <summary>Bring the office down beside the user. Does nothing unless Ceiling mode is active and docked.
+        /// With a director present this does nothing: SpatialWorkspaceDirector.BringPodDown re-checks the
+        /// way down for where the user sits now, and a request that skipped that check must not move the office.</summary>
+        public void BringDown() { if (_machine != null && !tickedByDirector) _machine.RequestDescend(); }
 
-        /// <summary>Send the office back up. Waits while the user holds something (TransitionHeld).</summary>
-        public void SendUp() { if (_machine != null) _machine.RequestRetract(); }
+        /// <summary>Send the office back up. Waits while the user holds something (TransitionHeld).
+        /// With a director present use SpatialWorkspaceDirector.SendPodUp (it sweeps the way up first).</summary>
+        public void SendUp() { if (_machine != null && !tickedByDirector) _machine.RequestRetract(); }
+
+        /// <summary>Stop the pod: a descent goes back up to the dock; a retraction is left to finish.</summary>
+        public void Stop() { if (_machine != null) _machine.RequestStop(); }
 
         void Awake()
         {

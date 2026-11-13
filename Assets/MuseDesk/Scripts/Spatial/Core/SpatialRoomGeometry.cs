@@ -93,6 +93,84 @@ namespace MuseDesk.Spatial
     }
 
     /// <summary>
+    /// A path of the office root: two to four poses joined by straight legs. Each leg is travelled
+    /// as <see cref="RootPose.Lerp"/> between its two poses, so a route that was swept is the exact
+    /// set of poses the transition machine writes. A value type: no allocation.
+    /// </summary>
+    public struct WorkspaceRoute
+    {
+        public const int MaxPoints = 4;
+
+        public RootPose p0, p1, p2, p3;
+        public int count;
+
+        public RootPose this[int i] { get { return i <= 0 ? p0 : (i == 1 ? p1 : (i == 2 ? p2 : p3)); } }
+        public RootPose First { get { return p0; } }
+        public RootPose Last { get { return this[count - 1]; } }
+        public int LegCount { get { return count > 1 ? count - 1 : 0; } }
+
+        /// <summary>Append a pose. A pose equal to the previous one is skipped; a fifth pose is ignored.</summary>
+        public void Add(RootPose p)
+        {
+            if (count > 0 && this[count - 1].Approximately(p)) return;
+            if (count == 0) p0 = p;
+            else if (count == 1) p1 = p;
+            else if (count == 2) p2 = p;
+            else if (count == 3) p3 = p;
+            else return;
+            count++;
+        }
+
+        public static WorkspaceRoute Straight(RootPose from, RootPose to)
+        {
+            var r = new WorkspaceRoute();
+            r.p0 = from; r.p1 = to; r.count = 2;
+            return r;
+        }
+
+        /// <summary>
+        /// Up, across, down: rise straight up from <paramref name="from"/> (no turn) until the office
+        /// base is at <paramref name="height"/>, travel to the point above <paramref name="to"/> at that
+        /// height (the turn happens on this leg), then come straight down. An end that is already at
+        /// or above the height has no vertical leg.
+        /// </summary>
+        public static WorkspaceRoute UpAndOver(RootPose from, RootPose to, float height)
+        {
+            var r = new WorkspaceRoute();
+            r.Add(from);
+            if (from.position.y < height - 0.001f)
+                r.Add(new RootPose(new Vector3(from.position.x, height, from.position.z), from.rotation, from.scale));
+            if (to.position.y < height - 0.001f)
+                r.Add(new RootPose(new Vector3(to.position.x, height, to.position.z), to.rotation, to.scale));
+            r.Add(to);
+            if (r.count < 2) { r.p1 = to; r.count = 2; }      // from and to are the same pose
+            return r;
+        }
+
+        public WorkspaceRoute Reversed()
+        {
+            var r = new WorkspaceRoute();
+            r.count = count;
+            if (count > 0) r.p0 = this[count - 1];
+            if (count > 1) r.p1 = this[count - 2];
+            if (count > 2) r.p2 = this[count - 3];
+            if (count > 3) r.p3 = this[count - 4];
+            return r;
+        }
+
+        /// <summary>Sum of the straight-line lengths of the legs, in metres.</summary>
+        public float Length
+        {
+            get
+            {
+                float sum = 0f;
+                for (int i = 1; i < count; i++) sum += (this[i].position - this[i - 1].position).magnitude;
+                return sum;
+            }
+        }
+    }
+
+    /// <summary>
     /// What the placement code may know about the room. Implementations: MrukRoomGeometry (the real
     /// scan, the only code that touches MRUK) and <see cref="SyntheticRoomGeometry"/> (tests, Editor).
     /// Readers must never assume data exists: check <see cref="Availability"/> first.

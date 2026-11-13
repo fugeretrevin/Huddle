@@ -14,6 +14,7 @@ namespace MuseDesk.Spatial
     ///   placement preview ....... [Next]  [Confirm] [Cancel]
     ///   Floor ................... [Desk]
     ///   Ceiling ................. [Desk]  [Lower / Raise]
+    ///   the office is moving .... [Stop]                       (the Cancel key, relabelled, in its slot)
     ///
     /// The strip is NOT a child of WorkspaceRoot: in Desk mode (and when the ceiling office is down
     /// beside the user) it sits at a fixed spot beside the Focus key; while the office is remote or
@@ -44,6 +45,9 @@ namespace MuseDesk.Spatial
         public TMP_Text floorKeyLabel;
         public string floorWords = "Floor";
         public string sendBackWords = "Send\nback";
+        [Tooltip("Label of the Cancel key (found under the key when empty). It reads 'Stop' while the office is moving.")]
+        public TMP_Text cancelKeyLabel;
+        public string stopWords = "Stop";
         [Tooltip("Uniform scale of a shown key.")]
         public float keyScale = 0.04f;
         public Vector3 slot0;
@@ -65,10 +69,17 @@ namespace MuseDesk.Spatial
         string _status;
         string _podText;
         bool _floorSendsBack;
+        bool _cancelSaysStop;
+        string _cancelWords = "Cancel";
+
+        /// <summary>True while the Cancel key reads "Stop" (the office is moving).</summary>
+        public bool CancelKeyStops => _cancelSaysStop;
 
         void Awake()
         {
             _deskLocalRot = Quaternion.Euler(deskLocalEuler);
+            if (cancelKeyLabel == null && cancelKey != null) cancelKeyLabel = cancelKey.GetComponentInChildren<TMP_Text>(true);
+            if (cancelKeyLabel != null && !string.IsNullOrEmpty(cancelKeyLabel.text)) _cancelWords = cancelKeyLabel.text;   // the authored word
             if (floorKeyLabel == null && floorKey != null) floorKeyLabel = floorKey.GetComponentInChildren<TMP_Text>(true);
             HideAll();
         }
@@ -106,7 +117,7 @@ namespace MuseDesk.Spatial
         public void Apply(bool floorEnabled, bool ceilingEnabled, PlacementMode mode, bool previewing, bool canCycle,
                           bool transitioning, CeilingPodState podState, bool podWaiting, string status)
         {
-            if (!floorEnabled && !ceilingEnabled && mode == PlacementMode.Desk && !previewing)
+            if (!floorEnabled && !ceilingEnabled && mode == PlacementMode.Desk && !previewing && !transitioning)
             {
                 HideAll();
                 return;
@@ -119,7 +130,16 @@ namespace MuseDesk.Spatial
 
             Place(nextKey, slot0, previewing && canCycle);
             Place(confirmKey, slot1, previewing);
-            Place(cancelKey, slot2, previewing);
+            // The Cancel key is also the Stop key: shown, in its usual slot, for as long as the office
+            // is moving. The strip is at the near-user pose then, so it is always within reach.
+            // Its press goes to the director's CancelPlacement, which stops a move when none is previewed.
+            bool stop = transitioning && !previewing;
+            Place(cancelKey, slot2, previewing || stop);
+            if (stop != _cancelSaysStop && cancelKeyLabel != null)
+            {
+                _cancelSaysStop = stop;
+                cancelKeyLabel.text = stop ? stopWords : _cancelWords;
+            }
 
             bool away = mode != PlacementMode.Desk && !previewing;
             Place(deskKey, slot0, away && !transitioning);

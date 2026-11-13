@@ -46,6 +46,7 @@ public static class SpatialDrive
     public static string Unhold() { SpatialWorkspaceState.ReleaseTransitionHold(); return "hold released"; }
     public static string Bring() { One<SummonController>().PressBring(); return Report(); }
     public static string Status() { One<SummonController>().PressStatus(); return Report(); }
+    public static string Stop() { One<SpatialWorkspaceDirector>().StopMove(); return Report(); }
     public static string Off() { One<SpatialWorkspaceDirector>().SetFlags(false, false); return Report(); }
 }
 

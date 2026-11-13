@@ -2,7 +2,48 @@
 
 2026-11-13. Written by the Spatial-Placement agent. **None of these tests has been run, and the test file has not been compiled.** It is fenced off until the coordinator makes two edits to the test asmdef (below). Expected results were worked out by hand from the code; a failure on first run is as likely to be a wrong expectation as a wrong implementation.
 
-File: `Assets/MuseDesk/Tests/EditMode/SpatialPlacementTests.cs`. EditMode, NUnit, no scene, no `GameObject`. 48 tests in 7 fixtures.
+File: `Assets/MuseDesk/Tests/EditMode/SpatialPlacementTests.cs`. EditMode, NUnit, no scene, no `GameObject`. **84 tests in 9 fixtures as of safety pass 2** (48 original, 19 added by safety pass 1 in `SpatialCeilingSweptPathTests`, 17 added by safety pass 2 in `SpatialSweptMovesTests`). The opening paragraph above is the original author's and is out of date: the coordinator has since run the suite in Unity. What follows in "Safety pass 2" is the current state of the newest tests.
+
+## Safety pass 2 (2026-11-13, Spatial-Safety-2 agent)
+
+**Not run in Unity by this agent.** The Core sources and this file were compiled outside Unity against stand-in math and NUnit types (the harness of pass 1). Result of the last run there: 84 of 84. One later edit to `SpatialDirectorCore` (the previewed ceiling dock is kept apart from the confirmed one) compiled with 0 errors, but the rebuilt test binary was blocked by the machine's application control policy and was not run. Expect the first Unity run to be the real evidence.
+
+Two existing tests were changed, both because they encoded behaviour that is now refused:
+
+- `UserKeepOut_IsNeverEntered`, part 4: it asserted that a path straight across the user with the office base 0.2 m above the eyes is accepted. It is now refused (`userOverheadRadius`); the test asserts that, and the boundary of the new radius.
+- `Restart_WithAShiftedTrackingOrigin_StillLandsOnTheSameRoomSpot`: the fixture moved the user 1 m but left the desk office behind, so the (then unswept) move passed through the user. The desk office now moves with the user.
+
+New tests, fixture `SpatialSweptMovesTests`:
+
+| Test | What it shows |
+|---|---|
+| `FirstTripToTheDock_IsSwept_RisesBeforeItTravels_AndTheMoverTravelsExactlyThat` | The route is desk, straight above the desk at eyes + 0.25 m, dock. Every pose written lies on it (1 mm). Below that height the office never turns and never moves sideways |
+| `FirstTripToTheDock_Blocked_IsRefusedWithWords_AndNothingMoves` | A box over the desk office: Confirm is refused naming it and saying "Next", no write, Desk mode, pod off, preview still open |
+| `DeskStartRule_Boundaries` | The rise from the desk pose is refused as an ordinary path and accepted as a desk path, in both directions; the approach allowance at 0.04 and 0.06 m; the region bound; no re-entry once out; a screen and a desk top the office stands against are excused for leaving and refused for approaching or sinking |
+| `FloorMove_StraightWhenClear_UpAndOverWhenTheDeskIsInTheWay` | Empty room: 2-pose route. Test office: the straight sweep is blocked by TABLE and a 4-pose route at 1.45 m is used; the way back likewise; traces on the routes |
+| `FloorMove_BlockedBothWays_IsRefusedWithWords_LowObstacleIsCrossedOver` | A bin between is crossed over; a 2.2 m cabinet is a refusal naming it, nothing moves; after a room event every offered spot is reachable |
+| `WayBackToTheDesk_Blocked_IsRefused_AndTheOfficeStays` | Refused with "press Desk again", Floor mode kept |
+| `Descent_IsRevalidated_ForWhereTheUserSitsNow_AndRefusedWhenBlocked` | Chair moved 0.3 m: new inspection pose, same dock, trace on the fresh path. A lamp added without a room event: refused naming it. A room event while docked reports it; clearing the room clears the words |
+| `Recenter_WithADockThatNoLongerValidates_NeverMovesTheOffice` | Mid-descent, the reference moves 1 m: zero writes afterwards, needs confirmation, not saved, pod and director refuse to move it; Desk is a swept route or a refusal |
+| `Recenter_InFloorMode_WithASpotThatNoLongerValidates_HoldsPosition` | At rest and mid-move: zero writes, position kept, needs confirmation |
+| `Restore_WithABlockedWay_StaysAtTheDesk` | A saved spot that is itself clear but cannot be reached is refused |
+| `Stop_DuringDescent_GoesBackUpAlongTheTravelledPath_AndEndsDocked` | State sequence, every pose on the path, height never decreases after the stop; "Send back" during a descent is the same stop; "Bring" during a retraction is refused; Stop during a retraction does nothing |
+| `Stop_DuringADeskToFloorMove_ReturnsToTheDeskPose_AndTheModeStaysDesk` | Halts without a jump, ends bit-exact on the desk pose, Desk mode, nothing saved; also Floor to Desk stopped returns to the floor spot with its record intact |
+| `Stop_DuringTheFirstTripUp_ReturnsToTheDesk_AndLeavesCeilingMode` | Travelling and during the wind-up |
+| `Stop_IsSafeAndIdempotent_InEveryPhase` | Desk, preview, waiting for agents, Floor at rest, docked, both wind-ups, engaged; repeated presses |
+| `Stop_WhileAPaperIsHeld_HaltsInPlace_AndGoesBackOnlyWhenItIsPutDown` | Mode change and pod: no write while held, then back |
+| `TransitionMachine_ReversesAMultiLegRoute_Deterministically` | Off-path start refused; reverse on the second leg returns bit-exact; same inputs, same poses; a full route ends on its last pose |
+| `Mast_AndTheSpaceUnderTheCeiling_AreSwept` | A box hanging above the docked office; a box on the mast line (`blockedByMast`); a control beside it; a box at the first dock's mount removes that dock and fails `ValidateDock` |
+
+Expectations trusted least, in this order:
+
+1. `Descent_IsRevalidated...`: the fresh inspection pose is asserted to be exactly 0.3 m further back. True only if the same search option wins for the moved user.
+2. `FloorMove_...` tests assert the route has exactly 2 or 4 poses and a transit height of exactly 1.45 m; they depend on which floor candidate ranks first and on the 2.6 m ceiling not lowering the transit.
+3. `Stop_DuringDescent...` and `Stop_DuringTheFirstTripUp...` use fixed times (2.0 s, 2.5 s, 1.2 s) to land in a particular state; a different travel time moves them.
+4. `DeskStartRule_Boundaries`: the 0.04 / 0.06 m approach cases are 1 cm either side of the limit; exact-equality cases (bit-exact desk pose) rely on Unity's `Quaternion.Euler(0, 180, 0)` round-tripping through the mover unchanged, as it does in the stand-in.
+5. Anything comparing with `Vector3.Equals`: exact in the stand-in; Unity's `Vector3.Equals` is also exact, `==` is not used.
+
+Not covered by any test: the scene-side scripts (`SpatialModeStrip` showing the Stop key, `SpatialWorkspaceDirector`), a room event during a move, a recenter with no room reference in Ceiling mode, `returnToDeskWithoutRoom`, leaving Ceiling mode from the dock with an obstacle, and Ceiling to Ceiling re-docking.
 
 ## How to switch them on
 
@@ -30,7 +71,7 @@ The standard room (`SpatialRooms.Office`) is 5 x 5 m, floor at 0, ceiling at 2.6
 
 | # | Fixture | Tests | What they prove |
 |---|---|---|---|
-| 1 | Valid floor and ceiling | `ValidRoom_GivesRankedCandidatesBesideTheUser`, `Evaluation_IsDeterministic`, `ValidCeiling_GivesDockInspectionPoseAndDescent` | Candidates exist, are ranked best first, sit on the floor height, 1.0 to 2.2 m away, outside the forward cone, at least 0.6 m from the feet and 0.15 m from the desk, face the user, and each passes `ValidatePose`. The same input gives the same list. The ceiling dock is not overhead, hangs from the given ceiling height, the inspection pose is 0.5 to 0.7 m to the side and not in front, and the descent distance is the real distance |
+| 1 | Valid floor and ceiling | `ValidRoom_GivesRankedCandidatesBesideTheUser`, `Evaluation_IsDeterministic`, `ValidCeiling_GivesDockInspectionPoseAndDescent` | Candidates exist, are ranked best first, sit on the floor height, 1.0 to 2.2 m away, outside the forward cone, at least 0.6 m from the feet and 0.15 m from the desk, face the user, and each passes `ValidatePose`. The same input gives the same list. The ceiling dock is not overhead, hangs from the given ceiling height, the inspection pose is 0.5 to 0.9 m to the side and not in front, and the descent distance is the real distance |
 | 2 | Floor but no ceiling | `NoCeilingData_FailsWithTheReason_AndNeverGuessesAHeight`, `NoCeiling_CeilingModeIsRefused_FloorStillWorks` | The ceiling evaluator fails with "no ceiling" and the director refuses Ceiling mode in words, while Floor mode still opens |
 | 3 | Small room, insufficient floor | `SmallRoom_GivesNoCandidates_AndSaysWhy`, `SmallRoom_OffersManualPlacement_AndSaysItIsUnchecked` | No candidate is returned, every generated position is accounted for by a rejection reason, and the director offers manual placement saying the spot is not checked |
 | 4 | Furniture near candidates | `FurnitureOnTheBestSpot_MovesTheCandidatesAway`, `TallFurnitureBetweenUserAndSpot_HidesThatSide`, `BlockedDescent_UsesTheOtherSide` | A box on the best spot removes it and nothing is offered within clearance of it. A tall partition removes every candidate behind it (line of sight). A shelf beside the user moves the ceiling dock to the other side |

@@ -2,6 +2,8 @@
 
 2026-11-13. Written by the Spatial-Placement agent. Status: **code written; never run; never seen on a headset.** The agent could not compile. The only compile evidence is indirect: the open Editor rebuilt `Library/ScriptAssemblies/MuseDesk.Spatial.Core.dll` and `Assembly-CSharp.dll` after the runtime files were written (see section 11). The tests and the builder have not been compiled at all.
 
+**Updated 2026-11-13 by the Spatial-Safety-2 agent** (sections 6 and 8, and the notes marked "pass 2"): every move is now a swept route, every move can be stopped, and recenter and restore fail closed. The detail and the reasons are in `ROOM_PLACEMENT_FINDINGS.md` section 0. That work was compiled and run only outside Unity.
+
 The spatial workspace is optional and flag-gated. It lets the miniature office leave the desk: onto the detected floor beside the seated user (Floor mode) or to a dock under the real ceiling from which it descends beside the user (Ceiling mode). This document covers the placement half: deciding where the office goes and moving it. The reach half (attention cues, bringing a paper to the user) is in `SPATIAL_WORKSPACE_INTEGRATION.md`. The two halves share only `SpatialWorkspaceState.cs` and the static events in `SummonRequests.cs`.
 
 Placement is presentation only. No file here references the session, a gateway or a reducer, so a mode change cannot start, cancel or reset work. A test asserts that (section 9).
@@ -40,7 +42,7 @@ Core assembly (`Scripts/Spatial/Core/`, plain C#, no scene access):
 | `SpatialRoomGeometry.cs` | `IRoomGeometry`, `RoomAvailability`, `RoomPlane`, `FurnitureBox`, `SeatedUser`, `RootPose`, `OrientedRect`, `SpatialGeometry`, `SyntheticRoomGeometry`, `SpatialFeatureFlags`, `PlacementMode` |
 | `FloorPlacementEvaluator.cs` | Floor candidates, ranking, `ValidatePose`; `FloorPlacementSettings`, `FloorCandidate`, `FloorEvaluationReport` |
 | `CeilingPlacementEvaluator.cs` | Ceiling dock, inspection pose, descent check, `ValidateDock`; `CeilingPlacementSettings`, `CeilingPlacement` |
-| `WorkspaceTransitionMachine.cs` | The one state machine that moves the root; `ISpatialClock`, `ManualClock`, `UnityUnscaledClock` |
+| `WorkspaceTransitionMachine.cs` | The one state machine that moves the root, along a `WorkspaceRoute`; stop and reverse; `ISpatialClock`, `ManualClock`, `UnityUnscaledClock` |
 | `CeilingPodMachine.cs` | The pod state machine |
 | `WorkspacePlacementCodec.cs` | `SavedPlacement`, `IPlacementStore` (+ memory and PlayerPrefs stores), load / save / resolve |
 | `SpatialDirectorCore.cs` | Modes, preview-then-confirm, flag gating, recenter and pause, restore |
@@ -125,11 +127,14 @@ Idle --TryMove--> WaitingForAgents --agents idle--> Moving --done--> Idle
           +--agents idle already--> Moving
 ```
 
-- `TryMove` returns `AlreadyRunning`, `Held` (transition hold set), `AlreadyThere` or `Started`.
-- Moving eases position, rotation and uniform scale with smoothstep and writes the exact target last.
-- `FinishNow()` (app pause): a running move lands on its target at once; a waiting one is dropped.
-- `Snap(pose)` (recenter): write a pose now and end any move.
-- A hold acquired after a move has started does not stop it. Stopping in mid-air seemed worse.
+- `TryMove(target)` and `TryMoveRoute(route)` return `AlreadyRunning`, `Held` (transition hold set), `AlreadyThere`, `Started` or `OffPath` (the root is not at the first pose of the route: refused, because the route was checked from that pose).
+- A route (`WorkspaceRoute`, in `SpatialRoomGeometry.cs`) is two to four poses. Each leg is `RootPose.Lerp` between its poses, eased in and out, with a share of the time in proportion to its length and turn. The exact last pose is written last. Every pose written is on the route.
+- `Reverse()` (Stop): the move halts and goes back along the poses already travelled, eased, ending exactly on the start pose, and `MoveFinished(false)` is raised. While a transition hold is set it only halts (`IsHalted`) and goes back when the hold is released. A move waiting for agents is dropped. Idempotent.
+- `Abort(why)`: ends a move where it is; the root is not written again.
+- `FinishNow()` (app pause): a running move lands on its target at once (on its start if it was going back); a waiting one is dropped.
+- `Snap(pose)` (recenter): write a pose now and end any move. The caller must have validated the pose.
+- A move that waited for agents is given up if the root was moved meanwhile.
+- A hold acquired after a move has started still does not stop it by itself; Stop does.
 
 ### Ceiling pod (`CeilingPodMachine`)
 
@@ -140,11 +145,15 @@ any travelling state -> ErrorRecovery -> (Retracting ->) Docked
 ```
 
 - Every move goes through the transition machine, so the hold and the agent wait apply.
-- `RequestDescend` is refused while held. `RequestRetract` while engaged is accepted and **waits** while held (`RetractPending`, status "Waiting to go up: put the paper down first"); the hold is checked again at the end of the wind-up.
-- A move that cannot start within `startTimeoutSeconds`, or that was given up, leads to `ErrorRecovery`: up to three eased trips back to the dock, then a snap to the dock, never while held, and waiting up to 20 s for agents before the snap.
-- `OnRecenter(dock, inspection)`: travel ends; the office is put beside the user if it was coming down or engaged, at the dock otherwise.
+- `RequestDescend` is refused while held. `RequestRetract` while engaged is accepted and **waits** while held (`RetractPending`, status "Waiting to go up: put the paper down first"); the hold is checked again at the end of the wind-up. While the pod is coming down `RequestRetract` is a Stop (below); nothing is queued.
+- `RequestStop()`: PreparingToDescend -> Docked; Descending -> Retracting -> ReturningToDock -> Docked (the mover reverses along the travelled path); PreparingToRetract -> Engaged; Retracting: nothing (moving away from the user); first trip up: reversed to its start and `ArrivalFailed` is set, which the director reads to leave Ceiling mode. No new state.
+- `BeginArrival(route)`: the first trip up to the dock along a route the director swept. `RequestRetract` no longer starts a trip from an arbitrary place.
+- `Hold(status)`: travel ends where it is, `Stranded` is set, and the pod refuses to move the office until the placement is chosen again.
+- `Restore(dock, inspection, engaged)`: puts the pod back to rest after a mode change was called off.
+- A move that cannot start within `startTimeoutSeconds`, or that was given up, leads to `ErrorRecovery`. At the dock: rest. At the inspection pose: up to three eased trips back to the dock along the validated path, then a snap to the dock, never while held, and waiting up to 20 s for agents before the snap. Anywhere else: `Hold`.
+- `OnRecenter(dock, inspection)`: called only with poses validated after the recenter; travel ends; the office is put beside the user if it was coming down or engaged, at the dock otherwise. When validation fails the director calls `Hold` instead.
 - `OnPause()`: travel ends at its destination.
-- Entering Ceiling mode from Desk uses the same machine: `Configure` then `RequestRetract`, so the first trip up is `PreparingToRetract -> Retracting -> ReturningToDock -> Docked`.
+- Entering Ceiling mode uses the same machine: `Configure` then `BeginArrival(route)`, so the first trip up is `PreparingToRetract -> Retracting -> ReturningToDock -> Docked`, along the swept route.
 
 ### Director (`SpatialDirectorCore`)
 
@@ -152,9 +161,12 @@ Mode is Desk, Floor or Ceiling; phase is Idle or Previewing.
 
 - `RequestMode(Floor | Ceiling)` opens a preview. **Nothing moves.**
 - `NextCandidate`, `Nudge`, `Rotate`, `ResetPlacement` edit the preview. A detected spot that is nudged is re-checked against the room; if it fails, the outline turns coral, the status says why, and `Confirm` is refused.
-- `Confirm` is the only call that moves the office. It is refused while held or while anything is moving.
-- `Cancel` leaves everything as it was.
-- `RequestMode(Desk)` returns to the stored desk pose.
+- `Confirm` is the only call that moves the office. It is refused while held, while anything is moving, or when no route to the spot sweeps clear (words say what to do next).
+- `Cancel` leaves a preview as it was; with no preview it is `StopMove`.
+- `StopMove` stops whatever is moving (table in `ROOM_PLACEMENT_FINDINGS.md` section 0). The mode strip shows the Cancel key relabelled "Stop" whenever `IsTransitioning` is true, at the near-user pose; its press goes to `SpatialWorkspaceDirector.CancelPlacement()`.
+- `RequestMode(Desk)` returns to the stored desk pose along a swept route, or refuses.
+- `RequestPodDescend` re-validates the dock and the way down for the current head pose and room.
+- `PlacementNeedsConfirmation`: set when a recenter could not be validated; the office stays put until Desk and a new placement.
 - The published mode changes at Confirm, with `IsTransitioning` true until arrival. If the move is given up before the root moved, the mode reverts.
 
 `IsRemote` is true in Floor mode and in Ceiling mode except while the pod is `Engaged`. `IsTransitioning` is true while the transition machine runs (including the agent wait) and in every pod state other than `Docked` and `Engaged`.
@@ -189,7 +201,9 @@ Furniture is every anchor with a volume except floor, ceiling and global mesh, t
 
 Floor (`FloorPlacementSettings` defaults): candidates on both sides at 50, 70, 90, 110 and 130 degrees from the user's forward, at 1.0 to 2.2 m in 0.3 m steps. Rejected: off the floor outline; footprint (1.0 x 0.7 m, centred 0.12 m toward the user, times scale) within 0.10 m of the outline; within 0.15 m of a furniture box that overlaps the office's height; within 0.6 m of the user's feet; within 35 degrees of forward; all three sight lines from the head blocked by furniture. Score: visibility 0.35, clearance 0.25, side preference 0.15, distance from 1.4 m 0.15, look-down angle inside 15 to 50 degrees 0.10. At most six candidates, at least 0.35 m apart, each with an explanation string. The root's +Z points at the user.
 
-Ceiling (`CeilingPlacementSettings` defaults): docks on the preferred side first, 1.0, 1.2, 0.85 and 1.4 m to the side and 0.3, 0.6 and 0 m forward. Rejected: closer than 0.8 m horizontally to the head; not under a ceiling outline; footprint within 0.35 m of the outline; ceiling less than 0.6 m above the eyes; overlapping furniture. The root hangs 0.5 m below the ceiling. Inspection pose: 0.6 m to the side (then 0.7, then 0.5), 0.15 m forward, 0.35 m below the eyes, clear of furniture at that height. The straight segment from dock to inspection pose must miss every furniture box grown 0.30 m sideways and 0.05 m vertically. The first dock that passes is used.
+Ceiling (`CeilingPlacementSettings` defaults): docks on the preferred side first, 1.0, 1.2, 0.85 and 1.4 m to the side and 0.3, 0.6 and 0 m forward. Rejected: closer than 0.8 m horizontally to the head; not under a ceiling outline; footprint within 0.35 m of the outline; ceiling less than 0.6 m above the eyes; overlapping furniture. The root hangs 0.5 m below the ceiling. Inspection pose and descent: superseded twice since this was written. The current rule is the swept-volume test with a user keep-out, the widened inspection search (0.5 to 0.9 m to the side), the mast and the mount clearance; see `ROOM_PLACEMENT_FINDINGS.md` sections 0 and 1. The first dock that passes is used.
+
+Routes between modes (pass 2): `CeilingPlacementEvaluator.PlanRoute` tries the straight line where allowed and then up, across at 0.25 m above the eyes, and down; `SweepRoute` tests each. The numbers are in `CeilingPlacementSettings` (the director's `ceilingSettings`), which Floor moves use too.
 
 Near-user pose: 0.45 m ahead of and 0.25 m below the eyes, +Z toward the user (the scene's facing convention). Published when a mode is confirmed, on recenter and when the headset is put back on.
 

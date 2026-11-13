@@ -64,6 +64,34 @@ namespace MuseDesk.Spatial
         public float userKeepOutRadius = 0.35f;
         [Tooltip("The keep-out cylinder runs from the floor to this far above the head.")]
         public float userKeepOutAboveHead = 0.15f;
+        [Tooltip("Above the keep-out cylinder, at any height: no part of the travelling office may come within " +
+                 "this horizontal distance of the head's vertical axis (never directly overhead).")]
+        public float userOverheadRadius = 0.20f;
+
+        [Header("Moves that start or end at the desk pose")]
+        [Tooltip("The desk pose is inside the user keep-out and on or against the user's own desk by design. " +
+                 "A move that starts (or ends) there is excused from a margin it already breaks at the desk pose, " +
+                 "until it first keeps that margin, and at most for this much travel from the desk end. After " +
+                 "that every margin applies in full.")]
+        public float deskStartRegion = 2.5f;
+        [Tooltip("While excused from the user keep-out, the office may come at most this much closer to the " +
+                 "head's axis than it is at the desk pose (and never closer than half its desk distance).")]
+        public float deskApproachAllowance = 0.05f;
+        [Tooltip("While excused from a furniture or wall margin, the office may not come closer to that " +
+                 "furniture or wall, nor sink deeper into its height range, by more than this.")]
+        public float deskContactTolerance = 0.01f;
+
+        [Header("Up-and-over routes (rise, travel, come down)")]
+        [Tooltip("The office base travels this far above the user's eyes on the level leg (lower under a low ceiling).")]
+        public float overRouteAboveHead = 0.25f;
+
+        [Header("Mast and ceiling mount")]
+        [Tooltip("Half thickness of the mast between the office and the ceiling mount, for the swept test.")]
+        public float mastRadius = 0.03f;
+        [Tooltip("Nothing recognised may be within this horizontal distance of the mount point on the ceiling...")]
+        public float mountClearance = 0.30f;
+        [Tooltip("...in the band from the ceiling down to this far below it.")]
+        public float mountDepth = 0.30f;
 
         [Header("Office footprint")]
         public Vector2 footprintCenterOffset = new Vector2(0f, 0.12f);
@@ -82,6 +110,26 @@ namespace MuseDesk.Spatial
         Wall = 3,
         /// <summary>The path could not be checked at all (no room outline around it, too many samples). Treated as blocked.</summary>
         Unverifiable = 4,
+    }
+
+    /// <summary>How a path is to be swept. The default value is the rule of the pod's own descent.</summary>
+    public struct PathSweepOptions
+    {
+        /// <summary>The path starts at the desk pose (see CeilingPlacementSettings.deskStartRegion).</summary>
+        public bool fromDesk;
+        /// <summary>The path ends at the desk pose. It is swept in reverse, as a path that starts there.</summary>
+        public bool toDesk;
+        /// <summary>The far end was placed by hand and is not vouched for by the room scan: the room outline
+        /// is not tested, and with no room data at all only the user rules are. Never set for a detected spot.</summary>
+        public bool handPlaced;
+        /// <summary>Also test the mast (a thin line from the top of the office to <see cref="mastTop"/>), and
+        /// on the high part of the path everything between the office and the ceiling.</summary>
+        public bool mast;
+        /// <summary>Where the mast meets the ceiling: above the dock's footprint centre, at ceiling height.</summary>
+        public Vector3 mastTop;
+        /// <summary>The larger clearance applies wherever the office base is above the top of the user
+        /// keep-out, instead of relative to the lower end of the path. Set for mode-change routes.</summary>
+        public bool absoluteHigh;
     }
 
     /// <summary>
@@ -117,6 +165,26 @@ namespace MuseDesk.Spatial
         public string blockingLabel;
         /// <summary>Where along the path (0 = start, 1 = end) the first blocking sample was.</summary>
         public float blockedAtFraction;
+        /// <summary>False when there was no room data to test against (a hand-placed spot): only the
+        /// user rules were applied.</summary>
+        public bool roomChecked;
+        /// <summary>True when the mast, not the office box, was what touched the blocking furniture.</summary>
+        public bool blockedByMast;
+
+        /// <summary>The refusal as the start of a sentence for the user, for example
+        /// "The way there is blocked by TABLE". Empty when the path is clear.</summary>
+        public string Words(string what)
+        {
+            if (clear) return "";
+            switch (blockedBy)
+            {
+                case CeilingPathBlock.Furniture:
+                    return what + " is blocked by " + (string.IsNullOrEmpty(blockingLabel) ? "furniture" : blockingLabel);
+                case CeilingPathBlock.User: return what + " passes too close to you";
+                case CeilingPathBlock.Wall: return what + " passes too close to a wall";
+                default: return what + " cannot be checked against the room scan";
+            }
+        }
 
         public string Describe()
         {
@@ -167,6 +235,8 @@ namespace MuseDesk.Spatial
         /// <summary>The swept path that was validated (valid placement), or the first path that was
         /// refused (no placement found). Retraction travels the same poses in reverse.</summary>
         public CeilingPathCheck path;
+        /// <summary>Where the mast meets the ceiling above the dock (valid placements only).</summary>
+        public Vector3 mastTop;
 
         public RootPose DockPose => new RootPose(dockPosition, dockRotation, 1f);
         public RootPose InspectionPose => new RootPose(inspectionPosition, inspectionRotation, 1f);
@@ -309,12 +379,14 @@ namespace MuseDesk.Spatial
                         if (!SpatialGeometry.RectInsidePolygon(ceiling.polygon, rect, s.wallMargin, out edge)) { t.offCeiling++; continue; }
                         string dockLabel;
                         if (OverlapsFurniture(room, rect, dockPos.y, dockPos.y + s.officeHeight, out dockLabel)) { t.dockBlocked++; continue; }
+                        RootPose dockPose = new RootPose(dockPos, dockRot, 1f);
+                        Vector3 mastTop = MastTop(dockPose, ceiling.height, s);
+                        if (MountBlocked(room, dockPose, mastTop, s, out dockLabel)) { t.dockBlocked++; continue; }
 
                         if (Options.Count == 0) { t.noInspect++; continue; }
 
-                        RootPose dockPose = new RootPose(dockPos, dockRot, 1f);
                         RootPose inspect; CeilingPathCheck check;
-                        if (!FirstClearPath(room, user, dockPose, footprint, s, out inspect, out check))
+                        if (!FirstClearPath(room, user, dockPose, mastTop, footprint, s, out inspect, out check))
                         {
                             Count(ref t, check);
                             continue;
@@ -330,6 +402,7 @@ namespace MuseDesk.Spatial
                         p.ceilingHeight = ceiling.height;
                         p.descentDistance = (dockPos - inspect.position).magnitude;
                         p.path = check;
+                        p.mastTop = mastTop;
                         p.explanation = string.Format(CultureInfo.InvariantCulture,
                             "Ceiling dock on your {0}, {1:F1} m to the side, {2:F1} m descent, {3:F2} m from the walls",
                             side > 0 ? "right" : "left", laterals[li], p.descentDistance, edge);
@@ -370,16 +443,17 @@ namespace MuseDesk.Spatial
         /// first whose whole path is clear. On failure <paramref name="check"/> is the refusal of the
         /// most preferred inspection pose.
         /// </summary>
-        static bool FirstClearPath(IRoomGeometry room, SeatedUser user, RootPose dock, Vector2 footprint,
+        static bool FirstClearPath(IRoomGeometry room, SeatedUser user, RootPose dock, Vector3 mastTop, Vector2 footprint,
                                    CeilingPlacementSettings s, out RootPose inspect, out CeilingPathCheck check)
         {
             inspect = dock;
             check = default(CeilingPathCheck);
             bool haveFail = false;
+            PathSweepOptions o = PodPathOptions(mastTop);
             for (int i = 0; i < Options.Count; i++)
             {
                 CeilingPathCheck c;
-                if (SweepPath(room, user, dock, Options[i], footprint, s, out c))
+                if (SweepPath(room, user, dock, Options[i], footprint, s, o, out c))
                 {
                     inspect = Options[i];
                     check = c;
@@ -478,24 +552,112 @@ namespace MuseDesk.Spatial
         }
 
         /// <summary>
-        /// The swept-volume test. Samples the office box along the path from <paramref name="from"/> to
-        /// <paramref name="to"/> (see the class summary for the rule) and returns true only when every
-        /// sample keeps its margins to furniture, the user and the room outline. The result does not
-        /// depend on the direction: sweeping to -> from tests the same boxes.
+        /// The swept-volume test for one straight path, with the rule of the pod's own descent.
+        /// Samples the office box along the path from <paramref name="from"/> to <paramref name="to"/>
+        /// (see the class summary for the rule) and returns true only when every sample keeps its
+        /// margins to furniture, the user and the room outline. The result does not depend on the
+        /// direction: sweeping to -> from tests the same boxes.
         /// </summary>
         public static bool SweepPath(IRoomGeometry room, SeatedUser user, RootPose from, RootPose to, Vector2 footprint,
                                      CeilingPlacementSettings s, out CeilingPathCheck check)
         {
+            return SweepRoute(room, user, WorkspaceRoute.Straight(from, to), footprint, s, default(PathSweepOptions), out check);
+        }
+
+        /// <summary>The swept-volume test for one straight path, with options (desk end, mast).</summary>
+        public static bool SweepPath(IRoomGeometry room, SeatedUser user, RootPose from, RootPose to, Vector2 footprint,
+                                     CeilingPlacementSettings s, PathSweepOptions o, out CeilingPathCheck check)
+        {
+            return SweepRoute(room, user, WorkspaceRoute.Straight(from, to), footprint, s, o, out check);
+        }
+
+        /// <summary>The options the pod's own path (dock to inspection pose and back) is swept with.</summary>
+        public static PathSweepOptions PodPathOptions(Vector3 mastTop)
+        {
+            var o = default(PathSweepOptions);
+            o.mast = true;
+            o.mastTop = mastTop;
+            return o;
+        }
+
+        /// <summary>Where the mast meets the ceiling: straight above the centre of the docked office's footprint.</summary>
+        public static Vector3 MastTop(RootPose dock, float ceilingHeight, CeilingPlacementSettings s)
+        {
+            Vector3 c = dock.position + dock.rotation * new Vector3(s.footprintCenterOffset.x * dock.scale, 0f, s.footprintCenterOffset.y * dock.scale);
+            return new Vector3(c.x, ceilingHeight, c.z);
+        }
+
+        /// <summary>
+        /// True when a recognised volume is within mountClearance of the mount point, in the band from
+        /// the ceiling down to mountDepth below it. Ceiling lamps and fans are usually NOT in the room
+        /// scan, so a "false" here says nothing about them.
+        /// </summary>
+        public static bool MountBlocked(IRoomGeometry room, RootPose dock, Vector3 mastTop, CeilingPlacementSettings s, out string label)
+        {
+            label = null;
+            float r = Mathf.Max(0f, s.mountClearance);
+            OrientedRect area = OrientedRect.FromYaw(new Vector2(mastTop.x, mastTop.z), new Vector2(r, r), dock.rotation.eulerAngles.y);
+            float lo = mastTop.y - Mathf.Max(0f, s.mountDepth), hi = mastTop.y;
+            for (int i = 0; i < room.FurnitureCount; i++)
+            {
+                FurnitureBox box = room.GetFurniture(i);
+                if (!SpatialGeometry.VerticalRangesTouch(lo, hi, box.minY, box.maxY, Mathf.Max(0f, s.sweepMarginVertical))) continue;
+                if (area.Overlaps(box.Footprint)) { label = box.label; return true; }
+            }
+            return false;
+        }
+
+        // Start contacts of a path that begins at the desk pose: which furniture boxes were already
+        // inside the margin there, how close, and how far into their height range. Scratch, main thread.
+        static bool[] _excused = new bool[32];
+        static float[] _excusedDistance = new float[32];
+        static float[] _excusedOverlap = new float[32];
+
+        /// <summary>
+        /// The swept-volume test for a route of one to three straight legs. Every leg is sampled as
+        /// in the class summary. What the options add:
+        ///
+        ///  - Desk end (fromDesk / toDesk). The desk pose is where the user put the office: it sits
+        ///    0.6 to 0.7 m in front of the seated user, lower than the head, inside the keep-out
+        ///    cylinder, and usually on or against the user's own desk and screen. Demanding the
+        ///    margins there would refuse every move. So a margin that is ALREADY broken at the desk
+        ///    pose (the user keep-out, a furniture volume, the room outline) is excused until the
+        ///    office first keeps it. While excused the office may not make it worse: it may not come
+        ///    closer to the head's axis than its desk distance less deskApproachAllowance, may not
+        ///    come closer to that furniture or sink deeper into its height range (deskContactTolerance),
+        ///    and may not come closer to the wall. Once a margin has been kept it applies for the
+        ///    rest of the path, and after deskStartRegion metres of travel every margin applies
+        ///    whether it was reached or not. A path that ends at the desk is the same path reversed.
+        ///  - Above the keep-out cylinder the office must stay userOverheadRadius from the head's
+        ///    axis: it never passes directly overhead.
+        ///  - Mast: a thin line from the top of the office to the mount point on the ceiling is
+        ///    tested against every furniture volume at every sample, and on the high part of the
+        ///    path the office box is extended up to the ceiling.
+        ///  - handPlaced: the outline is not tested; with no room data only the user rules are.
+        ///
+        /// Everything else fails closed, as before.
+        /// </summary>
+        public static bool SweepRoute(IRoomGeometry room, SeatedUser user, WorkspaceRoute route, Vector2 footprint,
+                                      CeilingPlacementSettings s, PathSweepOptions o, out CeilingPathCheck check)
+        {
             check = default(CeilingPathCheck);
-            check.start = from.position;
-            check.end = to.position;
-            check.startYawDeg = from.rotation.eulerAngles.y;
-            check.endYawDeg = to.rotation.eulerAngles.y;
             check.minFurnitureClearance = float.PositiveInfinity;
             check.minUserClearance = float.PositiveInfinity;
             check.minWallClearance = float.PositiveInfinity;
+            if (route.count < 2) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
+            check.start = route.First.position;
+            check.end = route.Last.position;
+            check.startYawDeg = route.First.rotation.eulerAngles.y;
+            check.endYawDeg = route.Last.rotation.eulerAngles.y;
 
-            if (room == null || !room.HasRoom) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
+            // A path that ends at the desk is swept from the desk end, so the same rule covers both.
+            bool flipped = o.toDesk && !o.fromDesk;
+            if (flipped) route = route.Reversed();
+            bool deskStart = o.fromDesk || o.toDesk;
+
+            bool haveRoom = room != null && room.HasRoom;
+            check.roomChecked = haveRoom;
+            if (!haveRoom && !o.handPlaced) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
 
             float step = EffectiveSweepStep(s);
             float pad = 0.5f * step;
@@ -505,96 +667,233 @@ namespace MuseDesk.Spatial
             check.samplePadding = pad;
 
             // Travel: how far the fastest point of the box moves. Translation, plus the arc of the
-            // footprint corner farthest from the root while the office turns.
-            float reach = SpatialGeometry.FootprintReach(footprint, s.footprintCenterOffset, Mathf.Max(from.scale, to.scale));
-            float turn = Quaternion.Angle(from.rotation, to.rotation) * Mathf.Deg2Rad;
-            float travel = (to.position - from.position).magnitude + reach * turn;
-            check.travel = travel;
-            if (float.IsNaN(travel) || float.IsInfinity(travel)) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
-            int n = Mathf.Max(1, Mathf.CeilToInt(travel / step));
-            if (n > MaxSweepSamples) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
+            // footprint corner farthest from the root while the office turns. Summed over the legs.
+            int legs = route.count - 1;
+            float total = 0f, routeLo = float.PositiveInfinity;
+            int samples = 0;
+            for (int l = 0; l < legs; l++)
+            {
+                float legTravel = LegTravel(route[l], route[l + 1], footprint, s);
+                if (float.IsNaN(legTravel) || float.IsInfinity(legTravel)) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
+                total += legTravel;
+                samples += Mathf.Max(1, Mathf.CeilToInt(legTravel / step)) + 1;
+                routeLo = Mathf.Min(routeLo, Mathf.Min(route[l].position.y, route[l + 1].position.y));
+            }
+            check.travel = total;
+            if (samples > MaxSweepSamples + legs) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
 
             // The room outline the path must stay inside: the floor outline around the user, or
             // failing that a ceiling outline over either end. None: the path cannot be checked.
             Vector2[] outline = null;
             float userBottom = float.NegativeInfinity;     // no floor under the user: the keep-out has no lower end
             Vector2 userXZ = new Vector2(user.head.x, user.head.z);
-            int fl = SpatialGeometry.FindFloor(room, userXZ);
-            if (fl >= 0) { RoomPlane floor = room.GetFloor(fl); outline = floor.polygon; userBottom = floor.height; }
-            else
+            if (haveRoom)
             {
-                int ci = SpatialGeometry.FindCeiling(room, SpatialGeometry.XZ(from.position));
-                if (ci < 0) ci = SpatialGeometry.FindCeiling(room, SpatialGeometry.XZ(to.position));
-                if (ci >= 0) outline = room.GetCeiling(ci).polygon;
+                int fl = SpatialGeometry.FindFloor(room, userXZ);
+                if (fl >= 0) { RoomPlane floor = room.GetFloor(fl); outline = floor.polygon; userBottom = floor.height; }
+                else
+                {
+                    int ci = SpatialGeometry.FindCeiling(room, SpatialGeometry.XZ(route.First.position));
+                    if (ci < 0) ci = SpatialGeometry.FindCeiling(room, SpatialGeometry.XZ(route.Last.position));
+                    if (ci >= 0) outline = room.GetCeiling(ci).polygon;
+                }
             }
-            if (outline == null) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
+            if (o.handPlaced) outline = null;               // a hand-placed spot is not vouched for by the scan
+            else if (outline == null) { check.blockedBy = CeilingPathBlock.Unverifiable; return false; }
+
             float userTop = user.head.y + s.userKeepOutAboveHead;
             float userNeed = Mathf.Max(0f, s.userKeepOutRadius) + pad;
+            float overNeed = Mathf.Max(0f, s.userOverheadRadius) + pad;
+            // Where the larger clearance starts: relative to the lower end (the pod's descent), or
+            // wherever the office is above the user's keep-out (mode-change routes).
+            float highAbove = o.absoluteHigh ? userTop : routeLo + s.highClearanceAboveInspection;
+            int furnitureCount = haveRoom ? room.FurnitureCount : 0;
 
-            // Vertical extent of the path. A sample stands for the poses up to half a step before
-            // and after it, so its box is stretched by half the height change per step, never
-            // beyond the ends of the path.
-            float pathLo = Mathf.Min(from.position.y, to.position.y);
-            float pathHi = Mathf.Max(from.position.y, to.position.y);
-            float dyHalf = 0.5f * (pathHi - pathLo) / n;
-            float highAbove = pathLo + s.highClearanceAboveInspection;
-            int furnitureCount = room.FurnitureCount;
-
-            for (int i = 0; i <= n; i++)
+            // The desk-end excuses (see the summary).
+            float region = Mathf.Max(0f, s.deskStartRegion);
+            float tolerance = Mathf.Max(0f, s.deskContactTolerance);
+            bool userExcused = deskStart, wallExcused = deskStart;
+            float userFloor = 0f, wallFloor = 0f;
+            if (deskStart && _excused.Length < furnitureCount)
             {
-                float k = (float)i / n;
-                RootPose p = PathPose(from, to, k);
-                OrientedRect rect = SpatialGeometry.Footprint(p.position, p.rotation, p.scale, footprint, s.footprintCenterOffset);
-                float lo = Mathf.Max(pathLo, p.position.y - dyHalf);
-                float hiBase = Mathf.Min(pathHi, p.position.y + dyHalf);
-                float hi = hiBase + s.officeHeight * p.scale;
-                // High part of the path: out of the user's sight and reach, so the larger clearance applies.
-                float need = marginH + pad + (hiBase > highAbove ? extraHigh : 0f);
-                check.sampleCount = i + 1;
+                _excused = new bool[furnitureCount];
+                _excusedDistance = new float[furnitureCount];
+                _excusedOverlap = new float[furnitureCount];
+            }
 
-                // 1. Recognised furniture at the office's height.
-                for (int f = 0; f < furnitureCount; f++)
+            float before = 0f;
+            bool first = true;
+            for (int l = 0; l < legs; l++)
+            {
+                RootPose from = route[l], to = route[l + 1];
+                float legTravel = LegTravel(from, to, footprint, s);
+                int n = Mathf.Max(1, Mathf.CeilToInt(legTravel / step));
+
+                // Vertical extent of the leg. A sample stands for the poses up to half a step before
+                // and after it, so its box is stretched by half the height change per step, never
+                // beyond the ends of the leg.
+                float pathLo = Mathf.Min(from.position.y, to.position.y);
+                float pathHi = Mathf.Max(from.position.y, to.position.y);
+                float dyHalf = 0.5f * (pathHi - pathLo) / n;
+
+                for (int i = 0; i <= n; i++)
                 {
-                    FurnitureBox box = room.GetFurniture(f);
-                    if (!SpatialGeometry.VerticalRangesTouch(lo, hi, box.minY, box.maxY, marginV)) continue;
-                    float d = rect.DistanceTo(box.Footprint);
-                    if (d < check.minFurnitureClearance) { check.minFurnitureClearance = d; check.nearestFurnitureLabel = box.label; }
-                    if (d <= need)
+                    float k = (float)i / n;
+                    RootPose p = PathPose(from, to, k);
+                    OrientedRect rect = SpatialGeometry.Footprint(p.position, p.rotation, p.scale, footprint, s.footprintCenterOffset);
+                    float lo = Mathf.Max(pathLo, p.position.y - dyHalf);
+                    float hiBase = Mathf.Min(pathHi, p.position.y + dyHalf);
+                    float hi = hiBase + s.officeHeight * p.scale;
+                    // High part of the path: out of the user's sight and reach, so the larger clearance applies.
+                    bool high = hiBase > highAbove;
+                    float need = marginH + pad + (high ? extraHigh : 0f);
+                    // With a mast, everything between a high office and the ceiling is in the way too.
+                    float boxTop = o.mast && high && o.mastTop.y > hi ? o.mastTop.y : hi;
+                    float travelled = before + k * legTravel;
+                    bool inRegion = deskStart && travelled <= region;
+                    float fraction = total > 1e-6f ? travelled / total : 0f;
+                    if (flipped) fraction = 1f - fraction;
+                    check.sampleCount++;
+
+                    // 1. Recognised furniture at the office's height.
+                    for (int f = 0; f < furnitureCount; f++)
                     {
-                        check.blockedBy = CeilingPathBlock.Furniture;
-                        check.blockingLabel = box.label;
-                        check.blockedAtFraction = k;
-                        return false;
-                    }
-                }
+                        FurnitureBox box = room.GetFurniture(f);
+                        bool touches = SpatialGeometry.VerticalRangesTouch(lo, boxTop, box.minY, box.maxY, marginV);
+                        float d = float.PositiveInfinity;
+                        if (touches)
+                        {
+                            d = rect.DistanceTo(box.Footprint);
+                            if (d < check.minFurnitureClearance) { check.minFurnitureClearance = d; check.nearestFurnitureLabel = box.label; }
+                        }
+                        bool breaks = touches && d <= need;
+                        if (deskStart)
+                        {
+                            // How far the office box reaches into the furniture's height range (negative: a gap).
+                            float overlap = Mathf.Min(p.position.y + s.officeHeight * p.scale, box.maxY) - Mathf.Max(p.position.y, box.minY);
+                            if (first)
+                            {
+                                _excused[f] = breaks;
+                                _excusedDistance[f] = d;
+                                _excusedOverlap[f] = overlap;
+                            }
+                            else if (!breaks) _excused[f] = false;          // margin kept once: it applies from here on
+                            if (breaks && _excused[f] && inRegion
+                                && d >= _excusedDistance[f] - tolerance && overlap <= _excusedOverlap[f] + tolerance)
+                                breaks = false;                             // still leaving it, and not getting worse
+                        }
+                        if (breaks)
+                        {
+                            check.blockedBy = CeilingPathBlock.Furniture;
+                            check.blockingLabel = box.label;
+                            check.blockedAtFraction = fraction;
+                            return false;
+                        }
 
-                // 2. The user: a cylinder from the floor to above the head.
-                if (hi >= userBottom && lo <= userTop)
-                {
-                    float d = rect.DistanceToPoint(userXZ);
-                    if (d < check.minUserClearance) check.minUserClearance = d;
-                    if (d <= userNeed)
+                        // The mast: a thin line from the top of the office to the mount on the ceiling.
+                        if (o.mast && hi < o.mastTop.y)
+                        {
+                            Vector3 foot = new Vector3(rect.center.x, hi, rect.center.y);
+                            if (SpatialGeometry.SegmentHitsBox(foot, o.mastTop, box, Mathf.Max(0f, s.mastRadius) + marginH + pad, marginV))
+                            {
+                                check.blockedBy = CeilingPathBlock.Furniture;
+                                check.blockingLabel = box.label;
+                                check.blockedAtFraction = fraction;
+                                check.blockedByMast = true;
+                                return false;
+                            }
+                        }
+                    }
+
+                    // 2. The user: a cylinder from the floor to above the head, and above it "never overhead".
                     {
-                        check.blockedBy = CeilingPathBlock.User;
-                        check.blockedAtFraction = k;
-                        return false;
+                        float d = rect.DistanceToPoint(userXZ);
+                        bool atUserHeight = hi >= userBottom && lo <= userTop;
+                        if (atUserHeight && d < check.minUserClearance) check.minUserClearance = d;
+                        bool kept = atUserHeight ? d > userNeed : d > overNeed;
+                        if (first && deskStart) userFloor = Mathf.Max(d - Mathf.Max(0f, s.deskApproachAllowance), 0.5f * d);
+                        if (kept) userExcused = false;
+                        else if (!(userExcused && inRegion && d >= userFloor))
+                        {
+                            if (d < check.minUserClearance) check.minUserClearance = d;
+                            check.blockedBy = CeilingPathBlock.User;
+                            check.blockedAtFraction = fraction;
+                            return false;
+                        }
                     }
-                }
 
-                // 3. The room outline (walls).
-                float edge;
-                bool inside = SpatialGeometry.RectInsidePolygon(outline, rect, 0f, out edge);
-                if (edge < check.minWallClearance) check.minWallClearance = edge;
-                if (!inside || edge <= marginH + pad)
-                {
-                    check.blockedBy = CeilingPathBlock.Wall;
-                    check.blockedAtFraction = k;
-                    return false;
+                    // 3. The room outline (walls).
+                    if (outline != null)
+                    {
+                        float edge;
+                        bool inside = SpatialGeometry.RectInsidePolygon(outline, rect, 0f, out edge);
+                        if (edge < check.minWallClearance) check.minWallClearance = edge;
+                        bool kept = inside && edge > marginH + pad;
+                        if (first && deskStart) wallFloor = edge - tolerance;
+                        if (kept) wallExcused = false;
+                        else if (!(wallExcused && inRegion && edge >= wallFloor))
+                        {
+                            check.blockedBy = CeilingPathBlock.Wall;
+                            check.blockedAtFraction = fraction;
+                            return false;
+                        }
+                    }
+                    first = false;
                 }
+                before += legTravel;
             }
 
             check.clear = true;
             return true;
+        }
+
+        static float LegTravel(RootPose from, RootPose to, Vector2 footprint, CeilingPlacementSettings s)
+        {
+            float reach = SpatialGeometry.FootprintReach(footprint, s.footprintCenterOffset, Mathf.Max(from.scale, to.scale));
+            float turn = Quaternion.Angle(from.rotation, to.rotation) * Mathf.Deg2Rad;
+            return (to.position - from.position).magnitude + reach * turn;
+        }
+
+        /// <summary>The height (of the office base) at which an up-and-over route travels: overRouteAboveHead
+        /// above the eyes, lowered so the office still hangs dockDrop below any detected ceiling over either end.</summary>
+        public static float TransitHeight(IRoomGeometry room, SeatedUser user, RootPose from, RootPose to, CeilingPlacementSettings s)
+        {
+            float h = user.head.y + s.overRouteAboveHead;
+            if (room != null && room.HasRoom)
+            {
+                int a = SpatialGeometry.FindCeiling(room, SpatialGeometry.XZ(from.position));
+                int b = SpatialGeometry.FindCeiling(room, SpatialGeometry.XZ(to.position));
+                if (a >= 0) h = Mathf.Min(h, room.GetCeiling(a).height - s.dockDrop);
+                if (b >= 0) h = Mathf.Min(h, room.GetCeiling(b).height - s.dockDrop);
+            }
+            return h;
+        }
+
+        /// <summary>
+        /// Finds a route for a mode change (desk, floor spot, dock or inspection pose to another of
+        /// them) whose swept volume is clear, or says why there is none. Two shapes are tried:
+        ///
+        ///  1. the straight line, when <paramref name="allowStraight"/> (never for a trip to the dock:
+        ///     a diagonal from the desk would turn the office at the user's head height);
+        ///  2. up and over: straight up without turning until the office base is above the user's
+        ///     keep-out, across at that height (the turn happens up there), straight down.
+        ///
+        /// The first that passes <see cref="SweepRoute"/> is returned. When none passes, the route
+        /// and check returned are those of the last shape tried. Nothing is relaxed.
+        /// </summary>
+        public static bool PlanRoute(IRoomGeometry room, SeatedUser user, RootPose from, RootPose to, Vector2 footprint,
+                                     CeilingPlacementSettings s, PathSweepOptions o, bool allowStraight,
+                                     out WorkspaceRoute route, out CeilingPathCheck check)
+        {
+            o.absoluteHigh = true;
+            route = WorkspaceRoute.Straight(from, to);
+            check = default(CeilingPathCheck);
+            if (allowStraight && SweepRoute(room, user, route, footprint, s, o, out check)) return true;
+
+            WorkspaceRoute over = WorkspaceRoute.UpAndOver(from, to, TransitHeight(room, user, from, to, s));
+            if (over.count == 2 && allowStraight) return false;      // the same straight line again
+            route = over;
+            return SweepRoute(room, user, over, footprint, s, o, out check);
         }
 
         /// <summary>
@@ -612,18 +911,18 @@ namespace MuseDesk.Spatial
                 return false;
             }
             int ci = SpatialGeometry.FindCeiling(room, new Vector2(dock.position.x, dock.position.z));
-            if (ci < 0) { result.explanation = "Saved dock is not under the detected ceiling"; return false; }
+            if (ci < 0) { result.explanation = "The ceiling dock is not under the detected ceiling"; return false; }
             RoomPlane ceiling = room.GetCeiling(ci);
-            if (Mathf.Abs((ceiling.height - s.dockDrop) - dock.position.y) > 0.15f) { result.explanation = "Saved dock is not at ceiling height"; return false; }
+            if (Mathf.Abs((ceiling.height - s.dockDrop) - dock.position.y) > 0.15f) { result.explanation = "The ceiling dock is not at ceiling height"; return false; }
             float dx = dock.position.x - user.head.x, dz = dock.position.z - user.head.z;
-            if (Mathf.Sqrt(dx * dx + dz * dz) < s.minHorizontalFromUser) { result.explanation = "Saved dock is now overhead"; return false; }
+            if (Mathf.Sqrt(dx * dx + dz * dz) < s.minHorizontalFromUser) { result.explanation = "The ceiling dock is now overhead"; return false; }
             OrientedRect rect = SpatialGeometry.Footprint(dock.position, dock.rotation, 1f, footprint, s.footprintCenterOffset);
             float edge;
-            if (!SpatialGeometry.RectInsidePolygon(ceiling.polygon, rect, s.wallMargin, out edge)) { result.explanation = "Saved dock is too close to a wall"; return false; }
+            if (!SpatialGeometry.RectInsidePolygon(ceiling.polygon, rect, s.wallMargin, out edge)) { result.explanation = "The ceiling dock is too close to a wall"; return false; }
             string dockLabel;
             if (OverlapsFurniture(room, rect, dock.position.y, dock.position.y + s.officeHeight, out dockLabel))
             {
-                result.explanation = "Saved dock is now blocked by " + LabelOf(dockLabel);
+                result.explanation = "The ceiling dock is now blocked by " + LabelOf(dockLabel);
                 return false;
             }
 
@@ -638,8 +937,15 @@ namespace MuseDesk.Spatial
                 return false;
             }
             RootPose dockPose = new RootPose(dock.position, dock.rotation, 1f);
+            Vector3 mastTop = MastTop(dockPose, ceiling.height, s);
+            if (MountBlocked(room, dockPose, mastTop, s, out dockLabel))
+            {
+                Options.Clear();
+                result.explanation = "The ceiling above the dock is now blocked by " + LabelOf(dockLabel);
+                return false;
+            }
             RootPose inspect; CeilingPathCheck check;
-            bool clear = FirstClearPath(room, user, dockPose, footprint, s, out inspect, out check);
+            bool clear = FirstClearPath(room, user, dockPose, mastTop, footprint, s, out inspect, out check);
             Options.Clear();
             if (!clear)
             {
@@ -647,13 +953,13 @@ namespace MuseDesk.Spatial
                 switch (check.blockedBy)
                 {
                     case CeilingPathBlock.Furniture:
-                        result.explanation = "The way down from the saved dock is blocked by " + LabelOf(check.blockingLabel); break;
+                        result.explanation = "The way down from the dock is blocked by " + LabelOf(check.blockingLabel); break;
                     case CeilingPathBlock.User:
-                        result.explanation = "The way down from the saved dock passes too close to you"; break;
+                        result.explanation = "The way down from the dock passes too close to you"; break;
                     case CeilingPathBlock.Wall:
-                        result.explanation = "The way down from the saved dock passes too close to a wall"; break;
+                        result.explanation = "The way down from the dock passes too close to a wall"; break;
                     default:
-                        result.explanation = "The way down from the saved dock could not be checked against the room"; break;
+                        result.explanation = "The way down from the dock could not be checked against the room"; break;
                 }
                 return false;
             }
@@ -667,6 +973,7 @@ namespace MuseDesk.Spatial
             result.ceilingHeight = ceiling.height;
             result.descentDistance = (dock.position - inspect.position).magnitude;
             result.path = check;
+            result.mastTop = mastTop;
             result.explanation = "Saved ceiling dock restored";
             return true;
         }

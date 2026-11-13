@@ -15,6 +15,14 @@ namespace MuseDesk.Spatial
     /// Rules it enforces:
     ///  - with a mode's flag off, a request for that mode does nothing at all;
     ///  - the office moves only on Confirm, never on a request or a preview;
+    ///  - EVERY move is along a route whose swept volume was just shown clear of recognised
+    ///    furniture, the user and the walls (CeilingPlacementEvaluator.PlanRoute / SweepRoute /
+    ///    ValidateDock). When no route is clear the move is refused with words that say what to do
+    ///    next. Nothing is teleported and no margin is relaxed;
+    ///  - a running move can be stopped at any moment (<see cref="StopMove"/>): it goes back along
+    ///    the poses it already travelled, and the mode goes back with it;
+    ///  - after a recenter the office is only ever put at a pose that was validated against the
+    ///    room as it is now; otherwise it stays where it is and the placement must be chosen again;
     ///  - a position is called "detected floor" only when it came from room data and still passes
     ///    the checks; without room data the user is offered manual placement, in words;
     ///  - Ceiling mode exists only on real ceiling geometry;
@@ -24,6 +32,18 @@ namespace MuseDesk.Spatial
     /// </summary>
     public sealed class SpatialDirectorCore
     {
+        /// <summary>Everything needed to put the bookkeeping back when a move is called off.</summary>
+        struct Resting
+        {
+            public PlacementMode mode;
+            public bool hasLocal, handPlaced, podEngaged;
+            public Vector3 localPos, dockLocalPos, inspectLocalPos;
+            public Quaternion localRot, dockLocalRot, inspectLocalRot;
+            public float localScale;
+            public RootPose dock, inspection;
+            public CeilingPlacement ceiling;
+        }
+
         readonly SpatialFeatureFlags _flags;
         readonly WorkspaceTransitionMachine _mover;
         readonly CeilingPodMachine _pod;
@@ -39,12 +59,20 @@ namespace MuseDesk.Spatial
 
         RootPose _deskPose;
         bool _hasDeskPose;
-        PlacementMode _modeBeforeMove;
+        bool _hasDeskLocal;
+        Pose _deskReference;
+        Vector3 _deskLocalPos;
+        Quaternion _deskLocalRot = Quaternion.identity;
+        Resting _before;
         bool _awaitingMove;
+        bool _needsConfirm;
+        bool _handPlaced;
 
         int _index;
         RootPose _previewOrigin;
-        CeilingPlacement _ceiling;
+        string _previewProblem;
+        CeilingPlacement _ceiling;          // the confirmed dock (Ceiling mode)
+        CeilingPlacement _previewCeiling;   // the dock being previewed; becomes _ceiling on Confirm
         int _ceilingSide = 1;
 
         // The confirmed placement relative to the room reference (recenter, save).
@@ -57,6 +85,7 @@ namespace MuseDesk.Spatial
         bool _lastRemote, _lastTransitioning;
 
         public FloorPlacementSettings floorSettings = new FloorPlacementSettings();
+        /// <summary>Ceiling search numbers, and the swept-path numbers every move uses (Floor moves too).</summary>
         public CeilingPlacementSettings ceilingSettings = new CeilingPlacementSettings();
         /// <summary>Office footprint (width, depth) in metres at scale 1.</summary>
         public Vector2 footprint = new Vector2(1.0f, 0.7f);
@@ -67,6 +96,9 @@ namespace MuseDesk.Spatial
         public float manualSideDistance = 1.2f;
         [Tooltip("Manual placement only: assumed eye height above the floor. A guess, and labelled as one.")]
         public float manualAssumedEyeHeight = 1.15f;
+        [Tooltip("Off (default): with no room data the way back to the desk cannot be checked and is refused. " +
+                 "On: it is then travelled with the user rules only (an escape hatch, said in words).")]
+        public bool returnToDeskWithoutRoom;
 
         public PlacementMode Mode { get; private set; }
         public DirectorPhase Phase { get; private set; }
@@ -76,13 +108,23 @@ namespace MuseDesk.Spatial
         public RootPose PreviewPose { get; private set; }
         /// <summary>True when the previewed pose comes from room data; false for manual placement.</summary>
         public bool PreviewIsDetected { get; private set; }
-        /// <summary>False when a detected pose was nudged somewhere that fails the room checks.</summary>
+        /// <summary>False when a detected pose was nudged somewhere that fails the room checks, or
+        /// somewhere the office cannot be taken to along a clear route.</summary>
         public bool PreviewValid { get; private set; }
         public int CandidateCount => _candidates.Count;
         public int CandidateIndex => _index;
         public string StatusText { get; private set; }
         /// <summary>Set when the user reset the placement: the host deletes the saved record.</summary>
         public bool PlacementCleared { get; set; }
+        /// <summary>
+        /// True when the office is somewhere that could not be validated (a recenter the room data did
+        /// not confirm, or a halt off its path). It stays where it is; the pod will not move it;
+        /// the way out is Desk (itself a swept route) and placing it again.
+        /// </summary>
+        public bool PlacementNeedsConfirmation => _needsConfirm || _pod.Stranded;
+        /// <summary>The route of the last move that was planned (accepted or refused), and its check.</summary>
+        public WorkspaceRoute LastRoute { get; private set; }
+        public CeilingPathCheck LastRouteCheck { get; private set; }
 
         public bool IsRemote
         {
@@ -106,7 +148,8 @@ namespace MuseDesk.Spatial
         public WorkspaceTransitionMachine Mover => _mover;
         public CeilingPodMachine Pod => _pod;
         public FloorEvaluationReport LastFloorReport => _report;
-        public CeilingPlacement LastCeiling => _ceiling;
+        /// <summary>The ceiling placement on show: the previewed one during a ceiling preview, otherwise the confirmed one.</summary>
+        public CeilingPlacement LastCeiling => Phase == DirectorPhase.Previewing && PendingMode == PlacementMode.Ceiling ? _previewCeiling : _ceiling;
         public RootPose DeskPose => _deskPose;
         public bool HasDeskPose => _hasDeskPose;
 
@@ -150,6 +193,86 @@ namespace MuseDesk.Spatial
             return true;
         }
 
+        // ───────────────────────── routes ─────────────────────────
+
+        /// <summary>
+        /// Plan the route of a mode change and sweep it. <paramref name="fromDesk"/> / <paramref name="toDesk"/>
+        /// mark the end that is the desk pose (see CeilingPlacementSettings.deskStartRegion);
+        /// <paramref name="handPlaced"/> marks a far end the scan does not vouch for.
+        /// </summary>
+        bool PlanMove(SeatedUser user, RootPose from, RootPose to, bool fromDesk, bool toDesk, bool allowStraight,
+                      bool handPlaced, bool mast, Vector3 mastTop, out WorkspaceRoute route, out CeilingPathCheck check)
+        {
+            PathSweepOptions o = default(PathSweepOptions);
+            o.fromDesk = fromDesk;
+            o.toDesk = toDesk;
+            o.handPlaced = handPlaced;
+            o.mast = mast;
+            o.mastTop = mastTop;
+            bool ok = CeilingPlacementEvaluator.PlanRoute(_room, user, from, to, footprint, ceilingSettings, o, allowStraight, out route, out check);
+            LastRoute = route;
+            LastRouteCheck = check;
+            return ok;
+        }
+
+        /// <summary>The route from where the office is now to a floor spot (straight if clear, else up and over).</summary>
+        bool PlanToFloor(SeatedUser user, RootPose target, bool handPlaced, out WorkspaceRoute route, out CeilingPathCheck check)
+        {
+            bool leavingCeiling = Mode == PlacementMode.Ceiling && _ceiling.valid;
+            return PlanMove(user, _mover.CurrentPose, target, Mode == PlacementMode.Desk, false, true, handPlaced,
+                            leavingCeiling, _ceiling.mastTop, out route, out check);
+        }
+
+        float MoveSeconds(WorkspaceRoute route)
+        {
+            return Mathf.Clamp(route.Length / Mathf.Max(0.05f, moveMetresPerSecond), minMoveSeconds, maxMoveSeconds);
+        }
+
+        void Snapshot()
+        {
+            _before.mode = Mode;
+            _before.hasLocal = _hasLocal;
+            _before.handPlaced = _handPlaced;
+            _before.localPos = _localPos; _before.localRot = _localRot; _before.localScale = _localScale;
+            _before.dockLocalPos = _dockLocalPos; _before.dockLocalRot = _dockLocalRot;
+            _before.inspectLocalPos = _inspectLocalPos; _before.inspectLocalRot = _inspectLocalRot;
+            _before.podEngaged = _pod.Active && _pod.State == CeilingPodState.Engaged;
+            _before.dock = _pod.DockPose;
+            _before.inspection = _pod.InspectionPose;
+            _before.ceiling = _ceiling;
+        }
+
+        /// <summary>A move was called off and the office is back where it rested: put the mode and
+        /// the bookkeeping back too.</summary>
+        void Revert(string status)
+        {
+            _awaitingMove = false;
+            Mode = _before.mode;
+            _hasLocal = _before.hasLocal;
+            _handPlaced = _before.handPlaced;
+            _localPos = _before.localPos; _localRot = _before.localRot; _localScale = _before.localScale;
+            _dockLocalPos = _before.dockLocalPos; _dockLocalRot = _before.dockLocalRot;
+            _inspectLocalPos = _before.inspectLocalPos; _inspectLocalRot = _before.inspectLocalRot;
+            _ceiling = _before.ceiling;
+            if (Mode == PlacementMode.Ceiling) _pod.Restore(_before.dock, _before.inspection, _before.podEngaged);
+            else if (_pod.Active) _pod.Deactivate();
+            StatusText = status ?? "";
+            Touch();
+        }
+
+        void RememberDesk(RootPose current)
+        {
+            _deskPose = current;
+            _hasDeskPose = true;
+            _hasDeskLocal = false;
+            Pose reference;
+            if (_room == null || !_room.TryGetReferencePose(out reference)) return;
+            _hasDeskLocal = true;
+            _deskReference = reference;
+            _deskLocalPos = WorkspacePlacementCodec.ToLocal(reference, current.position);
+            _deskLocalRot = WorkspacePlacementCodec.ToLocal(reference, current.rotation);
+        }
+
         // ───────────────────────── requests ─────────────────────────
 
         /// <summary>
@@ -166,7 +289,7 @@ namespace MuseDesk.Spatial
                 return false;
             }
             if (_deskReady != null && !_deskReady()) return Refuse("The office is still being placed");
-            if (IsTransitioning) return Refuse("The office is moving; try again when it has stopped");
+            if (IsTransitioning) return Refuse("The office is moving. Press Stop, or wait until it has stopped.");
             if (Phase == DirectorPhase.Previewing) EndPreview();
 
             if (mode == PlacementMode.Desk) return ReturnToDesk();
@@ -178,14 +301,36 @@ namespace MuseDesk.Spatial
         {
             if (!_hasDeskPose) return Refuse("No desk position is known");
             if (Held) return Refuse("Put the paper down first, then the office can move");
-            var r = _mover.TryMove(_deskPose, MoveSeconds(_mover.CurrentPose.position, _deskPose.position));
-            if (r == TransitionStartResult.Held || r == TransitionStartResult.AlreadyRunning) return Refuse(_mover.LastRefusal);
+
+            RootPose current = _mover.CurrentPose;
+            SeatedUser user = _user();
+            bool fromCeiling = Mode == PlacementMode.Ceiling && _ceiling.valid;
+            bool engaged = _pod.Active && _pod.State == CeilingPodState.Engaged;
+            bool roomless = _room == null || !_room.HasRoom;
+            // A straight line is tried from the floor and from beside the user; from the dock the
+            // office comes across above head height and then straight down onto the desk pose.
+            bool allowStraight = Mode == PlacementMode.Floor || engaged;
+            bool unchecked_ = _handPlaced || (roomless && returnToDeskWithoutRoom);
+            WorkspaceRoute route; CeilingPathCheck check;
+            if (!PlanMove(user, current, _deskPose, false, true, allowStraight, unchecked_, fromCeiling, _ceiling.mastTop, out route, out check))
+            {
+                if (check.blockedBy == CeilingPathBlock.User)
+                    return Refuse(check.Words("The way back to the desk") + ". Sit back, then press Desk again.");
+                if (check.blockedBy == CeilingPathBlock.Unverifiable)
+                    return Refuse(check.Words("The way back to the desk") + ". Press Desk again when the room scan is back.");
+                return Refuse(check.Words("The way back to the desk") + ". Clear the way, then press Desk again.");
+            }
+
+            Snapshot();
+            var r = _mover.TryMoveRoute(route, MoveSeconds(route));
+            if (r != TransitionStartResult.Started && r != TransitionStartResult.AlreadyThere) return Refuse(_mover.LastRefusal);
             _pod.CancelPendingRetract();        // the pod must not start its own move under this one
-            _modeBeforeMove = Mode;
             _awaitingMove = r == TransitionStartResult.Started;
             Mode = PlacementMode.Desk;
             _hasLocal = false;
-            StatusText = "";
+            _handPlaced = false;
+            _needsConfirm = false;
+            StatusText = roomless && !check.roomChecked ? "Returning to the desk (not checked against your room)" : "";
             if (r == TransitionStartResult.AlreadyThere && _pod.Active) _pod.Deactivate();
             Touch();
             return true;
@@ -195,13 +340,26 @@ namespace MuseDesk.Spatial
         {
             SeatedUser user = _user();
             _candidates.Clear();
-            if (_room != null) FloorPlacementEvaluator.Evaluate(_room, user, footprint, floorSettings, _candidates, _report);
+            int unreachable = 0;
+            if (_room != null)
+            {
+                FloorPlacementEvaluator.Evaluate(_room, user, footprint, floorSettings, _candidates, _report);
+                // Only spots the office can be taken to along a clear route are offered.
+                for (int i = _candidates.Count - 1; i >= 0; i--)
+                {
+                    WorkspaceRoute route; CeilingPathCheck check;
+                    if (PlanToFloor(user, _candidates[i].Pose, false, out route, out check)) continue;
+                    _candidates.RemoveAt(i);
+                    unreachable++;
+                }
+            }
             else { _report.Clear(); _report.availability = RoomAvailability.NotLoadedYet; }
             _roomDirty = false;
 
             PendingMode = PlacementMode.Floor;
             Phase = DirectorPhase.Previewing;
             _index = 0;
+            _previewProblem = null;
             if (_candidates.Count > 0)
             {
                 PreviewIsDetected = true;
@@ -218,9 +376,12 @@ namespace MuseDesk.Spatial
                 PreviewValid = true;
                 _previewOrigin = ManualPose(user);
                 PreviewPose = _previewOrigin;
-                StatusText = _report.availability != RoomAvailability.Available
-                    ? "Room scan not available: place it by hand. " + SpatialGeometry.ReasonText(_report.availability) + "."
-                    : "No clear floor spot found: place it by hand. This spot is not checked against your room.";
+                if (_report.availability != RoomAvailability.Available)
+                    StatusText = "Room scan not available: place it by hand. " + SpatialGeometry.ReasonText(_report.availability) + ".";
+                else if (unreachable > 0)
+                    StatusText = "No floor spot with a clear way to it: place it by hand. This spot is not checked against your room.";
+                else
+                    StatusText = "No clear floor spot found: place it by hand. This spot is not checked against your room.";
             }
             Touch();
             return true;
@@ -238,18 +399,19 @@ namespace MuseDesk.Spatial
             if (!ok)
             {
                 // Ceiling mode exists only on real ceiling geometry: no manual fallback.
-                return Refuse("Ceiling mode is not available: " + fresh.explanation + ".");
+                return Refuse("Ceiling mode is not available: " + fresh.explanation + ". Use Floor or stay at the desk.");
             }
-            _ceiling = fresh;
+            _previewCeiling = fresh;
             PendingMode = PlacementMode.Ceiling;
             Phase = DirectorPhase.Previewing;
             _candidates.Clear();
             _index = 0;
+            _previewProblem = null;
             PreviewIsDetected = true;
             PreviewValid = true;
-            _previewOrigin = _ceiling.InspectionPose;
+            _previewOrigin = _previewCeiling.InspectionPose;
             PreviewPose = _previewOrigin;       // the outline shows where the office will come down
-            StatusText = _ceiling.explanation + ". The outline shows where it comes down. Confirm or Cancel.";
+            StatusText = _previewCeiling.explanation + ". The outline shows where it comes down. Confirm or Cancel.";
             Touch();
             return true;
         }
@@ -274,11 +436,13 @@ namespace MuseDesk.Spatial
             if (Phase != DirectorPhase.Previewing) return;
             if (PendingMode == PlacementMode.Ceiling)
             {
+                CeilingPlacement shown = _previewCeiling;
                 _ceilingSide = -_ceilingSide;
                 if (!BeginCeilingPreview())
                 {
                     // Nothing on the other side: keep the dock already shown.
                     _ceilingSide = -_ceilingSide;
+                    _previewCeiling = shown;
                     StatusText = "No other ceiling dock found. Confirm or Cancel.";
                     Touch();
                 }
@@ -289,6 +453,7 @@ namespace MuseDesk.Spatial
             _previewOrigin = _candidates[_index].Pose;
             PreviewPose = _previewOrigin;
             PreviewValid = true;
+            _previewProblem = null;
             StatusText = DetectedStatus();
             Touch();
         }
@@ -320,8 +485,14 @@ namespace MuseDesk.Spatial
             {
                 string reason;
                 PreviewValid = FloorPlacementEvaluator.ValidatePose(_room, user, p, footprint, floorSettings, true, out reason);
-                StatusText = PreviewValid ? "Detected floor, adjusted by hand. Confirm or Cancel."
-                                          : reason + ". Move it back onto clear floor.";
+                if (!PreviewValid) _previewProblem = reason + ". Move it back onto clear floor.";
+                else
+                {
+                    WorkspaceRoute route; CeilingPathCheck check;
+                    PreviewValid = PlanToFloor(user, p, false, out route, out check);
+                    _previewProblem = PreviewValid ? null : check.Words("The way to that spot") + ". Move it or choose Next.";
+                }
+                StatusText = PreviewValid ? "Detected floor, adjusted by hand. Confirm or Cancel." : _previewProblem;
             }
             else
             {
@@ -341,6 +512,7 @@ namespace MuseDesk.Spatial
             {
                 PreviewPose = _previewOrigin;
                 PreviewValid = true;
+                _previewProblem = null;
                 if (PendingMode == PlacementMode.Floor && PreviewIsDetected) StatusText = DetectedStatus();
                 Touch();
                 return;
@@ -348,13 +520,54 @@ namespace MuseDesk.Spatial
             if (Mode != PlacementMode.Desk && RequestMode(PlacementMode.Desk)) PlacementCleared = true;
         }
 
-        /// <summary>Leave the preview without moving anything.</summary>
+        /// <summary>
+        /// The one "get me out of this" entry. While previewing: leave the preview without moving
+        /// anything. While the office is moving: stop the move (<see cref="StopMove"/>). Otherwise nothing.
+        /// </summary>
         public void Cancel()
         {
-            if (Phase != DirectorPhase.Previewing) return;
-            EndPreview();
-            StatusText = "";
-            Touch();
+            if (Phase == DirectorPhase.Previewing)
+            {
+                EndPreview();
+                StatusText = "";
+                Touch();
+                return;
+            }
+            StopMove();
+        }
+
+        /// <summary>
+        /// Stop whatever is moving the office, in every phase:
+        ///  - a mode change in flight (Desk to Floor, Floor or Ceiling to Desk, ...): it halts and
+        ///    goes back along the poses already travelled; the mode goes back to what it was;
+        ///  - the first trip up to the ceiling dock: the same, and Ceiling mode is left again;
+        ///  - the pod coming down: it goes back up to the dock along the same path, ending Docked;
+        ///  - the pod going up: not stopped, it is moving away from the user;
+        ///  - while a paper is held (transition hold): the office only HALTS, because going back would
+        ///    take it away from the paper; it goes back when the paper is put down;
+        ///  - nothing moving, already going back, previewing: nothing happens.
+        /// Returns true when it stopped something. Safe to call at any time, any number of times.
+        /// </summary>
+        public bool StopMove()
+        {
+            if (Phase == DirectorPhase.Previewing) return false;
+            bool stopped = false;
+            if (_awaitingMove && _mover.IsRunning)
+            {
+                if (_mover.IsReversing) return false;               // already stopped
+                stopped = _mover.Reverse();
+                if (stopped && _mover.IsRunning)
+                    StatusText = _mover.IsHalted ? "Stopped. Put the paper down and the office goes back."
+                                                 : "Stopped: going back to where it was";
+            }
+            else if (_pod.Active)
+            {
+                stopped = _pod.RequestStop();
+                if (stopped) StatusText = "";                       // the pod's own words are shown
+                SyncPod();
+            }
+            if (stopped) Touch();
+            return stopped;
         }
 
         void EndPreview()
@@ -362,41 +575,76 @@ namespace MuseDesk.Spatial
             Phase = DirectorPhase.Idle;
             _candidates.Clear();
             _index = 0;
+            _previewProblem = null;
         }
 
-        /// <summary>Accept the previewed spot: only now does the office move.</summary>
+        /// <summary>Accept the previewed spot: only now does the office move, and only along a route
+        /// that was just swept and found clear.</summary>
         public bool Confirm()
         {
             if (Phase != DirectorPhase.Previewing) return false;
-            if (!Enabled(PendingMode)) { Cancel(); return false; }
-            if (PreviewIsDetected && !PreviewValid) return Refuse("That spot is not clear floor. Move it or choose Next.");
+            if (!Enabled(PendingMode)) { EndPreview(); StatusText = ""; Touch(); return false; }
+            if (PreviewIsDetected && !PreviewValid)
+                return Refuse(string.IsNullOrEmpty(_previewProblem) ? "That spot is not clear floor. Move it or choose Next." : _previewProblem);
             if (Held) return Refuse("Put the paper down first, then the office can move");
-            if (IsTransitioning) return Refuse("The office is moving; try again when it has stopped");
+            if (IsTransitioning) return Refuse("The office is moving. Press Stop, or wait until it has stopped.");
 
             RootPose current = _mover.CurrentPose;
-            if (Mode == PlacementMode.Desk) { _deskPose = current; _hasDeskPose = true; }
+            bool fromDesk = Mode == PlacementMode.Desk;
+            SeatedUser user = _user();
 
             if (PendingMode == PlacementMode.Floor)
             {
                 RootPose target = PreviewPose;
-                var r = _mover.TryMove(target, MoveSeconds(current.position, target.position));
-                if (r == TransitionStartResult.Held || r == TransitionStartResult.AlreadyRunning) return Refuse(_mover.LastRefusal);
+                WorkspaceRoute route; CeilingPathCheck check;
+                if (!PlanToFloor(user, target, !PreviewIsDetected, out route, out check))
+                {
+                    string next = PreviewIsDetected ? ". Choose Next, nudge the spot, or Cancel." : ". Nudge the spot, or Cancel.";
+                    return Refuse(check.Words("The way to that spot") + next);
+                }
+                Snapshot();
+                var r = _mover.TryMoveRoute(route, MoveSeconds(route));
+                if (r != TransitionStartResult.Started && r != TransitionStartResult.AlreadyThere) return Refuse(_mover.LastRefusal);
+                if (fromDesk) RememberDesk(current);
                 _pod.CancelPendingRetract();
-                _modeBeforeMove = Mode;
                 _awaitingMove = r == TransitionStartResult.Started;
                 if (r == TransitionStartResult.AlreadyThere && _pod.Active) _pod.Deactivate();
                 Mode = PlacementMode.Floor;
+                _needsConfirm = false;
+                _handPlaced = !PreviewIsDetected;
                 RememberLocal(target, false, target, target);
                 StatusText = PreviewIsDetected ? "" : "Placed by hand (not checked against your room)";
             }
             else
             {
-                _modeBeforeMove = Mode;
-                _awaitingMove = false;
+                // The preview may be minutes old: check the dock and the way down again for where
+                // the user sits now, then the way up to it from where the office is.
+                CeilingPlacement fresh;
+                if (!CeilingPlacementEvaluator.ValidateDock(_room, user, _previewCeiling.DockPose, footprint, ceilingSettings, out fresh))
+                    return Refuse("That ceiling spot is no longer clear: " + fresh.explanation + ". Choose Next, or Cancel.");
+                WorkspaceRoute route; CeilingPathCheck check;
+                if (!PlanMove(user, current, fresh.DockPose, fromDesk, false, false, false, true, fresh.mastTop, out route, out check))
+                {
+                    if (check.blockedBy == CeilingPathBlock.User && !fromDesk)
+                        return Refuse(check.Words("The way up to that ceiling spot") + ". Return to Desk first, then choose it again.");
+                    return Refuse(check.Words("The way up to that ceiling spot") + ". Choose Next for the other side, or Cancel.");
+                }
+                Snapshot();
+                _pod.Configure(fresh.DockPose, fresh.InspectionPose);
+                if (!_pod.BeginArrival(route))
+                {
+                    string why = _pod.StatusText;
+                    if (_before.mode == PlacementMode.Ceiling) _pod.Restore(_before.dock, _before.inspection, _before.podEngaged);
+                    else _pod.Deactivate();
+                    return Refuse(string.IsNullOrEmpty(why) ? "The office cannot go up right now; try again" : why);
+                }
+                if (fromDesk) RememberDesk(current);
+                _ceiling = fresh;
+                _awaitingMove = false;                      // the pod drives this trip and reports through ArrivalFailed
                 Mode = PlacementMode.Ceiling;
-                _pod.Configure(_ceiling.DockPose, _ceiling.InspectionPose);
-                _pod.RequestRetract();                      // travel up to the dock through the pod's own states
-                RememberLocal(_ceiling.DockPose, true, _ceiling.DockPose, _ceiling.InspectionPose);
+                _needsConfirm = false;
+                _handPlaced = false;
+                RememberLocal(fresh.DockPose, true, fresh.DockPose, fresh.InspectionPose);
                 StatusText = "";
             }
             EndPreview();
@@ -404,27 +652,49 @@ namespace MuseDesk.Spatial
             return true;
         }
 
-        /// <summary>Ceiling mode: bring the office down beside the user.</summary>
+        /// <summary>
+        /// Ceiling mode: bring the office down beside the user. The dock and the way down are checked
+        /// again NOW, for where the user sits and what the room contains at this moment; the pod gets
+        /// the fresh inspection pose, or the request is refused with the reason.
+        /// </summary>
         public bool RequestPodDescend()
         {
             if (Mode != PlacementMode.Ceiling || !_flags.ceilingModeEnabled) return false;
+            if (_pod.State != CeilingPodState.Docked || IsTransitioning) return false;      // only from rest at the dock
+            if (PlacementNeedsConfirmation) return Refuse("The ceiling spot is not confirmed. Return to Desk, then place it again.");
+            if (Held) { bool held = _pod.RequestDescend(); Touch(); return held; }          // the pod says why
+            CeilingPlacement fresh;
+            if (!CeilingPlacementEvaluator.ValidateDock(_room, _user(), _pod.DockPose, footprint, ceilingSettings, out fresh))
+                return Refuse("Cannot come down now: " + fresh.explanation + ". Move, clear the way, or return to Desk and choose another spot.");
+            _ceiling = fresh;
+            _pod.Configure(_pod.DockPose, fresh.InspectionPose);
+            RememberLocal(_pod.DockPose, true, _pod.DockPose, fresh.InspectionPose);
+            StatusText = "";
             bool ok = _pod.RequestDescend();
             Touch();
             return ok;
         }
 
-        /// <summary>Ceiling mode: send the office back up (waits while a transition hold is set).</summary>
+        /// <summary>
+        /// Ceiling mode: send the office back up (waits while a transition hold is set). From beside
+        /// the user the way up is swept again first. While the office is still coming down this is
+        /// a Stop: it goes back up at once and nothing is queued.
+        /// </summary>
         public bool RequestPodRetract()
         {
             if (Mode != PlacementMode.Ceiling || !_flags.ceilingModeEnabled) return false;
+            if (_pod.State == CeilingPodState.Engaged)
+            {
+                if (PlacementNeedsConfirmation) return Refuse("The ceiling spot is not confirmed. Return to Desk, then place it again.");
+                CeilingPathCheck check;
+                if (!CeilingPlacementEvaluator.SweepPath(_room, _user(), _pod.InspectionPose, _pod.DockPose, footprint, ceilingSettings,
+                                                         CeilingPlacementEvaluator.PodPathOptions(_ceiling.mastTop), out check))
+                    return Refuse(check.Words("The way back up") + ". Clear the way or move back, then try again, or return to Desk.");
+            }
             bool ok = _pod.RequestRetract();
+            SyncPod();
             Touch();
             return ok;
-        }
-
-        float MoveSeconds(Vector3 from, Vector3 to)
-        {
-            return Mathf.Clamp((to - from).magnitude / Mathf.Max(0.05f, moveMetresPerSecond), minMoveSeconds, maxMoveSeconds);
         }
 
         bool Refuse(string why)
@@ -445,12 +715,17 @@ namespace MuseDesk.Spatial
                 return;
             }
             if (!_awaitingMove) return;
-            // The move was given up before the root moved (agents stayed busy): stay in the old mode.
-            _awaitingMove = false;
-            Mode = _modeBeforeMove;
-            if (Mode == PlacementMode.Desk) _hasLocal = false;
-            StatusText = _mover.LastRefusal ?? "";
-            Touch();
+            // The move was given up before the root moved (agents stayed busy), was stopped and went
+            // back to its start, or was aborted where it was: the old mode applies again.
+            Revert(_mover.LastRefusal);
+        }
+
+        /// <summary>The first trip up to the dock was stopped or could not be made: leave Ceiling mode again.</summary>
+        void SyncPod()
+        {
+            if (!_pod.ConsumeArrivalFailed()) return;
+            string why = _pod.StatusText;
+            Revert(string.IsNullOrEmpty(why) || why == "Stopped" ? "Stopped: the office is back where it was" : why);
         }
 
         void OnRoomChanged()
@@ -461,6 +736,21 @@ namespace MuseDesk.Spatial
             {
                 if (PendingMode == PlacementMode.Floor) BeginFloorPreview();
                 else if (!BeginCeilingPreview()) EndPreview();
+            }
+            else if (Mode == PlacementMode.Ceiling && _pod.Active && _pod.State == CeilingPodState.Docked
+                     && !IsTransitioning && !PlacementNeedsConfirmation)
+            {
+                // Docked: look again at the way down, so the words are true before the user asks.
+                // (A descent request checks again anyway.)
+                CeilingPlacement fresh;
+                if (CeilingPlacementEvaluator.ValidateDock(_room, _user(), _pod.DockPose, footprint, ceilingSettings, out fresh))
+                {
+                    _ceiling = fresh;
+                    _pod.Configure(_pod.DockPose, fresh.InspectionPose);
+                    RememberLocal(_pod.DockPose, true, _pod.DockPose, fresh.InspectionPose);
+                    StatusText = "";
+                }
+                else StatusText = "The room changed: " + fresh.explanation + ". Clear the way, or return to Desk and choose another spot.";
             }
             Touch();
         }
@@ -473,6 +763,7 @@ namespace MuseDesk.Spatial
         {
             _mover.Tick();
             _pod.Tick();
+            SyncPod();
             if (Mode != _lastMode || IsRemote != _lastRemote || IsTransitioning != _lastTransitioning) Touch();
         }
 
@@ -503,10 +794,37 @@ namespace MuseDesk.Spatial
             }
         }
 
+        /// <summary>Stop everything where it is and require the placement to be chosen again.</summary>
+        void HoldInPlace(string why)
+        {
+            if (_pod.Active) _pod.Hold(why);        // also ends a running move where it is
+            else _mover.Abort(why);                 // a mode change in flight: the old mode applies again (Revert)
+            _needsConfirm = true;
+            StatusText = why;
+        }
+
+        bool FloorSpotStillClear(RootPose pose, SeatedUser user, out string reason)
+        {
+            if (!FloorPlacementEvaluator.ValidatePose(_room, user, pose, footprint, floorSettings, false, out reason)) return false;
+            OrientedRect rect = SpatialGeometry.Footprint(pose.position, pose.rotation, pose.scale, footprint, floorSettings.footprintCenterOffset);
+            if (rect.DistanceToPoint(new Vector2(user.head.x, user.head.z)) < floorSettings.userClearance)
+            { reason = "It is now too close to your chair"; return false; }
+            return true;
+        }
+
         /// <summary>
-        /// The tracking origin moved (system recenter, headset put back on). Any travel is ended. In
-        /// Floor and Ceiling mode the office is put back at its place relative to the room reference,
-        /// if the room still provides one; a preview is dropped because its spot is stale.
+        /// The tracking origin moved (system recenter, headset put back on). World coordinates no
+        /// longer mean what they did, so nothing is taken on trust:
+        ///  - a preview is dropped;
+        ///  - Floor: the spot is recomputed from the room reference and checked against the room and
+        ///    the user as they are now. Clear: the office is put there. Not clear, or no reference
+        ///    while a move runs: any move is ended WHERE IT IS and the placement must be chosen again;
+        ///  - Ceiling: the dock is recomputed and <see cref="CeilingPlacementEvaluator.ValidateDock"/>
+        ///    run for the current user. Valid: the pod gets the dock and the fresh inspection pose.
+        ///    Not valid: the same hold. The old poses are never used;
+        ///  - Desk, with a move back to the desk in flight: finished at the desk pose recomputed from
+        ///    the room reference, or held when there is none.
+        /// The office is never written to a pose that was not validated after the recenter.
         /// </summary>
         public void OnRecenter()
         {
@@ -516,34 +834,69 @@ namespace MuseDesk.Spatial
                 StatusText = "The view was recentered: choose the spot again";
             }
             Pose reference = Pose.identity;
-            bool haveRef = _hasLocal && _room != null && _room.TryGetReferencePose(out reference);
+            bool roomRef = _room != null && _room.TryGetReferencePose(out reference);
+            bool haveRef = _hasLocal && roomRef;
 
-            if (Mode == PlacementMode.Floor)
+            // The desk pose follows the room too, so the way back still ends at the same real place.
+            bool deskKnown = _hasDeskPose && _hasDeskLocal && roomRef;
+            if (deskKnown && (!Near(reference.position, _deskReference.position) || Quaternion.Angle(reference.rotation, _deskReference.rotation) > 0.01f))
             {
-                if (haveRef) _mover.Snap(WorkspacePlacementCodec.ToWorld(reference, _localPos, _localRot, _localScale));
-                else _mover.FinishNow();
+                _deskPose = WorkspacePlacementCodec.ToWorld(reference, _deskLocalPos, _deskLocalRot, _deskPose.scale);
+                _deskReference = reference;
             }
-            else if (Mode == PlacementMode.Ceiling)
+
+            const string again = " Return to Desk, then place it again.";
+            if (Mode == PlacementMode.Floor)
             {
                 if (haveRef)
                 {
-                    RootPose dock = WorkspacePlacementCodec.ToWorld(reference, _dockLocalPos, _dockLocalRot, 1f);
-                    RootPose inspect = WorkspacePlacementCodec.ToWorld(reference, _inspectLocalPos, _inspectLocalRot, 1f);
-                    CeilingPlacement fresh;
-                    if (CeilingPlacementEvaluator.ValidateDock(_room, _user(), dock, footprint, ceilingSettings, out fresh))
-                        inspect = fresh.InspectionPose;      // beside where the user sits now
-                    _pod.OnRecenter(dock, inspect);
+                    RootPose pose = WorkspacePlacementCodec.ToWorld(reference, _localPos, _localRot, _localScale);
+                    string reason;
+                    if (FloorSpotStillClear(pose, _user(), out reason)) { _mover.Snap(pose); _needsConfirm = false; }
+                    else HoldInPlace("The view was recentered and the floor spot is no longer clear: " + reason + "." + again);
                 }
-                else _pod.OnPause();
+                else if (_mover.IsRunning) HoldInPlace("The view was recentered during the move." + again);
+                // A hand-placed spot at rest has no room reference: it stays where it is, unchecked as before.
             }
-            else _mover.FinishNow();
+            else if (Mode == PlacementMode.Ceiling)
+            {
+                CeilingPlacement fresh = default(CeilingPlacement);
+                bool valid = false;
+                if (haveRef)
+                {
+                    RootPose dock = WorkspacePlacementCodec.ToWorld(reference, _dockLocalPos, _dockLocalRot, 1f);
+                    valid = CeilingPlacementEvaluator.ValidateDock(_room, _user(), dock, footprint, ceilingSettings, out fresh);
+                }
+                if (valid)
+                {
+                    _ceiling = fresh;
+                    _pod.OnRecenter(fresh.DockPose, fresh.InspectionPose);   // both validated just now
+                    RememberLocal(fresh.DockPose, true, fresh.DockPose, fresh.InspectionPose);
+                    _needsConfirm = false;
+                }
+                else
+                {
+                    string why = haveRef ? fresh.explanation : "the room scan gives no reference";
+                    HoldInPlace("The view was recentered and the ceiling spot could not be confirmed: " + why + "." + again);
+                }
+            }
+            else if (_mover.IsRunning)
+            {
+                // On the way back to the desk.
+                if (deskKnown) _mover.Snap(_deskPose);
+                else HoldInPlace("The view was recentered during the move. Press Desk again.");
+            }
             Touch();
         }
 
-        /// <summary>The app is being paused: end any travel at its destination.</summary>
+        static bool Near(Vector3 a, Vector3 b) { return (a - b).sqrMagnitude <= 1e-8f; }
+
+        /// <summary>The app is being paused: end any travel at its destination (or, if it had been
+        /// stopped, where it started). Both ends of a route were validated before the move began.</summary>
         public void OnPause()
         {
             if (_pod.Active) _pod.OnPause(); else _mover.FinishNow();
+            SyncPod();
             Touch();
         }
 
@@ -552,7 +905,7 @@ namespace MuseDesk.Spatial
         /// <summary>The record to save for the current placement, or null (Desk, moving, or no room reference).</summary>
         public SavedPlacement BuildSave(string build)
         {
-            if (Mode == PlacementMode.Desk || !_hasLocal || _room == null) return null;
+            if (Mode == PlacementMode.Desk || !_hasLocal || _room == null || PlacementNeedsConfirmation) return null;
             Pose reference;
             if (!_room.TryGetReferencePose(out reference)) return null;
             RootPose pose = WorkspacePlacementCodec.ToWorld(reference, _localPos, _localRot, _localScale);
@@ -561,8 +914,8 @@ namespace MuseDesk.Spatial
         }
 
         /// <summary>
-        /// Restore a saved placement after validating it against the CURRENT room and user. On any
-        /// doubt it refuses with a reason and the office stays in Desk mode.
+        /// Restore a saved placement after validating it, AND THE WAY TO IT, against the CURRENT room
+        /// and user. On any doubt it refuses with a reason and the office stays in Desk mode.
         /// </summary>
         public bool TryRestore(SavedPlacement saved, out string reason)
         {
@@ -578,21 +931,26 @@ namespace MuseDesk.Spatial
             RootPose pose, dock;
             if (!WorkspacePlacementCodec.TryResolve(saved, _room, out pose, out dock, out reason)) return false;
             SeatedUser user = _user();
+            RootPose current = _mover.CurrentPose;
+            WorkspaceRoute route; CeilingPathCheck check;
 
             if (mode == PlacementMode.Floor)
             {
-                if (!FloorPlacementEvaluator.ValidatePose(_room, user, pose, footprint, floorSettings, false, out reason)) return false;
-                OrientedRect rect = SpatialGeometry.Footprint(pose.position, pose.rotation, pose.scale, footprint, floorSettings.footprintCenterOffset);
-                if (rect.DistanceToPoint(new Vector2(user.head.x, user.head.z)) < floorSettings.userClearance)
-                { reason = "The saved spot is now too close to your chair"; return false; }
+                if (!FloorSpotStillClear(pose, user, out reason))
+                {
+                    if (reason == "It is now too close to your chair") reason = "The saved spot is now too close to your chair";
+                    return false;
+                }
+                if (!PlanMove(user, current, pose, true, false, true, false, false, Vector3.zero, out route, out check))
+                { reason = check.Words("The way to the saved spot"); return false; }
 
-                RootPose current = _mover.CurrentPose;
-                var r = _mover.TryMove(pose, MoveSeconds(current.position, pose.position));
-                if (r == TransitionStartResult.Held || r == TransitionStartResult.AlreadyRunning) { reason = _mover.LastRefusal; return false; }
-                _deskPose = current; _hasDeskPose = true;
-                _modeBeforeMove = PlacementMode.Desk;
+                Snapshot();
+                var r = _mover.TryMoveRoute(route, MoveSeconds(route));
+                if (r != TransitionStartResult.Started && r != TransitionStartResult.AlreadyThere) { reason = _mover.LastRefusal; return false; }
+                RememberDesk(current);
                 _awaitingMove = r == TransitionStartResult.Started;
                 Mode = PlacementMode.Floor;
+                _handPlaced = false;
                 RememberLocal(pose, false, pose, pose);
             }
             else
@@ -601,15 +959,25 @@ namespace MuseDesk.Spatial
                 CeilingPlacement placement;
                 if (!CeilingPlacementEvaluator.ValidateDock(_room, user, dock, footprint, ceilingSettings, out placement))
                 { reason = placement.explanation; return false; }
+                if (!PlanMove(user, current, placement.DockPose, true, false, false, false, true, placement.mastTop, out route, out check))
+                { reason = check.Words("The way up to the saved dock"); return false; }
+
+                Snapshot();
+                _pod.Configure(placement.DockPose, placement.InspectionPose);
+                if (!_pod.BeginArrival(route))
+                {
+                    reason = string.IsNullOrEmpty(_pod.StatusText) ? "The office cannot go up right now" : _pod.StatusText;
+                    _pod.Deactivate();
+                    return false;
+                }
                 _ceiling = placement;
-                _deskPose = _mover.CurrentPose; _hasDeskPose = true;
-                _modeBeforeMove = PlacementMode.Desk;
+                RememberDesk(current);
                 _awaitingMove = false;
                 Mode = PlacementMode.Ceiling;
-                _pod.Configure(placement.DockPose, placement.InspectionPose);
-                _pod.RequestRetract();
+                _handPlaced = false;
                 RememberLocal(placement.DockPose, true, placement.DockPose, placement.InspectionPose);
             }
+            _needsConfirm = false;
             StatusText = "";
             Touch();
             return true;
