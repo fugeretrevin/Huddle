@@ -302,6 +302,632 @@ namespace MuseDesk.Tests.EditMode
         }
     }
 
+    // ───────────────────────── ceiling descent: swept volume ─────────────────────────
+
+    /// <summary>
+    /// The descent check is a swept-volume test that fails closed. These tests pin down: what the
+    /// replaced centre-line rule let through, the margins at their boundaries, the sampling density,
+    /// the user keep-out, and that the path swept is the path the transition machine travels.
+    /// Geometry used throughout: the user sits at (0, 1.2, 0) looking along +Z, so the user's right
+    /// is +X. An unrotated office (yaw 0) at root (x, y, z) covers x - 0.5 .. x + 0.5 and
+    /// z - 0.23 .. z + 0.47 (footprint 1.0 x 0.7, centre 0.12 toward +Z), from y to y + 0.45.
+    /// </summary>
+    [Category("MuseDesk")]
+    public class SpatialCeilingSweptPathTests
+    {
+        static readonly Vector2 Fp = SpatialRooms.Footprint;
+
+        static SyntheticRoomGeometry EmptyRoom() { return SyntheticRoomGeometry.Rectangle(0f, 0f, 5f, 5f, 0f, 2.6f); }
+
+        /// <summary>A root pose at <paramref name="p"/> turned to face the test user (as the evaluator builds its poses).</summary>
+        static RootPose Facing(Vector3 p) { return new RootPose(p, SpatialGeometry.FaceUserYaw(p, SpatialRooms.User().head), 1f); }
+
+        static RootPose Unrotated(float x, float y, float z) { return new RootPose(new Vector3(x, y, z), Quaternion.identity, 1f); }
+
+        // The rule that was replaced, reproduced here ONLY to show what it accepted: one line from
+        // dock to inspection position against furniture grown by 0.30 m (0.05 m vertically), and,
+        // as relaxed on 2026-11-12, with the last 0.45 m of the line not tested at all.
+        static bool OldCentreLineBlocked(IRoomGeometry room, Vector3 from, Vector3 to, bool blindLastStretch)
+        {
+            if (blindLastStretch) to = Vector3.MoveTowards(to, from, 0.45f);
+            for (int i = 0; i < room.FurnitureCount; i++)
+                if (SpatialGeometry.SegmentHitsBox(from, to, room.GetFurniture(i), 0.30f, 0.05f)) return true;
+            return false;
+        }
+
+        // The old (and still present) test of the office standing at the inspection pose.
+        static bool FootprintAtRestBlocked(IRoomGeometry room, RootPose pose, CeilingPlacementSettings s)
+        {
+            OrientedRect rect = SpatialGeometry.Footprint(pose.position, pose.rotation, 1f, Fp, s.footprintCenterOffset);
+            for (int i = 0; i < room.FurnitureCount; i++)
+            {
+                FurnitureBox box = room.GetFurniture(i);
+                if (box.maxY <= pose.position.y - 0.03f || box.minY >= pose.position.y + s.officeHeight) continue;
+                if (rect.Overlaps(box.Footprint)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Brute force, no margins: does the office box really pass through the furniture box
+        /// somewhere on the path? Checked every millimetre or so. Returns the first fraction, or -1.</summary>
+        static float FirstRealContact(FurnitureBox box, RootPose from, RootPose to, CeilingPlacementSettings s)
+        {
+            const int steps = 2000;
+            for (int i = 0; i <= steps; i++)
+            {
+                float k = i / (float)steps;
+                RootPose p = CeilingPlacementEvaluator.PathPose(from, to, k);
+                if (box.maxY <= p.position.y || box.minY >= p.position.y + s.officeHeight) continue;
+                if (SpatialGeometry.Footprint(p.position, p.rotation, 1f, Fp, s.footprintCenterOffset).Overlaps(box.Footprint)) return k;
+            }
+            return -1f;
+        }
+
+        static FurnitureBox Last(SyntheticRoomGeometry room) { return room.GetFurniture(room.FurnitureCount - 1); }
+
+        [Test] // the case the blind final stretch let through
+        public void BoxOnTheFinalApproach_PassedTheRelaxedRule_AndIsRefusedNow()
+        {
+            var room = SpatialRooms.Office();
+            SeatedUser user = SpatialRooms.User();
+            // The path yesterday's code produced in this room: first dock option, first inspection option.
+            RootPose dock = Facing(new Vector3(1.0f, 2.1f, 0.3f));
+            RootPose inspect = Facing(new Vector3(0.6f, 0.85f, 0.15f));
+            // That inspection pose is inside today's user keep-out; switch the keep-out off here so
+            // that what this test shows is about furniture only.
+            var s = new CeilingPlacementSettings { userKeepOutRadius = 0f };
+            CeilingPathCheck check;
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, dock, inspect, Fp, s, out check), check.Describe());
+
+            // A 0.30 x 0.10 m lamp, 0.95 to 1.15 m high, standing 3 cm beyond the edge of the office
+            // that is farthest from the user at the inspection pose. The office comes down from
+            // further out (the dock is 0.4 m further to the side), so on its last 0.3 m of travel
+            // that edge passes through the lamp before the office settles 3 cm clear of it.
+            OrientedRect atRest = SpatialGeometry.Footprint(inspect.position, inspect.rotation, 1f, Fp, s.footprintCenterOffset);
+            Vector2 c = atRest.center - atRest.axisY * (atRest.half.y + 0.03f + 0.05f);
+            room.AddFurniture("LAMP", new Vector3(c.x, 1.05f, c.y), new Vector3(0.30f, 0.20f, 0.10f), inspect.rotation.eulerAngles.y);
+            FurnitureBox lamp = Last(room);
+
+            // Yesterday: accepted. The lamp does not touch the office at rest, and the line test never
+            // looked at the last 0.45 m. (The unrelaxed line test would have refused it.)
+            Assert.IsFalse(FootprintAtRestBlocked(room, inspect, s), "the office at rest does not touch the lamp");
+            Assert.IsFalse(OldCentreLineBlocked(room, dock.position, inspect.position, true), "the relaxed rule accepted this path");
+            Assert.IsTrue(OldCentreLineBlocked(room, dock.position, inspect.position, false), "only the blind stretch hid it");
+
+            // Reality: the office passes through the lamp inside that untested stretch.
+            float length = (dock.position - inspect.position).magnitude;
+            float blindFrom = 1f - 0.45f / length;
+            float contact = FirstRealContact(lamp, dock, inspect, s);
+            Assert.That(contact, Is.GreaterThan(blindFrom), "a real collision, inside the stretch that was not tested");
+
+            // Today: refused, and the reason names the lamp.
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, dock, inspect, Fp, s, out check));
+            Assert.IsFalse(check.clear);
+            Assert.AreEqual(CeilingPathBlock.Furniture, check.blockedBy);
+            Assert.AreEqual("LAMP", check.blockingLabel);
+            Assert.That(check.blockedAtFraction, Is.GreaterThan(blindFrom), "caught on the final approach");
+            Assert.That(check.blockedAtFraction, Is.LessThanOrEqualTo(contact), "and no later than the real contact");
+            StringAssert.Contains("LAMP", check.Describe());
+
+            // And whatever the evaluator offers in this room has a path that was swept and is clear.
+            CeilingPlacement p;
+            if (CeilingPlacementEvaluator.Evaluate(room, user, Fp, new CeilingPlacementSettings(), out p))
+            {
+                Assert.IsTrue(p.path.clear);
+                Assert.AreEqual(-1f, FirstRealContact(lamp, p.DockPose, p.InspectionPose, s), 1e-6f);
+            }
+        }
+
+        [Test] // a box the centre line misses but the office's edge hits
+        public void BoxOnlyTheOfficeEdgeHits_IsRefused()
+        {
+            var room = SpatialRooms.Office();
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            CeilingPlacement clean;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out clean), clean.explanation);
+
+            // Half way down, a 6 cm box 0.45 m along the office's width from its centre line: inside
+            // the office box (half width 0.5 m), 0.45 m or more from the line the old rule tested.
+            RootPose mid = CeilingPlacementEvaluator.PathPose(clean.DockPose, clean.InspectionPose, 0.5f);
+            OrientedRect rect = SpatialGeometry.Footprint(mid.position, mid.rotation, 1f, Fp, s.footprintCenterOffset);
+            Vector2 c = rect.center + rect.axisX * 0.45f;
+            room.AddFurniture("SHELF", new Vector3(c.x, mid.position.y + 0.15f, c.y), new Vector3(0.06f, 0.10f, 0.06f));
+            FurnitureBox shelf = Last(room);
+
+            Assert.IsFalse(OldCentreLineBlocked(room, clean.dockPosition, clean.inspectionPosition, true), "relaxed line rule: accepted");
+            Assert.IsFalse(OldCentreLineBlocked(room, clean.dockPosition, clean.inspectionPosition, false), "full line rule with 0.30 m: accepted too");
+            Assert.IsFalse(FootprintAtRestBlocked(room, clean.InspectionPose, s));
+            Assert.That(FirstRealContact(shelf, clean.DockPose, clean.InspectionPose, s), Is.GreaterThanOrEqualTo(0f), "yet the office passes through it");
+
+            CeilingPathCheck check;
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, clean.DockPose, clean.InspectionPose, Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.Furniture, check.blockedBy);
+            Assert.AreEqual("SHELF", check.blockingLabel);
+
+            // The evaluator moves on to a dock whose path really is clear.
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out p), p.explanation);
+            Assert.IsTrue(p.path.clear);
+            Assert.That((p.dockPosition - clean.dockPosition).magnitude + (p.inspectionPosition - clean.inspectionPosition).magnitude,
+                        Is.GreaterThan(0.05f), "not the blocked path again");
+            Assert.AreEqual(-1f, FirstRealContact(shelf, p.DockPose, p.InspectionPose, s), 1e-6f);
+        }
+
+        [Test]
+        public void FurnishedRooms_StillYieldCandidates_OnBothSides()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            var all = new List<CeilingPlacement>();
+            string summary;
+
+            Assert.That(CeilingPlacementEvaluator.EvaluateAll(SpatialRooms.Office(), user, Fp, s, all, out summary), Is.GreaterThan(0), summary);
+            bool right = false, left = false;
+            foreach (CeilingPlacement p in all)
+            {
+                Assert.IsTrue(p.valid);
+                Assert.IsTrue(p.path.clear);
+                if (p.side > 0) right = true; else left = true;
+            }
+            Assert.IsTrue(right && left, "a desk in front leaves both sides free");
+
+            // The room RoomPlacementService.UseSyntheticTestRoom builds: 4 x 4 m, ceiling 2.5 m above
+            // the floor, the desk centred 0.75 m ahead. That helper puts the floor 1.15 m below the
+            // eyes, which leaves the desk top exactly 5 cm (the vertical margin) under the default
+            // inspection height: a tie that rounding decides. Here the floor is 1.14 m below, so the
+            // gap is 4 cm and the outcome is certain: the search has to raise the pose, because
+            // the margin does not give.
+            float floorY = user.head.y - 1.14f;
+            var play = SyntheticRoomGeometry.Rectangle(0f, 0f, 4f, 4f, floorY, floorY + 2.5f);
+            play.AddFurniture("TABLE", new Vector3(0f, floorY + 0.375f, 0.75f), new Vector3(1.4f, 0.75f, 0.7f));
+            CeilingPlacement q;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(play, user, Fp, s, out q), q.explanation);
+            Assert.IsTrue(q.path.clear);
+            Assert.That(q.inspectionPosition.y, Is.GreaterThan(user.head.y - s.inspectDropBelowEye + 0.04f), "raised clear of the desk top");
+            Assert.That(q.inspectionPosition.y - (floorY + 0.75f), Is.GreaterThan(s.sweepMarginVertical + 0.02f), "4 cm + a 5 cm raise = 9 cm over the desk");
+        }
+
+        [Test]
+        public void MonitorOnTheDesk_IsKeptClearOf_AllTheWayDown()
+        {
+            var room = SpatialRooms.Office();
+            // A monitor-sized box standing on the desk, rising to head height (0.75 to 1.2 m).
+            room.AddFurniture("SCREEN", new Vector3(0f, 0.975f, 0.95f), new Vector3(0.6f, 0.45f, 0.2f));
+            FurnitureBox screen = Last(room);
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out p), p.explanation);
+            Assert.IsTrue(p.path.clear);
+            Assert.AreEqual("SCREEN", p.path.nearestFurnitureLabel, "the monitor is the nearest thing at the office's height");
+            Assert.That(p.path.minFurnitureClearance, Is.GreaterThan(CeilingPlacementEvaluator.SampleMarginHorizontal(s)));
+            Assert.AreEqual(-1f, FirstRealContact(screen, p.DockPose, p.InspectionPose, s), 1e-6f);
+        }
+
+        [Test] // widening the search, not the tolerance
+        public void ClutterAtTheDeskEdge_MovesTheInspectionPoseBack_NotTheMargin()
+        {
+            var room = SpatialRooms.Office();
+            // Two monitors side by side, 1.3 m wide, nearer the user (0.65 to 0.85 m ahead).
+            room.AddFurniture("SCREEN", new Vector3(0f, 0.975f, 0.75f), new Vector3(1.3f, 0.45f, 0.2f));
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+
+            // With only the first forward option there is no room beside the user on either side...
+            var narrow = new CeilingPlacementSettings { inspectForwardOffsets = new[] { 0f } };
+            CeilingPlacement none;
+            Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, narrow, out none));
+            StringAssert.Contains("no room beside you", none.explanation);
+            StringAssert.Contains("SCREEN", none.explanation);
+
+            // ...and with the wider search the pose moves back, with the same margins.
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out p), p.explanation);
+            Assert.That(Vector3.Dot(p.inspectionPosition - user.head, user.forward), Is.LessThan(s.inspectForward - 0.1f), "further back than the first option");
+            Assert.IsTrue(p.path.clear);
+            Assert.That(p.path.minFurnitureClearance, Is.GreaterThan(CeilingPlacementEvaluator.SampleMarginHorizontal(s)));
+        }
+
+        [Test] // a pose that is fine to stand at is not accepted when the way to it is not
+        public void BlockedWayToTheFirstInspectionPose_TriesTheNextPose_NeverTheBlockedOne()
+        {
+            var room = SpatialRooms.Office();
+            // A shelf board on each side, 1.36 to 1.40 m high, over the desk 1.0 to 1.1 m ahead. It is
+            // above the resting office (top at 1.30 m) and beyond its far end, so the first
+            // inspection pose is usable on its own; but the office comes down through that height
+            // while still on the high part of its path, where it needs 0.405 m, and it is too close.
+            room.AddFurniture("WALL_SHELF", new Vector3(0.75f, 1.38f, 1.05f), new Vector3(0.2f, 0.04f, 0.1f));
+            room.AddFurniture("WALL_SHELF", new Vector3(-0.75f, 1.38f, 1.05f), new Vector3(0.2f, 0.04f, 0.1f));
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out p), p.explanation);
+            Assert.IsTrue(p.path.clear);
+            Assert.AreEqual(-1f, FirstRealContact(room.GetFurniture(1), p.DockPose, p.InspectionPose, s), 1e-6f);
+            Assert.AreEqual(-1f, FirstRealContact(room.GetFurniture(2), p.DockPose, p.InspectionPose, s), 1e-6f);
+
+            // The most preferred pose on that side (0.85 m to the side, 0.15 m forward) was usable at
+            // rest, but the way to it from the chosen dock is blocked, so a later pose was taken.
+            RootPose first = Facing(user.head + user.Right * (p.side * 0.85f) + user.forward * s.inspectForward
+                                    + Vector3.down * s.inspectDropBelowEye);
+            CeilingPathCheck check;
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, first, first, Fp, s, out check), "usable at rest: " + check.Describe());
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, p.DockPose, first, Fp, s, out check));
+            Assert.AreEqual("WALL_SHELF", check.blockingLabel);
+            Assert.That((p.inspectionPosition - first.position).magnitude, Is.GreaterThan(0.04f));
+        }
+
+        [Test]
+        public void TallShelfBesideTheUser_LeavesOnlyTheOtherSide_AndSaysWhy()
+        {
+            var room = SpatialRooms.Office();
+            room.AddFurniture("STORAGE", new Vector3(0.8f, 1.0f, 0.2f), new Vector3(0.8f, 2.0f, 0.8f));
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            var all = new List<CeilingPlacement>();
+            string summary;
+            Assert.That(CeilingPlacementEvaluator.EvaluateAll(room, user, Fp, s, all, out summary), Is.GreaterThan(0), summary);
+            foreach (CeilingPlacement p in all) Assert.AreEqual(-1, p.side, "nothing is offered on the shelf's side");
+            StringAssert.Contains("no room beside you (STORAGE in the way)", summary);
+
+            // A shelf on each side: nothing at all, and the words say which kind of failure it was.
+            room.AddFurniture("STORAGE", new Vector3(-0.8f, 1.0f, 0.2f), new Vector3(0.8f, 2.0f, 0.8f));
+            CeilingPlacement none;
+            Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out none));
+            Assert.IsFalse(none.valid);
+            StringAssert.Contains("No clear ceiling dock", none.explanation);
+            StringAssert.Contains("24 no room beside you (STORAGE in the way)", none.explanation);
+            StringAssert.Contains(" 0 path blocked by furniture", none.explanation);
+        }
+
+        [Test]
+        public void LampOnTheWayDown_IsNamed_AndTheOtherSideIsUsed()
+        {
+            var room = SpatialRooms.Office();
+            // A floor lamp, 0.3 m square and 2 m tall, at the right end of the desk.
+            room.AddFurniture("LAMP", new Vector3(1.05f, 1.0f, 0.75f), new Vector3(0.3f, 2.0f, 0.3f));
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            var all = new List<CeilingPlacement>();
+            string summary;
+            Assert.That(CeilingPlacementEvaluator.EvaluateAll(room, user, Fp, s, all, out summary), Is.GreaterThan(0), summary);
+            foreach (CeilingPlacement p in all) Assert.AreEqual(-1, p.side);
+            StringAssert.Contains("path blocked by furniture (first: LAMP)", summary);
+
+            // The same lamp on both sides: refused, with the path and the label for the caller to show.
+            room.AddFurniture("LAMP", new Vector3(-1.05f, 1.0f, 0.75f), new Vector3(0.3f, 2.0f, 0.3f));
+            CeilingPlacement none;
+            Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out none));
+            StringAssert.Contains("path blocked by furniture (first: LAMP)", none.explanation);
+            Assert.IsFalse(none.path.clear);
+            Assert.AreEqual(CeilingPathBlock.Furniture, none.path.blockedBy);
+            Assert.AreEqual("LAMP", none.path.blockingLabel);
+        }
+
+        [Test]
+        public void UserKeepOut_IsNeverEntered()
+        {
+            var room = SpatialRooms.Office();
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+
+            // 1. Every candidate offered stays outside the cylinder for the whole descent.
+            var all = new List<CeilingPlacement>();
+            string summary;
+            Assert.That(CeilingPlacementEvaluator.EvaluateAll(room, user, Fp, s, all, out summary), Is.GreaterThan(0), summary);
+            foreach (CeilingPlacement p in all)
+                Assert.That(p.path.minUserClearance, Is.GreaterThan(s.userKeepOutRadius), "never closer to the head's axis than the radius");
+
+            // 2. Yesterday's inspection pose (0.6 m to the side) puts the office's near edge about
+            //    0.15 m from the head's axis at shoulder height: refused, for the user.
+            CeilingPathCheck check;
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, Facing(new Vector3(1.0f, 2.1f, 0.3f)),
+                                                               Facing(new Vector3(0.6f, 0.85f, 0.15f)), Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+            Assert.That(check.minUserClearance, Is.InRange(0.10f, 0.35f));
+
+            // 3. With only the close options to try there is no candidate, and the words say why.
+            var close = new CeilingPlacementSettings { inspectWideSideOptions = new float[0] };
+            CeilingPlacement none;
+            Assert.IsFalse(CeilingPlacementEvaluator.Evaluate(room, user, Fp, close, out none));
+            StringAssert.Contains("no room beside you (too close to you)", none.explanation);
+
+            // 4. A path straight across the user at head height is refused; the same path with the
+            //    office base above the top of the cylinder (head + 0.15 m = 1.35 m) is not.
+            var empty = EmptyRoom();
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.30f, 0f), Unrotated(-0.9f, 1.30f, 0f), Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.User, check.blockedBy);
+            Assert.That(check.blockedAtFraction, Is.InRange(0.001f, 0.5f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(empty, user, Unrotated(0.9f, 1.40f, 0f), Unrotated(-0.9f, 1.40f, 0f), Fp, s, out check), check.Describe());
+        }
+
+        [Test]
+        public void HorizontalMargin_IsHonouredAtItsBoundary()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            // What a sample is tested with low down: the margin plus half a step (0.08 + 0.025).
+            float need = CeilingPlacementEvaluator.SampleMarginHorizontal(s);
+            Assert.AreEqual(s.sweepMarginHorizontal + 0.5f * s.sweepStep, need, 1e-6f);
+
+            // The office comes straight down 0.3 m without turning: x 1.0 .. 2.0, z 0.77 .. 1.47.
+            RootPose top = Unrotated(1.5f, 1.3f, 1.0f), bottom = Unrotated(1.5f, 1.0f, 1.0f);
+            CeilingPathCheck check;
+            foreach (float delta in new[] { 0.004f, -0.004f })
+            {
+                // A box at the office's height whose face is (need + delta) from the office's x = 1.0 face.
+                float gap = need + delta;
+                var room = EmptyRoom();
+                room.AddFurniture("BOX", new Vector3(1.0f - gap - 0.1f, 1.1f, 1.1f), new Vector3(0.2f, 0.2f, 0.2f));
+                bool clear = CeilingPlacementEvaluator.SweepPath(room, user, top, bottom, Fp, s, out check);
+                Assert.AreEqual(delta > 0f, clear, "gap " + gap + ": " + check.Describe());
+                Assert.AreEqual(gap, check.minFurnitureClearance, 1e-3f, "the clearance reported is the real gap");
+            }
+        }
+
+        [Test]
+        public void HighPartOfThePath_NeedsTheLargerClearance()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            float low = CeilingPlacementEvaluator.SampleMarginHorizontal(s);     // 0.105
+            float high = low + s.descentClearance;                               // 0.405
+            // Straight down 1.0 m: the base is "high" while it is more than 0.5 m above the end (y > 1.5).
+            RootPose top = Unrotated(1.5f, 2.0f, 1.0f), bottom = Unrotated(1.5f, 1.0f, 1.0f);
+            CeilingPathCheck check;
+
+            // A box up at 1.8 to 1.9 m, beside the high part of the path.
+            foreach (float delta in new[] { 0.005f, -0.005f })
+            {
+                var room = EmptyRoom();
+                room.AddFurniture("HIGH", new Vector3(1.0f - (high + delta) - 0.1f, 1.85f, 1.1f), new Vector3(0.2f, 0.1f, 0.2f));
+                bool clear = CeilingPlacementEvaluator.SweepPath(room, user, top, bottom, Fp, s, out check);
+                Assert.AreEqual(delta > 0f, clear, check.Describe());
+                if (!clear) Assert.That(check.blockedAtFraction, Is.LessThan(0.5f), "refused on the high part");
+            }
+
+            // The same gap that failed up there is fine beside the low part (1.0 to 1.2 m), where
+            // only the sweep margin applies and the user can see the office.
+            var lowRoom = EmptyRoom();
+            lowRoom.AddFurniture("LOW", new Vector3(1.0f - (high - 0.005f) - 0.1f, 1.1f, 1.1f), new Vector3(0.2f, 0.2f, 0.2f));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(lowRoom, user, top, bottom, Fp, s, out check), check.Describe());
+        }
+
+        [Test]
+        public void VerticalMargin_IsHonouredAtItsBoundary()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            RootPose top = Unrotated(1.5f, 1.3f, 1.0f), bottom = Unrotated(1.5f, 1.0f, 1.0f);
+            CeilingPathCheck check;
+            foreach (float delta in new[] { 0.004f, -0.004f })
+            {
+                // A box directly under the office whose top is (margin + delta) below where the base stops.
+                float boxTop = bottom.position.y - s.sweepMarginVertical - delta;
+                var room = EmptyRoom();
+                room.AddFurniture("UNDER", new Vector3(1.5f, (0.5f + boxTop) * 0.5f, 1.1f), new Vector3(0.4f, boxTop - 0.5f, 0.2f));
+                bool clear = CeilingPlacementEvaluator.SweepPath(room, user, top, bottom, Fp, s, out check);
+                Assert.AreEqual(delta > 0f, clear, "top at " + boxTop + ": " + check.Describe());
+                if (!clear) Assert.That(check.blockedAtFraction, Is.GreaterThan(0.7f), "only the last samples reach down to it");
+            }
+        }
+
+        [Test]
+        public void ThinObstacle_CannotSlipBetweenSamples()
+        {
+            SeatedUser user = SpatialRooms.User();
+            // Margins at zero, so only the sampling itself is under test.
+            var s = new CeilingPlacementSettings { sweepMarginHorizontal = 0f, sweepMarginVertical = 0f };
+            // A level, diagonal move of 1.0 m without turning, direction d = (0.6, 0.8) in XZ.
+            RootPose a = Unrotated(1.0f, 1.0f, -1.0f), b = Unrotated(1.6f, 1.0f, -0.2f);
+            Vector2 d = new Vector2(0.6f, 0.8f), n = new Vector2(0.8f, -0.6f);       // n: out of the swept region
+            // The office corner at (+0.5, -0.35) from the footprint centre trails along one side of
+            // the swept region. It starts at (1.5, -1.23).
+            Vector2 corner = SpatialGeometry.Footprint(a.position, a.rotation, 1f, Fp, s.footprintCenterOffset).Corner(1);
+            Assert.AreEqual(1.5f, corner.x, 1e-4f);
+            Assert.AreEqual(-1.23f, corner.y, 1e-4f);
+            float yaw = Mathf.Atan2(d.x, d.y) * Mathf.Rad2Deg;      // the plate's local Z along d, local X along n
+
+            CeilingPathCheck check;
+            int bareMisses = 0;
+            for (int j = 0; j < 10; j++)
+            {
+                // A plate 3 cm thick along the travel direction, reaching just 3 mm into the swept
+                // region, so the corner is inside it for under 4 cm of travel: less than one step.
+                // Ten positions half a centimetre apart cover every phase against the 5 cm sampling.
+                Vector2 onTrail = corner + d * (0.40f + 0.005f * j);
+                Vector2 c = onTrail + n * (0.10f - 0.003f);
+                var room = EmptyRoom();
+                room.AddFurniture("PLATE", new Vector3(c.x, 1.15f, c.y), new Vector3(0.20f, 0.30f, 0.03f), yaw);
+                FurnitureBox plate = Last(room);
+                Assert.That(FirstRealContact(plate, a, b, s), Is.GreaterThanOrEqualTo(0f), "plate " + j + " really is in the way");
+                Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, a, b, Fp, s, out check), "plate " + j + " slipped through: " + check.Describe());
+                Assert.AreEqual("PLATE", check.blockingLabel);
+
+                // What sampling WITHOUT the half-step padding would do: test the bare box at each sample.
+                bool bareHit = false;
+                int steps = Mathf.Max(1, Mathf.CeilToInt(check.travel / CeilingPlacementEvaluator.EffectiveSweepStep(s)));
+                for (int i = 0; i <= steps && !bareHit; i++)
+                {
+                    RootPose p = CeilingPlacementEvaluator.PathPose(a, b, i / (float)steps);
+                    bareHit = SpatialGeometry.Footprint(p.position, p.rotation, 1f, Fp, s.footprintCenterOffset).Overlaps(plate.Footprint);
+                }
+                if (!bareHit) bareMisses++;
+            }
+            Assert.That(bareMisses, Is.GreaterThan(0), "bare sampling does miss some of these plates; the padding is what catches them");
+
+            // Control: the same plate 4 cm outside the swept region is not an obstacle and is not reported.
+            {
+                Vector2 c = corner + d * 0.42f + n * (0.10f + 0.04f);
+                var room = EmptyRoom();
+                room.AddFurniture("PLATE", new Vector3(c.x, 1.15f, c.y), new Vector3(0.20f, 0.30f, 0.03f), yaw);
+                Assert.AreEqual(-1f, FirstRealContact(Last(room), a, b, s), 1e-6f);
+                Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, a, b, Fp, s, out check), check.Describe());
+                Assert.AreEqual(0.04f, check.minFurnitureClearance, 0.005f);
+            }
+
+            // The step can be set no coarser than MaxSweepStep, and a sample every step is guaranteed.
+            var coarse = new CeilingPlacementSettings { sweepStep = 5f };
+            Assert.AreEqual(CeilingPlacementEvaluator.MaxSweepStep, CeilingPlacementEvaluator.EffectiveSweepStep(coarse), 1e-6f);
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(EmptyRoom(), user, a, b, Fp, new CeilingPlacementSettings(), out check));
+            Assert.That(check.sampleCount, Is.GreaterThanOrEqualTo(21), "1.0 m at 0.05 m: both ends and at least 19 between");
+        }
+
+        [Test]
+        public void Walls_AreKeptClearOf()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            var room = EmptyRoom();                      // walls at x = +-2.5
+            CeilingPathCheck check;
+            // Office face at x = 2.45: 5 cm from the wall, inside the margin.
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, Unrotated(1.95f, 1.3f, 1.0f), Unrotated(1.95f, 1.0f, 1.0f), Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.Wall, check.blockedBy);
+            // Office face at x = 2.35: 15 cm from the wall.
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, Unrotated(1.85f, 1.3f, 1.0f), Unrotated(1.85f, 1.0f, 1.0f), Fp, s, out check), check.Describe());
+            Assert.AreEqual(0.15f, check.minWallClearance, 1e-3f);
+            // No room data: nothing can be shown clear, so nothing is.
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(null, user, Unrotated(1.85f, 1.3f, 1.0f), Unrotated(1.85f, 1.0f, 1.0f), Fp, s, out check));
+            Assert.AreEqual(CeilingPathBlock.Unverifiable, check.blockedBy);
+        }
+
+        [Test]
+        public void GoingUp_IsTheSamePathReversed()
+        {
+            var room = SpatialRooms.Office();
+            room.AddFurniture("SCREEN", new Vector3(0f, 0.975f, 0.95f), new Vector3(0.6f, 0.45f, 0.2f));
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, user, Fp, s, out p), p.explanation);
+
+            // Same poses in reverse order...
+            for (int i = 0; i <= 10; i++)
+            {
+                float k = i / 10f;
+                SpatialRooms.AssertPose(CeilingPlacementEvaluator.PathPose(p.DockPose, p.InspectionPose, k),
+                                        CeilingPlacementEvaluator.PathPose(p.InspectionPose, p.DockPose, 1f - k), 1e-4f);
+            }
+            // ...so the same verdict and the same numbers.
+            CeilingPathCheck down, up;
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, p.DockPose, p.InspectionPose, Fp, s, out down));
+            Assert.IsTrue(CeilingPlacementEvaluator.SweepPath(room, user, p.InspectionPose, p.DockPose, Fp, s, out up));
+            Assert.AreEqual(down.sampleCount, up.sampleCount);
+            Assert.AreEqual(down.travel, up.travel, 1e-4f);
+            Assert.AreEqual(down.minFurnitureClearance, up.minFurnitureClearance, 1e-3f);
+            Assert.AreEqual(down.minUserClearance, up.minUserClearance, 1e-3f);
+            Assert.AreEqual(down.minWallClearance, up.minWallClearance, 1e-3f);
+
+            // A blocked path is blocked in both directions.
+            room.AddFurniture("LAMP", new Vector3(1.05f, 1.0f, 0.75f), new Vector3(0.3f, 2.0f, 0.3f));
+            RootPose dock = Facing(new Vector3(1.0f, 2.1f, 0.3f)), inspect = Facing(new Vector3(0.85f, 0.85f, 0.15f));
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, dock, inspect, Fp, s, out down));
+            Assert.IsFalse(CeilingPlacementEvaluator.SweepPath(room, user, inspect, dock, Fp, s, out up));
+            Assert.AreEqual("LAMP", down.blockingLabel);
+            Assert.AreEqual("LAMP", up.blockingLabel);
+        }
+
+        [Test] // what is swept is what is travelled
+        public void ThePodTravels_ExactlyTheValidatedPath_DownAndUp()
+        {
+            var rig = new SpatialRig(SpatialRooms.Office());
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Ceiling), rig.core.StatusText);
+            CeilingPlacement placement = rig.core.LastCeiling;
+            Assert.IsTrue(placement.path.clear);
+            Assert.IsTrue(rig.core.Confirm());
+            rig.Run(7f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.RequestPodDescend());
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Engaged, rig.pod.State);
+            int down = rig.trace.Count;
+            Assert.That(down, Is.GreaterThan(10), "the descent was recorded");
+            Assert.IsTrue(rig.core.RequestPodRetract());
+            rig.Run(6f);
+            Assert.AreEqual(CeilingPodState.Docked, rig.pod.State);
+            Assert.That(rig.trace.Count - down, Is.GreaterThan(10), "the retraction was recorded");
+
+            // Every pose the root was given, going down and going up, lies on the swept path.
+            Vector3 a = placement.dockPosition, ab = placement.inspectionPosition - placement.dockPosition;
+            float lowestK = 1f, highestK = 0f;
+            foreach (RootPose pose in rig.trace)
+            {
+                float k = Vector3.Dot(pose.position - a, ab) / ab.sqrMagnitude;
+                Assert.That(k, Is.InRange(-1e-3f, 1f + 1e-3f));
+                SpatialRooms.AssertPose(CeilingPlacementEvaluator.PathPose(placement.DockPose, placement.InspectionPose, k), pose, 0.001f);
+                if (k < lowestK) lowestK = k;
+                if (k > highestK) highestK = k;
+            }
+            Assert.That(lowestK, Is.LessThan(0.01f), "the trace reaches the dock");
+            Assert.That(highestK, Is.GreaterThan(0.99f), "and the inspection pose");
+            SpatialRooms.AssertPose(placement.InspectionPose, rig.trace[down - 1]);
+            SpatialRooms.AssertPose(placement.DockPose, rig.trace[rig.trace.Count - 1]);
+        }
+
+        [Test]
+        public void ThePathThatWasValidated_IsDescribed()
+        {
+            var s = new CeilingPlacementSettings();
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(SpatialRooms.Office(), SpatialRooms.User(), Fp, s, out p), p.explanation);
+            Assert.IsTrue(p.path.clear);
+            Assert.AreEqual(CeilingPathBlock.None, p.path.blockedBy);
+            Assert.That((p.path.start - p.dockPosition).magnitude, Is.LessThan(1e-5f));
+            Assert.That((p.path.end - p.inspectionPosition).magnitude, Is.LessThan(1e-5f));
+            Assert.That(p.path.travel, Is.GreaterThanOrEqualTo(p.descentDistance - 1e-4f));
+            Assert.That(p.path.sampleCount, Is.GreaterThanOrEqualTo(Mathf.CeilToInt(p.descentDistance / s.sweepStep) + 1), "no step longer than sweepStep, both ends included");
+            Assert.AreEqual(0.5f * s.sweepStep, p.path.samplePadding, 1e-6f);
+            Assert.That(p.path.minUserClearance, Is.GreaterThan(s.userKeepOutRadius));
+            StringAssert.Contains("samples", p.path.Describe());
+            StringAssert.Contains("recognised furniture", p.path.Describe());
+        }
+
+        [Test]
+        public void LowerCeiling_StillGivesASweptClearPath()
+        {
+            // 2.0 m: 0.8 m above the eyes. The dock hangs at 1.5 m, its top at 1.95 m.
+            var room = SyntheticRoomGeometry.Rectangle(0f, 0f, 5f, 5f, 0f, 2.0f);
+            room.AddFurniture("TABLE", new Vector3(0f, 0.375f, 0.8f), new Vector3(1.4f, 0.75f, 0.7f));
+            CeilingPlacement p;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(room, SpatialRooms.User(), Fp, new CeilingPlacementSettings(), out p), p.explanation);
+            Assert.AreEqual(1.5f, p.dockPosition.y, 1e-4f);
+            Assert.IsTrue(p.path.clear);
+        }
+
+        [Test] // restoring a saved dock uses the same swept test
+        public void ValidateDock_SweepsThePath_LikeEvaluate()
+        {
+            SeatedUser user = SpatialRooms.User();
+            var s = new CeilingPlacementSettings();
+            CeilingPlacement found;
+            Assert.IsTrue(CeilingPlacementEvaluator.Evaluate(SpatialRooms.Office(), user, Fp, s, out found), found.explanation);
+            Assert.AreEqual(1, found.side);
+
+            // Unchanged room: restored, with the same inspection pose and a described, clear path.
+            CeilingPlacement restored;
+            Assert.IsTrue(CeilingPlacementEvaluator.ValidateDock(SpatialRooms.Office(), user, found.DockPose, Fp, s, out restored), restored.explanation);
+            SpatialRooms.AssertPose(found.InspectionPose, restored.InspectionPose);
+            Assert.IsTrue(restored.path.clear);
+            Assert.AreEqual(found.path.sampleCount, restored.path.sampleCount);
+
+            // A lamp now stands on the way down: refused, naming it. (Every dock on this side fails in this room.)
+            var lamp = SpatialRooms.Office();
+            lamp.AddFurniture("LAMP", new Vector3(1.05f, 1.0f, 0.75f), new Vector3(0.3f, 2.0f, 0.3f));
+            Assert.IsFalse(CeilingPlacementEvaluator.ValidateDock(lamp, user, found.DockPose, Fp, s, out restored));
+            Assert.IsFalse(restored.valid);
+            StringAssert.Contains("blocked by LAMP", restored.explanation);
+            Assert.AreEqual(CeilingPathBlock.Furniture, restored.path.blockedBy);
+
+            // The user now sits almost under the dock: refused (the "not overhead" rule still applies).
+            SeatedUser moved = new SeatedUser(new Vector3(0.7f, 1.2f, 0.1f), Vector3.forward);
+            Assert.IsFalse(CeilingPlacementEvaluator.ValidateDock(SpatialRooms.Office(), moved, found.DockPose, Fp, s, out restored));
+        }
+    }
+
     // ───────────────────────── transition machine ─────────────────────────
 
     [Category("MuseDesk")]

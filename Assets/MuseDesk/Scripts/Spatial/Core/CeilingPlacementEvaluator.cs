@@ -120,6 +120,7 @@ namespace MuseDesk.Spatial
 
         public string Describe()
         {
+            if (!clear && blockedBy == CeilingPathBlock.None) return "no path was checked";
             string head = string.Format(CultureInfo.InvariantCulture,
                 "path ({0:F2}, {1:F2}, {2:F2}) -> ({3:F2}, {4:F2}, {5:F2}), {6} samples over {7:F2} m",
                 start.x, start.y, start.z, end.x, end.y, end.z, sampleCount, travel);

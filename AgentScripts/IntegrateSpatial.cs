@@ -31,6 +31,16 @@ public static class IntegrateSpatial
             sb.AppendLine($"stays with the user: {n} (parent {t.parent.name}{(t.parent == ws ? "" : ", world pose kept")})");
         }
         kit.items = list.ToArray(); kit.rig = rigT;
+        kit.decisionOnly = new[] { "StampApprove", "StampReject", "Doc_StampRestPad" }.Select(Find).Where(t => t != null).ToArray();
+        sb.AppendLine($"shown at the desk only while a decision waits (office away): {string.Join(", ", kit.decisionOnly.Select(t => t.name))}");
+        // Modes on for the owner's headset pass. Desk stays the start-up mode and the fallback.
+        var director = spatial.GetComponent<SpatialWorkspaceDirector>();
+        if (director != null)
+        {
+            director.flags.floorModeEnabled = true; director.flags.ceilingModeEnabled = true;
+            EditorUtility.SetDirty(director);
+            sb.AppendLine("feature flags: Floor ON, Ceiling ON (for on-head validation; see FINAL_FEATURE_FLAG_DECISION.md)");
+        }
         EditorUtility.SetDirty(kit);
         var scene = EditorSceneManager.GetActiveScene();
         EditorSceneManager.MarkSceneDirty(scene);

@@ -27,7 +27,7 @@ public static class SpatialDrive
         var kit = One<NearUserKit>();
         if (kit != null && cam != null)
         {
-            sb.Append($" | kit detached={kit.Detached}");
+            sb.Append($" | kit detached={kit.Detached} stampsShown={kit.DecisionItemsShown}");
             foreach (var t in kit.items) if (t != null && (t.name == "TaskDock" || t.name == "StampApprove")) sb.Append($" {t.name}@{Vector3.Distance(cam.transform.position, t.position):F2}m");
         }
         var sc = One<SummonController>(); if (sc != null) sb.Append($" keysShown={sc.KeysShown}");

@@ -50,6 +50,9 @@ namespace MuseDesk.Spatial
         public float weightSide = 0.15f;
         public float weightDistance = 0.15f;
         public float weightLookDown = 0.10f;
+        [Tooltip("Head turn from straight ahead that is still a glance. Spots further round (behind the shoulder) score lower: the office is meant to stay in view.")]
+        public float comfortTurnMaxDeg = 85f;
+        public float weightTurn = 0.30f;
 
         [Header("Result")]
         public int maxCandidates = 6;
@@ -68,6 +71,7 @@ namespace MuseDesk.Spatial
         public float distance;          // horizontal, from the user's feet
         public float clearance;         // to the nearest furniture or wall (capped at 1 m)
         public float lookDownDeg;
+        public float turnDeg;           // head turn from straight ahead needed to look at it
         public float visibility;        // 0..1 share of unobstructed sight lines
         public int order;               // generation order: deterministic tie-break
         public string explanation;
@@ -214,6 +218,8 @@ namespace MuseDesk.Spatial
             c.clearance = clearance;
             c.visibility = visibility;
             c.lookDownDeg = Mathf.Atan2(user.head.y - target.y, Mathf.Max(0.01f, horiz)) * Mathf.Rad2Deg;
+            Vector3 fwd = user.forward; fwd.y = 0f;
+            c.turnDeg = fwd.sqrMagnitude > 1e-6f ? Vector3.Angle(fwd, new Vector3(dx, 0f, dz)) : 0f;
             return true;
         }
 
@@ -282,9 +288,11 @@ namespace MuseDesk.Spatial
             if (c.lookDownDeg < s.comfortLookDownMinDeg) look = Mathf.Clamp01(c.lookDownDeg / Mathf.Max(1f, s.comfortLookDownMinDeg));
             else if (c.lookDownDeg > s.comfortLookDownMaxDeg) look = Mathf.Clamp01(1f - (c.lookDownDeg - s.comfortLookDownMaxDeg) / 30f);
             else look = 1f;
-            float total = s.weightVisibility + s.weightClearance + s.weightSide + s.weightDistance + s.weightLookDown;
+            // A glance to the side is fine; behind the shoulder is not "visible from the seat".
+            float turn = c.turnDeg <= s.comfortTurnMaxDeg ? 1f : Mathf.Clamp01(1f - (c.turnDeg - s.comfortTurnMaxDeg) / 45f);
+            float total = s.weightVisibility + s.weightClearance + s.weightSide + s.weightDistance + s.weightLookDown + s.weightTurn;
             c.score = (s.weightVisibility * c.visibility + s.weightClearance * clearance + s.weightSide * side
-                       + s.weightDistance * distance + s.weightLookDown * look) / Mathf.Max(1e-4f, total);
+                       + s.weightDistance * distance + s.weightLookDown * look + s.weightTurn * turn) / Mathf.Max(1e-4f, total);
         }
 
         static string Explain(FloorCandidate c)

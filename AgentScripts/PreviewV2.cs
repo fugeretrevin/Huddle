@@ -91,6 +91,49 @@ public static class PreviewV2
     public static string AtArchive() => LookAt("ArchiveCard", 45f);
     public static string AtBoard() => LookAt("TaskBoard", 75f);
     public static string AtDock() => LookAt("TaskDock", 45f);
+    static Transform Any(string name)
+    {
+        foreach (var x in Resources.FindObjectsOfTypeAll<Transform>()) if (x.name == name && x.gameObject.scene.IsValid()) return x;
+        return null;
+    }
+    static string Cam(Vector3 from, Vector3 at, float fov)
+    {
+        var sv = SceneView.lastActiveSceneView;
+        sv.orthographic = false; sv.cameraSettings.fieldOfView = fov;
+        float dist = (at - from).magnitude;
+        sv.LookAtDirect(at, Quaternion.LookRotation(at - from, Vector3.up), dist * Mathf.Sin(fov * 0.5f * Mathf.Deg2Rad));
+        Refresh();
+        return "ok";
+    }
+    /// <summary>From the real head (Camera.main), looking at the office wherever it is.</summary>
+    public static string HeadAtOffice()
+    {
+        var ws = Any("WorkspaceRoot"); var cam = Camera.main; if (ws == null || cam == null) return "no root or camera";
+        return Cam(cam.transform.position, ws.position + Vector3.up * 0.12f, 50f);
+    }
+    public static string HeadAtOfficeClose()
+    {
+        var ws = Any("WorkspaceRoot"); var cam = Camera.main; if (ws == null || cam == null) return "no root or camera";
+        Vector3 at = ws.position + Vector3.up * 0.12f; Vector3 from = Vector3.Lerp(cam.transform.position, at, 0.45f);
+        return Cam(from, at, 55f);
+    }
+    /// <summary>From the head, looking where the desk office normally is (the user's own controls).</summary>
+    public static string HeadForwardDown()
+    {
+        var cam = Camera.main; if (cam == null) return "no camera";
+        Vector3 f = cam.transform.forward; f.y = 0; f.Normalize();
+        return Cam(cam.transform.position, cam.transform.position + f * 0.50f + Vector3.down * 0.28f, 90f);
+    }
+    /// <summary>Third-person view of the room: behind and above the user, seeing them and the office.</summary>
+    public static string RoomView()
+    {
+        var ws = Any("WorkspaceRoot"); var cam = Camera.main; if (ws == null || cam == null) return "no root or camera";
+        Vector3 head = cam.transform.position; Vector3 mid = (head + ws.position) * 0.5f;
+        Vector3 f = cam.transform.forward; f.y = 0; f.Normalize();
+        Vector3 side = Vector3.Cross(Vector3.up, f);
+        Vector3 from = head - f * 1.9f + Vector3.up * 0.9f + side * (Vector3.Dot(ws.position - head, side) > 0 ? -0.8f : 0.8f);
+        return Cam(from, mid + Vector3.down * 0.2f, 60f);
+    }
     public static string FogOff()
     {
         var sv = SceneView.lastActiveSceneView;

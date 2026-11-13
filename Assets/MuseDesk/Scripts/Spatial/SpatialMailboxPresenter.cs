@@ -83,7 +83,9 @@ namespace MuseDesk.Spatial
         void Refresh()
         {
             if (!_ready || mailbox == null) return;
-            bool show = SpatialWorkspaceState.IsRemote && attention != null;
+            // A tray only when there is something in it: an empty mailbox would just clutter the desk.
+            bool show = SpatialWorkspaceState.IsRemote && attention != null
+                        && (attention.CompletedCount > 0 || attention.PendingDecisionCount > 0);
             if (!show) { _ease.Hide(); return; }
 
             if (model != null && !model.activeSelf)

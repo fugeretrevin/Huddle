@@ -91,6 +91,44 @@ namespace MuseDesk.Spatial
             _detached = false;
         }
 
+        [Header("Only when needed (while the office is away)")]
+        [Tooltip("Shown at the desk only while a decision is waiting (the stamps and their pad). In Desk mode they are always shown, as before.")]
+        public Transform[] decisionOnly;
+        [Tooltip("Seconds to grow in or shrink away.")]
+        public float revealSeconds = 0.25f;
+
+        Vector3[] _fullScale;
+        float _reveal = 1f;      // 0 hidden .. 1 shown
+
+        /// <summary>True while the decision-only items (stamps) are shown.</summary>
+        public bool DecisionItemsShown => _reveal > 0.5f;
+
+        void Update()
+        {
+            if (decisionOnly == null || decisionOnly.Length == 0) return;
+            if (_fullScale == null || _fullScale.Length != decisionOnly.Length)
+            {
+                _fullScale = new Vector3[decisionOnly.Length];
+                for (int i = 0; i < decisionOnly.Length; i++)
+                    _fullScale[i] = decisionOnly[i] != null ? decisionOnly[i].localScale : Vector3.one;
+            }
+            // The user's desk stays clear while the office is away: the stamps come out only when
+            // there is something to stamp. At the desk nothing changes.
+            bool want = !_detached;
+            if (_detached)
+            {
+                AttentionController a = AttentionController.Instance;
+                want = a != null && a.PendingDecisionCount > 0;
+            }
+            float target = want ? 1f : 0f;
+            if (Mathf.Approximately(_reveal, target)) return;
+            _reveal = Mathf.MoveTowards(_reveal, target, Time.unscaledDeltaTime / Mathf.Max(0.01f, revealSeconds));
+            float e = 1f - (1f - _reveal) * (1f - _reveal);          // ease out
+            float k = Mathf.Lerp(0.001f, 1f, e);
+            for (int i = 0; i < decisionOnly.Length; i++)
+                if (decisionOnly[i] != null) decisionOnly[i].localScale = _fullScale[i] * k;
+        }
+
         void LateUpdate()
         {
             // Returning to the desk ends with a state change, but if that was missed (domain reload,
