@@ -1,5 +1,5 @@
 ﻿{
-    "generatedAtUtc": "2026-11-13T05:50:00.4034712Z",
+    "generatedAtUtc": "2026-11-13T16:38:36.2930137Z",
     "unityVersion": "6000.6.8f1",
     "totalPrefabs": 16,
     "totalMissingScripts": 0,
@@ -79,17 +79,18 @@
             "rendererCount": 1,
             "skinnedRendererCount": 1,
             "colliderCount": 1,
-            "uniqueMaterialCount": 6,
+            "uniqueMaterialCount": 7,
             "materialNames": [
                 "Mat_Brass",
                 "Mat_BrushedMetal",
                 "Mat_CharcoalVisor",
                 "Mat_CreamCeramic",
                 "Mat_Researcher_Teal",
+                "Mat_StatusCyan",
                 "Mat_WarmWood"
             ],
-            "vertexCount": 4079,
-            "triangleCount": 2716,
+            "vertexCount": 6876,
+            "triangleCount": 4580,
             "socketCount": 6,
             "missingScripts": 0,
             "allSocketsUnitScale": true,
@@ -99,7 +100,7 @@
                 "Mount_Spool_Spin",
                 "Mount_Lock"
             ],
-            "boundsSize": "0.290 x 0.118 x 0.290 m"
+            "boundsSize": "0.440 x 0.118 x 0.440 m"
         },
         {
             "prefabName": "CeilingInspectionShelf",
@@ -404,11 +405,11 @@
         {
             "prefabName": "Spatial_CeilingWorkspaceAssembly",
             "prefabPath": "Assets/MuseDesk/Art/Prefabs/Spatial/Spatial_CeilingWorkspaceAssembly.prefab",
-            "meshCount": 14,
-            "rendererCount": 14,
+            "meshCount": 18,
+            "rendererCount": 21,
             "skinnedRendererCount": 12,
             "colliderCount": 3,
-            "uniqueMaterialCount": 18,
+            "uniqueMaterialCount": 20,
             "materialNames": [
                 "Inter SDF Material",
                 "Mat_Brass",
@@ -421,7 +422,9 @@
                 "Mat_PaperWarm",
                 "Mat_Researcher_Lavender",
                 "Mat_Researcher_Teal",
+                "Mat_Spatial_PortalCone",
                 "Mat_Spatial_SlateIcon",
+                "Mat_Spatial_SoftParticle",
                 "Mat_StatusAmber",
                 "Mat_StatusCyan",
                 "Mat_StatusGreen",
@@ -429,8 +432,8 @@
                 "Mat_Tester_Mint",
                 "Mat_WarmWood"
             ],
-            "vertexCount": 20577,
-            "triangleCount": 14400,
+            "vertexCount": 23654,
+            "triangleCount": 16536,
             "socketCount": 18,
             "missingScripts": 0,
             "allSocketsUnitScale": true,
@@ -440,7 +443,7 @@
                 "Mount_Spool_Spin",
                 "Mount_Lock"
             ],
-            "boundsSize": "0.707 x 0.431 x 0.388 m"
+            "boundsSize": "0.707 x 1.000 x 0.600 m"
         },
         {
             "prefabName": "Spatial_FloorOffice_Complete",
@@ -536,11 +539,11 @@
         {
             "prefabName": "Spatial_CeilingPod_Complete",
             "prefabPath": "Assets/MuseDesk/Art/Prefabs/Spatial/Spatial_CeilingPod_Complete.prefab",
-            "meshCount": 78,
-            "rendererCount": 78,
+            "meshCount": 82,
+            "rendererCount": 85,
             "skinnedRendererCount": 16,
             "colliderCount": 8,
-            "uniqueMaterialCount": 34,
+            "uniqueMaterialCount": 36,
             "materialNames": [
                 "Inter SDF Material",
                 "Mat_BlueprintBlue",
@@ -565,7 +568,9 @@
                 "Mat_Researcher_Lavender",
                 "Mat_Researcher_Teal",
                 "Mat_ScreenCode",
+                "Mat_Spatial_PortalCone",
                 "Mat_Spatial_SlateIcon",
+                "Mat_Spatial_SoftParticle",
                 "Mat_StatusAmber",
                 "Mat_StatusCyan",
                 "Mat_StatusGreen",
@@ -577,8 +582,8 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "vertexCount": 53701,
-            "triangleCount": 58542,
+            "vertexCount": 56778,
+            "triangleCount": 60678,
             "socketCount": 18,
             "missingScripts": 0,
             "allSocketsUnitScale": true,
@@ -588,7 +593,7 @@
                 "Mount_Spool_Spin",
                 "Mount_Lock"
             ],
-            "boundsSize": "0.707 x 0.431 x 0.388 m"
+            "boundsSize": "0.707 x 1.000 x 0.600 m"
         }
     ]
 }

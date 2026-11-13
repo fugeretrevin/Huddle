@@ -27,7 +27,7 @@ This additive art expansion lets MuseDesk's three miniature agents (`Agent_Resea
 |---|---|
 | `spatial_common.py` | Shared URP-matched Blender Principled materials, beveled/rounded geometry primitives, NLA clip pushing, `.blend` + `.fbx` export (`+Z` forward via `_rotate_roots_for_unity_plus_z`), Eevee previews |
 | `generate_spatial_floor_and_preview.py` | `FloorOfficePlatform`, `FloorOfficePlatform_Compact`, `PlacementGhostPreview_Floor`, `PlacementGhostPreview_Ceiling` |
-| `generate_spatial_ceiling_pod.py` | `CeilingMount` (4 clips), `SuspendedOfficePod` (13 clips), `CeilingInspectionShelf` |
+| `generate_spatial_ceiling_pod.py` | `CeilingMount` (0.44 m 4-leaf Iris Docking Bay, 4 clips), `SuspendedOfficePod` (13 clips), `CeilingInspectionShelf` |
 | `generate_spatial_beacon_and_mailbox.py` | `WorkspaceAttentionBeacon` (7 clips + 4 accessibility symbolic icon meshes), `SpatialMailbox` |
 | `generate_spatial_courier_and_perch.py` | `FloorCourierStation` (4 clips), `DocumentCourier` (6 clips), `AgentConversationPerch` (5 clips) |
 | `export_spatial_assets.py` | Headless batch entry point regenerating all 12 `.blend` files (`ArtSource/Blender/Spatial/`), 12 `.fbx` files (`Assets/MuseDesk/Art/Models/Spatial/`), and Eevee previews (`Screenshots/SpatialWorkspace/Blender/`) |
@@ -40,7 +40,7 @@ Exact post-import counts measured by `SpatialWorkspaceArtSetup.BuildAll` (`docs/
 |---|---|---|---|---|---|---|---|
 | `FloorOfficePlatform.prefab` | 3 (0) | 2 | 11,628 | 16,288 | `0.720 x 0.049 x 0.486` | 11 | `FloorOfficePlatformController` |
 | `FloorOfficePlatform_Compact.prefab` | 3 (0) | 2 | 11,660 | 16,360 | `0.580 x 0.047 x 0.406` | 11 | `FloorOfficePlatformController` |
-| `CeilingMount.prefab` | 1 (1) | 1 | 2,716 | 4,079 | `0.290 x 0.118 x 0.290` | 6 | `Animator` (`MuseDesk_CeilingMount`) |
+| `CeilingMount.prefab` | 1 (1) | 1 | 4,580 | 6,876 | `0.440 x 0.118 x 0.440` | 6 | `Animator` (`MuseDesk_CeilingMount`) |
 | `CeilingInspectionShelf.prefab` | 1 (0) | 1 | 1,436 | 2,112 | `0.240 x 0.021 x 0.125` | 2 | — |
 | `SuspendedOfficePod.prefab` | 2 (1) | 1 | 9,300 | 13,440 | `0.707 x 0.332 x 0.388` | 12 | `Animator` (`MuseDesk_CeilingPod`) |
 | `WorkspaceAttentionBeacon.prefab` | 10 (10) | 1 | 2,304 | 2,970 | `0.064 x 0.103 x 0.052` | 2 | `SpatialBeaconVisualController` |
@@ -51,9 +51,9 @@ Exact post-import counts measured by `SpatialWorkspaceArtSetup.BuildAll` (`docs/
 | `PlacementGhostPreview_Floor.prefab` | 2 (0) | 0 | 1,656 | 2,592 | `0.720 x 0.024 x 0.580` | 2 | `PlacementGhostPreviewController` |
 | `PlacementGhostPreview_Ceiling.prefab` | 2 (0) | 0 | 1,064 | 1,472 | `0.620 x 0.143 x 0.435` | 1 | `PlacementGhostPreviewController` |
 | `Spatial_FloorCourierSystem.prefab` | 5 (5) | 2 | 6,400 | 8,772 | `0.146 x 0.099 x 0.138` | 6 | `DocumentCourierController` |
-| `Spatial_CeilingWorkspaceAssembly.prefab` | 14 (12) | 3 | 14,400 | 20,577 | `0.707 x 0.431 x 0.388` | 18 | `CeilingWorkspacePodController` |
+| `Spatial_CeilingWorkspaceAssembly.prefab` | 21 (12) | 3 | 16,536 | 23,654 | `0.707 x 1.000 x 0.600` | 18 | `CeilingWorkspacePodController`, `CeilingDeploymentVFXController` |
 | `Spatial_FloorOffice_Complete.prefab` | 82 (19) | 10 | 64,474 | 61,154 | `0.720 x 0.185 x 0.486` | 17 | `FloorOfficePlatformController` (+ child `DocumentCourierController`, `SpatialBeaconVisualController`, `SpatialMailboxController`) |
-| `Spatial_CeilingPod_Complete.prefab` | 78 (16) | 8 | 58,542 | 53,701 | `0.707 x 0.431 x 0.388` | 18 | `CeilingWorkspacePodController` (+ child `SpatialBeaconVisualController`, `SpatialMailboxController`) |
+| `Spatial_CeilingPod_Complete.prefab` | 85 (16) | 8 | 60,678 | 56,778 | `0.707 x 1.000 x 0.600` | 18 | `CeilingWorkspacePodController`, `CeilingDeploymentVFXController` (+ child `SpatialBeaconVisualController`, `SpatialMailboxController`) |
 
 ---
 
@@ -76,11 +76,11 @@ Controllers live in `Assets/MuseDesk/Art/Controllers/Spatial/`:
    - `Pod_Dock_Lock`
    - `Pod_Mechanical_Settle`
 
-2. **`MuseDesk_CeilingMount.controller` (4 clips)**
-   - `Mount_Docked_Idle` (looping)
-   - `Mount_Unlock`
-   - `Mount_Spool_Spin` (looping)
-   - `Mount_Lock`
+2. **`MuseDesk_CeilingMount.controller` (4 clips — drives `Bone_SpoolDrum`, `Bone_CollarLatch_L/R`, `Bone_SuspCollar`, and 4-leaf `Bone_Iris_F/B/L/R` shutter blades)**
+   - `Mount_Docked_Idle` (looping, iris blades closed into anti-clip docking cradle)
+   - `Mount_Unlock` (iris shutters open radially, latches release)
+   - `Mount_Spool_Spin` (looping with iris shutters held open)
+   - `Mount_Lock` (iris shutters close back into seated cradle, latches engage)
 
 3. **`MuseDesk_AttentionBeacon.controller` (7 clips)**
    - `Beacon_Idle` (looping)
@@ -147,16 +147,22 @@ All sockets are verified `allSocketsUnitScale == true` (`lossyScale == (1, 1, 1)
    - Implements full `PodState` sequence: `DockedIdle` -> `Acknowledging` -> `Unlocking` -> `BeginningDescent` -> `Descending` (interpolates `podRoot.position` between `DockedPose` and `InspectionPose` and scales `dynamicTetherRod`) -> `Stabilizing` -> `OpeningShelf` -> `DeployedIdle`; reverses via `ClosingShelf` -> `BeginningAscent` -> `ReturningToDock` -> `DockLocking` -> `Settling` -> `DockedIdle`.
    - **Skipped-Event Recovery:** Animation event hooks (`OnAnimUnlockComplete`, `OnAnimBeginDescentDone`, `OnAnimStabilizeComplete`, `OnAnimShelfOpened`, `OnAnimShelfClosed`, `OnAnimBeginAscentDone`, `OnAnimDockLocked`, `OnAnimSettleComplete`) are optional accelerators — every transitional phase carries a deterministic timeout ceiling and smoothly completes or switches direction cleanly if `Deploy()`, `Retract()`, or `SnapToPoseImmediate(bool deployed)` interrupts mid-flight.
    - Room configuration: `ConfigureRoomPoses(Vector3 dockedWorldPos, Vector3 inspectionWorldPos, Quaternion yawRotation)`.
-4. **`SpatialBeaconVisualController`** (`SpatialBeaconVisualController.cs`)
+4. **`CeilingDeploymentVFXController`** (`CeilingDeploymentVFXController.cs`)
+   - Automatically subscribes to `CeilingWorkspacePodController.StateChanged` (zero extra gameplay plumbing needed) and drives the articulated ceiling ascension/descension VFX rig on `Spatial_CeilingWorkspaceAssembly.prefab` / `Spatial_CeilingPod_Complete.prefab` using Quest-3 Single-Pass Instanced URP shaders (`MuseDesk/Spatial/PortalCone` in `Assets/MuseDesk/Art/Shaders/SpatialPortalCone.shader`, `Mat_Spatial_PortalCone.mat`, `Mat_Spatial_SoftParticle.mat`, `Tex_SoftGlowDot.png`, `VFX_PortalConeMesh.asset`, `VFX_HoloRingMesh.asset`) and `MaterialPropertyBlock`:
+     - `VFX_CeilingProjectionHalo` & `VFX_CeilingRippleRing` flush against the ceiling bay (`TriggerCeilingRipple` pulses cyan on unlock, warm gold on lock).
+     - `VFX_CeilingPortalCone` Fresnel light column spanning `SuspensionTop` -> `DockingConnector` with directional scanline flow (downward Cyan on descent, upward Warm Gold on ascent).
+     - `VFX_TetherFlowParticles` (directional motes clamped inside the cone column), `VFX_CeilingApertureParticles` (orbiting iris bay sparkles), `VFX_AirCushionRing` (soft landing hover glow beneath `PodRoot`), and `VFX_ArrivalBurstParticles` (24-mote arrival/docking puffs).
+     - `ResolveReferences()` and `ApplySnapshotImmediate(PodState state, float progress01, float ripplePhase01)` for deterministic EditMode & scene validation.
+5. **`SpatialBeaconVisualController`** (`SpatialBeaconVisualController.cs`)
    - `SetState(BeaconState state, bool immediate = false)` supporting `WorkingNormally`, `CompletedWork`, `OptionalSuggestion`, `BlockingDecision`, `Error`, `Disconnected`, `Inactive`, pairing color-restrained peripheral glows (`MaterialPropertyBlock`) with 3D accessibility icon meshes and mechanical flag rotation.
    - `PulseIncoming()` triggers `Beacon_Incoming` arrival squash/pulse.
-5. **`DocumentCourierController`** (`DocumentCourierController.cs`)
+6. **`DocumentCourierController`** (`DocumentCourierController.cs`)
    - Drives 7-step lifecycle (`DockedIdle`, `LoadingDocument`, `Departing`, `TravelingToUser`, `Presenting`, `WaitingForInteraction`, `ReturningToStation`) along a runtime-evaluated quadratic Bezier arc to any `Pose` via `DispatchToUserPose(Pose targetPresentationPose, Action onArrived = null)` and `ReturnToStation(Action onReturned = null)`, plus `AttachDocument` / `DetachDocument` / `SnapDockedImmediate`.
-6. **`AgentConversationPerchController`** (`AgentConversationPerchController.cs`)
+7. **`AgentConversationPerchController`** (`AgentConversationPerchController.cs`)
    - Controls `PerchState` (`Folded`, `Arriving`, `Listening`, `Speaking`, `Returning`) with `AttachAgent`, `AttachDocument`, `TriggerUnfoldArrive`, `SetListening`, `TriggerSpeakingPulse`, `TriggerFoldReturn`, and `RecoverToDeployedIdle`.
-7. **`SpatialMailboxController`** (`SpatialMailboxController.cs`)
+8. **`SpatialMailboxController`** (`SpatialMailboxController.cs`)
    - `UpdateCounts(int completed, int suggestions, int pendingDecisions)` updates `Mailbox_CountTMP` and toggles per-slot visual document indicators cleanly; `MountDocumentVisual(Transform docTransform, int slotType, Vector3 desiredWorldScale)` attaches document prefabs into `CompletedDocSocket` / `SuggestionDocSocket` / `PendingDecisionSocket`.
-8. **`PlacementGhostPreviewController`** (`PlacementGhostPreviewController.cs`)
+9. **`PlacementGhostPreviewController`** (`PlacementGhostPreviewController.cs`)
    - `SetValid(bool valid, string labelOverride = null)` and `TriggerConfirmPulse()` swap `Mat_Spatial_Ghost` colors (`_BaseColor` / `_EmissionColor`) via `MaterialPropertyBlock` cleanly for floor and ceiling MR placement previews.
 
 ---
@@ -182,3 +188,4 @@ All sockets are verified `allSocketsUnitScale == true` (`lossyScale == (1, 1, 1)
    - Bind task/decision status changes to child `SpatialBeaconVisualController.SetState(...)` + `SpatialMailboxController.UpdateCounts(...)`.
    - Call child `DocumentCourierController.DispatchToUserPose(comfortPose, onArrived)` to fly documents from `FloorCourierStation` to the user without bending down; call `ReturnToStation()` once reviewed/approved.
    - Spawn `AgentConversationPerch.prefab` beside the user for focused 1-on-1 agent check-ins via `AttachAgent(...)`, `SetListening(true)`, and `TriggerFoldReturn()`.
+

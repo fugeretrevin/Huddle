@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &778565975463159855
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3510004613865841411}
+  m_Layer: 0
+  m_Name: Bone_Iris_R
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3510004613865841411
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 778565975463159855}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.00071999995, y: 0.00035999998, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5185644199893752775}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1028256652092311187
 GameObject:
   m_ObjectHideFlags: 0
@@ -92,6 +123,7 @@ SkinnedMeshRenderer:
   - {fileID: 2100000, guid: 7f167071b28dff546bc143f2f4803c19, type: 2}
   - {fileID: 2100000, guid: b5020d364035987479c29af97109cb67, type: 2}
   - {fileID: 2100000, guid: 122d6ea45c06ddf459e30c1a973e7bf3, type: 2}
+  - {fileID: 2100000, guid: 72ffba9a3b60ffb4ab353d45e9e10d27, type: 2}
   - {fileID: 2100000, guid: e4d39ab1cd0c4cd4a81dd3f96e4d8954, type: 2}
   - {fileID: 2100000, guid: 64ddcc7aaa5d3d94094cb80fc288b72a, type: 2}
   m_StaticBatchInfo:
@@ -127,11 +159,15 @@ SkinnedMeshRenderer:
   - {fileID: 5041043006117445629}
   - {fileID: 5436303870455994389}
   - {fileID: 8399115138181792578}
+  - {fileID: 4239639192970847613}
+  - {fileID: 4699245961861254675}
+  - {fileID: 9061107208639116344}
+  - {fileID: 3510004613865841411}
   m_BlendShapeWeights: []
   m_RootBone: {fileID: 5185644199893752775}
   m_AABB:
     m_Center: {x: 0, y: 0.00058999966, z: 0}
-    m_Extent: {x: 0.00145, y: 0.0005899998, z: 0.0014499995}
+    m_Extent: {x: 0.0022, y: 0.0005899998, z: 0.0021999993}
   m_DirtyAABB: 0
 --- !u!1 &1932356010979375086
 GameObject:
@@ -163,6 +199,37 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 192573504335486059}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2505767597030096481
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 9061107208639116344}
+  m_Layer: 0
+  m_Name: Bone_Iris_L
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &9061107208639116344
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2505767597030096481}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0.00071999995, y: 0.00035999998, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5185644199893752775}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3952112576359721836
 GameObject:
@@ -319,9 +386,44 @@ Transform:
   m_Children:
   - {fileID: 5041043006117445629}
   - {fileID: 5436303870455994389}
+  - {fileID: 4699245961861254675}
+  - {fileID: 4239639192970847613}
+  - {fileID: 9061107208639116344}
+  - {fileID: 3510004613865841411}
   - {fileID: 3195032472474136692}
   - {fileID: 8399115138181792578}
   m_Father: {fileID: 5777485648216142276}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &6975313928935110452
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4239639192970847613}
+  m_Layer: 0
+  m_Name: Bone_Iris_F
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4239639192970847613
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6975313928935110452}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0, y: 0.00035999998, z: 0.00071999995}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5185644199893752775}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7435463967497801982
 GameObject:
@@ -562,4 +664,35 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 192573504335486059}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &8128326794325474414
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4699245961861254675}
+  m_Layer: 0
+  m_Name: Bone_Iris_B
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4699245961861254675
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8128326794325474414}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0, y: 0.00035999998, z: -0.00071999995}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5185644199893752775}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

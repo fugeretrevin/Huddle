@@ -125,6 +125,8 @@ namespace MuseDesk.Editor.ArtPipeline
         {
             EnsureFolderPath(ControllersDir);
             EnsureFolderPath(PrefabsDir);
+            EnsureFolderPath("Assets/MuseDesk/Art/Shaders");
+            EnsureFolderPath("Assets/MuseDesk/Art/Textures");
             EnsureFolderPath("Assets/MuseDesk/Scenes");
         }
 
@@ -178,8 +180,89 @@ namespace MuseDesk.Editor.ArtPipeline
             EditorUtility.SetDirty(ghostMat);
             map["Mat_Spatial_Ghost"] = ghostMat;
 
+            // Radial soft particle glow texture
+            string glowTexPath = "Assets/MuseDesk/Art/Textures/Tex_SoftGlowDot.png";
+            Texture2D glowTex = EnsureSoftGlowTexture(glowTexPath);
+
+            // Mat_Spatial_PortalCone (custom Quest-3 stereo-safe additive holographic beam & halo ring shader)
+            Shader portalShader = Shader.Find("MuseDesk/Spatial/PortalCone") ?? Shader.Find("Universal Render Pipeline/Unlit");
+            string portalMatPath = $"{MatsDir}/Mat_Spatial_PortalCone.mat";
+            Material portalMat = AssetDatabase.LoadAssetAtPath<Material>(portalMatPath);
+            if (portalMat == null)
+            {
+                portalMat = new Material(portalShader) { name = "Mat_Spatial_PortalCone" };
+                AssetDatabase.CreateAsset(portalMat, portalMatPath);
+            }
+            else if (portalMat.shader != portalShader)
+            {
+                portalMat.shader = portalShader;
+            }
+            portalMat.SetColor("_BaseColor", new Color(0.184f, 0.78f, 0.76f, 0.42f));
+            portalMat.SetFloat("_Intensity", 1.25f);
+            EditorUtility.SetDirty(portalMat);
+            map["Mat_Spatial_PortalCone"] = portalMat;
+
+            // Mat_Spatial_SoftParticle (URP Particles/Unlit Additive with soft circular radial texture)
+            Shader partShader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Universal Render Pipeline/Unlit");
+            string partMatPath = $"{MatsDir}/Mat_Spatial_SoftParticle.mat";
+            Material partMat = AssetDatabase.LoadAssetAtPath<Material>(partMatPath);
+            if (partMat == null)
+            {
+                partMat = new Material(partShader) { name = "Mat_Spatial_SoftParticle" };
+                AssetDatabase.CreateAsset(partMat, partMatPath);
+            }
+            else if (partMat.shader != partShader)
+            {
+                partMat.shader = partShader;
+            }
+            if (glowTex != null) partMat.SetTexture("_BaseMap", glowTex);
+            partMat.SetColor("_BaseColor", Color.white);
+            partMat.SetFloat("_Surface", 1f);
+            partMat.SetFloat("_Blend", 2f); // Additive
+            partMat.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            partMat.SetFloat("_DstBlend", (float)BlendMode.One);
+            partMat.SetFloat("_ZWrite", 0f);
+            partMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            partMat.SetOverrideTag("RenderType", "Transparent");
+            partMat.renderQueue = (int)RenderQueue.Transparent;
+            EditorUtility.SetDirty(partMat);
+            map["Mat_Spatial_SoftParticle"] = partMat;
+
             AssetDatabase.SaveAssets();
             return map;
+        }
+
+        private static Texture2D EnsureSoftGlowTexture(string assetPath)
+        {
+            const int size = 64;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false, false);
+            float center = (size - 1) * 0.5f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x - center) / center;
+                    float dy = (y - center) / center;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float falloff = Mathf.Clamp01(1f - r);
+                    float a = Mathf.Pow(falloff, 2.2f);
+                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                }
+            }
+            tex.Apply();
+            File.WriteAllBytes(assetPath, tex.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(tex);
+
+            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
+            if (AssetImporter.GetAtPath(assetPath) is TextureImporter ti)
+            {
+                ti.textureType = TextureImporterType.Default;
+                ti.alphaIsTransparency = true;
+                ti.wrapMode = TextureWrapMode.Clamp;
+                ti.filterMode = FilterMode.Bilinear;
+                ti.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
         }
 
         private static void ConfigureTransparentUrpLit(Material mat, Color baseColor)
@@ -696,10 +779,11 @@ namespace MuseDesk.Editor.ArtPipeline
             // Small front slate status display TMP readout attached cleanly at InfoDisplaySocket
             Transform dispSock = FindChildRecursive(go.transform, "InfoDisplaySocket");
             Transform dispParent = dispSock != null ? dispSock : go.transform;
-            Vector3 dispPos = dispSock != null ? new Vector3(0f, 0f, 0.0062f) : new Vector3(0.190f, 0.058f, 0.151f);
+            Vector3 dispPos = dispSock != null ? new Vector3(0f, 0f, 0.0065f) : new Vector3(0.190f, 0.058f, 0.151f);
+            Vector3 dispEuler = dispSock != null ? Vector3.zero : new Vector3(-18f, 14f, 0f);
             AddWorldTextLabel(dispParent, "Pod_TaskDisplayTMP", "POD READY\nSTANDBY",
-                dispPos, new Vector3(-18f, 14f, 0f), 0.0032f,
-                new Color(0.82f, 0.94f, 0.92f, 1f), new Vector2(22f, 9f));
+                dispPos, dispEuler, 0.0026f,
+                new Color(0.82f, 0.94f, 0.92f, 1f), new Vector2(28f, 12f));
 
             return SavePrefab(go, "SuspendedOfficePod");
         }
@@ -833,14 +917,15 @@ namespace MuseDesk.Editor.ArtPipeline
             mount.name = "CeilingMount";
 
             // Position CeilingMount DockedPose & InspectionPose sockets relative to CeilingAnchor
+            // DockedPose (-0.388m) sits Pod's top DockingConnector (+0.258m) at -0.130m right beneath the closed 4-leaf Iris bay!
             Transform dockedPose = FindChildRecursive(mount.transform, "DockedPose");
-            if (dockedPose != null) dockedPose.localPosition = new Vector3(0f, -0.376f, 0f);
+            if (dockedPose != null) dockedPose.localPosition = new Vector3(0f, -0.388f, 0f);
             Transform inspPose = FindChildRecursive(mount.transform, "InspectionPose");
             if (inspPose != null) inspPose.localPosition = new Vector3(0f, -1.42f, 0f);
 
             var pod = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["SuspendedOfficePod"], root.transform);
             pod.name = "SuspendedOfficePod";
-            pod.transform.localPosition = new Vector3(0f, -0.376f, 0f);
+            pod.transform.localPosition = new Vector3(0f, -0.388f, 0f);
 
             // Dynamic visual suspension tether cylinder (height = 2m default primitive -> tetherBaseLength = 2f)
             var rodGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -858,6 +943,9 @@ namespace MuseDesk.Editor.ArtPipeline
             if (beaconSocket != null)
                 SpatialScaleUtility.MountPreservingWorldScale(beacon.transform, beaconSocket, Vector3.one * 0.85f);
 
+            // Ceiling Ascension/Descension Portal & Particle VFX Rig (shared URP shaders + MPB + Quest-safe particles)
+            BuildCeilingDeploymentVfxChildren(root.transform, pod.transform, matMap);
+
             var ctrl = root.AddComponent<CeilingWorkspacePodController>();
             ctrl.ResolveTransforms();
             SetPrivateField(ctrl, "mountAnimator", mount.GetComponent<Animator>());
@@ -869,7 +957,233 @@ namespace MuseDesk.Editor.ArtPipeline
             SetPrivateField(ctrl, "tetherBaseLength", 2f);
             ctrl.SnapToPoseImmediate(deployed: false);
 
+            var vfxCtrl = root.AddComponent<CeilingDeploymentVFXController>();
+            vfxCtrl.ResolveReferences();
+            vfxCtrl.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.DockedIdle, 0f);
+
             return SavePrefab(root, "Spatial_CeilingWorkspaceAssembly");
+        }
+
+        private static void BuildCeilingDeploymentVfxChildren(
+            Transform root,
+            Transform podRoot,
+            Dictionary<string, Material> matMap)
+        {
+            BuildOrLoadVfxMeshes(out Mesh coneMesh, out Mesh ringMesh);
+            matMap.TryGetValue("Mat_Spatial_PortalCone", out Material portalMat);
+            matMap.TryGetValue("Mat_Spatial_SoftParticle", out Material particleMat);
+
+            // 1. Volumetric holographic light cone spanning ceiling bay -> pod yoke
+            var coneGo = new GameObject("VFX_CeilingPortalCone");
+            coneGo.transform.SetParent(root, false);
+            coneGo.AddComponent<MeshFilter>().sharedMesh = coneMesh;
+            var coneRend = coneGo.AddComponent<MeshRenderer>();
+            coneRend.sharedMaterial = portalMat;
+            coneRend.shadowCastingMode = ShadowCastingMode.Off;
+            coneRend.receiveShadows = false;
+
+            // 2. Steady ceiling halo + expanding lock/unlock ripple flush beneath drywall
+            var haloGo = new GameObject("VFX_CeilingProjectionHalo");
+            haloGo.transform.SetParent(root, false);
+            haloGo.transform.localPosition = new Vector3(0f, -0.004f, 0f);
+            haloGo.transform.localScale = new Vector3(0.28f, 1f, 0.28f);
+            haloGo.AddComponent<MeshFilter>().sharedMesh = ringMesh;
+            var haloRend = haloGo.AddComponent<MeshRenderer>();
+            haloRend.sharedMaterial = portalMat;
+            haloRend.shadowCastingMode = ShadowCastingMode.Off;
+            haloRend.receiveShadows = false;
+
+            var rippleGo = new GameObject("VFX_CeilingRippleRing");
+            rippleGo.transform.SetParent(root, false);
+            rippleGo.transform.localPosition = new Vector3(0f, -0.008f, 0f);
+            rippleGo.transform.localScale = new Vector3(0.30f, 1f, 0.30f);
+            rippleGo.AddComponent<MeshFilter>().sharedMesh = ringMesh;
+            var rippleRend = rippleGo.AddComponent<MeshRenderer>();
+            rippleRend.sharedMaterial = portalMat;
+            rippleRend.shadowCastingMode = ShadowCastingMode.Off;
+            rippleRend.receiveShadows = false;
+
+            // 3. Air-cushion landing halo beneath the suspended pod
+            var cushionGo = new GameObject("VFX_AirCushionRing");
+            cushionGo.transform.SetParent(root, false);
+            cushionGo.transform.localPosition = new Vector3(0f, -0.015f, 0f);
+            cushionGo.transform.localScale = new Vector3(0.35f, 1f, 0.24f);
+            cushionGo.AddComponent<MeshFilter>().sharedMesh = ringMesh;
+            var cushionRend = cushionGo.AddComponent<MeshRenderer>();
+            cushionRend.sharedMaterial = portalMat;
+            cushionRend.shadowCastingMode = ShadowCastingMode.Off;
+            cushionRend.receiveShadows = false;
+
+            // 4. ParticleSystem: Ceiling bay orbiting motes
+            var apGo = new GameObject("VFX_CeilingApertureParticles");
+            apGo.transform.SetParent(root, false);
+            apGo.transform.localPosition = new Vector3(0f, -0.045f, 0f);
+            apGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            var apPs = ConfigureBaseParticleSystem(apGo, particleMat, maxParticles: 28, rateOverTime: 18f,
+                startLifetime: 1.15f, startSpeed: 0.045f, startSizeMin: 0.014f, startSizeMax: 0.026f,
+                new Color(0.32f, 0.90f, 0.94f, 0.90f));
+            var apShape = apPs.shape;
+            apShape.shapeType = ParticleSystemShapeType.Circle;
+            apShape.radius = 0.145f;
+            apShape.radiusThickness = 0.2f;
+            var apVel = apPs.velocityOverLifetime;
+            apVel.enabled = true;
+            apVel.orbitalZ = new ParticleSystem.MinMaxCurve(1.4f);
+
+            // 5. ParticleSystem: Bidirectional tether flow motes (down when descending, up when retracting)
+            var tfGo = new GameObject("VFX_TetherFlowParticles");
+            tfGo.transform.SetParent(root, false);
+            tfGo.transform.localPosition = new Vector3(0f, -0.5f, 0f);
+            tfGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            var tfPs = ConfigureBaseParticleSystem(tfGo, particleMat, maxParticles: 36, rateOverTime: 26f,
+                startLifetime: 1.25f, startSpeed: 0.35f, startSizeMin: 0.012f, startSizeMax: 0.022f,
+                new Color(0.42f, 0.95f, 0.94f, 0.95f));
+            var tfShape = tfPs.shape;
+            tfShape.shapeType = ParticleSystemShapeType.ConeVolume;
+            tfShape.angle = 3f;
+            tfShape.radius = 0.085f;
+            tfShape.length = 0.85f;
+            var tfCol = tfPs.colorOverLifetime;
+            tfCol.enabled = true;
+            var tfGrad = new Gradient();
+            tfGrad.SetKeys(
+                new[] { new GradientColorKey(new Color(0.25f, 0.92f, 0.92f), 0f), new GradientColorKey(Color.white, 0.5f), new GradientColorKey(new Color(0.25f, 0.92f, 0.92f), 1f) },
+                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(0.85f, 0.25f), new GradientAlphaKey(0.85f, 0.75f), new GradientAlphaKey(0f, 1f) });
+            tfCol.color = tfGrad;
+
+            // 6. ParticleSystem: Arrival / Docking radial burst mist
+            var brGo = new GameObject("VFX_ArrivalBurstParticles");
+            brGo.transform.SetParent(root, false);
+            brGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            var brPs = ConfigureBaseParticleSystem(brGo, particleMat, maxParticles: 24, rateOverTime: 0f,
+                startLifetime: 0.75f, startSpeed: 0.28f, startSizeMin: 0.014f, startSizeMax: 0.028f,
+                new Color(0.95f, 0.88f, 0.65f, 0.90f));
+            var brShape = brPs.shape;
+            brShape.shapeType = ParticleSystemShapeType.Donut;
+            brShape.radius = 0.16f;
+            brShape.donutRadius = 0.02f;
+        }
+
+        private static ParticleSystem ConfigureBaseParticleSystem(
+            GameObject go,
+            Material mat,
+            int maxParticles,
+            float rateOverTime,
+            float startLifetime,
+            float startSpeed,
+            float startSizeMin,
+            float startSizeMax,
+            Color startColor)
+        {
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.loop = true;
+            main.maxParticles = maxParticles;
+            main.startLifetime = startLifetime;
+            main.startSpeed = startSpeed;
+            main.startSize = new ParticleSystem.MinMaxCurve(startSizeMin, startSizeMax);
+            main.startColor = startColor;
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+            var em = ps.emission;
+            em.rateOverTime = rateOverTime;
+
+            var sizeLife = ps.sizeOverLifetime;
+            sizeLife.enabled = true;
+            sizeLife.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+                new Keyframe(0f, 0.2f), new Keyframe(0.35f, 1f), new Keyframe(1f, 0f)));
+
+            var rend = go.GetComponent<ParticleSystemRenderer>();
+            if (rend != null)
+            {
+                rend.sharedMaterial = mat;
+                rend.renderMode = ParticleSystemRenderMode.Billboard;
+                rend.shadowCastingMode = ShadowCastingMode.Off;
+                rend.receiveShadows = false;
+            }
+            return ps;
+        }
+
+        private static void BuildOrLoadVfxMeshes(out Mesh coneMesh, out Mesh ringMesh)
+        {
+            string conePath = $"{ModelsDir}/VFX_PortalConeMesh.asset";
+            string ringPath = $"{ModelsDir}/VFX_HoloRingMesh.asset";
+
+            coneMesh = AssetDatabase.LoadAssetAtPath<Mesh>(conePath);
+            if (coneMesh == null)
+            {
+                coneMesh = new Mesh { name = "VFX_PortalConeMesh" };
+                const int segs = 28;
+                var verts = new Vector3[(segs + 1) * 2];
+                var norms = new Vector3[(segs + 1) * 2];
+                var uvs = new Vector2[(segs + 1) * 2];
+                var tris = new int[segs * 6];
+                const float rTop = 0.135f;
+                const float rBot = 0.225f;
+                for (int i = 0; i <= segs; i++)
+                {
+                    float t = (float)i / segs;
+                    float ang = t * Mathf.PI * 2f;
+                    float cx = Mathf.Cos(ang);
+                    float sz = Mathf.Sin(ang);
+                    Vector3 n = new Vector3(cx, 0.08f, sz).normalized;
+                    verts[i * 2]     = new Vector3(cx * rTop, 0f, sz * rTop);
+                    verts[i * 2 + 1] = new Vector3(cx * rBot, -1f, sz * rBot);
+                    norms[i * 2] = norms[i * 2 + 1] = n;
+                    uvs[i * 2]     = new Vector2(t, 0f);
+                    uvs[i * 2 + 1] = new Vector2(t, 1f);
+                }
+                for (int i = 0; i < segs; i++)
+                {
+                    int v0 = i * 2;
+                    tris[i * 6] = v0; tris[i * 6 + 1] = v0 + 2; tris[i * 6 + 2] = v0 + 1;
+                    tris[i * 6 + 3] = v0 + 2; tris[i * 6 + 4] = v0 + 3; tris[i * 6 + 5] = v0 + 1;
+                }
+                coneMesh.vertices = verts;
+                coneMesh.normals = norms;
+                coneMesh.uv = uvs;
+                coneMesh.triangles = tris;
+                coneMesh.RecalculateBounds();
+                AssetDatabase.CreateAsset(coneMesh, conePath);
+            }
+
+            ringMesh = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
+            if (ringMesh == null)
+            {
+                ringMesh = new Mesh { name = "VFX_HoloRingMesh" };
+                const int segs = 36;
+                var verts = new Vector3[(segs + 1) * 2];
+                var norms = new Vector3[(segs + 1) * 2];
+                var uvs = new Vector2[(segs + 1) * 2];
+                var tris = new int[segs * 6];
+                const float rIn = 0.68f;
+                const float rOut = 1.0f;
+                for (int i = 0; i <= segs; i++)
+                {
+                    float t = (float)i / segs;
+                    float ang = t * Mathf.PI * 2f;
+                    float cx = Mathf.Cos(ang);
+                    float sz = Mathf.Sin(ang);
+                    verts[i * 2]     = new Vector3(cx * rIn, 0f, sz * rIn);
+                    verts[i * 2 + 1] = new Vector3(cx * rOut, 0f, sz * rOut);
+                    norms[i * 2] = norms[i * 2 + 1] = Vector3.up;
+                    uvs[i * 2]     = new Vector2(t, 0f);
+                    uvs[i * 2 + 1] = new Vector2(t, 1f);
+                }
+                for (int i = 0; i < segs; i++)
+                {
+                    int v0 = i * 2;
+                    tris[i * 6] = v0; tris[i * 6 + 1] = v0 + 1; tris[i * 6 + 2] = v0 + 2;
+                    tris[i * 6 + 3] = v0 + 2; tris[i * 6 + 4] = v0 + 1; tris[i * 6 + 5] = v0 + 3;
+                }
+                ringMesh.vertices = verts;
+                ringMesh.normals = norms;
+                ringMesh.uv = uvs;
+                ringMesh.triangles = tris;
+                ringMesh.RecalculateBounds();
+                AssetDatabase.CreateAsset(ringMesh, ringPath);
+            }
         }
 
         private static GameObject BuildCompositeFloorComplete(Dictionary<string, GameObject> prefabs)
@@ -1187,8 +1501,8 @@ namespace MuseDesk.Editor.ArtPipeline
             matMap.TryGetValue("Mat_FeltSlate", out var floorMat);
             matMap.TryGetValue("Mat_WarmBeige", out var ceilMat);
             matMap.TryGetValue("Mat_WarmWood", out var deskMat);
-            CreateStudioBox("Studio_Floor", new Vector3(0f, -0.025f, 0f), new Vector3(6.5f, 0.05f, 5.0f), floorMat);
-            CreateStudioBox("Studio_CeilingBeam", new Vector3(0.65f, 2.43f, 0f), new Vector3(2.4f, 0.06f, 0.9f), ceilMat);
+            CreateStudioBox("Studio_Floor", new Vector3(0f, -0.025f, 0f), new Vector3(8.5f, 0.05f, 5.5f), floorMat);
+            CreateStudioBox("Studio_CeilingBeam", new Vector3(0.85f, 2.43f, 0f), new Vector3(2.8f, 0.06f, 0.9f), ceilMat);
             CreateStudioBox("Studio_DeskProxy", new Vector3(-0.05f, 0.37f, 0.68f), new Vector3(1.10f, 0.74f, 0.55f), deskMat);
 
             // 1. Full Floor Office Complete
@@ -1201,22 +1515,36 @@ namespace MuseDesk.Editor.ArtPipeline
             floorCompact.name = "Showcase_02_FloorOffice_Compact";
             floorCompact.transform.position = new Vector3(-1.90f, 0f, 0.15f);
 
-            // 3. Retractable Ceiling Workspace — Docked
+            // 3. Retractable Ceiling Workspace — Docked (closed 4-leaf Iris bay, snug zero-clip cradle)
             var ceilDocked = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["Spatial_CeilingPod_Complete"]);
             ceilDocked.name = "Showcase_03_CeilingPod_Docked";
-            ceilDocked.transform.position = new Vector3(0.15f, 2.40f, -0.05f);
+            ceilDocked.transform.position = new Vector3(0.05f, 2.40f, -0.05f);
             var dockCtrl = ceilDocked.GetComponent<CeilingWorkspacePodController>();
-            dockCtrl.ConfigureRoomPoses(new Vector3(0.15f, 2.024f, -0.05f), new Vector3(0.15f, 1.00f, -0.05f), Quaternion.identity);
+            dockCtrl.ConfigureRoomPoses(new Vector3(0.05f, 2.012f, -0.05f), new Vector3(0.05f, 1.00f, -0.05f), Quaternion.identity);
             dockCtrl.SnapToPoseImmediate(false);
+            ceilDocked.GetComponent<CeilingDeploymentVFXController>()?.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.DockedIdle, 0f);
 
-            // 4. Retractable Ceiling Workspace — Deployed (with sampled Pod_Deployed_Idle clip!)
+            // 4a. Retractable Ceiling Workspace — Active Descension VFX Showcase (Iris open + Portal Cone + Tether Motes + Ripple)
+            var ceilDesc = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["Spatial_CeilingPod_Complete"]);
+            ceilDesc.name = "Showcase_04b_CeilingPod_DescendingVFX";
+            ceilDesc.transform.position = new Vector3(0.85f, 2.40f, -0.05f);
+            var descCtrl = ceilDesc.GetComponent<CeilingWorkspacePodController>();
+            descCtrl.ConfigureRoomPoses(new Vector3(0.85f, 2.012f, -0.05f), new Vector3(0.85f, 1.56f, -0.05f), Quaternion.identity);
+            descCtrl.SnapToPoseImmediate(true);
+            SampleAnimationState(ceilDesc, "CeilingMount", $"{ModelsDir}/CeilingMount.fbx", "Mount_Spool_Spin");
+            SampleAnimationState(ceilDesc, "SuspendedOfficePod", $"{ModelsDir}/SuspendedOfficePod.fbx", "Pod_Descending");
+            ceilDesc.GetComponent<CeilingDeploymentVFXController>()?.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.Descending, 0.35f);
+
+            // 4b. Retractable Ceiling Workspace — Deployed (Shelf open at comfortable desk height)
             var ceilDeployed = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["Spatial_CeilingPod_Complete"]);
             ceilDeployed.name = "Showcase_04_CeilingPod_Deployed";
-            ceilDeployed.transform.position = new Vector3(1.00f, 2.40f, -0.05f);
+            ceilDeployed.transform.position = new Vector3(1.65f, 2.40f, -0.05f);
             var depCtrl = ceilDeployed.GetComponent<CeilingWorkspacePodController>();
-            depCtrl.ConfigureRoomPoses(new Vector3(1.00f, 2.024f, -0.05f), new Vector3(1.00f, 1.02f, -0.05f), Quaternion.identity);
+            depCtrl.ConfigureRoomPoses(new Vector3(1.65f, 2.012f, -0.05f), new Vector3(1.65f, 1.02f, -0.05f), Quaternion.identity);
             depCtrl.SnapToPoseImmediate(true);
+            SampleAnimationState(ceilDeployed, "CeilingMount", $"{ModelsDir}/CeilingMount.fbx", "Mount_Spool_Spin");
             SampleAnimationState(ceilDeployed, "SuspendedOfficePod", $"{ModelsDir}/SuspendedOfficePod.fbx", "Pod_Deployed_Idle");
+            ceilDeployed.GetComponent<CeilingDeploymentVFXController>()?.ApplySnapshotImmediate(CeilingWorkspacePodController.PodState.DeployedIdle, 0f);
 
             // 5. Attention Beacon 7-State Showcase Row (on desk height shelf for close-up inspection)
             var beaconStates = (SpatialBeaconVisualController.BeaconState[])Enum.GetValues(
@@ -1261,13 +1589,13 @@ namespace MuseDesk.Editor.ArtPipeline
 
             var ghostFloor = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["PlacementGhostPreview_Floor"]);
             ghostFloor.name = "Showcase_07b_GhostFloor_Valid";
-            ghostFloor.transform.position = new Vector3(1.65f, 0.002f, 0.55f);
+            ghostFloor.transform.position = new Vector3(2.40f, 0.002f, 0.55f);
             var gfCtrl = ghostFloor.GetComponent<PlacementGhostPreviewController>();
             gfCtrl.SetValid(true, "FLOOR PLACEMENT OK");
 
             var ghostCeil = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["PlacementGhostPreview_Ceiling"]);
             ghostCeil.name = "Showcase_07c_GhostCeiling_Blocked";
-            ghostCeil.transform.position = new Vector3(1.65f, 1.48f, 0.55f);
+            ghostCeil.transform.position = new Vector3(2.40f, 1.48f, 0.55f);
             var gcCtrl = ghostCeil.GetComponent<PlacementGhostPreviewController>();
             gcCtrl.SetValid(false, "OBSTRUCTED CEILING");
 
@@ -1300,17 +1628,17 @@ namespace MuseDesk.Editor.ArtPipeline
             var captured = new List<string>
             {
                 CaptureCameraShot(cam, "01_Validation_Overview.png",
-                    new Vector3(0.15f, 1.50f, 3.85f), new Vector3(0.15f, 0.92f, 0.25f), 1440, 900),
+                    new Vector3(0.30f, 1.50f, 4.35f), new Vector3(0.30f, 0.92f, 0.25f), 1440, 900),
                 CaptureCameraShot(cam, "02_FloorOffice_Complete.png",
                     new Vector3(-1.05f, 0.52f, 0.85f), new Vector3(-1.05f, 0.08f, -0.05f), 1280, 800),
                 CaptureCameraShot(cam, "03_CeilingPod_Docked_vs_Deployed.png",
-                    new Vector3(0.58f, 1.65f, 2.05f), new Vector3(0.58f, 1.65f, -0.05f), 1280, 800),
+                    new Vector3(0.85f, 1.68f, 2.55f), new Vector3(0.85f, 1.68f, -0.05f), 1280, 800),
                 CaptureCameraShot(cam, "04_AttentionBeacon_7States.png",
                     new Vector3(-0.02f, 0.92f, 1.48f), new Vector3(-0.02f, 0.78f, 0.85f), 1280, 720),
                 CaptureCameraShot(cam, "05_Courier_And_Perch_Showcase.png",
                     new Vector3(-0.04f, 1.08f, 1.18f), new Vector3(-0.04f, 0.88f, 0.56f), 1280, 720),
                 CaptureCameraShot(cam, "06_Mailbox_And_GhostPreviews.png",
-                    new Vector3(1.10f, 0.90f, 2.75f), new Vector3(1.10f, 0.72f, 0.55f), 1280, 720)
+                    new Vector3(1.55f, 0.90f, 3.05f), new Vector3(1.55f, 0.72f, 0.55f), 1280, 720)
             };
 
             // Reset Main Camera to clean overview pose before saving final scene

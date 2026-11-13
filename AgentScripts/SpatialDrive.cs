@@ -10,6 +10,10 @@ public static class SpatialDrive
     static T One<T>() where T : Object => Object.FindAnyObjectByType<T>(FindObjectsInactive.Include);
     static Transform Root() => Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt)
         .SelectMany(s => s.GetRootGameObjects()).SelectMany(r => r.GetComponentsInChildren<Transform>(true)).FirstOrDefault(t => t.name == "WorkspaceRoot");
+    // TaskDock now sits under the Panel_Dock holder (BuildMovablePanelsV1); null if the panels were not built.
+    static Transform PanelDockTask() => Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt)
+        .SelectMany(s => s.GetRootGameObjects()).SelectMany(r => r.GetComponentsInChildren<Transform>(true))
+        .FirstOrDefault(t => t.name == "TaskDock" && t.parent != null && t.parent.name == "Panel_Dock");
 
     public static string Report()
     {
@@ -28,7 +32,9 @@ public static class SpatialDrive
         if (kit != null && cam != null)
         {
             sb.Append($" | kit detached={kit.Detached} stampsShown={kit.DecisionItemsShown}");
-            foreach (var t in kit.items) if (t != null && (t.name == "TaskDock" || t.name == "StampApprove")) sb.Append($" {t.name}@{Vector3.Distance(cam.transform.position, t.position):F2}m");
+            var dockT = PanelDockTask();
+            if (dockT != null) sb.Append($" TaskDock@{Vector3.Distance(cam.transform.position, dockT.position):F2}m");
+            foreach (var t in kit.items) if (t != null && (t.name == "StampApprove" || (dockT == null && t.name == "TaskDock"))) sb.Append($" {t.name}@{Vector3.Distance(cam.transform.position, t.position):F2}m");
         }
         var sc = One<SummonController>(); if (sc != null) sb.Append($" keysShown={sc.KeysShown}");
         return sb.ToString();

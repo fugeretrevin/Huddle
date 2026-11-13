@@ -42,28 +42,48 @@ def build_ceiling_mount():
     add_b("Bone_CollarLatch_L",          (-0.075, 0.0, -0.036), (-0.095, 0.0, -0.056), b_root)
     add_b("Bone_CollarLatch_R",          ( 0.075, 0.0, -0.036), ( 0.095, 0.0, -0.056), b_root)
     add_b("Bone_SuspCollar",             (0.0, 0.0, -0.055), (0.0, 0.0, -0.085), b_root)
+    # 4 Articulated Iris Aperture Leaves inside the ceiling bay ring
+    add_b("Bone_Iris_F",                 ( 0.000,  0.072, -0.036), ( 0.000,  0.072, -0.062), b_root)
+    add_b("Bone_Iris_B",                 ( 0.000, -0.072, -0.036), ( 0.000, -0.072, -0.062), b_root)
+    add_b("Bone_Iris_L",                 ( 0.072,  0.000, -0.036), ( 0.072,  0.000, -0.062), b_root)
+    add_b("Bone_Iris_R",                 (-0.072,  0.000, -0.036), (-0.072,  0.000, -0.062), b_root)
 
     bpy.ops.object.mode_set(mode='OBJECT')
     for pb in arm_obj.pose.bones:
         pb.rotation_mode = 'XYZ'
 
     parts = []
-    # 1. Rounded ceiling mounting plate flush at Z=0 (extends Z in [-0.014, 0.0])
-    sc.make_cylinder(f"{name}_PlateOuter", 0.145, 0.014, (0, 0, -0.007), "Mat_CreamCeramic",
-                     vertices=32, bevel_caps=0.003, bone_name="Bone_MountRoot", parts_list=parts)
-    sc.make_cylinder(f"{name}_PlateTrim", 0.125, 0.005, (0, 0, -0.015), "Mat_WarmWood",
-                     vertices=28, bevel_caps=0.001, bone_name="Bone_MountRoot", parts_list=parts)
+    # 1. Wide sculpted ceiling docking bay canopy flush at Z=0 (Ø 0.44 m so it frames the pod cleanly!)
+    sc.make_cylinder(f"{name}_PlateOuter", 0.220, 0.014, (0, 0, -0.007), "Mat_CreamCeramic",
+                     vertices=36, bevel_caps=0.0035, bone_name="Bone_MountRoot", parts_list=parts)
+    sc.make_cylinder(f"{name}_PlateTrim", 0.196, 0.006, (0, 0, -0.016), "Mat_WarmWood",
+                     vertices=32, bevel_caps=0.0015, bone_name="Bone_MountRoot", parts_list=parts)
 
-    # 2. Structural suspension housing dome + subtle perimeter status ring
-    sc.make_cylinder(f"{name}_HousingCup", 0.086, 0.032, (0, 0, -0.032), "Mat_CharcoalVisor",
-                     vertices=26, bevel_caps=0.004, bone_name="Bone_MountRoot", parts_list=parts)
-    sc.make_torus(f"{name}_StatusRing", 0.087, 0.0032, (0, 0, -0.030), "Mat_Researcher_Teal",
-                  maj_seg=28, min_seg=8, bone_name="Bone_MountRoot", parts_list=parts)
+    # 2. Structural recessed bay apron + dual glowing MR perimeter halo rings
+    sc.make_cylinder(f"{name}_HousingCup", 0.156, 0.022, (0, 0, -0.027), "Mat_CharcoalVisor",
+                     vertices=36, bevel_caps=0.003, bone_name="Bone_MountRoot", parts_list=parts)
+    sc.make_torus(f"{name}_StatusRing", 0.160, 0.0045, (0, 0, -0.023), "Mat_Researcher_Teal",
+                  maj_seg=36, min_seg=10, bone_name="Bone_MountRoot", parts_list=parts)
+    sc.make_torus(f"{name}_InnerPortalRing", 0.122, 0.0032, (0, 0, -0.040), "Mat_StatusCyan",
+                  maj_seg=32, min_seg=8, bone_name="Bone_MountRoot", parts_list=parts)
 
-    # 3. Precision lift spool drum + decorative side brackets
+    # 4 Iris Aperture Shutter Blades positioned cleanly beneath the recessed bay floor (-0.042)
+    iris_specs = [
+        ("Bone_Iris_F", ( 0.000,  0.062, -0.042), (0.082, 0.046, 0.007), ( 0.000,  0.041, -0.043), (0.068, 0.009, 0.008)),
+        ("Bone_Iris_B", ( 0.000, -0.062, -0.042), (0.082, 0.046, 0.007), ( 0.000, -0.041, -0.043), (0.068, 0.009, 0.008)),
+        ("Bone_Iris_L", ( 0.062,  0.000, -0.042), (0.046, 0.082, 0.007), ( 0.041,  0.000, -0.043), (0.009, 0.068, 0.008)),
+        ("Bone_Iris_R", (-0.062,  0.000, -0.042), (0.046, 0.082, 0.007), (-0.041,  0.000, -0.043), (0.009, 0.068, 0.008)),
+    ]
+    for bname, p_center, p_size, t_center, t_size in iris_specs:
+        sc.make_beveled_box(f"{name}_{bname}_Leaf", p_size, p_center, "Mat_CreamCeramic",
+                            bevel_width=0.0018, bone_name=bname, parts_list=parts)
+        sc.make_beveled_box(f"{name}_{bname}_BrassLip", t_size, t_center, "Mat_Brass",
+                            bevel_width=0.0012, bone_name=bname, parts_list=parts)
+
+    # 3. Precision lift spool drum + decorative radial bay fins
     sc.make_cylinder(f"{name}_SpoolDrum", 0.032, 0.036, (0, 0, -0.034), "Mat_Brass",
                      vertices=20, rot_deg=(0, 90, 0), bone_name="Bone_SpoolDrum", parts_list=parts)
-    for side, sx in [("L", -0.036), ("R", 0.036)]:
+    for side, sx in [("L", -0.046), ("R", 0.046)]:
         sc.make_beveled_box(f"{name}_HousingFin_{side}", (0.012, 0.044, 0.022), (sx, 0, -0.038),
                             "Mat_BrushedMetal", bevel_width=0.002, bone_name="Bone_MountRoot", parts_list=parts)
 
@@ -79,7 +99,7 @@ def build_ceiling_mount():
                      vertices=18, bevel_caps=0.002, bone_name="Bone_SuspCollar", parts_list=parts)
     sc.make_cylinder(f"{name}_TetherCore", 0.0055, 0.048, (0, 0, -0.088), "Mat_CharcoalVisor",
                      vertices=14, bone_name="Bone_SuspCollar", parts_list=parts)
-    sc.make_cylinder(f"{name}_PodAttachCollar", 0.040, 0.012, (0, 0, -0.112), "Mat_Brass",
+    sc.make_cylinder(f"{name}_PodAttachCollar", 0.042, 0.012, (0, 0, -0.112), "Mat_Brass",
                      vertices=22, bevel_caps=0.002, bone_name="Bone_SuspCollar", parts_list=parts)
 
     sc.join_parts_to_armature(parts, arm_obj, f"{name}_Mesh")
@@ -93,6 +113,16 @@ def build_ceiling_mount():
             pb.location = (0, 0, 0)
             pb.rotation_euler = (0, 0, 0)
             pb.scale = (1, 1, 1)
+
+    def pose_iris_open():
+        arm_obj.pose.bones["Bone_Iris_F"].location = ( 0.000, -0.004,  0.036)
+        arm_obj.pose.bones["Bone_Iris_B"].location = ( 0.000, -0.004, -0.036)
+        arm_obj.pose.bones["Bone_Iris_L"].location = ( 0.036, -0.004,  0.000)
+        arm_obj.pose.bones["Bone_Iris_R"].location = (-0.036, -0.004,  0.000)
+        arm_obj.pose.bones["Bone_Iris_F"].rotation_euler = (0, math.radians(14), 0)
+        arm_obj.pose.bones["Bone_Iris_B"].rotation_euler = (0, math.radians(-14), 0)
+        arm_obj.pose.bones["Bone_Iris_L"].rotation_euler = (0, math.radians(14), 0)
+        arm_obj.pose.bones["Bone_Iris_R"].rotation_euler = (0, math.radians(-14), 0)
 
     def key_all(f):
         for pb in arm_obj.pose.bones:
@@ -116,12 +146,13 @@ def build_ceiling_mount():
         arm_obj.pose.bones["Bone_CollarLatch_R"].rotation_euler = (0, math.radians(32), 0)
         arm_obj.pose.bones["Bone_SuspCollar"].location = (0, 0, -0.015)
         arm_obj.pose.bones["Bone_SpoolDrum"].rotation_euler = (math.radians(45), 0, 0)
+        pose_iris_open()
         key_all(18)
 
     def kf_mount_spool():
-        key_all(1)
         arm_obj.pose.bones["Bone_CollarLatch_L"].rotation_euler = (0, math.radians(-32), 0)
         arm_obj.pose.bones["Bone_CollarLatch_R"].rotation_euler = (0, math.radians(32), 0)
+        pose_iris_open()
         key_all(1)
         arm_obj.pose.bones["Bone_SpoolDrum"].rotation_euler = (math.radians(360), 0, 0)
         key_all(24)
@@ -130,6 +161,7 @@ def build_ceiling_mount():
         arm_obj.pose.bones["Bone_CollarLatch_L"].rotation_euler = (0, math.radians(-32), 0)
         arm_obj.pose.bones["Bone_CollarLatch_R"].rotation_euler = (0, math.radians(32), 0)
         arm_obj.pose.bones["Bone_SuspCollar"].location = (0, 0, -0.015)
+        pose_iris_open()
         key_all(1)
         reset_bones()
         key_all(18)

@@ -49,11 +49,11 @@ Automated: every EditMode fixture passes when run one at a time (about 600 tests
 - A knocked-over prop pops home when a move starts.
 - Character arm poses, squash axis, wave and high-five thresholds were written blind. Old touch summary card is switched off (poke bubble replaces it).
 - Voice gesture (pinch at the mouth) is built but off. No TTS.
-- `SpatialDrive.Report` no longer finds TaskDock in the kit (it moved to `Panel_Dock`).
+- `SpatialDrive.Report` finds TaskDock under `Panel_Dock` again (fixed, ceiling ideas round).
 - Git still prints "bad object refs/stash" on maintenance; untouched. `.blend1` files stay uncommitted.
 - No device performance numbers yet. Recorder: `scripts\quest_perf_watch.ps1 -Label desk -CaptureMinutes 4` (start by hand).
 
-## Waiting to be integrated: Antigravity ceiling VFX (not in `rc-feedback-1`)
+## Antigravity ceiling VFX (not in `rc-feedback-1`; INTEGRATED in the ceiling ideas round below — kept for the notes)
 
 Branch `art-spatial-workspace-expansion`, commit `cbd606b`, in `.worktrees/spatial-art` (the earlier merge took `53f7129`). By Antigravity's own report, not checked here:
 - `CeilingMount` rebuilt with a 4-leaf iris docking bay (4 bones `Bone_Iris_F/B/L/R`, 0.44 m canopy, 4,580 tris); `DockedPose` moved to y = -0.388 m.
@@ -69,9 +69,27 @@ Integration notes for whoever does it:
 
 Antigravity's follow-up ideas, in the order worth doing: (4) three-stage spatial audio for unlock, travel and lock; (1) pinch-and-pull on the tether to lower the pod; (2) look up and pinch to summon; (3) scan-reveal grid on the real ceiling during placement; (5) bounce light on real furniture (most cost, least certain on Quest).
 
+## Ceiling ideas round (2026-11-13 afternoon, after `rc-feedback-1`; restore point tag `pre-ceiling-vfx`)
+
+Antigravity's `cbd606b` art paths merged (our `Art/Shaders.meta` kept). Built by four Sonnet builders, integrated here. **PLAY only, not in an APK yet, never worn.**
+
+| Idea | What | Evidence |
+|---|---|---|
+| Ceiling VFX (iris mount, portal cone, halo, rings, particles) | `CeilingVfxBridge` maps `CeilingPodMachine` states onto `CeilingDeploymentVFXController.OnPodState`; switches `vfxEnabled` / `particlesEnabled` (turn particles off first if fill rate hurts) | Builder: mount inside Core's `mountClearance`/`mountDepth`; `mountOffset`, `mastAttachHeight`, `dockDrop` unchanged. PLAY: arrival burst + halo at dock. 11 tests |
+| (4) Three-stage audio | `CeilingPodAudio`: unlock click, travel hum (0.9 down / 1.1 up), lock thunk+chime; procedural clips; Meta XR Audio spatializer | PLAY: cues on all legs incl. the first trip up from the desk (fixed: cue raised a frame before Ceiling mode was set is held 0.3 s). 9 tests. Volumes unheard |
+| (1)+(2) Reach up and pull it down | `CeilingPullGesture`: hand ray or gaze on the pod/mast, pinch, pull down 12 cm → lower; push up when engaged → raise. Calls the core's `RequestPodDescend/Retract` (same sweep as the console) and shows the refusal reason | PLAY via `CeilingPullDrive`: not-targeted, early release, sideways, too slow, busy hand, held all refused; pull down and push up move the pod (false "refused" on push-up fixed). 14 tests |
+| (3) Scan-reveal grid | `CeilingScanReveal` + `CeilingScanGrid.shader`: teal grid 2 mm under the real ceiling around the candidate mount point during ceiling preview, red when invalid, fades on confirm/cancel | PLAY: shown at ceiling-2 mm, wipe 0.6 s, fade to 0 after confirm. 8 tests |
+| (5) Bounce light | Skipped (cost, uncertain on Quest) | — |
+
+Ceiling safety fixtures re-run after the builders: Evaluator 5, Pod 8, SweptPath 19, SweptMoves 17, Director 15 — all pass.
+
+Check on the headset: the effects over passthrough (fill rate), sound levels, whether a 12 cm pull feels right (thresholds in `CeilingPullGesture.settings`), the cue label reads the right way round, grid brightness. Known: a pinch aimed at a paper before the ISDK hovers it can still arm the pull (it needs 12 cm of travel to fire).
+
+Three new pure-logic files live in `Scripts/Spatial/Core/` (`CeilingVfxMap`, `CeilingPodAudioCues`, `CeilingPullLogic`) because the EditMode asmdef only reaches Core; no existing Core file changed.
+
 ## Scene build order (append-only; never re-run older builders after newer)
 
-... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`.
+... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`.
 
 ## Tools
 
