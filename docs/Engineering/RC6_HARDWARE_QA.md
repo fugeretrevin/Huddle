@@ -97,6 +97,20 @@ Run after pass 1. Start the backend (`backend`, `MUSEDESK_PRODUCER=live`, port 8
 | D4 | Artifact panel shows the real diff and test output | |
 | D5 | Stop the backend: sign reads "Reconnecting"; nothing simulated. Start it: run reported failed, decision expired | |
 
-## Pass 3: fix round
+## Pass 3: `rc6-2` (installed 2026-11-13 ~18:55)
 
-Filled in after any fixes from pass 1.
+Commit `a8c0e1e` (tag `rc6-2`). `Builds/MuseDesk_rc6_2.apk`, 85.3 MB, SHA-256 `173C813F4840DD3A7DCA81430E1914B1A9BEBF0A3B4C3375CF1E7FD53DB9B963`. All flags on. Includes the owner's pass-1 fixes and the merged Antigravity art QA (`d548338`). AUTO 724/724 and PLAY only.
+
+| # | Do | Look for | Result |
+|---|---|---|---|
+| R1 | Launch, sit normally | Office, console and keys about 9 cm lower than before; buttons reachable without lifting the hands much | |
+| R2 | Wait for the paper | Researcher walks out around the end of its desk, not through it; walk does not look like sliding; ~0.9 s longer is acceptable | |
+| R3 | Approve | Handoffs do not cross desks; plant now behind the agents | |
+| R4 | Floor, then look at the floor | New card: smaller, cleaner, arrow, keys in one row | |
+| R5 | Choose a spot near a sock or shoe | Not refused for small clutter nearby; a chair or box close by still refuses | |
+| R6 | Place here | Moves; arrives; Desk brings it back | |
+| R7 | Ceiling | More dock spots offered; "screen is in the way" only if a screen is really under the dock | |
+| R8 | Lower the pod while looking straight at it | No "too close" refusal; it stops further out and higher than before (about 0.9 m to the side, 0.25 m below your eyes) | |
+| R9 | Lean toward the dock, then lower | Stops above head height instead of refusing; say whether that position is acceptable and the paper reachable | |
+| R10 | Watch the dock while it lowers and raises | Iris stays open around the mast while lowered; wings fold up when docked | |
+| R11 | Pull gesture and pinching a paper near you while docked | As before: pull works, paper pinch does not move the pod | |
