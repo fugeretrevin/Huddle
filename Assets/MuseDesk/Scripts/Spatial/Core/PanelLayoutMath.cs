@@ -273,7 +273,8 @@ namespace MuseDesk.Spatial
         ///   Ceiling, at rest ......... Lower / Raise (pod docked or engaged), Status
         /// </summary>
         public static ModeConsoleKeys Compute(bool floorEnabled, bool ceilingEnabled, PlacementMode mode, bool previewing,
-                                              bool canCycle, bool transitioning, CeilingPodState podState, bool podWaiting)
+                                              bool canCycle, bool transitioning, CeilingPodState podState, bool podWaiting,
+                                              bool floorPreview = false, bool placeReady = true)
         {
             ModeConsoleKeys k = new ModeConsoleKeys();
             k.active = mode == PlacementMode.Floor ? 1 : mode == PlacementMode.Ceiling ? 2 : 0;
@@ -283,7 +284,9 @@ namespace MuseDesk.Spatial
             k.ceilingDisabled = moving || !ceilingEnabled;
 
             k.next = previewing && canCycle;
-            k.confirm = previewing;
+            // Floor preview (rc6): the confirm key reads Place here and is shown only while the spot and
+            // its way are clear and the outline is not being dragged (SpatialDirectorCore.CanPlaceHere).
+            k.confirm = previewing && (!floorPreview || placeReady);
             k.cancel = previewing;
             k.stop = moving;
 

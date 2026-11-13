@@ -24,10 +24,15 @@ namespace MuseDesk.Spatial
     /// which sweep the route again and may refuse; a refusal shows its reason on the cue (the director also
     /// puts it on the mode console's status line).
     ///
-    /// A pinch is ignored when it starts while that hand's interactors hover or hold anything (a paper, a
-    /// stamp, a panel grab bar), while a paper is held (TransitionHeld) and while the pod moves. Outside
-    /// Ceiling mode (or with the pod mid-move) it does one property read per frame. The cue has no
-    /// colliders or interactables, so SetActive on it is safe.
+    /// Hand ownership (rc6): a pinch arms only through <see cref="HandOwnershipArbiter"/> (claim Summon):
+    /// fresh, held minPinchSeconds, nothing held in either hand (or a paper's transition hold), and this
+    /// hand's grab, poke and UI ray clear of everything for nearClearSeconds (read by
+    /// <see cref="HandInteractionProbe"/>). The pod must be the identified target (under the hand ray or
+    /// the gaze) when the pinch begins AND when it arms, and must stay under the hand ray or the gaze
+    /// (with a wider radius and a short gap) until the pull fires, or the pull is cancelled. A lost hand
+    /// cancels and is never a release; anything picked up mid-pull cancels; after any cancel the hand
+    /// must open and pinch again. Outside Ceiling mode (or with the pod mid-move) it does one property
+    /// read per frame. The cue has no colliders or interactables, so SetActive on it is safe.
     /// </summary>
     public class CeilingPullGesture : MonoBehaviour
     {
@@ -40,6 +45,8 @@ namespace MuseDesk.Spatial
 
         [Header("Behaviour")]
         public CeilingPullSettings settings = new CeilingPullSettings();
+        [Tooltip("Pinch timing and hand ownership (fresh pinch, debounce, near-object clear window, tracking grace).")]
+        public HandOwnershipSettings ownership = new HandOwnershipSettings();
         [Tooltip("When the pod is beside the user their gaze is on it all the time, so only the hand ray counts for pushing it up.")]
         public bool gazeCountsWhenEngaged = false;
         [Tooltip("How long a refusal stays on the cue (seconds).")]
@@ -66,14 +73,19 @@ namespace MuseDesk.Spatial
         const string DownWords = "Pinch and pull down";
         const string UpWords = "Pinch and push up";
 
-        readonly CeilingPullMachine[] _machines = { new CeilingPullMachine(), new CeilingPullMachine() };
+        readonly CeilingPullSession _session = new CeilingPullSession(HandClaimRegistry.Shared);
         readonly AimHandSample[] _sim = new AimHandSample[2];
+        readonly AimHandSample[] _samples = new AimHandSample[2];
         readonly bool[] _simOn = new bool[2];
-        readonly bool[] _simBusy = new bool[2];
-        readonly List<IInteractor> _interactors = new List<IInteractor>(24);
-        readonly List<int> _interactorSide = new List<int>(24);
-        bool _interactorsFound;
-        float _nextInteractorSearch, _nextHandSearch;
+        readonly bool[] _simBusy = new bool[2], _simHolding = new bool[2], _simUi = new bool[2];
+        readonly bool[] _targeted = new bool[2], _keep = new bool[2];
+        float _nextHandSearch;
+        bool _wasRelevant;
+        bool _gazeSimulated;
+        Vector3 _gazeForward = Vector3.forward;
+
+        /// <summary>True when the gaze was on the pod on the last step.</summary>
+        public bool LastGazeOnPod { get; private set; }
 
         MaterialPropertyBlock _block;
         Mesh _trackMesh, _fillMesh, _arrowMesh;
@@ -88,7 +100,9 @@ namespace MuseDesk.Spatial
         Vector3 _top, _bottom, _centre;
         bool _haveGeometry;
 
-        public CeilingPullMachine Machine(int hand) { return _machines[hand & 1]; }
+        public CeilingPullMachine Machine(int hand) { return _session.Machine(hand); }
+        /// <summary>Who owns which hand for this gesture (signals, last block).</summary>
+        public HandOwnershipArbiter Arbiter => _session.Arbiter;
         public bool CueShown => _visible;
         /// <summary>The last refusal or cancel words shown on the cue (empty when none).</summary>
         public string Reason => Time.unscaledTime < _reasonUntil ? _reason : "";
@@ -103,7 +117,7 @@ namespace MuseDesk.Spatial
 
         void OnDisable()
         {
-            _machines[0].Reset(); _machines[1].Reset();
+            _session.Reset();
             Show(false);
         }
 
@@ -134,38 +148,67 @@ namespace MuseDesk.Spatial
 
             if (!relevant)
             {
-                _machines[0].Reset(); _machines[1].Reset();
+                if (_wasRelevant)
+                {
+                    _session.Reset();
+                    _wasRelevant = false;
+                }
                 _haveGeometry = false;
                 if (_visible) Show(false);
                 return;
+            }
+            if (!_wasRelevant)
+            {
+                // Just became pullable: a pinch already closed now is not fresh.
+                _session.Reset();
+                _wasRelevant = true;
             }
 
             CeilingPullDirection dir = podState == CeilingPodState.Docked ? CeilingPullDirection.Down : CeilingPullDirection.Up;
             bool allowed = !SpatialWorkspaceState.TransitionHeld && !core.IsTransitioning;
             ComputeGeometry(pod, root);
+            float podR = settings.podRadius * root.localScale.x;
+            float keep = Mathf.Max(1f, settings.targetKeepFactor);
 
             // Gaze: the head ray.
             Transform h = ResolveHead();
-            bool gazeHit = false;
+            bool gazeHit = false, gazeKeep = false;
             if (h != null && (dir == CeilingPullDirection.Down || gazeCountsWhenEngaged))
-                gazeHit = CeilingPullMath.RayTargetsPod(h.position, h.forward, _top, _bottom, _centre, settings.targetRadius, settings.podRadius * root.localScale.x);
+            {
+                Vector3 gaze = _gazeSimulated ? _gazeForward : h.forward;
+                gazeHit = CeilingPullMath.RayTargetsPod(h.position, gaze, _top, _bottom, _centre, settings.targetRadius, podR);
+                gazeKeep = gazeHit || CeilingPullMath.RayTargetsPod(h.position, gaze, _top, _bottom, _centre, settings.targetRadius * keep, podR * keep);
+            }
+            LastGazeOnPod = gazeHit;
 
+            // Hand ownership: one session for both hands, sharing the app's claim registry with the floor aim.
+            HandOwnershipArbiter arb = _session.Arbiter;
+            arb.settings = ownership;
+            arb.externallyHeld = SpatialWorkspaceState.TransitionHeld;
+            _session.settings = settings;
             bool anyTargeted = gazeHit;
-            int activeHand = -1;
             for (int i = 0; i < 2; i++)
             {
-                _machines[i].settings = settings;
                 AimHandSample s = _simOn[i] ? _sim[i] : ReadHand(i);
-                bool handHit = s.tracked && CeilingPullMath.RayTargetsPod(s.origin, s.direction, _top, _bottom, _centre, settings.targetRadius, settings.podRadius * root.localScale.x);
+                s = s.With(_simHolding[i], _simBusy[i], _simUi[i]);
+                s = HandInteractionProbe.Apply(s, i);
+                _samples[i] = s;
+                bool handHit = s.tracked && CeilingPullMath.RayTargetsPod(s.origin, s.direction, _top, _bottom, _centre, settings.targetRadius, podR);
+                bool handKeep = handHit || (s.tracked && CeilingPullMath.RayTargetsPod(s.origin, s.direction, _top, _bottom, _centre, settings.targetRadius * keep, podR * keep));
                 if (handHit) anyTargeted = true;
-                bool targeted = handHit || gazeHit;
-                bool pinching = s.tracked && s.pinching;
-                bool handAllowed = allowed && !(pinching && HandBusy(i));
-                CeilingPullState before = _machines[i].State;
-                CeilingPullState now = _machines[i].Tick(dt, s.tracked, s.pinching, s.origin, targeted, handAllowed, dir);
-                if (_machines[i].Active) activeHand = i;
-                if (now == CeilingPullState.Fired) Fire(pod, core, dir);
-                else if (now == CeilingPullState.Cancelled && before != CeilingPullState.Cancelled) OnCancelled(_machines[i].LastCancel);
+                _targeted[i] = handHit || gazeHit;
+                _keep[i] = handKeep || gazeKeep;
+            }
+            _session.Tick(dt, _samples[0], _samples[1], _targeted[0], _targeted[1], _keep[0], _keep[1], allowed, dir);
+
+            int activeHand = _session.ActiveHand;
+            for (int i = 0; i < 2; i++)
+            {
+                CeilingPullMachine m = _session.Machine(i);
+                if (_session.PinchedAtTargetWhileHeld(i)) Say("Put down what you are holding first.");
+                CeilingPullState before = _session.StateBefore(i);
+                if (m.State == CeilingPullState.Fired && before != CeilingPullState.Fired) Fire(pod, core, dir);
+                else if (m.State == CeilingPullState.Cancelled && before != CeilingPullState.Cancelled) OnCancelled(m.LastCancel);
             }
             LastTargeted = anyTargeted;
 
@@ -199,7 +242,10 @@ namespace MuseDesk.Spatial
         {
             // Quiet for a plain release or drifting; say it only when something stopped a pull the user meant.
             if (why == CeilingPullCancel.Blocked) Say("Put the paper down first.");
+            else if (why == CeilingPullCancel.Held) Say("Put down what you are holding first.");
             else if (why == CeilingPullCancel.Timeout) Say("A little faster: pull down in one motion.");
+            else if (why == CeilingPullCancel.TargetLost) Say("Keep pointing at the office while you pull.");
+            else if (why == CeilingPullCancel.Lost) Say("Hand lost. Nothing moved: pinch and pull again.");
         }
 
         void Say(string words)
@@ -279,53 +325,7 @@ namespace MuseDesk.Spatial
             }
         }
 
-        // Does this hand's interaction already have something (a paper, a stamp, a panel grab bar)? Reads
-        // the rig's interactors; found once (again every 5 s while none were found), the check itself is
-        // allocation-free and runs only while a pinch is closed.
-        bool HandBusy(int hand)
-        {
-            if (_simOn[hand]) return _simBusy[hand];
-            if (!_interactorsFound)
-            {
-                if (Time.unscaledTime < _nextInteractorSearch) return false;
-                _nextInteractorSearch = Time.unscaledTime + 5f;
-                FindInteractors();
-            }
-            for (int i = 0; i < _interactors.Count; i++)
-            {
-                IInteractor it = _interactors[i];
-                int side = _interactorSide[i];
-                if (side >= 0 && side != hand) continue;        // the other hand's interactor
-                if (it == null) continue;
-                if (it.HasInteractable || it.HasSelectedInteractable) return true;
-            }
-            return false;
-        }
-
-        void FindInteractors()
-        {
-            _interactors.Clear(); _interactorSide.Clear();
-            MonoBehaviour[] all = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            for (int i = 0; i < all.Length; i++)
-            {
-                IInteractor it = all[i] as IInteractor;
-                if (it == null) continue;
-                int side = -1;                                  // -1: either hand (unknown), applies to both
-                HandGrabInteractor grab = all[i] as HandGrabInteractor;
-                if (grab != null && grab.Hand != null) side = grab.Hand.Handedness == Handedness.Left ? 0 : 1;
-                else
-                {
-                    for (Transform t = all[i].transform; t != null && side < 0; t = t.parent)
-                    {
-                        string n = t.name;
-                        if (n.IndexOf("Left", System.StringComparison.OrdinalIgnoreCase) >= 0) side = 0;
-                        else if (n.IndexOf("Right", System.StringComparison.OrdinalIgnoreCase) >= 0) side = 1;
-                    }
-                }
-                _interactors.Add(it); _interactorSide.Add(side);
-            }
-            _interactorsFound = _interactors.Count > 0;
-        }
+        // What each hand's interactors are doing comes from HandInteractionProbe (shared with the floor aim).
 
         // ───────────────────────── simulation (Play Mode driver, no hands needed) ─────────────────────────
 
@@ -336,10 +336,37 @@ namespace MuseDesk.Spatial
             _sim[hand] = AimHandSample.Ray(origin, direction, pinching);
         }
 
-        /// <summary>The simulated hand is (or is not) hovering or holding an interactable.</summary>
+        /// <summary>Stand in for a hand that is not tracked.</summary>
+        public void SimulateHandLost(int hand)
+        {
+            if (hand < 0 || hand > 1) return;
+            _simOn[hand] = true;
+            _sim[hand] = AimHandSample.None;
+        }
+
+        /// <summary>The simulated hand is (or is not) hovering a near interactable (a paper, a stamp).</summary>
         public void SimulateBusy(int hand, bool busy) { if (hand >= 0 && hand <= 1) _simBusy[hand] = busy; }
 
-        public void ClearSimulation() { _simOn[0] = _simOn[1] = false; _simBusy[0] = _simBusy[1] = false; }
+        /// <summary>The simulated hand holds something / hovers a near object / is over a UI control.</summary>
+        public void SimulateInteraction(int hand, bool holding, bool nearHover, bool uiHover)
+        {
+            if (hand < 0 || hand > 1) return;
+            _simHolding[hand] = holding; _simBusy[hand] = nearHover; _simUi[hand] = uiHover;
+        }
+
+        /// <summary>Use this gaze direction instead of the head's forward (null: the head again).</summary>
+        public void SimulateGaze(Vector3? forward)
+        {
+            _gazeSimulated = forward.HasValue;
+            if (forward.HasValue && forward.Value.sqrMagnitude > 1e-8f) _gazeForward = forward.Value.normalized;
+        }
+
+        public void ClearSimulation()
+        {
+            _simOn[0] = _simOn[1] = false;
+            for (int i = 0; i < 2; i++) _simBusy[i] = _simHolding[i] = _simUi[i] = false;
+            _gazeSimulated = false;
+        }
 
         // ───────────────────────── drawing ─────────────────────────
 
@@ -356,7 +383,7 @@ namespace MuseDesk.Spatial
             if (!_built) BuildMeshes();
             Show(true);
             float scale = root.localScale.x;
-            float progress = activeHand >= 0 ? _machines[activeHand].Progress : 0f;
+            float progress = activeHand >= 0 ? _session.Machine(activeHand).Progress : 0f;
             bool pulling = activeHand >= 0;
             bool up = dir == CeilingPullDirection.Up;
 
@@ -476,8 +503,9 @@ namespace MuseDesk.Spatial
                        + " reason='" + Reason + "'";
             for (int i = 0; i < 2; i++)
             {
-                CeilingPullMachine m = _machines[i];
-                s += " " + (i == 0 ? "L" : "R") + "(" + m.State + " p=" + m.Progress.ToString("F2") + " last=" + m.LastCancel + " fires=" + m.Fires + " cancels=" + m.Cancels + ")";
+                CeilingPullMachine m = _session.Machine(i);
+                s += " " + (i == 0 ? "L" : "R") + "(" + m.State + " p=" + m.Progress.ToString("F2") + " last=" + m.LastCancel + " fires=" + m.Fires + " cancels=" + m.Cancels
+                     + " owner=" + _session.Arbiter.Owner(i) + " block=" + _session.Arbiter.LastBlock(i) + ")";
             }
             return s;
         }

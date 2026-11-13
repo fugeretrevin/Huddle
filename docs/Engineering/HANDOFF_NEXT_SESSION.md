@@ -103,7 +103,7 @@ Docs still out of date: `ROOM_PLACEMENT_FINDINGS.md` "known mismatch" (wall marg
 
 ## Scene build order (append-only; never re-run older builders after newer)
 
-... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`, then headset feedback 2: `BuildTextFitV1`, `BuildFloorPlaceFixV1`, `BuildPlacementGuideV1`.
+... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`, then headset feedback 2: `BuildTextFitV1`, `BuildFloorPlaceFixV1`, `BuildPlacementGuideV1`, then rc6 gesture safety: `BuildPlaceHereV1`.
 
 ## Tools
 

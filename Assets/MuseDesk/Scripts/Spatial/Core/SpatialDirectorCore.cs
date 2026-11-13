@@ -7,6 +7,27 @@ namespace MuseDesk.Spatial
 {
     public enum DirectorPhase { Idle = 0, Previewing = 1 }
 
+    /// <summary>What the floor footprint shows (deliberate placement, rc6).</summary>
+    public enum FloorPlaceStage
+    {
+        /// <summary>No floor placement on show.</summary>
+        None = 0,
+        /// <summary>The office may not stand there (wall, furniture, too close to the user, off the scan).</summary>
+        SpotBlocked = 1,
+        /// <summary>The office may stand there, but no clear way there was found.</summary>
+        RouteBlocked = 2,
+        /// <summary>Dragging over a spot whose floor AND way are clear: let go to choose it.</summary>
+        RouteValid = 3,
+        /// <summary>At rest on a clear spot: waiting for Place here (nothing moves without it).</summary>
+        NeedsConfirmation = 4,
+        /// <summary>Place here was accepted: the office is travelling the swept route.</summary>
+        Moving = 5,
+        /// <summary>Stop was pressed (or the way became unsafe): the office is going back.</summary>
+        Returning = 6,
+        /// <summary>The office arrived at the spot.</summary>
+        Placed = 7,
+    }
+
     /// <summary>
     /// The decision logic of the room-aware workspace, free of scene access so it can be tested:
     /// modes Desk / Floor / Ceiling, the preview-then-confirm flow, flag gating, the hand-over to the
@@ -195,6 +216,19 @@ namespace MuseDesk.Spatial
 
         bool Held => _isHeld != null && _isHeld();
 
+        /// <summary>
+        /// Optional (rc6): true while a hand holds anything through the Interaction SDK (a stamp, a card, a
+        /// panel grab bar; a paper also sets the transition hold). Spatial movement never STARTS while it
+        /// is true: Confirm / Place here, Desk, Lower and Raise are refused with words. Stop is never
+        /// blocked. A paper keeps its own transition-hold behaviour (checked first), so this adds a
+        /// refusal only where nothing else applied. Null (tests, no rig): ignored.
+        /// </summary>
+        public Func<bool> handsBusy;
+
+        const string HandsBusyWords = "Put down what you are holding first, then the office can move";
+
+        bool GrabBusy => !Held && handsBusy != null && handsBusy();
+
         bool Enabled(PlacementMode m)
         {
             if (m == PlacementMode.Floor) return _flags.floorModeEnabled;
@@ -221,6 +255,8 @@ namespace MuseDesk.Spatial
             bool ok = CeilingPlacementEvaluator.PlanRoute(_room, user, from, to, footprint, ceilingSettings, o, allowStraight, out route, out check);
             LastRoute = route;
             LastRouteCheck = check;
+            o.absoluteHigh = true;              // as PlanRoute and FloorRoutePlanner sweep every shape
+            _lastPlanOptions = o;
             return ok;
         }
 
@@ -250,8 +286,26 @@ namespace MuseDesk.Spatial
             bool ok = FloorRoutePlanner.Plan(_room, user, from, to, footprint, ceilingSettings, o, true, out route, out check);
             LastRoute = route;
             LastRouteCheck = check;
+            o.absoluteHigh = true;
+            _lastPlanOptions = o;
             return ok;
         }
+
+        // The route the mover is travelling now and the options it was swept with, so a room change in
+        // the middle of the move can sweep it again (see OnRoomChanged).
+        PathSweepOptions _lastPlanOptions, _activeOptions;
+        WorkspaceRoute _activeRoute;
+        bool _activeRouteValid;
+
+        void RememberActiveRoute(WorkspaceRoute route, bool started)
+        {
+            _activeRoute = route;
+            _activeOptions = _lastPlanOptions;
+            _activeRouteValid = started;
+        }
+
+        /// <summary>The words when a room change made the route of a running move unsafe and it went back.</summary>
+        public const string RoomChangedMidMoveWords = "The room scan changed and the way is no longer clear: going back";
 
         float MoveSeconds(WorkspaceRoute route)
         {
@@ -331,6 +385,7 @@ namespace MuseDesk.Spatial
         {
             if (!_hasDeskPose) return Refuse("No desk position is known");
             if (Held) return Refuse("Put the paper down first, then the office can move");
+            if (GrabBusy) return Refuse(HandsBusyWords);
 
             RootPose current = _mover.CurrentPose;
             SeatedUser user = _user();
@@ -361,6 +416,8 @@ namespace MuseDesk.Spatial
             if (r != TransitionStartResult.Started && r != TransitionStartResult.AlreadyThere) return Refuse(_mover.LastRefusal);
             _pod.CancelPendingRetract();        // the pod must not start its own move under this one
             _awaitingMove = r == TransitionStartResult.Started;
+            RememberActiveRoute(route, r == TransitionStartResult.Started);
+            _placeOutcome = PlaceOutcome.None;
             Mode = PlacementMode.Desk;
             _hasLocal = false;
             _handPlaced = false;
@@ -397,6 +454,7 @@ namespace MuseDesk.Spatial
             _previewProblem = null;
             _aimDragging = false;               // a drag on the old preview is over (the room changed under it)
             _aimMoved = false;
+            _placeOutcome = PlaceOutcome.None;
             ClearAimWords();
             if (_candidates.Count > 0)
             {
@@ -440,6 +498,7 @@ namespace MuseDesk.Spatial
                 return Refuse("Ceiling mode is not available: " + fresh.explanation + ". Use Floor or stay at the desk.");
             }
             _previewCeiling = fresh;
+            _placeOutcome = PlaceOutcome.None;
             PendingMode = PlacementMode.Ceiling;
             Phase = DirectorPhase.Previewing;
             _candidates.Clear();
@@ -465,7 +524,7 @@ namespace MuseDesk.Spatial
 
         string DetectedStatus()
         {
-            return string.Format(CultureInfo.InvariantCulture, "Detected floor spot {0} of {1}. Next, Confirm or Cancel.",
+            return string.Format(CultureInfo.InvariantCulture, "Detected floor spot {0} of {1}. Place here, Other spot, or Cancel.",
                                  _index + 1, _candidates.Count);
         }
 
@@ -548,8 +607,9 @@ namespace MuseDesk.Spatial
                     PreviewValid = PlanToFloor(user, p, false, out route, out check);
                     _previewProblem = PreviewValid ? null : check.Words("The way to that spot") + ". Move it or choose Next.";
                     _previewShort = PreviewValid ? null : check.Words("The way there");
+                    _previewRouteBlocked = !PreviewValid;   // the spot is clear; only the way there is not
                 }
-                StatusText = PreviewValid ? "Detected floor, adjusted by hand. Confirm or Cancel." : _previewProblem;
+                StatusText = PreviewValid ? "Detected floor, adjusted by hand. Place here or Cancel." : _previewProblem;
             }
             else
             {
@@ -654,11 +714,15 @@ namespace MuseDesk.Spatial
             // confirmed (an extra refusal only; every check below is unchanged and still decides).
             if (_aimDragging && !AimValid)
                 return RefusePreview((string.IsNullOrEmpty(AimProblem) ? "That spot is not clear" : AimProblem) + ". Move it to a clear spot first.", AimProblem);
+            // rc6: a spot is chosen by letting go of the outline, then confirmed. Never in the middle of a drag.
+            if (_aimDragging)
+                return RefusePreview("Let go of the outline first, then press Place here.", "Let go first, then press Place here");
             // A spot whose way there was refused is planned again below (the user may have moved);
             // any other spot that is not clear is refused here.
             if (!PreviewValid && !_previewRouteBlocked)
                 return RefusePreview(string.IsNullOrEmpty(_previewProblem) ? "That spot is not clear floor. Move it or choose Next." : _previewProblem, _previewShort);
             if (Held) return RefusePreview("Put the paper down first, then the office can move", "Put the paper down first, then it can move");
+            if (GrabBusy) return RefusePreview(HandsBusyWords, "Put down what you are holding first");
             if (IsTransitioning) return RefusePreview("The office is moving. Press Stop, or wait until it has stopped.", "The office is moving");
 
             RootPose current = _mover.CurrentPose;
@@ -683,6 +747,9 @@ namespace MuseDesk.Spatial
                 if (fromDesk) RememberDesk(current);
                 _pod.CancelPendingRetract();
                 _awaitingMove = r == TransitionStartResult.Started;
+                RememberActiveRoute(route, r == TransitionStartResult.Started);
+                _placeOutcome = r == TransitionStartResult.Started ? PlaceOutcome.Moving : PlaceOutcome.Placed;
+                _placeTarget = target;
                 if (r == TransitionStartResult.AlreadyThere && _pod.Active) _pod.Deactivate();
                 Mode = PlacementMode.Floor;
                 _needsConfirm = false;
@@ -738,6 +805,7 @@ namespace MuseDesk.Spatial
             if (_pod.State != CeilingPodState.Docked || IsTransitioning) return false;      // only from rest at the dock
             if (PlacementNeedsConfirmation) return Refuse("The ceiling spot is not confirmed. Return to Desk, then place it again.");
             if (Held) { bool held = _pod.RequestDescend(); Touch(); return held; }          // the pod says why
+            if (GrabBusy) return Refuse(HandsBusyWords);
             CeilingPlacement fresh;
             if (!CeilingPlacementEvaluator.ValidateDock(_room, _user(), _pod.DockPose, footprint, ceilingSettings, out fresh))
                 return Refuse("Cannot come down now: " + fresh.explanation + ". Move, clear the way, or return to Desk and choose another spot.");
@@ -761,6 +829,7 @@ namespace MuseDesk.Spatial
             if (_pod.State == CeilingPodState.Engaged)
             {
                 if (PlacementNeedsConfirmation) return Refuse("The ceiling spot is not confirmed. Return to Desk, then place it again.");
+                if (GrabBusy) return Refuse(HandsBusyWords);
                 CeilingPathCheck check;
                 if (!CeilingPlacementEvaluator.SweepPath(_room, _user(), _pod.InspectionPose, _pod.DockPose, footprint, ceilingSettings,
                                                          CeilingPlacementEvaluator.PodPathOptions(_ceiling.mastTop), out check))
@@ -774,22 +843,23 @@ namespace MuseDesk.Spatial
 
         // ───────────────────────── pointing at the floor (preview only) ─────────────────────────
         //
-        // The user points at the floor, pinches the footprint, drags it and lets go. Everything here
-        // edits the PREVIEW (PreviewPose, its validity, the words); nothing writes the office.
-        // Confirm, unchanged, is the only way it moves, and its swept-route check is the final
-        // authority. Letting go on a spot shown ready CALLS that Confirm (ReleaseAimDrag).
+        // Deliberate placement (rc6). The user points at the floor, pinches the footprint, drags it and
+        // lets go: the footprint STAYS where it was let go and nothing moves. When that spot and the
+        // way there are clear, the Place here key (PlaceHere, the console's Confirm) appears; pressing
+        // it calls Confirm, which plans and sweeps the route AGAIN for the user and the room as they
+        // are at that moment, and only then moves the office. Everything else here edits the PREVIEW.
         //
         //  - During a drag the spot under the hand is checked against the floor rules for a chosen
         //    spot (FloorPlacementEvaluator.CheckPlacedPose with a room; the user zone and the distance
         //    limits without one) AND the way there is planned and swept (PlanToFloor, the same planner
-        //    Confirm uses). "Ready" therefore means: it may stand there and it can be taken there.
-        //    AimPose / AimValid / AimProblem describe what is under the hand; PreviewPose only ever
-        //    follows to spots that passed both, so it is always the LAST READY one.
+        //    Confirm uses). AimSpotValid is the first, AimValid both. PreviewPose only ever follows to
+        //    spots that passed both, so it is always the LAST CLEAR one.
         //  - The route result is reused while the spot and the head stay within 2 cm and 2 degrees of
         //    the pose it was planned for (a drag would otherwise plan on every frame). On release the
         //    route is planned again for the exact pose, and Confirm plans it once more.
         //  - A route refused at release or by Confirm leaves the footprint where it is, drawn as not
         //    clear, with the words (FootprintWords). It never jumps back silently.
+        //  - PlaceStage says which of these the footprint shows (FloorAimController colours it).
 
         struct AimRestore
         {
@@ -798,12 +868,16 @@ namespace MuseDesk.Spatial
             public string problem, shortProblem, status;
         }
 
+        enum PlaceOutcome { None = 0, Moving = 1, Placed = 2 }
+
         bool _aimDragging, _aimMoved, _aimDragMoved;
         AimRestore _aimStart;
         float _aimDisplacement;
         string _aimNote;                    // what the footprint says after a release or a refusal
         bool _previewRouteBlocked;          // PreviewValid is false only because the way there was refused
         string _previewShort;               // why the preview is not valid, in a few words
+        PlaceOutcome _placeOutcome;         // the last floor placement this core started
+        RootPose _placeTarget;
 
         // The last route planned for a spot under the hand.
         bool _aimRouteKnown, _aimRouteHand, _aimRouteOk;
@@ -812,19 +886,19 @@ namespace MuseDesk.Spatial
         string _aimRouteWords;
         const float AimRouteReuseDistance = 0.02f, AimRouteReuseDegrees = 2f;
 
-        const string AimDragWords = "Move your hand to slide it across the floor. Let go on a clear spot to place it there.";
-        const string AimConfirmHint = "Drag it and let go to place it, pinch and hold on it, or press Confirm.";
-        const string ReadyWords = "Let go to place it here";
-        const string ReadyHandWords = "Let go to place it here. Not checked against your room";
-        const string IdleWords = "Pinch it, drag it to a spot, let go";
-        const string SmallDragWords = "Moved only a little. Drag it to a spot and let go, or pinch and hold";
-
-        [Tooltip("Letting go places the office only when the footprint was dragged at least this far (metres) from where it was grabbed.")]
-        public float aimPlaceMinDrag = 0.05f;
-
-        /// <summary>How many times letting go asked Confirm to place the office, and how many it accepted.</summary>
-        public int ReleasePlaceAttempts { get; private set; }
-        public int ReleasePlaces { get; private set; }
+        const string AimDragWords = "Move your hand to slide it across the floor. Let go on a clear spot, then press Place here.";
+        const string AimConfirmHint = "Press Place here to move it, drag it again, or Cancel.";
+        /// <summary>Footprint words during a drag over a spot whose floor and way are both clear.</summary>
+        public const string ReadyWords = "Clear spot, clear way. Let go to choose it";
+        public const string ReadyHandWords = "Let go to choose it. Not checked against your room";
+        /// <summary>Footprint words at rest on a clear spot: the Place here key is shown.</summary>
+        public const string ConfirmWords = "Press Place here to move it here";
+        public const string ConfirmHandWords = "Press Place here. Not checked against your room";
+        public const string IdleWords = "Press Place here, or pinch and drag it";
+        public const string MovingWords = "Moving there. Stop brings it back";
+        public const string ReturningWords = "Stopped: going back";
+        public const string PlacedWords = "Placed";
+        public const string AnotherSpotHint = "Point at the outline, pinch and drag it to another spot";
 
         /// <summary>The largest distance (metres, on the floor) the footprint under the hand has been from
         /// where it was grabbed, during the current or last drag.</summary>
@@ -836,7 +910,10 @@ namespace MuseDesk.Spatial
         public bool AimDragging => _aimDragging;
         /// <summary>The spot under the hand during a drag (it may be one that is not clear).</summary>
         public RootPose AimPose { get; private set; }
+        /// <summary>The spot under the hand passes the floor rules AND the way there is clear.</summary>
         public bool AimValid { get; private set; }
+        /// <summary>The spot under the hand passes the floor rules (the way there may still be blocked).</summary>
+        public bool AimSpotValid { get; private set; }
         /// <summary>Why the spot under the hand cannot be used, in a few words; null when it can.</summary>
         public string AimProblem { get; private set; }
         /// <summary>True when the spot under the hand was checked against room data.</summary>
@@ -850,14 +927,79 @@ namespace MuseDesk.Spatial
         public bool ShownRoomChecked => _aimDragging ? AimRoomChecked : PreviewIsDetected;
 
         /// <summary>
-        /// What the footprint says, in a few words (empty when no floor preview is open): during a
-        /// drag "Let go to place it here" or why the spot under the hand cannot be used; after a
-        /// release or a Confirm that did not move the office, why; otherwise how to use it.
+        /// Which state the floor footprint is in (FloorAimController draws each one differently):
+        /// a spot that may not be used, a spot whose way is blocked, a clear spot under the hand, a clear
+        /// spot waiting for Place here, the office on its way, going back after Stop, or placed.
+        /// </summary>
+        public FloorPlaceStage PlaceStage
+        {
+            get
+            {
+                if (_placeOutcome == PlaceOutcome.Moving && _mover.IsRunning)
+                    return _mover.IsReversing ? FloorPlaceStage.Returning : FloorPlaceStage.Moving;
+                if (Phase == DirectorPhase.Previewing && PendingMode == PlacementMode.Floor)
+                {
+                    if (_aimDragging)
+                    {
+                        if (AimValid) return FloorPlaceStage.RouteValid;
+                        return AimSpotValid ? FloorPlaceStage.RouteBlocked : FloorPlaceStage.SpotBlocked;
+                    }
+                    if (PreviewValid) return FloorPlaceStage.NeedsConfirmation;
+                    return _previewRouteBlocked ? FloorPlaceStage.RouteBlocked : FloorPlaceStage.SpotBlocked;
+                }
+                if (_placeOutcome == PlaceOutcome.Placed && Mode == PlacementMode.Floor && !IsTransitioning) return FloorPlaceStage.Placed;
+                return FloorPlaceStage.None;
+            }
+        }
+
+        /// <summary>Where the office is going (Moving / Returning) or went (Placed).</summary>
+        public RootPose PlaceTarget => _placeTarget;
+
+        /// <summary>True when the Place here key applies: a floor preview at rest (no drag) on a spot shown
+        /// clear, with nothing moving. Pressing it still re-plans the route (Confirm).</summary>
+        public bool CanPlaceHere => Phase == DirectorPhase.Previewing && PendingMode == PlacementMode.Floor
+                                    && !_aimDragging && PreviewValid && !IsTransitioning;
+
+        /// <summary>
+        /// The Place here key: move the office to the previewed floor spot. Only from a floor preview at
+        /// rest; the route is planned and swept again by <see cref="Confirm"/> for the user and the room as
+        /// they are now, and nothing moves when it is refused (the footprint then says why). Returns true
+        /// when the office started to move (or was already there).
+        /// </summary>
+        public bool PlaceHere()
+        {
+            if (Phase != DirectorPhase.Previewing || PendingMode != PlacementMode.Floor) return false;
+            return Confirm();
+        }
+
+        /// <summary>
+        /// The "Choose another spot" key: the next detected spot (or, after a drag, back to a scored one);
+        /// with nothing to cycle to, it says how to choose one by pointing. Never moves the office.
+        /// </summary>
+        public bool ChooseAnotherSpot()
+        {
+            if (Phase != DirectorPhase.Previewing) return false;
+            if (PendingMode == PlacementMode.Ceiling || CanCycle) { NextCandidate(); return true; }
+            if (_aimDragging) CancelAimDrag();
+            _aimNote = AnotherSpotHint;
+            StatusText = AnotherSpotHint + ".";
+            Touch();
+            return false;
+        }
+
+        /// <summary>
+        /// What the footprint says, in a few words (empty when there is nothing to say): during a drag
+        /// whether the spot and its way are clear, or why not; at rest why it cannot be used or that
+        /// Place here moves it; then that it is moving, going back, or placed.
         /// </summary>
         public string FootprintWords
         {
             get
             {
+                FloorPlaceStage stage = PlaceStage;
+                if (stage == FloorPlaceStage.Moving) return MovingWords;
+                if (stage == FloorPlaceStage.Returning) return ReturningWords;
+                if (stage == FloorPlaceStage.Placed) return PlacedWords;
                 if (Phase != DirectorPhase.Previewing || PendingMode != PlacementMode.Floor) return "";
                 if (_aimDragging)
                 {
@@ -866,7 +1008,8 @@ namespace MuseDesk.Spatial
                 }
                 if (!string.IsNullOrEmpty(_aimNote)) return _aimNote;
                 if (!PreviewValid) return string.IsNullOrEmpty(_previewShort) ? "That spot is not clear" : _previewShort;
-                return IdleWords;
+                if (!PreviewIsDetected) return ConfirmHandWords;
+                return _aimMoved ? ConfirmWords : IdleWords;
             }
         }
 
@@ -937,6 +1080,7 @@ namespace MuseDesk.Spatial
             _aimRouteKnown = false;             // the user or the room may have moved since the last plan
             AimPose = PreviewPose;
             AimValid = PreviewValid;
+            AimSpotValid = PreviewValid || _previewRouteBlocked;
             AimProblem = AimValid ? null : (string.IsNullOrEmpty(_previewShort) ? "That spot is not clear" : _previewShort);
             AimRoomChecked = PreviewIsDetected;
             StatusText = AimDragWords;
@@ -969,14 +1113,16 @@ namespace MuseDesk.Spatial
 
             string problem;
             bool valid = CheckAimPose(user, pose, roomChecked, out problem);
+            bool spotValid = valid;
             if (valid)
             {
                 string routeWords;
                 if (!AimRouteClear(user, pose, roomChecked, out routeWords)) { valid = false; problem = routeWords; }
             }
-            bool changed = valid != AimValid || problem != AimProblem || roomChecked != AimRoomChecked;
+            bool changed = valid != AimValid || spotValid != AimSpotValid || problem != AimProblem || roomChecked != AimRoomChecked;
             AimPose = pose;
             AimValid = valid;
+            AimSpotValid = spotValid;
             AimProblem = problem;
             AimRoomChecked = roomChecked;
             if (valid)
@@ -1053,12 +1199,11 @@ namespace MuseDesk.Spatial
         }
 
         /// <summary>
-        /// The footprint was let go WITHOUT placing the office (the hand was lost, the drag was too
-        /// small, or the caller only drops). It stays on the last ready spot it reached (which is
-        /// where the hand is, unless the hand was over a spot that is not clear). The way there is
-        /// planned again for the exact pose; if it is refused now the footprint stays there, drawn
-        /// as not clear, with the words. Returns true when the footprint stayed exactly where it was
-        /// released and that spot is ready.
+        /// The footprint was let go. It NEVER moves the office (rc6): it stays on the last clear spot it
+        /// reached (which is where the hand is, unless the hand was over a spot that is not clear). The
+        /// way there is planned again for the exact pose; if it is refused now the footprint stays
+        /// there, drawn as not clear (RouteBlocked), with the words. Returns true when the footprint
+        /// stayed exactly where it was released and that spot is clear: the Place here key then applies.
         /// </summary>
         public bool EndAimDrag()
         {
@@ -1090,8 +1235,10 @@ namespace MuseDesk.Spatial
             }
             if (overBadSpot)
             {
-                StatusText = badWords + " there: it is on the last clear spot. " + AimConfirmHint;
-                _aimNote = badWords + " there. It is on the last clear spot";
+                // "Too close to the wall there" reads; "The way there is blocked by X there" does not.
+                string there = !string.IsNullOrEmpty(badWords) && badWords.StartsWith("The way", StringComparison.Ordinal) ? "" : " there";
+                StatusText = badWords + there + ": it is on the last clear spot. " + AimConfirmHint;
+                _aimNote = badWords + there + ". It is on the last clear spot";
             }
             else
             {
@@ -1100,35 +1247,6 @@ namespace MuseDesk.Spatial
             }
             Touch();
             return !overBadSpot;
-        }
-
-        /// <summary>
-        /// The footprint was let go, and the user means "put it there" (<paramref name="place"/>:
-        /// the caller saw a deliberate drag, held long enough). The footprint is dropped as by
-        /// <see cref="EndAimDrag"/>; then, only when it stayed exactly where it was let go, that spot
-        /// is ready, and the footprint was dragged at least <see cref="aimPlaceMinDrag"/>, the
-        /// office is sent there by <see cref="Confirm"/>, the same call the key makes (its swept
-        /// route decides). Otherwise nothing moves and the footprint says why: not clear there, no
-        /// clear way there, moved only a little, a paper in hand, already moving, ...
-        /// Returns true when the office started to move.
-        /// </summary>
-        public bool ReleaseAimDrag(bool place)
-        {
-            if (!_aimDragging) return false;
-            bool far = _aimDisplacement >= Mathf.Max(0f, aimPlaceMinDrag);
-            bool kept = EndAimDrag();
-            if (!place || !kept) return false;
-            if (!far)
-            {
-                _aimNote = SmallDragWords;
-                StatusText = SmallDragWords + ".";
-                Touch();
-                return false;
-            }
-            ReleasePlaceAttempts++;
-            if (!Confirm()) return false;           // the words are on the footprint and the status line
-            ReleasePlaces++;
-            return true;
         }
 
         /// <summary>
@@ -1214,12 +1332,15 @@ namespace MuseDesk.Spatial
 
         void OnMoveFinished(bool reached)
         {
+            _activeRouteValid = false;
             if (reached)
             {
                 if (Mode != PlacementMode.Ceiling && _pod.Active) _pod.Deactivate();
                 _awaitingMove = false;
+                if (_placeOutcome == PlaceOutcome.Moving) _placeOutcome = PlaceOutcome.Placed;
                 return;
             }
+            if (_placeOutcome == PlaceOutcome.Moving) _placeOutcome = PlaceOutcome.None;
             if (!_awaitingMove) return;
             // The move was given up before the root moved (agents stayed busy), was stopped and went
             // back to its start, or was aborted where it was: the old mode applies again.
@@ -1237,6 +1358,18 @@ namespace MuseDesk.Spatial
         void OnRoomChanged()
         {
             _roomDirty = true;
+            // A move in flight was swept against the old room data: sweep its route again against the
+            // new data (and the user as they sit now). If it is no longer clear, it goes back along the
+            // poses it already travelled (StopMove), which were validated before it started.
+            if (_awaitingMove && _activeRouteValid && _mover.IsRunning && !_mover.IsReversing)
+            {
+                CeilingPathCheck again;
+                if (!CeilingPlacementEvaluator.SweepRoute(_room, _user(), _activeRoute, footprint, ceilingSettings, _activeOptions, out again))
+                {
+                    LastRouteCheck = again;
+                    if (StopMove()) StatusText = RoomChangedMidMoveWords + ". " + again.Words("The way") + ".";
+                }
+            }
             // A preview built on the old room data is stale: rebuild it rather than show an unchecked spot.
             if (Phase == DirectorPhase.Previewing)
             {
@@ -1435,7 +1568,9 @@ namespace MuseDesk.Spatial
         /// <summary>The record to save for the current placement, or null (Desk, moving, or no room reference).</summary>
         public SavedPlacement BuildSave(string build)
         {
+            // Persisted only after success: never while a move is in flight (it may still be stopped and go back).
             if (Mode == PlacementMode.Desk || !_hasLocal || _room == null || PlacementNeedsConfirmation) return null;
+            if (_awaitingMove || IsTransitioning) return null;
             Pose reference;
             if (!_room.TryGetReferencePose(out reference)) return null;
             RootPose pose = WorkspacePlacementCodec.ToWorld(reference, _localPos, _localRot, _localScale);
@@ -1479,6 +1614,8 @@ namespace MuseDesk.Spatial
                 if (r != TransitionStartResult.Started && r != TransitionStartResult.AlreadyThere) { reason = _mover.LastRefusal; return false; }
                 RememberDesk(current);
                 _awaitingMove = r == TransitionStartResult.Started;
+                RememberActiveRoute(route, r == TransitionStartResult.Started);
+                _placeOutcome = PlaceOutcome.None;
                 Mode = PlacementMode.Floor;
                 _handPlaced = false;
                 RememberLocal(pose, false, pose, pose);

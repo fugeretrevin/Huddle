@@ -110,6 +110,8 @@ namespace MuseDesk.Spatial
             _core.footprint = footprint;
             _core.aimMinDistance = aimMinDistance;
             _core.aimMaxDistance = aimMaxDistance;
+            // rc6: no spatial move starts while a hand holds anything through the Interaction SDK.
+            _core.handsBusy = HandsHoldSomething;
             _core.Changed += OnCoreChanged;
             _core.PreviewMoved += OnPreviewMoved;
         }
@@ -253,6 +255,12 @@ namespace MuseDesk.Spatial
 
         public bool Confirm() { return _core != null && _core.Confirm(); }
         public void ConfirmPlacement() { Confirm(); }
+
+        /// <summary>Floor preview, the Place here key: move the office to the previewed spot. The route is
+        /// planned and swept again now; refused, nothing moves and the footprint says why.</summary>
+        public bool PlaceHere() { return _core != null && _core.PlaceHere(); }
+        /// <summary>The "Choose another spot" key: the next detected spot, or how to choose one by pointing.</summary>
+        public void ChooseAnotherSpot() { if (_core != null) _core.ChooseAnotherSpot(); }
         /// <summary>Previewing: leave the preview. The office is moving: stop the move (see <see cref="StopMove"/>).</summary>
         public void Cancel() { if (_core != null) _core.Cancel(); }
         /// <summary>The Cancel key's target. The same key reads "Stop" while the office moves, and this stops it.</summary>
@@ -371,6 +379,9 @@ namespace MuseDesk.Spatial
         }
 
         static bool IsHeld() { return SpatialWorkspaceState.TransitionHeld; }
+
+        /// <summary>A grab interactor of either hand has something selected (read-only probe of the rig).</summary>
+        static bool HandsHoldSomething() { return HandInteractionProbe.AnyHeld; }
 
         /// <summary>The desk placement must have finished before the office may leave Desk mode.</summary>
         bool DeskReady()
@@ -491,6 +502,9 @@ namespace MuseDesk.Spatial
                 // A Floor office parked at the desk: the Floor key is the way back, and says so.
                 bool parked = _parkedValid && _core.Mode == PlacementMode.Desk && !previewing;
                 strip.SetFloorKeySendsBack(parked);
+                // Floor preview: the console's Confirm reads Place here and shows only while it applies.
+                if (strip.console != null)
+                    strip.console.SetFloorPlacement(previewing && _core.PendingMode == PlacementMode.Floor, _core.CanPlaceHere);
                 if (parked && !transitioning && string.IsNullOrEmpty(status)) status = ParkedStatus;
                 strip.Apply(flags.floorModeEnabled, flags.ceilingModeEnabled, _core.Mode, previewing, canCycle,
                             transitioning, _core.Pod.State, _core.Pod.RetractPending, status);
@@ -518,6 +532,9 @@ namespace MuseDesk.Spatial
         void Save()
         {
             if (persistence == null || _core == null || !flags.Any) return;
+            // Persisted only after success: a move in flight may still be stopped and go back. The record
+            // is written when it arrives (OnCoreChanged sees the transition end).
+            if (_core.IsTransitioning) return;
             if (_core.Mode == PlacementMode.Desk) { persistence.Save(null); return; }
             SavedPlacement saved = _core.BuildSave(Application.buildGUID);
             // A hand-placed spot has no room reference: it is not saved, and an older record is dropped.

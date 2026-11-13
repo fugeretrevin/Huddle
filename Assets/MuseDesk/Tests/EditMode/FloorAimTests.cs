@@ -3,8 +3,8 @@
 // =============================================================================
 //
 // Pure logic only: FloorAimMath, AimFilter, the aim part of SpatialDirectorCore (BeginAimDrag /
-// AimDragTo / EndAimDrag / ReleaseAimDrag / CancelAimDrag / CentrePreviewOn), FloorRoutePlanner and
-// FloorAimSession (pinch, drag, let go to place, hold to confirm), against the synthetic rooms of
+// AimDragTo / EndAimDrag / CancelAimDrag / CentrePreviewOn / PlaceHere), FloorRoutePlanner and
+// FloorAimSession (pinch, drag, let go leaves it; Place here moves it; rc6), against the synthetic rooms of
 // SpatialPlacementTests.cs (SpatialRig, SpatialRooms). Moves are checked by recording every pose
 // written to the root (SpatialRig.trace): on the swept route, swept clear again, away from the head.
 //
@@ -23,6 +23,8 @@ namespace MuseDesk.Tests.EditMode
     static class AimRig
     {
         public const float Dt = 1f / 72f;
+        /// <summary>Long enough for a pinch to arm through the HandOwnershipArbiter (0.15 s held + a frame).</summary>
+        public const float Arm = 0.25f;
         public static readonly Vector3 HandOrigin = new Vector3(0.25f, 0.85f, 0.25f);
 
         /// <summary>A right hand pointing at a floor point.</summary>
@@ -385,7 +387,7 @@ namespace MuseDesk.Tests.EditMode
         }
     }
 
-    // ───────────────────────── the session: pinch, drag, hold ─────────────────────────
+    // ───────────────────────── the session: pinch, drag, let go (rc6: letting go never moves) ─────────────────────────
 
     [Category("MuseDesk")]
     public class FloorAimSessionTests
@@ -402,11 +404,10 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void PinchOnTheFootprint_ThenMove_DragsIt_AndLettingGoOnAReadySpotPlacesIt()
+        public void PinchOnTheFootprint_ThenMove_DragsIt_LettingGoOnlyLeavesItThere_AndPlaceHereMovesIt()
         {
-            // CHANGED (headset feedback 1): letting go used to only drop the footprint, and the
-            // office stayed at the desk although the spot was shown ready. It now places it there,
-            // through the same Confirm and swept route as the key.
+            // CHANGED (rc6, deliberate placement): letting go used to place the office (headset feedback 1).
+            // It now leaves the footprint where it was let go; the Place here key moves the office.
             var rig = AimRig.OpenFloor();
             var session = new FloorAimSession(rig.core);
             Vector3 centre = AimRig.FootprintCentre(rig.core);
@@ -420,33 +421,46 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsFalse(session.HasCursor(0), "the left hand is not tracked");
 
             AimRig.Run(session, 0.1f, AimRig.At(centre, true));
+            Assert.AreEqual(FloorAimState.Aiming, session.State, "a pinch must be held 0.15 s before it arms");
+            AimRig.Run(session, 0.15f, AimRig.At(centre, true));
             Assert.AreEqual(FloorAimState.Pressing, session.State);
             Assert.AreEqual(1, session.ActiveHand);
+            Assert.AreEqual(HandOwner.Placement, session.Arbiter.Owner(1));
             Assert.IsFalse(rig.core.AimDragging, "a pinch alone moves nothing");
 
             AimRig.Run(session, 1.5f, AimRig.At(centre + (to - from), true));
             Assert.AreEqual(FloorAimState.Dragging, session.State);
             Assert.IsTrue(rig.core.AimDragging);
             Assert.That(AimRig.Flat(rig.core.ShownPose.position, to), Is.LessThan(0.05f), "the footprint followed the hand, keeping its grab offset");
-            Assert.AreEqual(0f, session.HoldProgress);
             Assert.IsTrue(rig.core.ShownValid, rig.core.AimProblem);
-            Assert.AreEqual("Let go to place it here", rig.core.FootprintWords);
+            Assert.AreEqual(FloorPlaceStage.RouteValid, rig.core.PlaceStage);
+            Assert.AreEqual(SpatialDirectorCore.ReadyWords, rig.core.FootprintWords);
+            Assert.IsFalse(rig.core.CanPlaceHere, "no Place here while dragging");
             Assert.AreEqual(0, rig.writes, "nothing moves while dragging");
-            RootPose released = rig.core.ShownPose;
 
-            rig.trace = new List<RootPose>();
             AimRig.Run(session, 0.6f, AimRig.At(centre + (to - from), false));
             Assert.AreEqual(1, session.Drops);
-            Assert.AreEqual(1, session.ReleasePlaceAttempts);
-            Assert.AreEqual(1, session.ReleasePlaces);
-            Assert.AreEqual(0, session.HoldConfirmAttempts);
-            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode, "the same Confirm the key calls");
-            Assert.AreEqual(DirectorPhase.Idle, rig.core.Phase);
-            Assert.AreEqual(FloorAimState.Off, session.State);
+            Assert.AreEqual(FloorAimState.Aiming, session.State);
+            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase, "letting go does not confirm");
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.AreEqual(FloorPlaceStage.NeedsConfirmation, rig.core.PlaceStage);
+            Assert.IsTrue(rig.core.CanPlaceHere);
+            Assert.AreEqual(SpatialDirectorCore.ConfirmWords, rig.core.FootprintWords);
+            RootPose released = rig.core.PreviewPose;
+            rig.Run(3f);
+            Assert.AreEqual(0, rig.writes, "release without confirm does not move");
 
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
+            Assert.AreEqual(FloorPlaceStage.Moving, rig.core.PlaceStage);
+            Assert.AreEqual(FloorAimState.Aiming, session.State);
+            AimRig.Run(session, 0.1f, AimRig.At(centre, false));
+            Assert.AreEqual(FloorAimState.Off, session.State, "no aiming while the office moves");
             rig.Run(6f);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+            Assert.AreEqual(FloorPlaceStage.Placed, rig.core.PlaceStage);
             SpatialRooms.AssertPose(released, rig.root);
-            ReleaseRig.AssertTravelledTheSweptRoute(rig, true, "release on a ready spot");
+            ReleaseRig.AssertTravelledTheSweptRoute(rig, true, "Place here after a drag");
         }
 
         [Test]
@@ -456,44 +470,35 @@ namespace MuseDesk.Tests.EditMode
             var session = new FloorAimSession(rig.core);
             Vector3 centre = AimRig.FootprintCentre(rig.core);
             AimRig.Run(session, 0.5f, AimRig.At(centre, false));
-            AimRig.Run(session, 0.1f, AimRig.At(centre, true));
+            AimRig.Run(session, AimRig.Arm, AimRig.At(centre, true));
             Vector3 moved = centre + new Vector3(0.3f, 0f, 0f);
             AimRig.Run(session, 4f, AimRig.At(moved, true));
             Assert.AreEqual(FloorAimState.Dragging, session.State);
-            Assert.AreEqual(0, session.HoldConfirmAttempts);
             Assert.AreEqual(0f, session.HoldProgress);
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
             Assert.AreEqual(0, rig.writes);
         }
 
         [Test]
-        public void PinchAndHold_OnTheFootprint_FillsTheRing_ThenConfirms()
+        public void HoldingAPinchStillOnTheFootprint_NeverConfirms()
         {
+            // CHANGED (rc6): the pinch-and-hold confirm is gone. An accidental gesture must never move the office.
             var rig = AimRig.OpenFloor();
             var session = new FloorAimSession(rig.core);
             Vector3 centre = AimRig.FootprintCentre(rig.core);
-            Vector3 spot = rig.core.PreviewPose.position;
+            RootPose spot = rig.core.PreviewPose;
 
             AimRig.Run(session, 0.5f, AimRig.At(centre, false));
-            AimRig.Run(session, 0.2f, AimRig.At(centre, true));
-            Assert.AreEqual(0f, session.HoldProgress, "the ring does not start at once");
-            AimRig.Run(session, 0.4f, AimRig.At(centre, true));
-            Assert.That(session.HoldProgress, Is.InRange(0.2f, 0.8f));
+            AimRig.Run(session, 3f, AimRig.At(centre, true));
+            Assert.AreEqual(FloorAimState.Pressing, session.State);
+            Assert.AreEqual(0f, session.HoldProgress);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
+            AimRig.Run(session, 0.6f, AimRig.At(centre, false));
+            Assert.AreEqual(FloorAimState.Aiming, session.State);
+            SpatialRooms.AssertPose(spot, rig.core.PreviewPose);
+            rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
-
-            AimRig.Run(session, 0.7f, AimRig.At(centre, true));
-            Assert.AreEqual(1, session.HoldConfirmAttempts);
-            Assert.AreEqual(1, session.HoldConfirms);
-            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode, "the same Confirm the key calls");
-            Assert.AreEqual(DirectorPhase.Idle, rig.core.Phase);
-            Assert.AreEqual(FloorAimState.Off, session.State);
-
-            // The pinch is still closed: it must not do anything more.
-            AimRig.Run(session, 2f, AimRig.At(centre, true));
-            Assert.AreEqual(1, session.HoldConfirmAttempts);
-            rig.Run(6f);
-            Assert.That((rig.root.position - spot).magnitude, Is.LessThan(0.002f));
         }
 
         [Test]
@@ -507,15 +512,15 @@ namespace MuseDesk.Tests.EditMode
             var session = new FloorAimSession(rig.core);
             AimRig.Run(session, 3f, AimRig.At(centre, true));
             Assert.AreEqual(FloorAimState.Aiming, session.State);
-            Assert.AreEqual(0, session.HoldConfirmAttempts);
+            Assert.AreEqual(HandBlock.NotFresh, session.Arbiter.LastBlock(1));
 
             // A short tap on the footprint.
             AimRig.Run(session, 0.5f, AimRig.At(centre, false));
-            AimRig.Run(session, 0.15f, AimRig.At(centre, true));
+            AimRig.Run(session, 0.12f, AimRig.At(centre, true));
             AimRig.Run(session, 0.8f, AimRig.At(centre, false));
             Assert.AreEqual(FloorAimState.Aiming, session.State);
-            Assert.AreEqual(0, session.HoldConfirmAttempts);
             Assert.AreEqual(0, session.Drops);
+            Assert.AreEqual(0, session.Grabs, "too short to arm");
 
             // A pinch that begins off the footprint and is then swept across it.
             Vector3 off = centre + start.rotation * Vector3.right * 1.2f;
@@ -525,7 +530,6 @@ namespace MuseDesk.Tests.EditMode
             Assert.AreEqual(FloorAimState.Aiming, session.State);
             AimRig.Run(session, 2.5f, AimRig.At(centre, true));
             Assert.AreEqual(FloorAimState.Aiming, session.State);
-            Assert.AreEqual(0, session.HoldConfirmAttempts);
 
             SpatialRooms.AssertPose(start, rig.core.PreviewPose);
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
@@ -533,57 +537,68 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void LosingTheHand_DuringADrag_DropsItOnTheLastClearSpot()
+        public void LosingTheHand_DuringADrag_CallsItOff_ThePreviewGoesBackWhereItWas()
         {
+            // CHANGED (rc6): a lost hand used to drop the footprint where it was; tracking loss now
+            // cancels the drag (never a release).
             var rig = AimRig.OpenFloor();
             var session = new FloorAimSession(rig.core);
+            RootPose start = rig.core.PreviewPose;
             Vector3 centre = AimRig.FootprintCentre(rig.core);
             Vector3 from = rig.core.PreviewPose.position;
             Vector3 to = rig.core.GetCandidate(1).position;
             AimRig.Run(session, 0.5f, AimRig.At(centre, false));
-            AimRig.Run(session, 0.1f, AimRig.At(centre, true));
+            AimRig.Run(session, AimRig.Arm, AimRig.At(centre, true));
             AimRig.Run(session, 1.5f, AimRig.At(centre + (to - from), true));
             Assert.AreEqual(FloorAimState.Dragging, session.State);
 
-            AimRig.Run(session, 1f, AimHandSample.None);
+            AimRig.Run(session, 0.1f, AimHandSample.None);
+            Assert.AreEqual(FloorAimState.Dragging, session.State, "frozen inside the grace time");
+            AimRig.Run(session, 0.5f, AimHandSample.None);
             Assert.AreEqual(FloorAimState.Aiming, session.State);
+            Assert.AreEqual(1, session.Cancels);
+            Assert.AreEqual(0, session.Drops, "a lost hand is never a release");
+            Assert.AreEqual(HandBlock.TrackingLost, session.Arbiter.LastBlock(1));
             Assert.IsFalse(rig.core.AimDragging);
-            Assert.IsTrue(rig.core.ShownValid);
+            SpatialRooms.AssertPose(start, rig.core.PreviewPose);
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
-            Assert.AreEqual(0, session.ReleasePlaceAttempts, "a lost hand never places");
+            Assert.AreEqual(0, rig.writes);
+
+            // It comes back pinched: still nothing (the pinch is not fresh).
+            AimRig.Run(session, 1f, AimRig.At(centre, true));
+            Assert.AreEqual(FloorAimState.Aiming, session.State);
             Assert.AreEqual(0, rig.writes);
         }
 
         [Test]
-        public void AHandThatIsLostAndComesBackOpen_DoesNotPlace()
+        public void AHandThatIsLostAndComesBackOpen_IsACancel_NotARelease()
         {
-            // Tracking drops for 0.25 s (past the release debounce, inside the grace time) and the
-            // hand comes back with the pinch open: nobody was seen letting go, so nothing is placed.
             var rig = AimRig.OpenFloor();
             var session = new FloorAimSession(rig.core);
+            RootPose start = rig.core.PreviewPose;
             Vector3 centre = AimRig.FootprintCentre(rig.core);
             Vector3 from = rig.core.PreviewPose.position;
             Vector3 to = rig.core.GetCandidate(1).position;
             AimRig.Run(session, 0.5f, AimRig.At(centre, false));
-            AimRig.Run(session, 0.1f, AimRig.At(centre, true));
+            AimRig.Run(session, AimRig.Arm, AimRig.At(centre, true));
             AimRig.Run(session, 1.5f, AimRig.At(centre + (to - from), true));
             Assert.AreEqual(FloorAimState.Dragging, session.State);
             Assert.IsTrue(rig.core.ShownValid, rig.core.AimProblem);
 
-            AimRig.Run(session, 0.25f, AimHandSample.None);
-            Assert.AreEqual(FloorAimState.Dragging, session.State, "within the grace time");
-            AimRig.Run(session, 0.6f, AimRig.At(centre + (to - from), false));
+            AimRig.Run(session, 0.1f, AimHandSample.None);                       // inside the grace time
+            Assert.AreEqual(FloorAimState.Dragging, session.State);
+            AimRig.Run(session, 0.6f, AimRig.At(centre + (to - from), false));  // back, open: nobody was seen letting go
             Assert.AreEqual(FloorAimState.Aiming, session.State);
-            Assert.AreEqual(1, session.Drops);
-            Assert.AreEqual(0, session.ReleasePlaceAttempts);
-            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
+            Assert.AreEqual(0, session.Drops);
+            Assert.AreEqual(1, session.Cancels);
+            SpatialRooms.AssertPose(start, rig.core.PreviewPose);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
         }
 
         [Test]
-        public void ATwitch_OrAQuickFlick_NeverPlaces()
+        public void ATwitch_OrAQuickFlick_NeverMovesAnything()
         {
             var rig = AimRig.OpenFloor();
             var session = new FloorAimSession(rig.core);
@@ -600,20 +615,17 @@ namespace MuseDesk.Tests.EditMode
             AimRig.Run(session, 0.8f, AimRig.At(centre, false));
             Assert.AreEqual(FloorAimState.Aiming, session.State);
             Assert.AreEqual(0, session.Drops, "it never became a drag");
-            Assert.AreEqual(0, session.ReleasePlaceAttempts);
-            Assert.AreEqual(0, session.HoldConfirmAttempts);
             SpatialRooms.AssertPose(start, rig.core.PreviewPose);
 
-            // A flick: a real drag, let go 0.15 s after the pinch began.
+            // A flick: pinch and sweep 0.5 m within 0.12 s, let go: it never armed.
             Vector3 flick = centre + rig.user.Right * 0.5f;
+            int grabs = session.Grabs;                       // the twitch may have armed (held 0.19 s) but never dragged
             AimRig.Run(session, 0.04f, AimRig.At(centre, true));
-            Assert.AreEqual(FloorAimState.Pressing, session.State);
-            AimRig.Run(session, 0.1f, AimRig.At(flick, true));
-            Assert.AreEqual(FloorAimState.Dragging, session.State);
-            Assert.That(session.HeldSeconds, Is.LessThan(new FloorAimSettings().placeMinSeconds));
+            AimRig.Run(session, 0.08f, AimRig.At(flick, true));
             AimRig.Run(session, 0.8f, AimRig.At(flick, false));
-            Assert.AreEqual(1, session.Drops);
-            Assert.AreEqual(0, session.ReleasePlaceAttempts, "too short to be a deliberate placement");
+            Assert.AreEqual(grabs, session.Grabs, "the flick never armed");
+            Assert.AreEqual(0, session.Drops);
+            SpatialRooms.AssertPose(start, rig.core.PreviewPose);
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
             rig.Run(3f);
@@ -630,19 +642,19 @@ namespace MuseDesk.Tests.EditMode
             Vector3 onDesk = new Vector3(0f, 0f, 1.5f);
 
             AimRig.Run(session, 0.5f, AimRig.At(centre, false));
-            AimRig.Run(session, 0.1f, AimRig.At(centre, true));
+            AimRig.Run(session, AimRig.Arm, AimRig.At(centre, true));
             AimRig.Run(session, 1.5f, AimRig.At(centre + (onDesk - from), true));
             Assert.AreEqual(FloorAimState.Dragging, session.State);
             Assert.IsFalse(rig.core.ShownValid);
+            Assert.AreEqual(FloorPlaceStage.SpotBlocked, rig.core.PlaceStage);
             Assert.AreEqual("Something is in the way", rig.core.FootprintWords);
 
             AimRig.Run(session, 0.6f, AimRig.At(centre + (onDesk - from), false));
             Assert.AreEqual(1, session.Drops);
-            Assert.AreEqual(0, session.ReleasePlaces);
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase, "still previewing");
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
             StringAssert.Contains("Something is in the way", rig.core.FootprintWords, "the footprint says why");
-            Assert.IsTrue(rig.core.ShownValid, "it shows the last ready spot");
+            Assert.IsTrue(rig.core.ShownValid, "it shows the last clear spot");
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
         }
@@ -737,38 +749,53 @@ namespace MuseDesk.Tests.EditMode
     }
 
     [Category("MuseDesk")]
-    public class FloorReleaseToPlaceTests
+    public class FloorPlaceHereTests
     {
+        // rc6 deliberate placement: let go leaves the footprint; Place here (PlaceHere / Confirm) plans and
+        // sweeps the route again and moves the office. Replaces FloorReleaseToPlaceTests.
+
+        static SpatialRig DragTo(Vector3 spot, SyntheticRoomGeometry room = null)
+        {
+            var rig = ReleaseRig.Open(room ?? SpatialRooms.Office());
+            Assert.IsTrue(rig.core.BeginAimDrag());
+            rig.core.AimDragTo(spot);
+            return rig;
+        }
+
         [Test]
-        public void ReleasingOnAReadySpot_MovesTheOffice_AlongTheSweptRoute()
+        public void LettingGoOnAClearSpot_MovesNothing_PlaceHereMovesItAlongTheSweptRoute()
         {
             var rig = ReleaseRig.Open(SpatialRooms.Office());
-            Assert.AreEqual("Pinch it, drag it to a spot, let go", rig.core.FootprintWords);
+            Assert.AreEqual(SpatialDirectorCore.IdleWords, rig.core.FootprintWords);
+            Assert.AreEqual(FloorPlaceStage.NeedsConfirmation, rig.core.PlaceStage, "the offered spot can be placed at once");
             Assert.IsTrue(rig.core.BeginAimDrag());
             rig.core.AimDragTo(ReleaseRig.Side);
             Assert.IsTrue(rig.core.AimValid, rig.core.AimProblem);
-            Assert.AreEqual("Let go to place it here", rig.core.FootprintWords);
-            Assert.AreEqual(0, rig.writes);
+            Assert.IsTrue(rig.core.AimSpotValid);
+            Assert.AreEqual(FloorPlaceStage.RouteValid, rig.core.PlaceStage);
+            Assert.AreEqual(SpatialDirectorCore.ReadyWords, rig.core.FootprintWords);
+            Assert.IsFalse(rig.core.CanPlaceHere);
+
+            Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
+            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            Assert.AreEqual(FloorPlaceStage.NeedsConfirmation, rig.core.PlaceStage);
+            Assert.IsTrue(rig.core.CanPlaceHere);
+            Assert.AreEqual(SpatialDirectorCore.ConfirmWords, rig.core.FootprintWords);
+            rig.Run(3f);
+            Assert.AreEqual(0, rig.writes, "release without confirm does not move");
 
             rig.trace = new List<RootPose>();
-            Assert.IsTrue(rig.core.ReleaseAimDrag(true), rig.core.StatusText);
-            Assert.AreEqual(1, rig.core.ReleasePlaceAttempts);
-            Assert.AreEqual(1, rig.core.ReleasePlaces);
+            Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
             Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
             Assert.AreEqual(DirectorPhase.Idle, rig.core.Phase);
+            Assert.AreEqual(FloorPlaceStage.Moving, rig.core.PlaceStage);
+            Assert.AreEqual(SpatialDirectorCore.MovingWords, rig.core.FootprintWords);
+            SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), rig.core.PlaceTarget);
             rig.Run(6f);
+            Assert.AreEqual(FloorPlaceStage.Placed, rig.core.PlaceStage);
             SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), rig.root);
-            ReleaseRig.AssertTravelledTheSweptRoute(rig, true, "release at the side");
-
-            // Release without asking to place (the hand was lost): never moves.
-            var other = ReleaseRig.Open(SpatialRooms.Office());
-            Assert.IsTrue(other.core.BeginAimDrag());
-            other.core.AimDragTo(ReleaseRig.Side);
-            Assert.IsFalse(other.core.ReleaseAimDrag(false));
-            Assert.AreEqual(0, other.core.ReleasePlaceAttempts);
-            Assert.AreEqual(DirectorPhase.Previewing, other.core.Phase);
-            other.Run(3f);
-            Assert.AreEqual(0, other.writes);
+            ReleaseRig.AssertTravelledTheSweptRoute(rig, true, "Place here at the side");
         }
 
         [Test]
@@ -783,16 +810,17 @@ namespace MuseDesk.Tests.EditMode
             FloorPoseProblem problem;
             Assert.IsTrue(FloorPlacementEvaluator.CheckPlacedPose(room, rig.user, Vector3.forward, ReleaseRig.Facing(ReleaseRig.Side),
                                                                   SpatialRooms.Footprint, rig.core.floorSettings, out problem), problem.ToString());
-            // ... but cannot be brought down there: not ready, and the footprint says why.
+            // ... but cannot be brought down there: not clear, the footprint says why, drawn as route-blocked.
             Assert.IsTrue(rig.core.BeginAimDrag());
             rig.core.AimDragTo(ReleaseRig.Side);
             Assert.IsFalse(rig.core.AimValid);
+            Assert.IsTrue(rig.core.AimSpotValid, "the spot itself is fine");
+            Assert.AreEqual(FloorPlaceStage.RouteBlocked, rig.core.PlaceStage);
             Assert.IsFalse(rig.core.ShownValid, "drawn as not clear");
             Assert.AreEqual("The way there is blocked by STORAGE", rig.core.AimProblem);
             Assert.AreEqual("The way there is blocked by STORAGE", rig.core.FootprintWords);
 
-            Assert.IsFalse(rig.core.ReleaseAimDrag(true));
-            Assert.AreEqual(0, rig.core.ReleasePlaceAttempts);
+            Assert.IsFalse(rig.core.EndAimDrag());
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
             SpatialRooms.AssertPose(start, rig.core.PreviewPose);
@@ -802,23 +830,22 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void AWayRefusedAtRelease_LeavesTheFootprintThere_SaysWhy_AndMovesNothing()
+        public void ARouteBlockedAtConfirmTime_MovesNothing_AndTheSpotStaysWithTheReason()
         {
             var room = SpatialRooms.Office();
-            var rig = ReleaseRig.Open(room);
-            Assert.IsTrue(rig.core.BeginAimDrag());
-            rig.core.AimDragTo(ReleaseRig.Side);
+            var rig = DragTo(ReleaseRig.Side, room);
             Assert.IsTrue(rig.core.AimValid, rig.core.AimProblem);
-            Assert.AreEqual("Let go to place it here", rig.core.FootprintWords);
+            Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
+            Assert.IsTrue(rig.core.CanPlaceHere);
 
-            // The scan now has a cabinet there (no room event): the route planned again at release refuses.
+            // The scan now has a cabinet there (no room event): Place here plans again and refuses.
             ReleaseRig.AddCabinetBesideSide(room);
-            Assert.IsFalse(rig.core.ReleaseAimDrag(true));
-            Assert.AreEqual(0, rig.core.ReleasePlaces);
+            Assert.IsFalse(rig.core.PlaceHere());
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
             SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), rig.core.PreviewPose, 0.002f);
-            Assert.IsFalse(rig.core.ShownValid, "it stays where it was let go, drawn as not clear");
+            Assert.AreEqual(FloorPlaceStage.RouteBlocked, rig.core.PlaceStage, "it stays where it was let go, drawn as route-blocked");
+            Assert.IsFalse(rig.core.CanPlaceHere, "the Place here key goes away");
             Assert.AreEqual("The way there is blocked by STORAGE", rig.core.FootprintWords);
             StringAssert.Contains("STORAGE", rig.core.StatusText);
             rig.Run(3f);
@@ -826,7 +853,6 @@ namespace MuseDesk.Tests.EditMode
 
             // Confirm plans again (it does not trust the old answer either way): still blocked.
             Assert.IsFalse(rig.core.Confirm());
-            StringAssert.Contains("blocked by STORAGE", rig.core.StatusText);
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
 
@@ -840,47 +866,158 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void ConfirmRefusingAfterAReadyRelease_KeepsTheSpot_AndSaysWhy()
+        public void ConfirmOrPlaceHere_DuringADrag_IsRefused()
         {
-            var rig = ReleaseRig.Open(SpatialRooms.Office());
-            Assert.IsTrue(rig.core.BeginAimDrag());
-            rig.core.AimDragTo(ReleaseRig.Side);
+            var rig = DragTo(ReleaseRig.Side);
             Assert.IsTrue(rig.core.AimValid, rig.core.AimProblem);
-
-            rig.held = true;                                  // a paper is in the user's hand
-            Assert.IsFalse(rig.core.ReleaseAimDrag(true));
-            Assert.AreEqual(1, rig.core.ReleasePlaceAttempts);
-            Assert.AreEqual(0, rig.core.ReleasePlaces);
-            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
-            SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), rig.core.PreviewPose);
-            StringAssert.Contains("paper", rig.core.FootprintWords, "never 'ready' followed by nothing");
-            StringAssert.Contains("paper", rig.core.StatusText);
+            Assert.IsFalse(rig.core.PlaceHere());
+            Assert.IsFalse(rig.core.Confirm());
+            Assert.IsTrue(rig.core.AimDragging, "the drag goes on");
+            StringAssert.Contains("Let go", rig.core.StatusText);
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
-
-            rig.held = false;
-            Assert.IsTrue(rig.core.Confirm(), rig.core.StatusText);
-            rig.Run(6f);
-            SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), rig.root);
         }
 
         [Test]
-        public void ATinyDrag_IsNotAPlacement()
+        public void PlaceHere_WithAPaperOrAnythingInHand_IsRefused_AndKeepsTheSpot()
         {
-            var rig = AimRig.OpenFloor();
-            RootPose start = rig.core.PreviewPose;
-            Assert.IsTrue(rig.core.BeginAimDrag());
-            rig.core.AimDragTo(start.position + rig.user.Right * 0.03f);
-            Assert.IsTrue(rig.core.AimValid, rig.core.AimProblem);
-            Assert.That(rig.core.AimDragDisplacement, Is.LessThan(rig.core.aimPlaceMinDrag));
+            var rig = DragTo(ReleaseRig.Side);
+            Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
 
-            Assert.IsFalse(rig.core.ReleaseAimDrag(true));
-            Assert.AreEqual(0, rig.core.ReleasePlaceAttempts);
+            rig.held = true;                                  // a paper (transition hold)
+            Assert.IsFalse(rig.core.PlaceHere());
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
-            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
-            StringAssert.StartsWith("Moved only a little", rig.core.FootprintWords);
+            SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), rig.core.PreviewPose);
+            StringAssert.Contains("paper", rig.core.FootprintWords);
+            rig.held = false;
+
+            bool stamp = true;                                // a stamp or a card in a grab interactor
+            rig.core.handsBusy = () => stamp;
+            Assert.IsFalse(rig.core.PlaceHere());
+            StringAssert.Contains("holding", rig.core.StatusText);
+            Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
+
+            stamp = false;
+            Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
+            rig.Run(6f);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+
+            // The way back to the desk does not start while something is held either.
+            int writes = rig.writes;
+            stamp = true;
+            Assert.IsFalse(rig.core.RequestMode(PlacementMode.Desk));
+            StringAssert.Contains("holding", rig.core.StatusText);
+            rig.Run(2f);
+            Assert.AreEqual(writes, rig.writes);
+            Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
+            stamp = false;
+            Assert.IsTrue(rig.core.RequestMode(PlacementMode.Desk), rig.core.StatusText);
+            rig.Run(0.3f);
+            stamp = true;                                     // picked something up during the move
+            Assert.IsTrue(rig.core.StopMove(), "Stop is never blocked");
+        }
+
+        [Test]
+        public void PlaceHere_ThenStop_ReversesAlongTheTravelledPoses_AndNothingIsSaved()
+        {
+            var rig = DragTo(ReleaseRig.Side);
+            Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
+            WorkspaceRoute route = rig.core.LastRoute;
+            Assert.IsNull(rig.core.BuildSave("b"), "not saved while moving");
+
+            rig.Run(0.5f);
+            Assert.That(rig.trace.Count, Is.GreaterThan(3));
+            Assert.IsTrue(rig.core.StopMove());
+            Assert.AreEqual(FloorPlaceStage.Returning, rig.core.PlaceStage);
+            Assert.AreEqual(SpatialDirectorCore.ReturningWords, rig.core.FootprintWords);
+            Assert.IsNull(rig.core.BuildSave("b"));
+            rig.Run(6f);
+
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode, "the mode went back with it");
+            Assert.IsFalse(rig.core.IsTransitioning);
+            SpatialRooms.AssertPose(ReleaseRig.Desk, rig.root, 1e-4f);
+            Assert.AreEqual(FloorPlaceStage.None, rig.core.PlaceStage);
+            Assert.IsNull(rig.core.BuildSave("b"), "a stopped placement is never saved");
+            // Every written pose, out and back, lies on the swept route.
+            for (int i = 0; i < rig.trace.Count; i++)
+                Assert.That(ReleaseRigExtra.DistanceToRoute(route, rig.trace[i]), Is.LessThan(0.002f), "write " + i);
+        }
+
+        [Test]
+        public void ThePlacement_IsPersistedOnlyAfterTheOfficeArrived()
+        {
+            var rig = DragTo(ReleaseRig.Side);
+            Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
+            Assert.IsNull(rig.core.BuildSave("b"), "a preview is never saved");
+            Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
+            Assert.IsNull(rig.core.BuildSave("b"), "accepted but not arrived: not saved");
+            rig.Run(0.6f);
+            Assert.IsTrue(rig.core.IsTransitioning);
+            Assert.IsNull(rig.core.BuildSave("b"), "on the way: not saved");
+            rig.Run(6f);
+            Assert.IsFalse(rig.core.IsTransitioning);
+            SavedPlacement saved = rig.core.BuildSave("b");
+            Assert.IsNotNull(saved, "saved once it arrived");
+            Assert.AreEqual((int)PlacementMode.Floor, saved.mode);
+        }
+
+        [Test]
+        public void ARoomChangeDuringTheMove_ThatBlocksTheRoute_SendsItBack()
+        {
+            var room = SpatialRooms.Office();
+            var rig = DragTo(ReleaseRig.Side, room);
+            Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
+            rig.trace = new List<RootPose>();
+            Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
+            WorkspaceRoute route = rig.core.LastRoute;
+            rig.Run(0.4f);
+            Assert.IsTrue(rig.mover.IsRunning);
+
+            // The scan updates mid-move with a cabinet beside the spot: the route is swept again and refused.
+            ReleaseRig.AddCabinetBesideSide(room);
+            room.RaiseChanged();
+            Assert.IsTrue(rig.mover.IsReversing, "it goes back");
+            StringAssert.StartsWith(SpatialDirectorCore.RoomChangedMidMoveWords, rig.core.StatusText);
+            rig.Run(6f);
+            Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
+            SpatialRooms.AssertPose(ReleaseRig.Desk, rig.root, 1e-4f);
+            for (int i = 0; i < rig.trace.Count; i++)
+                Assert.That(ReleaseRigExtra.DistanceToRoute(route, rig.trace[i]), Is.LessThan(0.002f), "write " + i);
+
+            // A room change that leaves the route clear does not stop a move.
+            var other = DragTo(ReleaseRig.Side);
+            Assert.IsTrue(other.core.EndAimDrag());
+            Assert.IsTrue(other.core.PlaceHere());
+            other.Run(0.4f);
+            ((SyntheticRoomGeometry)other.core.Room).RaiseChanged();
+            Assert.IsFalse(other.mover.IsReversing);
+            other.Run(6f);
+            Assert.AreEqual(PlacementMode.Floor, other.core.Mode);
+            SpatialRooms.AssertPose(ReleaseRig.Facing(ReleaseRig.Side), other.root);
+        }
+
+        [Test]
+        public void ChooseAnotherSpot_CyclesTheDetectedSpots_AndNeverMoves()
+        {
+            var rig = ReleaseRig.Open(SpatialRooms.Office());
+            Assert.That(rig.core.CandidateCount, Is.GreaterThanOrEqualTo(2));
+            int first = rig.core.CandidateIndex;
+            Assert.IsTrue(rig.core.ChooseAnotherSpot());
+            Assert.AreNotEqual(first, rig.core.CandidateIndex);
+            Assert.AreEqual(FloorPlaceStage.NeedsConfirmation, rig.core.PlaceStage);
+
+            // Without a room scan there is nothing to cycle to: it says how to choose one.
+            var hand = new SpatialRig(null);
+            Assert.IsTrue(hand.core.RequestMode(PlacementMode.Floor));
+            Assert.IsFalse(hand.core.ChooseAnotherSpot());
+            Assert.AreEqual(SpatialDirectorCore.AnotherSpotHint, hand.core.FootprintWords);
+            rig.Run(2f); hand.Run(2f);
+            Assert.AreEqual(0, rig.writes);
+            Assert.AreEqual(0, hand.writes);
         }
 
         [Test]
@@ -904,8 +1041,7 @@ namespace MuseDesk.Tests.EditMode
                 Assert.That(Mathf.Abs(r[1].position.x - ReleaseRig.Desk.position.x), Is.GreaterThan(0.3f), "it steps sideways as it rises");
             }
 
-            // 2. The closer one also broke the old 0.6 m circle round the head (the head moves
-            //    toward the spot when the user leans to point at it); 0.45 m to the side now.
+            // 2. The closer one also broke the old 0.6 m circle round the head; 0.45 m to the side now.
             var old = new FloorPlacementSettings { placedUserClearance = 0.6f, placedFurnitureClearance = 0.15f, placedWallMargin = 0.10f };
             FloorPoseProblem problem;
             Assert.IsFalse(FloorPlacementEvaluator.CheckPlacedPose(room, user, Vector3.forward, ReleaseRig.Facing(ReleaseRig.CloseBeside),
@@ -914,16 +1050,15 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsTrue(FloorPlacementEvaluator.CheckPlacedPose(room, user, Vector3.forward, ReleaseRig.Facing(ReleaseRig.CloseBeside),
                                                                   SpatialRooms.Footprint, new FloorPlacementSettings(), out problem), problem.ToString());
 
-            // 3. Pointing at them now shows ready; letting go takes the office there along the swept
-            //    side step, and Desk brings it back along the same poses.
+            // 3. Pointing at them now shows clear; letting go and Place here take the office there along the
+            //    swept side step, and Desk brings it back along the same poses.
             foreach (Vector3 spot in new[] { ReleaseRig.BesideShoulder, ReleaseRig.CloseBeside })
             {
-                var rig = ReleaseRig.Open(SpatialRooms.Office());
-                Assert.IsTrue(rig.core.BeginAimDrag());
-                rig.core.AimDragTo(spot);
+                var rig = DragTo(spot);
                 Assert.IsTrue(rig.core.AimValid, spot + ": " + rig.core.AimProblem);
+                Assert.IsTrue(rig.core.EndAimDrag(), rig.core.StatusText);
                 rig.trace = new List<RootPose>();
-                Assert.IsTrue(rig.core.ReleaseAimDrag(true), rig.core.StatusText);
+                Assert.IsTrue(rig.core.PlaceHere(), rig.core.StatusText);
                 rig.Run(6f);
                 Assert.AreEqual(PlacementMode.Floor, rig.core.Mode);
                 SpatialRooms.AssertPose(ReleaseRig.Facing(spot), rig.root);
@@ -958,12 +1093,11 @@ namespace MuseDesk.Tests.EditMode
                 Assert.IsFalse(rig.core.AimValid, c.Value);
                 Assert.AreEqual(c.Value, rig.core.AimProblem);
                 Assert.AreEqual(c.Value, rig.core.FootprintWords);
-                Assert.IsFalse(rig.core.ReleaseAimDrag(true), c.Value);
+                Assert.IsFalse(rig.core.EndAimDrag(), c.Value);
                 Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase, c.Value);
                 SpatialRooms.AssertPose(start, rig.core.PreviewPose);
                 StringAssert.StartsWith(c.Value, rig.core.FootprintWords);
             }
-            Assert.AreEqual(0, rig.core.ReleasePlaceAttempts);
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
@@ -982,7 +1116,7 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void TheGuideHook_CentresThePreviewWhereTheUserLooks_WithoutMovingTheOffice()
+        public void TheGuideHook_CentresThePreviewWhereTheUserLooks_AndOnlyPreviews()
         {
             var rig = AimRig.OpenFloor();
             RootPose start = rig.core.PreviewPose;
@@ -990,6 +1124,8 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsTrue(rig.core.CentrePreviewOn(look), rig.core.StatusText);
             Assert.That(AimRig.Flat(AimRig.FootprintCentre(rig.core), look), Is.LessThan(0.02f));
             Assert.IsTrue(rig.core.PreviewValid);
+            Assert.IsFalse(rig.core.AimDragging);
+            Assert.AreEqual(FloorPlaceStage.NeedsConfirmation, rig.core.PlaceStage, "it waits for Place here");
             Assert.AreEqual(DirectorPhase.Previewing, rig.core.Phase);
             Assert.AreEqual(PlacementMode.Desk, rig.core.Mode);
 
@@ -999,8 +1135,38 @@ namespace MuseDesk.Tests.EditMode
             SpatialRooms.AssertPose(there, rig.core.PreviewPose);
             StringAssert.StartsWith("Something is in the way", rig.core.FootprintWords);
             Assert.That((there.position - start.position).magnitude, Is.GreaterThan(0.1f));
+
+            // The guide's quiet form: refused without a reason, the preview exactly as it was, still waiting for Place here.
+            Assert.IsFalse(rig.core.CentrePreviewOn(new Vector3(0f, 0f, 1.2f), quietIfBlocked: true));
+            SpatialRooms.AssertPose(there, rig.core.PreviewPose);
+            Assert.AreEqual(SpatialDirectorCore.ConfirmWords, rig.core.FootprintWords);
+            Assert.AreEqual(FloorPlaceStage.NeedsConfirmation, rig.core.PlaceStage);
+
+            // A drag in progress is never ended by the hook.
+            Assert.IsTrue(rig.core.BeginAimDrag());
+            Assert.IsFalse(rig.core.CentrePreviewOn(look));
+            Assert.IsTrue(rig.core.AimDragging);
+            rig.core.CancelAimDrag();
             rig.Run(3f);
             Assert.AreEqual(0, rig.writes);
+        }
+    }
+
+    static class ReleaseRigExtra
+    {
+        public static float DistanceToRoute(WorkspaceRoute route, RootPose pose)
+        {
+            float best = float.MaxValue;
+            for (int l = 0; l < route.LegCount; l++)
+            {
+                RootPose a = route[l], b = route[l + 1];
+                Vector3 ab = b.position - a.position;
+                float k = ab.sqrMagnitude > 1e-10f ? Mathf.Clamp01(Vector3.Dot(pose.position - a.position, ab) / ab.sqrMagnitude) : 0f;
+                RootPose q = CeilingPlacementEvaluator.PathPose(a, b, k);
+                float err = (q.position - pose.position).magnitude + Quaternion.Angle(q.rotation, pose.rotation) * 0.002f;
+                if (err < best) best = err;
+            }
+            return best;
         }
     }
 }

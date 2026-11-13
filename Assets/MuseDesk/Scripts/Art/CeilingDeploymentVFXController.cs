@@ -43,6 +43,10 @@ namespace MuseDesk.Art
         [SerializeField] private ParticleSystem tetherFlowParticles;
         [SerializeField] private ParticleSystem arrivalBurstParticles;
 
+        [Header("Release switches (set by ReleaseConfigApplier)")]
+        public bool particlesEnabled = true;
+        public bool portalConeEnabled = true;
+
         private MaterialPropertyBlock _mpb;
         private float _coneAlpha;
         private float _haloAlpha;
@@ -244,7 +248,7 @@ namespace MuseDesk.Art
 
             if (tetherFlowParticles != null)
             {
-                if (activeFlight)
+                if (activeFlight && particlesEnabled)
                 {
                     ConfigureTetherFlowDirection(!ascending);
                     tetherFlowParticles.Simulate(0.65f, withChildren: true, restart: true);
@@ -256,7 +260,7 @@ namespace MuseDesk.Art
             }
             if (ceilingApertureParticles != null)
             {
-                if (activeFlight)
+                if (activeFlight && particlesEnabled)
                     ceilingApertureParticles.Simulate(0.50f, withChildren: true, restart: true);
                 else
                     ceilingApertureParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -266,6 +270,7 @@ namespace MuseDesk.Art
         private void UpdatePortalConeTransformAndColor(Color col, float alpha, float scanDir)
         {
             if (ceilingPortalCone == null || ceilingPortalConeRenderer == null) return;
+            if (!portalConeEnabled) alpha = 0f;
             if (alpha <= 0.005f)
             {
                 if (ceilingPortalCone.gameObject.activeSelf) ceilingPortalCone.gameObject.SetActive(false);
@@ -377,9 +382,10 @@ namespace MuseDesk.Art
             }
         }
 
-        private static void SetParticlesActive(ParticleSystem ps, bool active)
+        private void SetParticlesActive(ParticleSystem ps, bool active)
         {
             if (ps == null) return;
+            if (!particlesEnabled) active = false;
             if (active)
             {
                 if (!ps.isPlaying) ps.Play();
@@ -390,9 +396,9 @@ namespace MuseDesk.Art
             }
         }
 
-        private static void EmitBurstAt(ParticleSystem ps, Vector3 worldPos, int count)
+        private void EmitBurstAt(ParticleSystem ps, Vector3 worldPos, int count)
         {
-            if (ps == null) return;
+            if (ps == null || !particlesEnabled) return;
             ps.transform.position = worldPos;
             ps.Emit(count);
         }

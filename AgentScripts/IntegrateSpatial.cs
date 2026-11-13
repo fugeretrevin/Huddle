@@ -33,13 +33,16 @@ public static class IntegrateSpatial
         kit.items = list.ToArray(); kit.rig = rigT;
         kit.decisionOnly = new[] { "StampApprove", "StampReject", "Doc_StampRestPad" }.Select(Find).Where(t => t != null).ToArray();
         sb.AppendLine($"shown at the desk only while a decision waits (office away): {string.Join(", ", kit.decisionOnly.Select(t => t.name))}");
-        // Modes on for the owner's headset pass. Desk stays the start-up mode and the fallback.
+        // The single source of truth is Assets/MuseDesk/Resources/ReleaseConfig.asset (MuseDeskReleaseConfig);
+        // ReleaseConfigApplier overrides these at run time. Here the serialized values just mirror it (default: on).
         var director = spatial.GetComponent<SpatialWorkspaceDirector>();
         if (director != null)
         {
-            director.flags.floorModeEnabled = true; director.flags.ceilingModeEnabled = true;
+            var cfg = AssetDatabase.LoadAssetAtPath<MuseDesk.Config.MuseDeskReleaseConfig>("Assets/MuseDesk/Resources/ReleaseConfig.asset");
+            bool floor = cfg == null || cfg.floorMode, ceiling = cfg == null || cfg.ceilingMode;
+            director.flags.floorModeEnabled = floor; director.flags.ceilingModeEnabled = ceiling;
             EditorUtility.SetDirty(director);
-            sb.AppendLine("feature flags: Floor ON, Ceiling ON (for on-head validation; see FINAL_FEATURE_FLAG_DECISION.md)");
+            sb.AppendLine($"feature flags mirrored from ReleaseConfig: Floor {(floor ? "ON" : "OFF")}, Ceiling {(ceiling ? "ON" : "OFF")} (see FINAL_FEATURE_FLAG_DECISION.md)");
         }
         EditorUtility.SetDirty(kit);
         var scene = EditorSceneManager.GetActiveScene();

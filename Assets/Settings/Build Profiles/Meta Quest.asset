@@ -250,7 +250,7 @@ MonoBehaviour:
     - line: '|   xboxOneEnable7thCore: 1'
     - line: '|   vrSettings:'
     - line: '|     enable360StereoCapture: 0'
-    - line: '|   enableFrameTimingStats: 0'
+    - line: '|   enableFrameTimingStats: 1'
     - line: '|   enableOpenGLProfilerGPURecorders: 1'
     - line: '|   allowHDRDisplaySupport: 0'
     - line: '|   useHDRDisplay: 0'

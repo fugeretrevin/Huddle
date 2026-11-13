@@ -1,7 +1,7 @@
 param(
     [string]$Label = "worn",
     [int]$WaitMinutes = 180,     # how long to wait for MuseDesk to be running on the headset
-    [int]$CaptureMinutes = 8     # how long to record once it is
+    [int]$CaptureMinutes = 30    # how long to record once it is
 )
 # Passive performance capture: never launches the app, never touches the proximity sensor or the lock
 # screen. It waits until MuseDesk is running (i.e. someone put the headset on and opened it), then
@@ -37,7 +37,7 @@ while ((Get-Date) -lt $end) {
     $m = Adb 'shell "dumpsys meminfo com.musedesk.quest | grep -E ''TOTAL PSS|TOTAL:''"'
     if ($m -match '(\d{5,})') { $mem += [int]$matches[1] }
 }
-$vr = Adb 'shell "logcat -d -s VrApi:I | grep FPS="' 60
+$vr = Adb 'shell "logcat -d -v time -s VrApi:I | grep FPS="' 60
 $vrFile = Join-Path $outDir "vrapi_$Label.txt"; $vr | Out-File -Encoding utf8 $vrFile
 $log = Adb 'shell "logcat -d -v time -s Unity:V | grep -E ''\[MuseDesk|Exception|NullReference|MissingReference''"' 60
 $log | Out-File -Encoding utf8 (Join-Path $outDir "unitylog_$Label.txt")
@@ -64,3 +64,7 @@ $sum = @(
     "raw: $vrFile"
 )
 $sumFile = Join-Path $outDir "perf_summary_$Label.txt"; $sum | Out-File -Encoding utf8 $sumFile; $sum
+
+# Per-scenario split (uses the [MuseDesk.Perf] scenario lines the app logs); writes Logs\quest\perf_<Label>.csv
+$split = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "quest_perf_split.ps1"
+if (Test-Path $split) { try { & $split -Label $Label } catch { "perf split failed: $($_.Exception.Message)" } }

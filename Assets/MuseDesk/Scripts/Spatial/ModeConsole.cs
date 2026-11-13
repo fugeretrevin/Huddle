@@ -77,6 +77,11 @@ namespace MuseDesk.Spatial
         public float easeSeconds = 0.2f;
         [Tooltip("The Stop key cannot be poked for this long after it appears (the finger that pressed Confirm is still there).")]
         public float armDelay = 0.35f;
+        [Tooltip("Words of the confirm and next keys outside a floor preview, and during one (rc6 deliberate placement).")]
+        public string confirmWords = "Confirm";
+        public string placeHereWords = "Place here";
+        public string nextWords = "Next";
+        public string otherSpotWords = "Other spot";
 
         [Header("Status line")]
         public TMP_Text statusLabel;
@@ -97,6 +102,7 @@ namespace MuseDesk.Spatial
         ConsoleKey[] _segments;
         readonly ScaleEase[] _indicatorEase = { new ScaleEase(), new ScaleEase(), new ScaleEase() };
         bool _inited, _applied, _animating, _pokeDirty, _sendsBack, _podDown;
+        bool _floorPreview, _placeReady = true;
         int _active = -1, _armFrame;
         string _status, _podWords, _floorShown;
         ModeConsoleKeys _keys;
@@ -174,6 +180,22 @@ namespace MuseDesk.Spatial
             if (floorKey.label != null) floorKey.label.text = words;
         }
 
+        /// <summary>
+        /// Floor preview (rc6): the confirm key reads "Place here" and is shown only while
+        /// <paramref name="placeReady"/> (SpatialDirectorCore.CanPlaceHere); Next reads "Other spot".
+        /// Called by the director before <see cref="Apply"/>.
+        /// </summary>
+        public void SetFloorPlacement(bool floorPreview, bool placeReady)
+        {
+            EnsureInit();
+            _floorPreview = floorPreview;
+            _placeReady = placeReady;
+            string c = floorPreview ? placeHereWords : confirmWords;
+            if (confirmKey.label != null && confirmKey.label.text != c) confirmKey.label.text = c;
+            string n = floorPreview ? otherSpotWords : nextWords;
+            if (nextKey.label != null && nextKey.label.text != n) nextKey.label.text = n;
+        }
+
         /// <summary>Lay the console out for the current state. Called on state changes only.</summary>
         public void Apply(bool floorEnabled, bool ceilingEnabled, PlacementMode mode, bool previewing, bool canCycle,
                           bool transitioning, CeilingPodState podState, bool podWaiting, string status)
@@ -182,7 +204,8 @@ namespace MuseDesk.Spatial
             _applied = true;
             _mode = mode;
             _podDown = podState == CeilingPodState.Engaged;
-            _keys = ModeConsoleLogic.Compute(floorEnabled, ceilingEnabled, mode, previewing, canCycle, transitioning, podState, podWaiting);
+            _keys = ModeConsoleLogic.Compute(floorEnabled, ceilingEnabled, mode, previewing, canCycle, transitioning, podState, podWaiting,
+                                             _floorPreview && previewing, _placeReady);
 
             SetActiveSegment(_keys.active);
             SetDisabled(deskKey, _keys.deskDisabled);

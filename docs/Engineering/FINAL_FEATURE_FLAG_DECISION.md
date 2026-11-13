@@ -4,18 +4,30 @@
 
 ## The flags
 
-On the `SpatialWorkspaceDirector` component (scene object `Spatial`), field `flags`:
+One asset is the single source of truth: `Assets/MuseDesk/Resources/ReleaseConfig.asset` (`MuseDeskReleaseConfig`, `Scripts/Config/`). The scene object `Spatial/ReleaseConfig` holds a `ReleaseConfigApplier` (execution order -10000) that reads it at start-up, applies it, and logs one line: `[MuseDesk.Release] <buildLabel> floor=.. ceiling=.. pull=.. particles=.. cone=.. grids=.. voice=..`. The applier overrides `director.flags`; the values serialized on the director are only a mirror.
 
-| Flag | In the current build | Effect when off |
+| Flag | Default | Effect when off |
 |---|---|---|
-| `floorModeEnabled` | **ON** | No Floor key; the floor code does nothing |
-| `ceilingModeEnabled` | **ON** | No Ceiling key; the ceiling code does nothing |
+| `floorMode` | ON | No Floor key; the floor code does nothing (director `floorModeEnabled`) |
+| `ceilingMode` | ON | No Ceiling key; the ceiling code does nothing (director `ceilingModeEnabled`); also turns the pull gesture off |
+| `ceilingPullGesture` | ON | `CeilingPullGesture` component disabled (no pinch-and-pull, no cue) |
+| `ceilingParticles` | ON | Aperture, tether and arrival particle systems never play or emit (`CeilingDeploymentVFXController.particlesEnabled`) |
+| `ceilingPortalCone` | ON | The portal cone stays inactive (`portalConeEnabled`); the halo and ripple rings stay |
+| `placementScanGrids` | ON | `CeilingScanReveal` and `FloorScanReveal` disabled and their quads hidden; the placement guide card and keys are unaffected |
+| `voice` | ON | `VoiceCommandCenter`, `WitVoiceSource`, `VoiceGestureActivator` disabled, `VoiceDecisionController.voiceEnabled` and `gestureEnabled` forced false (the paper's Voice chip goes), mic key shown in its Off colour |
+| `buildLabel` | `rc6-dev` | Only logged |
 
 Desk mode has no flag. It is always available, is the start-up mode on a fresh install, and is what the app falls back to when a saved spot no longer validates or a placement fails.
 
-With both flags off the spatial system only publishes "Desk" and shows nothing: the app is then the desk release candidate.
+With both mode flags off the spatial system only publishes "Desk" and shows nothing: the app is then the desk release candidate.
 
-To change them: set the two booleans in `AgentScripts/IntegrateSpatial.cs` (the lines that set `director.flags`), run it through `scripts/run_guarded.ps1`, and rebuild. Nothing else changes.
+To change a release (edits the asset only; rebuild afterwards):
+
+```
+scripts\run_guarded.ps1 -File AgentScripts\BuildReleaseConfigV1.cs -Entry BuildReleaseConfigV1.Preset_DeskFloor
+```
+
+Other entries: `Preset_All`, `Preset_DeskOnly`, `Show`; from code `BuildReleaseConfigV1.SetFlags("floor=1 ceiling=0 voice=0 label=rc6-floor")` (keys: floor ceiling pull particles cone grids voice label). `BuildReleaseConfigV1.Apply` creates the asset and the scene object if missing; `Revert` deactivates the applier. Play Mode check: `AgentScripts/ReleaseConfigDrive.cs` (`Report`, `Set`, `ProbeVfx`, `Reset`; applies a runtime copy, never the asset).
 
 ## Why both are ON right now
 

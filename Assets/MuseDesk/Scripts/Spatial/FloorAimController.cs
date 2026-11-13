@@ -9,23 +9,29 @@ using MuseDesk.Workspace;
 namespace MuseDesk.Spatial
 {
     /// <summary>
-    /// Placing the floor office from the seat, by pointing. While the floor preview is open either
-    /// hand can aim at the floor: a thin arc runs from the hand to a point on the floor plane, the
-    /// office footprint is highlighted there (a rounded rectangle, teal when the office can stand
-    /// there AND be taken there, coral when not), a pinch on the footprint grabs it, moving the
-    /// hand slides it across the floor, and letting go on a teal spot places the office there. A
-    /// short plate in front of the footprint says what will happen or why not, in words
-    /// (<see cref="SpatialDirectorCore.FootprintWords"/>). A pinch held still on the footprint
-    /// fills a ring and confirms the spot as it is.
+    /// Placing the floor office from the seat, by pointing (deliberate placement, rc6). While the
+    /// floor preview is open either hand can aim at the floor: a thin arc runs from the hand to a
+    /// point on the floor plane, the office footprint is highlighted there, a pinch on the footprint
+    /// grabs it, moving the hand slides it across the floor, and letting go LEAVES IT THERE: nothing
+    /// moves. The Place here key (PlacementGuide card, or the console) moves the office, through
+    /// Confirm and its swept route. A short plate in front of the footprint says what is going on in
+    /// words (<see cref="SpatialDirectorCore.FootprintWords"/>), and the colours follow
+    /// <see cref="SpatialDirectorCore.PlaceStage"/>:
+    ///   coral ...... the office may not stand there;
+    ///   amber ...... it may stand there but no clear way there was found (and while going back after Stop);
+    ///   teal ....... a clear spot with a clear way under the hand (dragging);
+    ///   teal, solid  at rest on a clear spot: waiting for Place here;
+    ///   blue ....... the office is on its way there;
+    ///   green ...... placed (shown for placedShowSeconds).
     ///
     /// This component only READS the hands (the pointer pose and the index pinch of the Interaction
-    /// SDK hands that are already in the rig; it adds no rig, no interactor and no collider) and
-    /// DRAWS. Every decision is in <see cref="FloorAimSession"/> and <see cref="SpatialDirectorCore"/>,
-    /// which edit the preview only. It never writes the office: Confirm (the same call the key
-    /// makes) is the only thing that moves it, through the swept-route check.
+    /// SDK hands that are already in the rig, and through <see cref="HandInteractionProbe"/> whether
+    /// their interactors hold or hover anything; it adds no rig, no interactor and no collider) and
+    /// DRAWS. Every decision is in <see cref="FloorAimSession"/>, <see cref="HandOwnershipArbiter"/> and
+    /// <see cref="SpatialDirectorCore"/>, which edit the preview only. It never writes the office.
     ///
-    /// With no floor preview open it does nothing per frame beyond one property read, and its
-    /// visuals are inactive. The meshes are generated once at run time (no asset dependency).
+    /// With no floor preview open and nothing moving it does nothing per frame beyond two property
+    /// reads, and its visuals are inactive. The meshes are generated once at run time.
     /// </summary>
     public class FloorAimController : MonoBehaviour
     {
@@ -37,8 +43,12 @@ namespace MuseDesk.Spatial
 
         [Header("Behaviour")]
         public FloorAimSettings settings = new FloorAimSettings();
+        [Tooltip("Pinch timing and hand ownership (fresh pinch, debounce, near-object clear window, tracking grace).")]
+        public HandOwnershipSettings ownership = new HandOwnershipSettings();
         [Tooltip("The arc is drawn for a hand whose aim point is on the footprint or within this distance of it (and always for the hand that is dragging).")]
         public float rayShowDistance = 0.9f;
+        [Tooltip("How long the footprint stays on show, green, after the office arrived (seconds).")]
+        public float placedShowSeconds = 1.5f;
 
         [Header("Visuals (built by BuildFloorAimV1; no interactables inside)")]
         [Tooltip("Parent of everything drawn. Inactive unless a floor preview is open.")]
@@ -99,7 +109,10 @@ namespace MuseDesk.Spatial
         float _nextHandSearch;
         readonly AimHandSample[] _sim = new AimHandSample[2];
         readonly bool[] _simOn = new bool[2];
+        readonly bool[] _simHolding = new bool[2], _simNear = new bool[2], _simUi = new bool[2];
         readonly Vector3[] _rayBuffer = new Vector3[RayPoints];
+        FloorPlaceStage _stageShown = (FloorPlaceStage)(-1);
+        float _placedAt = -100f;
 
         /// <summary>The interaction logic (null until the first step with a director).</summary>
         public FloorAimSession Session => _session;
@@ -127,8 +140,13 @@ namespace MuseDesk.Spatial
         void Update()
         {
             if (director == null) return;
-            // No floor preview and nothing on show: nothing to do.
-            if (!_visible && !director.CanAim) return;
+            // No floor preview, no floor placement moving, nothing on show: nothing to do.
+            if (!_visible && !director.CanAim)
+            {
+                SpatialDirectorCore core = director.Core;
+                FloorPlaceStage stage = core != null ? core.PlaceStage : FloorPlaceStage.None;
+                if (stage != FloorPlaceStage.Moving && stage != FloorPlaceStage.Returning) return;
+            }
             Step(Time.unscaledDeltaTime);
         }
 
@@ -138,13 +156,23 @@ namespace MuseDesk.Spatial
             if (director == null) return;
             SpatialDirectorCore core = director.Core;
             if (core == null) return;
-            if (_session == null) _session = new FloorAimSession(core);
+            if (_session == null) _session = new FloorAimSession(core, HandClaimRegistry.Shared);
             _session.settings = settings;
+            _session.Arbiter.settings = ownership;
+            // A paper in hand is held even when no grab interactor reports it (its own transition hold).
+            _session.Arbiter.externallyHeld = SpatialWorkspaceState.TransitionHeld;
 
-            AimHandSample left = _simOn[0] ? _sim[0] : ReadHand(0);
-            AimHandSample right = _simOn[1] ? _sim[1] : ReadHand(1);
+            AimHandSample left = Interaction(0, _simOn[0] ? _sim[0] : ReadHand(0));
+            AimHandSample right = Interaction(1, _simOn[1] ? _sim[1] : ReadHand(1));
             _session.Tick(dt, left, right);
             Render(core);
+        }
+
+        /// <summary>What the hand's interactors are doing (the probe), plus any simulated hold or hover.</summary>
+        AimHandSample Interaction(int hand, AimHandSample s)
+        {
+            s = s.With(_simHolding[hand], _simNear[hand], _simUi[hand]);
+            return HandInteractionProbe.Apply(s, hand);
         }
 
         // ───────────────────────── hands ─────────────────────────
@@ -202,7 +230,19 @@ namespace MuseDesk.Spatial
         public bool Simulating(int hand) { return hand >= 0 && hand <= 1 && _simOn[hand]; }
         public AimHandSample SimulatedSample(int hand) { return _sim[hand]; }
 
-        public void ClearSimulation() { _simOn[0] = _simOn[1] = false; }
+        /// <summary>Stand in for what a hand's interactors are doing (holding a paper / stamp / card,
+        /// hovering a near object, over a UI control), on top of what the real interactors report.</summary>
+        public void SimulateInteraction(int hand, bool holding, bool nearHover, bool uiHover)
+        {
+            if (hand < 0 || hand > 1) return;
+            _simHolding[hand] = holding; _simNear[hand] = nearHover; _simUi[hand] = uiHover;
+        }
+
+        public void ClearSimulation()
+        {
+            _simOn[0] = _simOn[1] = false;
+            for (int i = 0; i < 2; i++) _simHolding[i] = _simNear[i] = _simUi[i] = false;
+        }
 
         // ───────────────────────── drawing ─────────────────────────
 
@@ -218,31 +258,47 @@ namespace MuseDesk.Spatial
 
         void Render(SpatialDirectorCore core)
         {
-            bool on = _session.State != FloorAimState.Off;
+            FloorPlaceStage stage = core.PlaceStage;
+            if (stage == FloorPlaceStage.Placed && _stageShown != FloorPlaceStage.Placed) _placedAt = Time.unscaledTime;
+            bool travelling = stage == FloorPlaceStage.Moving || stage == FloorPlaceStage.Returning
+                              || (stage == FloorPlaceStage.Placed && Time.unscaledTime - _placedAt < placedShowSeconds);
+            bool previewing = _session.State != FloorAimState.Off;
+            bool on = previewing || travelling;
             if (on && !_built) BuildMeshes(core);
             Show(on);
+            _stageShown = stage;
             if (!on) return;
 
-            RootPose shown = core.ShownPose;
+            // While the office travels the footprint marks where it is going.
+            RootPose shown = previewing ? core.ShownPose : core.PlaceTarget;
             if (footprintRoot != null)
             {
                 footprintRoot.SetPositionAndRotation(shown.position + Vector3.up * lift, shown.rotation);
                 footprintRoot.localScale = new Vector3(shown.scale, shown.scale, shown.scale);
             }
 
-            bool valid = core.ShownValid;
             bool dragging = _session.State == FloorAimState.Dragging;
             bool hover = dragging || _session.State == FloorAimState.Pressing || _session.AnyOverFootprint;
-            int key = (valid ? 1 : 0) | (hover ? 2 : 0) | (dragging ? 4 : 0);
+            int key = (int)stage | (hover ? 16 : 0);
             if (key != _colorKey)
             {
                 _colorKey = key;
                 if (_block == null) _block = new MaterialPropertyBlock();
-                // Teal = this spot can be used; coral = it cannot (the status line says why, in words).
-                Color c = valid ? OfficeTokens.Teal : OfficeTokens.Coral;
-                Color rim = hover ? Color.Lerp(c, OfficeTokens.OnPlate, 0.35f) : c;
+                Color c; float fill; bool solid = false;
+                switch (stage)
+                {
+                    case FloorPlaceStage.SpotBlocked: c = OfficeTokens.Coral; fill = fillAlpha; break;
+                    case FloorPlaceStage.RouteBlocked: c = OfficeTokens.Amber; fill = fillAlpha; break;
+                    case FloorPlaceStage.RouteValid: c = OfficeTokens.Teal; fill = fillAlpha; break;
+                    case FloorPlaceStage.NeedsConfirmation: c = OfficeTokens.Teal; fill = fillAlphaHover; solid = true; break;
+                    case FloorPlaceStage.Moving: c = OfficeTokens.InfoBlue; fill = fillAlpha; break;
+                    case FloorPlaceStage.Returning: c = OfficeTokens.Amber; fill = fillAlpha * 0.5f; break;
+                    case FloorPlaceStage.Placed: c = OfficeTokens.Success; fill = fillAlphaHover; solid = true; break;
+                    default: c = OfficeTokens.Coral; fill = fillAlpha; break;
+                }
+                Color rim = hover ? Color.Lerp(c, OfficeTokens.OnPlate, 0.35f) : solid ? Color.Lerp(c, OfficeTokens.OnPlate, 0.15f) : c;
                 Tint(footprintRim, rim, 1f);
-                Tint(footprintFill, c, hover ? fillAlphaHover : fillAlpha);
+                Tint(footprintFill, c, hover ? Mathf.Max(fill, fillAlphaHover) : fill);
                 Tint(holdFill, OfficeTokens.OnPlate, 1f);
                 Tint(holdTrack, OfficeTokens.Plate, 1f);
                 Tint(leftCursor, rim, 1f);
@@ -252,11 +308,14 @@ namespace MuseDesk.Spatial
             }
             if (footprintFill != null && footprintFill.gameObject.activeSelf != showFill) footprintFill.gameObject.SetActive(showFill);
 
-            DrawHoldRing(_session.HoldProgress);
+            DrawHoldRing(0f);                       // no pinch-and-hold confirm since rc6
             DrawHand(0, core, leftRay, leftCursor);
             DrawHand(1, core, rightRay, rightCursor);
             DrawWords(core, shown);
         }
+
+        /// <summary>The stage the footprint showed on the last frame it was drawn (for a driver).</summary>
+        public FloorPlaceStage StageShown => _stageShown;
 
         /// <summary>The footprint's words on a small plate in front of its near edge, turned to the eye.</summary>
         void DrawWords(SpatialDirectorCore core, RootPose shown)
@@ -494,10 +553,13 @@ namespace MuseDesk.Spatial
         {
             if (_session == null) return "aim: not started";
             SpatialDirectorCore core = director != null ? director.Core : null;
-            string s = "aim: state=" + _session.State + " hand=" + _session.ActiveHand + " hold=" + _session.HoldProgress.ToString("F2")
-                       + " drops=" + _session.Drops + " holdConfirms=" + _session.HoldConfirms + "/" + _session.HoldConfirmAttempts
-                       + " releasePlaces=" + _session.ReleasePlaces + "/" + _session.ReleasePlaceAttempts
+            HandOwnershipArbiter arb = _session.Arbiter;
+            string s = "aim: state=" + _session.State + " hand=" + _session.ActiveHand
+                       + " grabs=" + _session.Grabs + " drops=" + _session.Drops + " cancels=" + _session.Cancels
                        + " held=" + _session.HeldSeconds.ToString("F2") + "s"
+                       + " owner L=" + arb.Owner(0) + "/" + arb.LastBlock(0) + " R=" + arb.Owner(1) + "/" + arb.LastBlock(1)
+                       + " anyHeld=" + arb.AnyHeld
+                       + " stage=" + (core != null ? core.PlaceStage.ToString() : "?") + " canPlaceHere=" + (core != null && core.CanPlaceHere)
                        + " shown=" + _visible
                        + " L(cursor=" + _session.HasCursor(0) + " over=" + _session.OverFootprint(0) + (_session.HasCursor(0) ? " at " + _session.Cursor(0).ToString("F2") : "") + ")"
                        + " R(cursor=" + _session.HasCursor(1) + " over=" + _session.OverFootprint(1) + (_session.HasCursor(1) ? " at " + _session.Cursor(1).ToString("F2") : "") + ")"

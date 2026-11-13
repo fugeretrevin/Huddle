@@ -146,6 +146,20 @@ namespace MuseDesk.Spatial
             if (State == GuideState.Previewing && !previewingTargetNow) State = GuideState.Done;
         }
 
+        /// <summary>
+        /// A preview of <paramref name="target"/> was opened without the guide (a direct request, Send back's
+        /// fallback, a driver): carry the card through it, so its keys (Place here, Other spot, Cancel) are
+        /// there too. Only from a resting state (Idle, Done, Cancelled); false otherwise.
+        /// </summary>
+        public bool Adopt(GuideTarget target)
+        {
+            if (target == GuideTarget.None || Active) return false;
+            Target = target;
+            State = GuideState.Previewing;
+            Fill = 0f; Elapsed = 0f; GazeOnTarget = false; RequestedByKey = false; _requestEdge = false;
+            return true;
+        }
+
         /// <summary>The user cancelled (Cancel key, Desk key, mode change). Nothing was moved.</summary>
         public void Cancel()
         {
