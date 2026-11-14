@@ -19,4 +19,10 @@ MonoBehaviour:
   ceilingPortalCone: 1
   placementScanGrids: 1
   voice: 1
+  wallHabitat: 0
+  wallManager: 0
+  agentSelect: 0
+  agentBtw: 0
+  largeAgentPortal: 0
+  wallElevatorVfx: 0
   buildLabel: rc6-dev
