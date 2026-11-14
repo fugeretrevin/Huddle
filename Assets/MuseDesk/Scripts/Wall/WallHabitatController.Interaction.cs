@@ -169,7 +169,6 @@ namespace MuseDesk.Wall
             _proxy = src != null ? WallHabitatView.CloneVisual(src, "VisitProjection_" + role, transform, h)
                                  : WallHabitatView.CloneVisual(home != null ? home.gameObject : null, "VisitProjection_" + role, transform, h);
             if (_proxy == null) { _visit.CancelCarry(VisitEndReason.Cancelled); return; }
-            if (role == HabitatRole.Manager) TintProxy(_proxy, WallHabitatView.Lavender);
             _proxy.position = home != null ? home.position : PerchWorld;
             _proxy.rotation = home != null ? home.rotation : Quaternion.identity;
             _proxyScaleCarry = _proxy.localScale.x;
@@ -486,7 +485,6 @@ namespace MuseDesk.Wall
                 _portalAvatar = WallHabitatView.CloneVisual(src, "PortalProjection_" + _portal.Agent, _portalRoot, _portal.Spot.avatarHeight);
                 if (_portalAvatar != null)
                 {
-                    if (RoleOf(_portal.Agent) == HabitatRole.Manager) TintProxy(_portalAvatar, WallHabitatView.Lavender);
                     _portalAvatarScale = _portalAvatar.localScale.x;
                     _portalAvatar.localPosition = Vector3.zero;
                     _portalAvatar.localRotation = Quaternion.identity;       // the root already faces the user

@@ -90,7 +90,7 @@ namespace MuseDesk.Spatial.Wall
     }
 
     /// <summary>
-    /// Pure helpers behind WallBackendGateway: reply parsing, error wording, change-request detection,
+    /// Pure helpers behind the Wall backend adapter (Scripts/Wall): reply parsing, error wording, change-request detection,
     /// the offline (honest, labelled) side reply, the deterministic template plan and commit validation.
     /// Nothing here touches the network or a scene.
     /// </summary>

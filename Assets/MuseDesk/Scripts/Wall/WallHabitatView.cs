@@ -266,11 +266,8 @@ namespace MuseDesk.Wall
         void DressManager(Transform a)
         {
             float h = layout.agentHeight;
-            // Tint every renderer slightly lavender and add a small cap and a brass badge: "Manager (placeholder art)".
-            foreach (var r in a.GetComponentsInChildren<Renderer>(true))
-            {
-                if (r is SkinnedMeshRenderer) { r.GetPropertyBlock(_mpb); _mpb.SetColor(BaseColor, Color.Lerp(Color.white, Lavender, 0.45f)); r.SetPropertyBlock(_mpb); }
-            }
+            // Placeholder Manager (until Antigravity's model): the Developer mesh with a lavender cap and a brass badge.
+            // (A colour tint on the character's toon material rendered translucent in Play Mode: not used.)
             var cap = Box(a, "ManagerCap", Vector3.zero, Vector3.one, Lavender).transform;
             cap.SetParent(a, false);
             float s = a.lossyScale.y > 1e-5f ? a.lossyScale.y : 1f;
