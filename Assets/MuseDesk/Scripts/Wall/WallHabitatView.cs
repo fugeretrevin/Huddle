@@ -88,8 +88,9 @@ namespace MuseDesk.Wall
             foreach (HabitatBox b in layout.boxes)
             {
                 if (b.kind != HabitatBoxKind.Desk) continue;
-                // A monitor at the back of each desk, a warm lamp dot.
-                Box(structure, b.id + "_Monitor", new Vector3(b.center.x, b.Max.y + 0.025f, b.Min.z + 0.006f), new Vector3(b.half.x * 1.1f, 0.04f, 0.004f), Ink);
+                // A low laptop on each desk (a tall monitor would hide the character from the user's side).
+                Box(structure, b.id + "_Laptop", new Vector3(b.center.x - b.half.x * 0.3f, b.Max.y + 0.002f, b.center.z), new Vector3(b.half.x * 0.9f, 0.003f, b.half.z * 1.2f), Ink);
+                Box(structure, b.id + "_Lamp", new Vector3(b.Max.x - 0.01f, b.Max.y + 0.012f, b.Min.z + 0.008f), new Vector3(0.008f, 0.024f, 0.008f), Brass);
             }
 
             // Elevator cabin (moves) and landing doors (slide).
@@ -109,8 +110,8 @@ namespace MuseDesk.Wall
             for (int f = 0; f < layout.floors.Count; f++)
             {
                 float y = layout.floors[f].floorY + layout.cabinHalf.y;
-                _doorL[f] = Box(root, "Door_" + layout.floors[f].id + "_L", new Vector3(layout.elevatorX - _doorHalf, y, zDoor), new Vector3(_doorHalf * 2f, layout.cabinHalf.y * 2f, 0.004f), Teal).transform;
-                _doorR[f] = Box(root, "Door_" + layout.floors[f].id + "_R", new Vector3(layout.elevatorX + _doorHalf, y, zDoor), new Vector3(_doorHalf * 2f, layout.cabinHalf.y * 2f, 0.004f), Teal).transform;
+                _doorL[f] = Box(root, "Door_" + layout.floors[f].id + "_L", new Vector3(layout.elevatorX - _doorHalf, y, zDoor), new Vector3(_doorHalf * 2f, layout.cabinHalf.y * 2f, 0.004f), Glass).transform;
+                _doorR[f] = Box(root, "Door_" + layout.floors[f].id + "_R", new Vector3(layout.elevatorX + _doorHalf, y, zDoor), new Vector3(_doorHalf * 2f, layout.cabinHalf.y * 2f, 0.004f), Glass).transform;
                 // Stop indicator light above each door.
                 Box(root, "StopLight_" + layout.floors[f].id, new Vector3(layout.elevatorX, layout.floors[f].floorY + layout.cabinHalf.y * 2f + 0.012f, zDoor + 0.003f), new Vector3(0.012f, 0.006f, 0.003f), Brass);
             }
@@ -188,7 +189,7 @@ namespace MuseDesk.Wall
                 case HabitatBoxKind.Roof: return WoodDark;
                 case HabitatBoxKind.Desk: return WoodDark;
                 case HabitatBoxKind.Partition: return Paper;
-                case HabitatBoxKind.Railing: return Teal;
+                case HabitatBoxKind.Railing: return WoodDark;
                 case HabitatBoxKind.Furniture: return Wood;
                 case HabitatBoxKind.EndWall: return WoodDark;
                 default: return Ivory;

@@ -185,6 +185,9 @@ namespace MuseDesk.Wall
 
         GameObject SourceFor(HabitatRole role)
         {
+            // Prefer the habitat avatar: a clean visual clone whose renderers are on. (The desk agents' renderers
+            // are switched off while Wall mode hides the desk office, and a clone would copy that.)
+            if (_view != null && _view.Avatar(role) != null) return _view.Avatar(role).gameObject;
             if (agentSources == null || agentSources.Length == 0) return null;
             int i = role == HabitatRole.Manager ? 1 : Mathf.Min((int)role, agentSources.Length - 1);
             return agentSources[i];
@@ -223,6 +226,7 @@ namespace MuseDesk.Wall
                     if (_carryHand < 0) return;
                     AimHandSample s = _samples[_carryHand];
                     if (!s.tracked) return;                                   // frozen: neither move nor release
+                    if (!s.pinching) return;                                  // opening the fingers: hold still while the release debounces
                     _proxyT = Mathf.Min(1f, _proxyT + dt / 0.45f);
                     Vector3 target = s.origin + s.direction * 0.14f + Vector3.down * 0.02f;
                     float e = _proxyT * _proxyT * (3f - 2f * _proxyT);
@@ -537,6 +541,9 @@ namespace MuseDesk.Wall
             _simOn[hand] = true;
             _sim[hand] = AimHandSample.Ray(origin, direction.normalized, pinching).With(holding, nearHover, false);
         }
+
+        /// <summary>Open the simulated pinch without moving the hand.</summary>
+        public void SimulateRelease(int hand) { if (hand >= 0 && hand <= 1 && _simOn[hand]) _sim[hand].pinching = false; }
 
         public void SimulateHandLost(int hand) { if (hand >= 0 && hand <= 1) { _simOn[hand] = true; _sim[hand] = AimHandSample.None; } }
         public void StopSimulating() { _simOn[0] = _simOn[1] = false; }
