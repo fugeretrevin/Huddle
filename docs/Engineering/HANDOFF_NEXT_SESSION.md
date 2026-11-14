@@ -1,5 +1,7 @@
 ﻿# Handoff for the next session
 
+> **2026-11-14 Phase 3 Wall Habitat:** see `docs/Engineering/WALL_HABITAT_STATUS.md` (branch `feature/wall-habitat`, tag `wall-habitat-1`, all Wall flags OFF, nothing worn). The competition line `release/final-refinement` / rc6-2 is untouched.
+
 2026-11-13, about 11:50. Deadline 2026-11-18, noon Pacific.
 
 ## Where things stand
