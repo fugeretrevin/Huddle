@@ -18,10 +18,14 @@ namespace MuseDesk.Spatial
     //   4 Summon ............ a targeted distant summon gesture (the ceiling pull on the docked pod).
     //   5 Ambient ........... nothing claims the hand (gaze, glances).
 
-    public enum HandOwner { None = 0, Holding = 1, CloseInteraction = 2, Placement = 3, Summon = 4, Ambient = 5 }
+    //   (Wall Habitat) AgentSelect ... the explicitly armed Select Agents far pinch. It only exists in Wall
+    //                         mode, where no floor footprint drag or ceiling pull can be armed, so its
+    //                         number (6) never competes with Placement/Summon; Holding and CloseInteraction
+    //                         still beat it exactly as above (a paper, stamp or card pinch is never taken).
+    public enum HandOwner { None = 0, Holding = 1, CloseInteraction = 2, Placement = 3, Summon = 4, Ambient = 5, AgentSelect = 6 }
 
     /// <summary>What a gesture claims a hand for. The number is the priority (lower wins).</summary>
-    public enum HandClaim { None = 0, Placement = 3, Summon = 4 }
+    public enum HandClaim { None = 0, Placement = 3, Summon = 4, AgentSelect = 6 }
 
     /// <summary>What the arbiter tells the gesture about one hand on one tick.</summary>
     public enum HandGateSignal
