@@ -4,7 +4,7 @@ using UnityEngine;
 namespace MuseDesk.Spatial
 {
     /// <summary>Where the miniature office is presented. Desk is the original, always-available mode.</summary>
-    public enum WorkspaceMode { Desk = 0, Floor = 1, Ceiling = 2 }
+    public enum WorkspaceMode { Desk = 0, Floor = 1, Ceiling = 2, Wall = 3 }   // Wall: Phase 3 habitat (additive; published only while its flag is on)
 
     /// <summary>
     /// The one shared, read-mostly description of the office's spatial presentation. It is the

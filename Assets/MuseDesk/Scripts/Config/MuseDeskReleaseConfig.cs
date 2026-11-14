@@ -32,13 +32,29 @@ namespace MuseDesk.Config
         [Tooltip("Voice commands, microphone key, voice chip on the paper, pinch-to-talk.")]
         public bool voice = true;
 
+        [Header("Wall Habitat (Phase 3) — ALL OFF until each is verified on a worn Quest")]
+        [Tooltip("Wall mode: the treehouse habitat on a real wall (03_INTEGRATION_CONTRACT wall_habitat_enabled).")]
+        public bool wallHabitat = false;
+        [Tooltip("The Manager office, plan card and real task delegation (wall_manager_enabled). Needs wallHabitat.")]
+        public bool wallManager = false;
+        [Tooltip("Select Agents far pinch and the small desk visit (agent_select_enabled). Needs wallHabitat.")]
+        public bool agentSelect = false;
+        [Tooltip("Read-only /btw questions during a visit (agent_btw_enabled). Needs agentSelect.")]
+        public bool agentBtw = false;
+        [Tooltip("Meet Larger: the large-agent portal beside the user (large_agent_portal_enabled). Needs agentSelect.")]
+        public bool largeAgentPortal = false;
+        [Tooltip("Elevator door/indicator light effects (wall_elevator_vfx_enabled). Cosmetic.")]
+        public bool wallElevatorVfx = false;
+
         [Header("Build")]
         public string buildLabel = "rc6-dev";
 
         public string Summary()
         {
             return buildLabel + " floor=" + floorMode + " ceiling=" + ceilingMode + " pull=" + ceilingPullGesture
-                + " particles=" + ceilingParticles + " cone=" + ceilingPortalCone + " grids=" + placementScanGrids + " voice=" + voice;
+                + " particles=" + ceilingParticles + " cone=" + ceilingPortalCone + " grids=" + placementScanGrids + " voice=" + voice
+                + " wall=" + wallHabitat + " manager=" + wallManager + " select=" + agentSelect + " btw=" + agentBtw
+                + " portal=" + largeAgentPortal + " elevatorVfx=" + wallElevatorVfx;
         }
 
         public static MuseDeskReleaseConfig Load()

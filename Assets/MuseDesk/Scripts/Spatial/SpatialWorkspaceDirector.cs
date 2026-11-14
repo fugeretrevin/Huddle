@@ -37,6 +37,11 @@ namespace MuseDesk.Spatial
         public SpatialModeStrip strip;
         [Tooltip("The user's head. Camera.main is used when empty.")]
         public Transform head;
+        [Tooltip("Phase 3 Wall Habitat host (implements IWallModeHost). Empty, or its flag off: no change to Desk/Floor/Ceiling.")]
+        public MonoBehaviour wallHost;
+
+        IWallModeHost Wall => wallHost as IWallModeHost;
+        bool WallActive { get { var w = Wall; return w != null && w.WallEnabled && w.WallActive; } }
 
         [Header("Placement")]
         public FloorPlacementSettings floorSettings = new FloorPlacementSettings();
@@ -86,7 +91,7 @@ namespace MuseDesk.Spatial
 
         /// <summary>The scene-free logic (null until Awake, or when the wiring is incomplete).</summary>
         public SpatialDirectorCore Core => _core;
-        public WorkspaceMode Mode => _core != null ? (WorkspaceMode)(int)_core.Mode : WorkspaceMode.Desk;
+        public WorkspaceMode Mode => WallActive ? WorkspaceMode.Wall : (_core != null ? (WorkspaceMode)(int)_core.Mode : WorkspaceMode.Desk);
         public bool IsPreviewing => _core != null && _core.Phase == DirectorPhase.Previewing;
         /// <summary>What is being offered or why something was refused, in words; empty when there is nothing to say.</summary>
         public string StatusText => _core != null ? _core.StatusText : "";
@@ -186,6 +191,20 @@ namespace MuseDesk.Spatial
         public bool RequestMode(WorkspaceMode mode)
         {
             if (_core == null) return false;
+            // Phase 3 Wall Habitat: a request for Wall goes to its host (only from Desk, nothing moving);
+            // any other request first leaves Wall (visits return, the desk office shows again).
+            IWallModeHost wall = Wall;
+            if (mode == WorkspaceMode.Wall)
+            {
+                if (wall == null || !wall.WallEnabled) return false;
+                bool deskIdle = _core.Mode == PlacementMode.Desk && _core.Phase == DirectorPhase.Idle && !_core.IsTransitioning;
+                return wall.RequestWall(deskIdle);
+            }
+            if (wall != null && (wall.WallActive || wall.WallPreviewing))
+            {
+                wall.ExitWall("mode " + mode);
+                if (mode == WorkspaceMode.Desk) return true;
+            }
             if (flags.Any) SyncRoom();
             if (mode == WorkspaceMode.Floor) UpdateTrackedFloor();
             return _core.RequestMode((PlacementMode)(int)mode);
@@ -418,6 +437,7 @@ namespace MuseDesk.Spatial
         void TryRestore()
         {
             if (persistence == null) { _restoreDone = true; return; }
+            if (WallActive) { _restoreDone = true; return; }          // the wall habitat was restored first: keep it
             bool ready = DeskReady() && _core.Room != null && _core.Room.Availability == RoomAvailability.Available;
             if (!ready)
             {
@@ -469,9 +489,28 @@ namespace MuseDesk.Spatial
                 if (persistence != null) persistence.Clear();
             }
 
-            SpatialWorkspaceState.Publish((WorkspaceMode)(int)mode, _core.IsRemote, transitioning);
+            if (WallActive) SpatialWorkspaceState.Publish(WorkspaceMode.Wall, true, transitioning);
+            else SpatialWorkspaceState.Publish((WorkspaceMode)(int)mode, _core.IsRemote, transitioning);
             RefreshViews();
         }
+
+        /// <summary>Phase 3: the wall host entered or left Wall. The director publishes it (it stays the only
+        /// writer of SpatialWorkspaceState). Wall is remote: papers are brought to the user as in Floor mode.</summary>
+        public void PublishWallChanged()
+        {
+            if (_core == null) return;
+            if (WallActive) { StandDownDeskPlacement(); SpatialWorkspaceState.Publish(WorkspaceMode.Wall, true, _core.IsTransitioning); }
+            else
+            {
+                if (_core.Mode == PlacementMode.Desk && !_core.IsTransitioning) ReleaseDeskPlacement();
+                SpatialWorkspaceState.Publish((WorkspaceMode)(int)_core.Mode, _core.IsRemote, _core.IsTransitioning);
+            }
+            PublishNearUserPose();
+            RefreshViews();
+        }
+
+        /// <summary>True once the saved Desk/Floor/Ceiling placement was restored or given up (the wall host waits for it).</summary>
+        public bool RestoreSettled => _restoreDone || !flags.Any || !restoreOnStart;
 
         void RefreshViews()
         {

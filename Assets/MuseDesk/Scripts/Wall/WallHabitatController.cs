@@ -1,0 +1,644 @@
+using System;
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using MuseDesk.Spatial;
+using MuseDesk.Spatial.Wall;
+
+namespace MuseDesk.Wall
+{
+    /// <summary>
+    /// Phase 3 Wall Habitat: the fourth workspace mode, additive and feature-flagged (ALL flags off by default).
+    ///
+    ///  - Placement: <see cref="WallModeFlow"/> on the room's walls (MRUK through RoomPlacementService). A ghost
+    ///    shows the spot (teal fits / amber check it / coral refused, with words); pinch-and-drag on a wall moves
+    ///    it; only the Place here key places it. Saved relative to the wall id and room anchor; re-checked on
+    ///    restore, recenter and room updates (a failed check pauses, never jumps).
+    ///  - The habitat: <see cref="WallHabitatView"/> drawn from the validated layout; characters moved only by
+    ///    <see cref="HabitatStage"/> walkers in response to REAL reducer events (<see cref="IWallEventSource"/>).
+    ///  - The desk office is hidden visually only; its agents, decisions and the remote paper delivery keep
+    ///    running (Wall is published as a remote mode by the director, so papers come to the user as in Floor).
+    ///  - Select Agents, desk visits, /btw, the portal and the Manager live in the partial files.
+    ///
+    /// Nothing here can start, stop, reassign or change a task, except the Manager's explicit, user-approved
+    /// plan commit (which goes through the backend's validated route).
+    /// </summary>
+    public partial class WallHabitatController : MonoBehaviour, IWallModeHost
+    {
+        [Header("Feature flags (ReleaseConfigApplier sets these; all off by default)")]
+        public WallFeatureFlags flags = new WallFeatureFlags();
+
+        [Header("Wiring (AgentScripts/BuildWallHabitatV1)")]
+        public SpatialWorkspaceDirector director;
+        public RoomPlacementService roomService;
+        [Tooltip("The desk office root (WorkspaceRoot). Hidden visually while Wall is active.")]
+        public Transform officeRoot;
+        [Tooltip("Spatial/NearUserRig: stands at the desk pose; the Wall dock, perch and cards are placed in its space.")]
+        public Transform nearUserRig;
+        [Tooltip("Never hidden: the decision paper (DecisionDocument) and anything under it.")]
+        public Transform[] neverHide;
+        public Transform head;
+        [Tooltip("A ModeConsole key to clone for every Wall key (the proven ISDK poke setup).")]
+        public Transform keyTemplate;
+        public TMP_FontAsset font;
+        public Material baseMaterial;
+        [Tooltip("Desk agents (Researcher, Developer, Tester) whose MESH is cloned for habitat avatars. Never moved.")]
+        public GameObject[] agentSources = new GameObject[3];
+        public HabitatArtManifest artManifest;
+        [Tooltip("IWallBackend (WallBackendGateway).")]
+        public MonoBehaviour backendBehaviour;
+        [Tooltip("IWallEventSource + IWallTaskContext (WallEventBridge).")]
+        public MonoBehaviour eventsBehaviour;
+
+        [Header("Placement")]
+        public WallPlacementSettings placement = new WallPlacementSettings();
+        public WalkerSettings walker = new WalkerSettings();
+
+        [Header("Near-user layout (NearUserRig space: +Z toward the user, user's right is -X, desk top y = 0)")]
+        public Vector3 dockLocal = new Vector3(-0.19f, 0.045f, 0.50f);
+        public float dockTiltBack = 35f;
+        public float keyScale = 0.023f;
+        public Vector3 perchLocal = new Vector3(0.22f, 0.004f, 0.40f);
+        public float perchRadius = 0.13f;
+        public Vector3 visitCardLocal = new Vector3(0.26f, 0.13f, 0.40f);
+        public Vector3 planCardLocal = new Vector3(0.04f, 0.17f, 0.32f);
+
+        [Header("Comfort")]
+        [Tooltip("Shorter, calmer portal and visit animations; no beacon pulsing.")]
+        public bool comfortMode;
+
+        const string SaveKey = "MuseDesk.WallHabitat.v1";
+        const string ActiveKey = "MuseDesk.WallHabitat.active";
+
+        WallModeFlow _flow;
+        HabitatStage _stage;
+        WallHabitatView _view;
+        WallLayoutKind _viewKind;
+        Transform _habitatRoot;
+        readonly WorkspaceVisualSuppressor _suppressor = new WorkspaceVisualSuppressor();
+        IWallBackend _backend;
+        IWallEventSource _events;
+        IWallTaskContext _tasks;
+        bool _flagsApplied, _restoreTried, _subscribed, _hooks, _mountHook;
+        int _recenterFrames;
+        float _statusRefresh;
+        readonly Color[] _statusColors = { WallHabitatView.Grey, WallHabitatView.Grey, WallHabitatView.Grey, WallHabitatView.Grey };
+        readonly bool[] _away = new bool[4];
+        string _note = "";
+        float _noteUntil;
+
+        // ── IWallModeHost ──
+        public bool WallEnabled => flags.wallHabitatEnabled;
+        public bool WallActive => _flow != null && (_flow.State == WallModeState.Active || _flow.State == WallModeState.Relocating);
+        public bool WallPreviewing => _flow != null && (_flow.State == WallModeState.Previewing || _flow.State == WallModeState.Relocating);
+
+        public WallModeFlow Flow => _flow;
+        public HabitatStage Stage => _stage;
+        public WallHabitatView View => _view;
+        public string StatusLine => Time.unscaledTime < _noteUntil ? _note : (_flow != null ? _flow.Status : "");
+
+        void Awake()
+        {
+            _flow = new WallModeFlow(() => roomService != null ? roomService.Room : null, () => roomService != null ? roomService.Walls : null,
+                                     ReadUser, placement, flags);
+            _flow.PlacedChanged += OnPlacedChanged;
+            _flow.Changed += OnFlowChanged;
+            _registry = new AgentPresentationRegistry();
+            _visit = new AgentVisitFlow(_registry);
+            _portal = new PortalFlow(_registry);
+            _manager = new ManagerPlanFlow();
+            _backend = backendBehaviour as IWallBackend;
+            _events = eventsBehaviour as IWallEventSource;
+            _tasks = eventsBehaviour as IWallTaskContext;
+            if (director != null && director.wallHost == null) director.wallHost = this;
+        }
+
+        void OnEnable()
+        {
+            if (_events != null && !_subscribed)
+            {
+                _events.HabitatEventRaised += OnHabitatEvent;
+                _events.BoardTaskCreated += OnBoardTask;
+                _events.SessionReset += OnSessionReset;
+                _subscribed = true;
+            }
+        }
+
+        void OnDisable()
+        {
+            if (_subscribed && _events != null)
+            {
+                _events.HabitatEventRaised -= OnHabitatEvent;
+                _events.BoardTaskCreated -= OnBoardTask;
+                _events.SessionReset -= OnSessionReset;
+            }
+            _subscribed = false;
+            Unhook();
+            if (WallActive || WallPreviewing) ExitWall("disabled");
+        }
+
+        /// <summary>Set by ReleaseConfigApplier. Turning the wall flag off leaves Wall mode safely.</summary>
+        public void SetFlags(WallFeatureFlags f)
+        {
+            if (f == null) return;
+            bool wasOn = flags.wallHabitatEnabled;
+            flags.wallHabitatEnabled = f.wallHabitatEnabled;
+            flags.wallManagerEnabled = f.wallManagerEnabled;
+            flags.agentSelectEnabled = f.agentSelectEnabled;
+            flags.agentBtwEnabled = f.agentBtwEnabled;
+            flags.largeAgentPortalEnabled = f.largeAgentPortalEnabled;
+            flags.wallElevatorVfxEnabled = f.wallElevatorVfxEnabled;
+            if (_flow != null) _flow.flags = flags;
+            if (roomService != null) roomService.SetWallDemand(flags.wallHabitatEnabled);
+            if (wasOn && !flags.wallHabitatEnabled && (WallActive || WallPreviewing)) ExitWall("flag off");
+            if (!flags.agentSelectEnabled && _visit != null && _visit.Busy) _visit.Return(VisitEndReason.ModeChanged);
+            if (!flags.largeAgentPortalEnabled && _portal != null) _portal.Interrupt("Portal switched off");
+            _flagsApplied = true;
+            RefreshDock();
+        }
+
+        // ───────────────────────── mode host ─────────────────────────
+
+        public bool RequestWall(bool deskIdle)
+        {
+            if (!flags.wallHabitatEnabled) return false;
+            EnsureDock();
+            bool held = HandInteractionProbe.AnyHeld || SpatialWorkspaceState.TransitionHeld;
+            if (!_flow.RequestEnter(deskIdle || WallActive, held)) { Note(_flow.Status); RefreshDock(); return false; }
+            // A remembered spot that still fits is offered first (one press to come back).
+            SavedWallPlacement saved;
+            if (!WallActive && WallPlacementCodec.TryDecode(PlayerPrefs.GetString(SaveKey, ""), out saved))
+            {
+                WallCandidate c;
+                string why;
+                if (WallPlacementCodec.TryRestore(saved, roomService != null ? roomService.Room : null, roomService != null ? roomService.Walls : null, ReadUser(), placement, out c, out why))
+                    _flow.Aim(c.position + c.rotation * new Vector3(0, 0, 0.5f), -(c.rotation * Vector3.forward));
+            }
+            ShowGhost();
+            RefreshDock();
+            return true;
+        }
+
+        public void ExitWall(string why)
+        {
+            if (_flow == null) return;
+            bool wasActive = WallActive;
+            if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.ModeChanged);
+            if (_portal != null) _portal.Interrupt("Mode changed");
+            ReleaseHands();
+            if (_stage != null) _stage.ResetAll();
+            _flow.Exit();
+            HideGhost();
+            ShowHabitat(false);
+            _suppressor.Restore();
+            if (wasActive) PlayerPrefs.SetInt(ActiveKey, 0);
+            if (director != null) director.PublishWallChanged();
+            Debug.Log("[MuseDesk.Wall] Left Wall mode (" + why + ").");
+            RefreshDock();
+        }
+
+        void OnPlacedChanged()
+        {
+            // Place here (or a restore): the habitat appears at the placed spot; the desk office hides.
+            WallCandidate p = _flow.Placed;
+            EnsureView(p.layout);
+            _habitatRoot.SetPositionAndRotation(p.position, p.rotation);
+            ShowHabitat(true);
+            HideGhost();
+            Transform rootToHide = officeRoot != null ? officeRoot : SpatialWorkspaceState.WorkspaceRoot;
+            if (!_suppressor.Active) _suppressor.Suppress(rootToHide, neverHide);
+            Pose reference = Pose.identity;
+            bool hasRef = roomService != null && roomService.Room != null && roomService.Room.TryGetReferencePose(out reference);
+            string roomId = roomService != null && roomService.Room != null ? roomService.Room.RoomId : "";
+            if (p.roomChecked)
+            {
+                PlayerPrefs.SetString(SaveKey, WallPlacementCodec.Encode(WallPlacementCodec.Build(p, roomId, hasRef, reference, Application.buildGUID)));
+                PlayerPrefs.SetInt(ActiveKey, 1);
+            }
+            else PlayerPrefs.SetInt(ActiveKey, 0);          // a hand-placed spot without a scan is not restored at start-up
+            PlayerPrefs.Save();
+            if (director != null) director.PublishWallChanged();
+            Debug.Log("[MuseDesk.Wall] Habitat placed: wall=" + p.wallId + " layout=" + p.layout + " checked=" + p.roomChecked + " review=" + p.needsReview);
+            RefreshDock();
+        }
+
+        void OnFlowChanged()
+        {
+            if (WallPreviewing) ShowGhost();
+            RefreshDock();
+        }
+
+        // ───────────────────────── keys (also the driver API) ─────────────────────────
+
+        public void PressWall() { if (director != null) director.RequestMode(WorkspaceMode.Wall); else RequestWall(true); }
+        public void PressDesk() { if (director != null) director.RequestMode(WorkspaceMode.Desk); else ExitWall("desk key"); }
+        public void PressPlaceHere()
+        {
+            bool held = HandInteractionProbe.AnyHeld || SpatialWorkspaceState.TransitionHeld || HeldByVisit();
+            if (!_flow.PlaceHere(held)) Note(_flow.Status);
+        }
+        public void PressTryAnother() { _flow.TryAnother(); ShowGhost(); }
+        public void PressLayout() { _flow.ToggleLayout(); ShowGhost(); }
+        public void PressCancel()
+        {
+            bool entering = _flow.State == WallModeState.Previewing;
+            _flow.Cancel();
+            HideGhost();
+            if (entering) { if (director != null) director.PublishWallChanged(); }
+            RefreshDock();
+        }
+        public void PressMove()
+        {
+            if (_visit.Busy || _portal.State != PortalState.Hidden) { Note("Send the visiting agent home first"); return; }
+            if (_stage != null && _stage.TravelLocked) { Note("Wait until the elevator trip ends"); return; }
+            if (!_flow.Relocate(HandInteractionProbe.AnyHeld)) Note(_flow.Status);
+            ShowGhost();
+        }
+
+        bool HeldByVisit() { return _visit != null && _visit.State == VisitState.Carrying; }
+
+        void Note(string s) { _note = s ?? ""; _noteUntil = Time.unscaledTime + 4f; }
+
+        // ───────────────────────── frame ─────────────────────────
+
+        void Update()
+        {
+            if (!flags.wallHabitatEnabled && !WallActive && !WallPreviewing) { HideDockIfAny(); return; }
+            float dt = Time.unscaledDeltaTime;
+            if (!_hooks) Hook();
+            EnsureDock();
+
+            if (!_restoreTried) TryRestoreOnStart();
+
+            if (_recenterFrames > 0 && --_recenterFrames == 0) OnRecenterSettled();
+
+            if (_stage != null && WallActive)
+            {
+                _stage.Tick(dt, Time.unscaledTime);
+                if (Time.unscaledTime >= _statusRefresh) { _statusRefresh = Time.unscaledTime + 0.5f; RefreshStatusColors(); }
+                for (int r = 0; r < 4; r++) _away[r] = _registry.Of(AgentId((HabitatRole)r)) != AgentPresentation.Home;
+                Color beacon; bool pulse;
+                BeaconState(out beacon, out pulse);
+                _view.Apply(_stage, dt, _visit.IsArmed, _hoverRole, _away, _statusColors, beacon, pulse && !comfortMode);
+                _suppressor.Tick();
+            }
+
+            TickInteraction(dt);
+            TickManager(dt);
+            if (WallPreviewing) UpdateGhost();
+            RefreshDockLabels();
+        }
+
+        void TryRestoreOnStart()
+        {
+            if (director != null && !director.RestoreSettled) return;
+            if (roomService == null || roomService.Walls == null || roomService.Walls.WallAvailability != RoomAvailability.Available)
+            {
+                if (Time.unscaledTime < 20f) return;               // give the scan time to load, then give up quietly
+                _restoreTried = true;
+                return;
+            }
+            _restoreTried = true;
+            if (PlayerPrefs.GetInt(ActiveKey, 0) != 1) return;
+            if (director != null && director.Mode != WorkspaceMode.Desk) return;     // a Floor/Ceiling placement was restored: keep it
+            SavedWallPlacement saved;
+            string why;
+            if (!WallPlacementCodec.TryDecode(PlayerPrefs.GetString(SaveKey, ""), out saved)) return;
+            if (!_flow.TryRestore(saved, out why))
+            {
+                Debug.Log("[MuseDesk.Wall] Saved wall placement not used: " + why);
+                Note("Saved wall spot not used: " + why);
+                PlayerPrefs.SetInt(ActiveKey, 0);
+            }
+        }
+
+        void RefreshStatusColors()
+        {
+            for (int r = 0; r < 4; r++)
+            {
+                string taskId, title, state; int rev;
+                Color c = WallHabitatView.Grey;
+                if (_tasks != null && _tasks.TryGetAgentTask(AgentId((HabitatRole)r), out taskId, out title, out state, out rev)) c = StateColor(state);
+                _statusColors[r] = c;
+            }
+        }
+
+        public static Color StateColor(string state)
+        {
+            if (string.IsNullOrEmpty(state)) return WallHabitatView.Grey;
+            string s = state.ToLowerInvariant();
+            if (s.Contains("fail") || s.Contains("error")) return WallHabitatView.Coral;
+            if (s.Contains("block") || s.Contains("wait") || s.Contains("approval") || s.Contains("pause") || s.Contains("input")) return WallHabitatView.Amber;
+            if (s.Contains("complete") || s.Contains("done") || s.Contains("success")) return WallHabitatView.Green;
+            if (s.Contains("run") || s.Contains("progress") || s.Contains("work") || s.Contains("start") || s.Contains("active")) return WallHabitatView.Teal;
+            return WallHabitatView.Grey;
+        }
+
+        void BeaconState(out Color c, out bool pulse)
+        {
+            // Approval needed (amber) outranks a Manager plan waiting (lavender, a different signal); otherwise a calm teal.
+            AttentionController a = AttentionController.Instance;
+            if (a != null && a.PendingDecisionCount > 0) { c = WallHabitatView.Amber; pulse = true; return; }
+            if (_manager != null && _manager.State == ManagerFlowState.AwaitingApproval) { c = WallHabitatView.Lavender; pulse = true; return; }
+            c = WallHabitatView.Teal * 0.8f; pulse = false;
+        }
+
+        public static string AgentId(HabitatRole r) { return r.ToString().ToLowerInvariant(); }
+
+        // ───────────────────────── habitat view ─────────────────────────
+
+        void EnsureView(WallLayoutKind kind)
+        {
+            if (_view != null && _viewKind == kind) return;
+            if (_stage != null) _stage.ResetAll();
+            if (_view != null) _view.Destroy();
+            if (_habitatRoot == null)
+            {
+                _habitatRoot = new GameObject("WallHabitatRoot").transform;
+                _habitatRoot.SetParent(transform, false);
+            }
+            HabitatLayout L = HabitatLayoutBuilder.Build(kind);
+            _stage = new HabitatStage(L);
+            for (int r = 0; r < 4; r++) _stage.Walker((HabitatRole)r).settings = walker;
+            _view = new WallHabitatView(_habitatRoot, L, ResolveMaterial(), agentSources, artManifest);
+            _viewKind = kind;
+            var issues = HabitatLayoutValidator.Validate(L);
+            if (issues.Count > 0) Debug.LogError("[MuseDesk.Wall] Layout " + kind + " failed validation: " + issues[0].what);
+        }
+
+        void ShowHabitat(bool on)
+        {
+            if (_habitatRoot != null && _habitatRoot.gameObject.activeSelf != on) _habitatRoot.gameObject.SetActive(on);
+        }
+
+        Material _fallbackMat;
+        Material ResolveMaterial()
+        {
+            if (baseMaterial != null) return baseMaterial;
+            if (_fallbackMat != null) return _fallbackMat;
+            Shader s = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
+            if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
+            _fallbackMat = new Material(s) { name = "WallHabitat_Fallback" };
+            return _fallbackMat;
+        }
+
+        // ───────────────────────── ghost preview ─────────────────────────
+
+        Transform _ghost;
+        Renderer[] _ghostEdges;
+        TMP_Text _ghostLabel;
+        WallHabitatView _ghostArt;
+        Vector3 _ghostSize;
+
+        void ShowGhost()
+        {
+            if (!WallPreviewing || !_flow.HasShown) { HideGhost(); return; }
+            if (_ghost == null) BuildGhost();
+            WallCandidate c = _flow.Shown;
+            if (_ghostSize != c.size) LayoutGhost(c.size);
+            _ghost.SetPositionAndRotation(c.position, c.rotation);
+            Color col = !c.valid ? WallHabitatView.Coral : c.needsReview ? WallHabitatView.Amber : WallHabitatView.Teal;
+            for (int i = 0; i < _ghostEdges.Length; i++) _ghostArt.Tint(_ghostEdges[i], col);
+            string words = c.valid ? (c.needsReview ? "Check this spot: " + c.reason : "Fits: " + c.reason) : "Can't place: " + c.reason;
+            words += c.roomChecked ? "\nChecked against the room scan. Things not in the scan were not checked." : "\nNo room scan here: nothing around it was checked.";
+            _ghostLabel.text = words;
+            _ghostLabel.color = WallHabitatView.Ink;
+            if (!_ghost.gameObject.activeSelf) _ghost.gameObject.SetActive(true);
+        }
+
+        void UpdateGhost()
+        {
+            if (_flow.HasShown && _ghost != null && _ghost.gameObject.activeSelf)
+            {
+                WallCandidate c = _flow.Shown;
+                if ((_ghost.position - c.position).sqrMagnitude > 1e-8f || _ghost.rotation != c.rotation || _ghostSize != c.size) ShowGhost();
+            }
+            else if (_flow.HasShown) ShowGhost();
+        }
+
+        void HideGhost() { if (_ghost != null && _ghost.gameObject.activeSelf) _ghost.gameObject.SetActive(false); }
+
+        void BuildGhost()
+        {
+            _ghost = new GameObject("WallGhost").transform;
+            _ghost.SetParent(transform, false);
+            _ghostArt = ArtHelper();
+            _ghostEdges = new Renderer[16];
+            for (int i = 0; i < _ghostEdges.Length; i++) _ghostEdges[i] = _ghostArt.Box(_ghost, "Edge" + i, Vector3.zero, Vector3.one, WallHabitatView.Teal);
+            _ghostLabel = WallUi.MakeText(_ghost, "GhostLabel", font, Vector3.zero, new Vector2(40f, 6f), 14f, WallHabitatView.Ink, TextAlignmentOptions.Center);
+            _ghostArt.Box(_ghost, "LabelPlate", Vector3.zero, Vector3.one, WallHabitatView.Paper).name = "LabelPlate";
+        }
+
+        void LayoutGhost(Vector3 s)
+        {
+            _ghostSize = s;
+            float t = 0.006f, hw = s.x * 0.5f, hh = s.y * 0.5f, d = s.z;
+            int i = 0;
+            // 12 edges of the habitat volume + 4 wall contact pads at the corners.
+            for (int sy = -1; sy <= 1; sy += 2) for (int sz = 0; sz <= 1; sz++) Edge(i++, new Vector3(0, sy * hh, sz * d), new Vector3(s.x, t, t));
+            for (int sx = -1; sx <= 1; sx += 2) for (int sz = 0; sz <= 1; sz++) Edge(i++, new Vector3(sx * hw, 0, sz * d), new Vector3(t, s.y, t));
+            for (int sx = -1; sx <= 1; sx += 2) for (int sy = -1; sy <= 1; sy += 2) Edge(i++, new Vector3(sx * hw, sy * hh, d * 0.5f), new Vector3(t, t, d));
+            for (int sx = -1; sx <= 1; sx += 2) for (int sy = -1; sy <= 1; sy += 2) Edge(i++, new Vector3(sx * (hw - 0.03f), sy * (hh - 0.03f), 0.003f), new Vector3(0.05f, 0.05f, 0.004f));
+            // Label in front of the volume, facing the room (TMP reads on -Z: turn it so -Z faces out).
+            _ghostLabel.transform.localPosition = new Vector3(0, -hh - 0.05f, d + 0.01f);
+            _ghostLabel.transform.localRotation = Quaternion.Euler(0, 180f, 0);
+            Transform plate = _ghost.Find("LabelPlate");
+            if (plate != null) { plate.localPosition = new Vector3(0, -hh - 0.05f, d + 0.012f); plate.localScale = new Vector3(0.42f, 0.07f, 0.002f); }
+        }
+
+        void Edge(int i, Vector3 c, Vector3 size) { _ghostEdges[i].transform.localPosition = c; _ghostEdges[i].transform.localScale = size; }
+
+        WallHabitatView _artHelper;
+        /// <summary>A view used only as a box/tint factory for UI (no layout content is drawn).</summary>
+        WallHabitatView ArtHelper()
+        {
+            if (_view != null) return _view;
+            if (_artHelper == null)
+            {
+                var holder = new GameObject("WallArtHelper").transform;
+                holder.SetParent(transform, false);
+                _artHelper = new WallHabitatView(holder, HabitatLayoutBuilder.Build(WallLayoutKind.Compact), ResolveMaterial(), null, null);
+                holder.gameObject.SetActive(false);
+            }
+            return _artHelper;
+        }
+
+        // ───────────────────────── dock (near-user Wall controls) ─────────────────────────
+
+        Transform _dock;
+        TMP_Text _dockStatus;
+        WallKey _kWall, _kDesk, _kPlace, _kOther, _kLayout, _kCancel, _kMove, _kSelect, _kManager;
+
+        void EnsureDock()
+        {
+            if (_dock != null || nearUserRig == null || keyTemplate == null) return;
+            _dock = new GameObject("WallDock").transform;
+            _dock.SetParent(nearUserRig, false);
+            var art = ArtHelper();
+            float p = 0.032f;
+            art.Box(_dock, "DockPlate", new Vector3(0, 0.004f, 0.006f), new Vector3(p * 4f + 0.012f, 0.085f, 0.004f), WallHabitatView.Paper);
+            _kWall = WallUi.MakeKey(keyTemplate, _dock, "Key_Wall", "Wall", new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressWall);
+            _kPlace = WallUi.MakeKey(keyTemplate, _dock, "Key_PlaceHere", "Place here", new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressPlaceHere);
+            _kOther = WallUi.MakeKey(keyTemplate, _dock, "Key_Other", "Other spot", new Vector3(-0.5f * p, 0.016f, 0), keyScale, PressTryAnother);
+            _kLayout = WallUi.MakeKey(keyTemplate, _dock, "Key_Layout", "Compact", new Vector3(0.5f * p, 0.016f, 0), keyScale, PressLayout);
+            _kCancel = WallUi.MakeKey(keyTemplate, _dock, "Key_Cancel", "Cancel", new Vector3(1.5f * p, 0.016f, 0), keyScale, PressCancel);
+            _kMove = WallUi.MakeKey(keyTemplate, _dock, "Key_Move", "Move", new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressMove);
+            _kDesk = WallUi.MakeKey(keyTemplate, _dock, "Key_Desk", "Desk", new Vector3(1.5f * p, 0.016f, 0), keyScale, PressDesk);
+            _kSelect = WallUi.MakeKey(keyTemplate, _dock, "Key_Select", "Select agents", new Vector3(-0.5f * p, -0.016f, 0), keyScale, PressSelectAgents);
+            _kManager = WallUi.MakeKey(keyTemplate, _dock, "Key_Manager", "Manager", new Vector3(0.5f * p, -0.016f, 0), keyScale, PressManager);
+            _dockStatus = WallUi.MakeText(_dock, "DockStatus", font, new Vector3(0, 0.036f, -0.0005f), new Vector2(13.5f, 1.2f), 4.2f, WallHabitatView.Ink, TextAlignmentOptions.Center);
+            PlaceDock();
+            RefreshDock();
+        }
+
+        void PlaceDock()
+        {
+            if (_dock == null) return;
+            // Rig space: the eye is about (0, 0.30, 0.62). Face the eye and lean back like a desk console.
+            Vector3 eyeLocal = new Vector3(0f, 0.30f, 0.62f);
+            Vector3 d = dockLocal - eyeLocal; d.y = 0f;
+            _dock.localPosition = dockLocal;
+            _dock.localRotation = Quaternion.LookRotation(d.sqrMagnitude < 1e-6f ? Vector3.back : d.normalized, Vector3.up) * Quaternion.Euler(dockTiltBack, 0f, 0f);
+        }
+
+        void HideDockIfAny()
+        {
+            if (_dock != null && _dock.gameObject.activeSelf) _dock.gameObject.SetActive(false);
+        }
+
+        void RefreshDock()
+        {
+            if (_dock == null) return;
+            bool on = flags.wallHabitatEnabled || WallActive || WallPreviewing;
+            if (_dock.gameObject.activeSelf != on) _dock.gameObject.SetActive(on);
+            if (!on) return;
+            bool previewing = WallPreviewing;
+            bool active = WallActive && !previewing;
+            bool busyDirector = director != null && (director.IsPreviewing || (director.Core != null && director.Core.IsTransitioning));
+            _kWall.Show(!previewing && !active, !busyDirector);
+            _kPlace.Show(previewing, _flow.HasShown && _flow.Shown.valid);
+            _kOther.Show(previewing);
+            _kLayout.Show(previewing);
+            _kCancel.Show(previewing);
+            _kMove.Show(active);
+            _kDesk.Show(active);
+            _kSelect.Show(active && flags.agentSelectEnabled);
+            _kManager.Show(active && flags.wallManagerEnabled);
+        }
+
+        void RefreshDockLabels()
+        {
+            if (_dock == null || !_dock.gameObject.activeSelf) return;
+            _kLayout.SetLabel(_flow.Layout == WallLayoutKind.Full ? "Compact" : "Full");
+            _kSelect.SetLabel(_visit.IsArmed ? "Stop selecting" : "Select agents");
+            bool canPlace = _flow.HasShown && _flow.Shown.valid;
+            if (_kPlace.shown && _kPlace.enabled != canPlace) _kPlace.Show(true, canPlace);
+            string s = StatusLine;
+            if (string.IsNullOrEmpty(s)) s = WallActive ? (_flow.Suspended ? "Room changed: habitat paused" : "Office on the wall") : "Wall mode";
+            if (_dockStatus.text != s) _dockStatus.text = s;
+        }
+
+        // ───────────────────────── events from the reducers ─────────────────────────
+
+        void OnHabitatEvent(HabitatEvent e)
+        {
+            if (_stage == null || !WallActive) return;
+            _stage.Accept(e, Time.unscaledTime);
+        }
+
+        void OnSessionReset()
+        {
+            if (_stage != null) _stage.ResetAll();
+            if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.Cancelled);
+            if (_portal != null) _portal.Interrupt("Session reset");
+            if (_manager != null) _manager.Reset();
+        }
+
+        // ───────────────────────── recenter, room changes, pause ─────────────────────────
+
+        void Hook()
+        {
+            if (_hooks) return;
+            if (roomService != null) roomService.RoomChanged += OnRoomChanged;
+            if (!_mountHook) { OVRManager.HMDMounted += OnMounted; _mountHook = true; }
+            if (OVRManager.display != null) { OVRManager.display.RecenteredPose += OnRecentered; _hooks = true; }
+        }
+
+        void Unhook()
+        {
+            if (roomService != null) roomService.RoomChanged -= OnRoomChanged;
+            if (_mountHook) { OVRManager.HMDMounted -= OnMounted; _mountHook = false; }
+            if (_hooks && OVRManager.display != null) OVRManager.display.RecenteredPose -= OnRecentered;
+            _hooks = false;
+        }
+
+        void OnRecentered()
+        {
+            // Lost tracking / recenter cancels anything carried or opened, never commits it.
+            if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.Recentered);
+            if (_portal != null) _portal.Interrupt("Recentered");
+            ReleaseHands();
+            if (_stage != null) _stage.ResetAll();
+            _recenterFrames = 2;
+        }
+
+        void OnMounted() { PlaceCards(); }
+
+        void OnRecenterSettled()
+        {
+            // The room anchors have their new poses: put the habitat back on its wall, or pause it.
+            if (!WallActive || !_flow.HasPlaced) return;
+            SavedWallPlacement saved;
+            string why;
+            if (WallPlacementCodec.TryDecode(PlayerPrefs.GetString(SaveKey, ""), out saved) && _flow.TryRestore(saved, out why)) return;
+            _flow.OnRoomChanged();
+        }
+
+        void OnRoomChanged()
+        {
+            if (WallActive) _flow.OnRoomChanged();
+        }
+
+        void OnApplicationPause(bool paused)
+        {
+            if (!paused) return;
+            if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.Paused);
+            if (_portal != null) _portal.Interrupt("Paused");
+            ReleaseHands();
+            if (_stage != null) _stage.ResetAll();
+        }
+
+        // ───────────────────────── inputs ─────────────────────────
+
+        SeatedUser ReadUser()
+        {
+            Transform h = ResolveHead();
+            if (h == null) return new SeatedUser(new Vector3(0f, 1.2f, 0f), Vector3.forward);
+            return new SeatedUser(h.position, h.forward);
+        }
+
+        Transform ResolveHead()
+        {
+            if (head != null) return head;
+            if (director != null && director.head != null) return head = director.head;
+            Camera cam = Camera.main;
+            if (cam != null) head = cam.transform;
+            return head;
+        }
+
+        /// <summary>One line for drivers and logs.</summary>
+        public string Describe()
+        {
+            string s = "flags wall=" + flags.wallHabitatEnabled + " select=" + flags.agentSelectEnabled + " btw=" + flags.agentBtwEnabled + " portal=" + flags.largeAgentPortalEnabled + " manager=" + flags.wallManagerEnabled;
+            s += " | mode=" + SpatialWorkspaceState.Mode + " remote=" + SpatialWorkspaceState.IsRemote + " flow=" + (_flow != null ? _flow.State.ToString() : "-");
+            if (_flow != null && _flow.HasShown) s += " shown=" + (_flow.Shown.valid ? "valid" : "invalid:" + _flow.Shown.problem) + " wall=" + _flow.Shown.wallId + " layout=" + _flow.Shown.layout + " review=" + _flow.Shown.needsReview;
+            if (_flow != null && _flow.HasPlaced) s += " placed=" + _flow.Placed.wallId + "@" + _flow.Placed.position.ToString("F2") + " suspended=" + _flow.Suspended;
+            s += " | hidden=" + _suppressor.HiddenCount;
+            if (_stage != null) s += " | stage completed=" + _stage.Completed + " dropped=" + _stage.Dropped + " elevator=" + _stage.elevator.State;
+            s += " | visit=" + _visit.State + (_visit.Agent != null ? ":" + _visit.Agent : "") + " portal=" + _portal.State + " manager=" + _manager.State;
+            s += " | status='" + StatusLine + "'";
+            return s;
+        }
+    }
+}

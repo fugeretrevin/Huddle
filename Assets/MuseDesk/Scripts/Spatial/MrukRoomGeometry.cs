@@ -17,8 +17,18 @@ namespace MuseDesk.Spatial
     /// The component is saved disabled; RoomPlacementService enables it when a spatial flag is on,
     /// so with both flags off it does not even subscribe.
     /// </summary>
-    public class MrukRoomGeometry : MonoBehaviour, IRoomGeometry
+    public class MrukRoomGeometry : MonoBehaviour, IRoomGeometry, MuseDesk.Spatial.Wall.IWallGeometry
     {
+        // ── Wall Habitat (Phase 3, additive): walls, doors and windows as plain data ──
+        readonly List<MuseDesk.Spatial.Wall.RoomWall> _walls = new List<MuseDesk.Spatial.Wall.RoomWall>();
+        readonly List<MuseDesk.Spatial.Wall.WallOpening> _openings = new List<MuseDesk.Spatial.Wall.WallOpening>();
+        public RoomAvailability WallAvailability => _availability != RoomAvailability.Available ? _availability
+                                                  : (_walls.Count > 0 ? RoomAvailability.Available : RoomAvailability.NoRoomSetup);
+        public int WallCount => WallAvailability == RoomAvailability.Available ? _walls.Count : 0;
+        public MuseDesk.Spatial.Wall.RoomWall GetWall(int index) { return _walls[index]; }
+        public int OpeningCount => WallAvailability == RoomAvailability.Available ? _openings.Count : 0;
+        public MuseDesk.Spatial.Wall.WallOpening GetOpening(int index) { return _openings[index]; }
+
         [Tooltip("Seconds between checks for the MRUK instance while it does not exist yet.")]
         public float subscribeRetrySeconds = 0.5f;
 
@@ -165,6 +175,8 @@ namespace MuseDesk.Spatial
             _floors.Clear();
             _ceilings.Clear();
             _furniture.Clear();
+            _walls.Clear();
+            _openings.Clear();
             _hasReference = false;
             _roomId = "";
             _bounds = new Bounds();
@@ -177,7 +189,7 @@ namespace MuseDesk.Spatial
             catch (Exception e)
             {
                 Debug.LogWarning("[MuseDesk] Reading the room scan failed: " + e.Message);
-                _floors.Clear(); _ceilings.Clear(); _furniture.Clear();
+                _floors.Clear(); _ceilings.Clear(); _furniture.Clear(); _walls.Clear(); _openings.Clear();
                 availability = RoomAvailability.NotLoadedYet;
             }
             _availability = availability;
@@ -232,6 +244,8 @@ namespace MuseDesk.Spatial
                 _furniture.Add(ReadVolume(a, a.VolumeBounds.Value));
             }
 
+            ReadWalls(room);
+
             // Bounds from the outlines read above (MRUKRoom.GetRoomBounds warns when a room has no ceiling).
             bool any = false;
             Vector3 mn = Vector3.zero, mx = Vector3.zero;
@@ -240,6 +254,101 @@ namespace MuseDesk.Spatial
             if (any) _bounds.SetMinMax(mn, mx);
 
             return RoomAvailability.Available;
+        }
+
+        /// <summary>
+        /// Wall faces as vertical rectangles (+Z of a wall anchor points into the room, as MRUKRoom's own
+        /// outline code assumes), and door/window frames as rectangles on the wall they sit in. A wall read
+        /// failure only loses the walls; floor, ceiling and furniture are unaffected.
+        /// </summary>
+        void ReadWalls(MRUKRoom room)
+        {
+            try
+            {
+                List<MRUKAnchor> walls = room.WallAnchors;
+                for (int i = 0; i < walls.Count; i++)
+                {
+                    MRUKAnchor a = walls[i];
+                    if (a == null || !a.PlaneRect.HasValue) continue;
+                    Vector3[] c = RectCorners(a);
+                    Vector3 n = a.transform.forward; n.y = 0f;
+                    if (n.sqrMagnitude < 1e-6f) continue;
+                    n.Normalize();
+                    Vector3 center = (c[0] + c[1] + c[2] + c[3]) * 0.25f;
+                    Vector3 right = Quaternion.LookRotation(n, Vector3.up) * Vector3.right;
+                    float u0 = float.MaxValue, u1 = float.MinValue, y0 = float.MaxValue, y1 = float.MinValue;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        float u = Vector3.Dot(c[k] - center, right);
+                        u0 = Mathf.Min(u0, u); u1 = Mathf.Max(u1, u);
+                        y0 = Mathf.Min(y0, c[k].y); y1 = Mathf.Max(y1, c[k].y);
+                    }
+                    Vector3 mid = center + right * ((u0 + u1) * 0.5f);
+                    mid.y = (y0 + y1) * 0.5f;
+                    _walls.Add(new MuseDesk.Spatial.Wall.RoomWall
+                    {
+                        id = a.Anchor.Uuid.ToString(),
+                        center = mid,
+                        normal = n,
+                        width = u1 - u0,
+                        bottomY = y0,
+                        topY = y1,
+                        invisible = a.HasAnyLabel(MRUKAnchor.SceneLabels.INVISIBLE_WALL_FACE),
+                    });
+                }
+
+                List<MRUKAnchor> anchors = room.Anchors;
+                for (int i = 0; i < anchors.Count; i++)
+                {
+                    MRUKAnchor a = anchors[i];
+                    if (a == null || !a.PlaneRect.HasValue) continue;
+                    bool door = a.HasAnyLabel(MRUKAnchor.SceneLabels.DOOR_FRAME);
+                    bool window = a.HasAnyLabel(MRUKAnchor.SceneLabels.WINDOW_FRAME);
+                    if (!door && !window) continue;
+                    Vector3[] c = RectCorners(a);
+                    Vector3 center = (c[0] + c[1] + c[2] + c[3]) * 0.25f;
+                    // The wall it sits in: nearest wall plane within 0.25 m whose span contains it.
+                    int best = -1; float bestDist = 0.25f;
+                    for (int w = 0; w < _walls.Count; w++)
+                    {
+                        float d = Mathf.Abs(_walls[w].SignedDistance(center));
+                        if (d > bestDist) continue;
+                        if (Mathf.Abs(_walls[w].UOf(center)) > _walls[w].width * 0.5f + 0.05f) continue;
+                        best = w; bestDist = d;
+                    }
+                    if (best < 0) continue;
+                    MuseDesk.Spatial.Wall.RoomWall wall = _walls[best];
+                    float u0 = float.MaxValue, u1 = float.MinValue, y0 = float.MaxValue, y1 = float.MinValue;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        float u = wall.UOf(c[k]);
+                        u0 = Mathf.Min(u0, u); u1 = Mathf.Max(u1, u);
+                        y0 = Mathf.Min(y0, c[k].y); y1 = Mathf.Max(y1, c[k].y);
+                    }
+                    _openings.Add(new MuseDesk.Spatial.Wall.WallOpening
+                    {
+                        wallId = wall.id,
+                        kind = door ? MuseDesk.Spatial.Wall.WallOpeningKind.Door : MuseDesk.Spatial.Wall.WallOpeningKind.Window,
+                        uMin = u0, uMax = u1, yMin = y0, yMax = y1,
+                    });
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[MuseDesk] Reading walls from the room scan failed: " + e.Message);
+                _walls.Clear(); _openings.Clear();
+            }
+        }
+
+        static Vector3[] RectCorners(MRUKAnchor a)
+        {
+            Rect r = a.PlaneRect.Value;
+            Transform t = a.transform;
+            return new[]
+            {
+                t.TransformPoint(new Vector3(r.xMin, r.yMin, 0f)), t.TransformPoint(new Vector3(r.xMax, r.yMin, 0f)),
+                t.TransformPoint(new Vector3(r.xMax, r.yMax, 0f)), t.TransformPoint(new Vector3(r.xMin, r.yMax, 0f)),
+            };
         }
 
         static void Encapsulate(List<RoomPlane> planes, ref bool any, ref Vector3 mn, ref Vector3 mx)

@@ -53,6 +53,18 @@ namespace MuseDesk.Config
             var director = Object.FindAnyObjectByType<SpatialWorkspaceDirector>(FindObjectsInactive.Include);
             if (director != null) director.SetFlags(c.floorMode, c.ceilingMode);
 
+            // Wall Habitat (Phase 3): every flag off by default; a dependent flag is off unless its parent is on.
+            foreach (var w in Object.FindObjectsByType<MuseDesk.Wall.WallHabitatController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                w.SetFlags(new MuseDesk.Spatial.Wall.WallFeatureFlags
+                {
+                    wallHabitatEnabled = c.wallHabitat,
+                    wallManagerEnabled = c.wallHabitat && c.wallManager,
+                    agentSelectEnabled = c.wallHabitat && c.agentSelect,
+                    agentBtwEnabled = c.wallHabitat && c.agentSelect && c.agentBtw,
+                    largeAgentPortalEnabled = c.wallHabitat && c.agentSelect && c.largeAgentPortal,
+                    wallElevatorVfxEnabled = c.wallHabitat && c.wallElevatorVfx,
+                });
+
             // Pull gesture: only meaningful with the ceiling mode.
             bool pull = c.ceilingPullGesture && c.ceilingMode;
             foreach (var g in Object.FindObjectsByType<CeilingPullGesture>(FindObjectsInactive.Include, FindObjectsSortMode.None))

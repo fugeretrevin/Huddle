@@ -19,6 +19,27 @@ namespace MuseDesk.Spatial
         IRoomGeometry _room;
         bool _active;
         bool _synthetic;
+        // Wall Habitat (Phase 3, additive): the wall mode may need the room while Floor and Ceiling are off.
+        bool _flagActive, _wallDemand;
+        MuseDesk.Spatial.Wall.SyntheticWallRoom _syntheticWalls;
+
+        /// <summary>Walls, doors and windows of the current room (MRUK, or the synthetic room's walls). Null when inactive.</summary>
+        public MuseDesk.Spatial.Wall.IWallGeometry Walls
+        {
+            get
+            {
+                if (_synthetic) return _syntheticWalls;
+                return _active ? mrukRoom : null;
+            }
+        }
+
+        /// <summary>The wall mode asks for room data (its flag is on). Same effect as a Floor/Ceiling flag on the
+        /// MRUK reader; with the wall flag off this changes nothing.</summary>
+        public void SetWallDemand(bool on)
+        {
+            _wallDemand = on;
+            ApplyActive();
+        }
 
         /// <summary>Summary, in words the user can be shown.</summary>
         public string StatusText { get; private set; } = "";
@@ -37,6 +58,13 @@ namespace MuseDesk.Spatial
         /// <summary>Called by the director when the flags change. Inactive = no MRUK subscription at all.</summary>
         public void SetActive(bool active)
         {
+            _flagActive = active;
+            ApplyActive();
+        }
+
+        void ApplyActive()
+        {
+            bool active = _flagActive || _wallDemand;
             if (_active == active) return;
             _active = active;
             if (!_synthetic)
@@ -50,6 +78,7 @@ namespace MuseDesk.Spatial
         /// go back to the scanned room.</summary>
         public void UseSyntheticRoom(SyntheticRoomGeometry room)
         {
+            if (_syntheticWalls != null && !ReferenceEquals(_syntheticWalls.room, room)) _syntheticWalls = null;
             _synthetic = room != null;
             if (_synthetic)
             {
@@ -73,7 +102,10 @@ namespace MuseDesk.Spatial
             forward.y = 0f;
             forward = forward.sqrMagnitude < 1e-6f ? Vector3.forward : forward.normalized;
             float floorY = head.y - 1.15f;
-            var room = SyntheticRoomGeometry.Rectangle(head.x, head.z, 4f, 4f, floorY, floorY + 2.5f);
+            // Built with its four walls (wall mode); Floor/Ceiling read only the floor, ceiling and furniture.
+            var walls = MuseDesk.Spatial.Wall.SyntheticWallRoom.Rectangle(head.x, head.z, 4f, 4f, floorY, floorY + 2.5f);
+            var room = walls.room;
+            _syntheticWalls = walls;
             Vector3 desk = head + forward * 0.75f;
             float yaw = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
             room.AddFurniture("TABLE", new Vector3(desk.x, floorY + 0.375f, desk.z), new Vector3(1.4f, 0.75f, 0.7f), yaw);
