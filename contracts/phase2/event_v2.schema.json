@@ -57,7 +57,12 @@
         "focus.changed",
         "inbox.updated",
         "diagram.created",
-        "station.milestone"
+        "station.milestone",
+        "manager.plan_proposed",
+        "manager.plan_revised",
+        "manager.plan_rejected",
+        "manager.plan_committed",
+        "manager.plan_failed"
       ]
     },
     "task_id": {

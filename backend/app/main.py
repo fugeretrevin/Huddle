@@ -45,6 +45,8 @@ from .phase2.board_bridge import BoardRunBridge
 from .phase2.events import Phase2EventBus
 from .phase2.routes import install_phase2_exception_handlers, register_phase2_routes
 from .phase2.store import Phase2Store
+from .phase3.routes import register_phase3_routes
+from .phase3.store import Phase3Store
 from .run_launcher import RunLauncher
 from .run_recovery import reconcile_interrupted_runs
 from .settings import Settings, get_settings
@@ -76,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bus = EventBus(storage)
         phase2_store = Phase2Store(storage)
         phase2_bus = Phase2EventBus(phase2_store)
+        phase3_store = Phase3Store(storage)  # additive manager_plans_v3 table
         # Projects a run's milestones onto the task card that launched it (v2 stream).
         board = BoardRunBridge(phase2_store, phase2_bus)
         orchestrator = (LiveOrchestrator(storage, bus, settings, phase2_store, phase2_bus,
@@ -88,6 +91,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.orchestrator = orchestrator
         app.state.phase2_store = phase2_store
         app.state.phase2_bus = phase2_bus
+        app.state.phase3_store = phase3_store
+        app.state.p3_side = None  # side-conversation service (ephemeral memory), lazily built
+        # Optional model provider (phase3.provider.ModelProvider). None = no model:
+        # side answers are TASK_SNAPSHOT and Manager plans are TEMPLATE_PLAN.
+        app.state.p3_provider = None
         # One launcher for both entry points (v1 task create, v2 card assign), so both
         # start the same run through the same producer.
         app.state.run_launcher = RunLauncher(storage, orchestrator)
@@ -347,6 +355,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ─────────────────────── Phase 2 (additive /v2 surface) ───────────────────────
     register_phase2_routes(app)
     install_phase2_exception_handlers(app)
+    # ─────────────────────── Phase 3 (additive; flag-gated server-side) ───────────────────────
+    register_phase3_routes(app)  # its errors reuse the Phase 2 CommandError handler
 
     return app
 

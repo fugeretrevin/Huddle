@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase3/side_reply.schema.json",
+  "title": "MuseDesk Phase 3 SideReply",
+  "type": "object",
+  "required": ["request_id","agent_id","task_id","visit_session_id","reply","provenance","status","context_revision","stale_context","task_snapshot","proposed_amendment"],
+  "properties": {
+    "request_id": {"type":"string"},
+    "agent_id": {"type":"string"},
+    "task_id": {"type":["string","null"]},
+    "visit_session_id": {"type":"string"},
+    "reply": {"type":"string"},
+    "provenance": {"enum":["LIVE_MODEL","TASK_SNAPSHOT","SCRIPTED_DEMO","NONE"]},
+    "status": {"enum":["answered","unavailable","timeout","amendment_suggested","busy"]},
+    "context_revision": {"type":"integer","minimum":0},
+    "stale_context": {"type":"boolean"},
+    "task_snapshot": {"type":["object","null"],"required":["task_id","title","state","agent_id","revision"]},
+    "proposed_amendment": {"type":["object","null"],"required":["summary","requires_approval"],"properties":{"summary":{"type":"string"},"requires_approval":{"const":true}}}
+  }
+}

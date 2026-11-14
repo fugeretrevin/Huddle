@@ -66,6 +66,18 @@ class Settings(BaseSettings):
     p2_room: bool = False
     p2_diagrams: bool = False
 
+    # ── Phase 3 "Wall Habitat" flags. Unlike p2 flags these are ENFORCED server-side:
+    # a disabled feature answers 404 FEATURE_DISABLED. Default OFF (the competition
+    # release keeps Phase 3 dark); enable with MUSEDESK_P3_MANAGER_ENABLED=true etc.
+    p3_side_conversation_enabled: bool = False
+    p3_manager_enabled: bool = False
+    # Read-only /btw side conversation limits.
+    p3_side_timeout_seconds: float = 12.0
+    p3_side_max_concurrency: int = 4
+    p3_side_history_exchanges: int = 8
+    # Manager planner model call deadline.
+    p3_plan_timeout_seconds: float = 20.0
+
 
 _settings: Settings | None = None
 

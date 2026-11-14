@@ -123,6 +123,13 @@ class EventTypeV2(str, Enum):
     inbox_updated = "inbox.updated"
     diagram_created = "diagram.created"
     station_milestone = "station.milestone"
+    # Phase 3 additive types (Manager plans). Unknown to older clients; the Unity
+    # reducer advances seq and ignores types it has no case for.
+    manager_plan_proposed = "manager.plan_proposed"
+    manager_plan_revised = "manager.plan_revised"
+    manager_plan_rejected = "manager.plan_rejected"
+    manager_plan_committed = "manager.plan_committed"
+    manager_plan_failed = "manager.plan_failed"
 
 
 # ─────────────────────────── snapshot projections ───────────────────────────
