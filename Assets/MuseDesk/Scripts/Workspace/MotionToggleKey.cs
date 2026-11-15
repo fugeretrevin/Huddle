@@ -104,11 +104,14 @@ namespace MuseDesk.Workspace
         }
 
         /// <summary>Flips and saves the choice (also what the Play driver calls). Returns the new state.</summary>
+        public static event System.Action<bool> Toggled;
+
         public bool Toggle()
         {
             bool now = !MotionSettings.ReducedMotion;
             ReleaseConfigApplier.SetReducedMotionPreference(now);     // saves for this device and applies now (raises Changed)
             ShowState(now);
+            Toggled?.Invoke(now);
             if (visual != null) visual.FlashConfirmed();
             return now;
         }

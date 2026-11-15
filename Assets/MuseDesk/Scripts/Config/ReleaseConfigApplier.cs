@@ -72,6 +72,9 @@ namespace MuseDesk.Config
             // The in-app Calm motion key follows its flag (hidden by scale when off).
             MuseDesk.Workspace.MotionToggleKey.RefreshAll();
 
+            // First-use hints follow their flag (the presenter is inert, and hides its card, while it is off).
+            MuseDesk.Workspace.OnboardingHintPresenter.RefreshAll();
+
             // Spatial modes.
             var director = Object.FindAnyObjectByType<SpatialWorkspaceDirector>(FindObjectsInactive.Include);
             if (director != null) director.SetFlags(c.floorMode, c.ceilingMode);

@@ -32,6 +32,7 @@ public static class ReleaseConfigDrive
             + " gesture=" + string.Join(",", All<VoiceGestureActivator>().Select(x => x.enabled + "/flag=" + x.gestureEnabled))
             + " policy=" + string.Join(",", All<VoiceDecisionController>().Select(x => x.voiceEnabled))
             + " mic=" + string.Join(",", All<VoiceHud>().Select(x => x.Mic)));
+        sb.Append(" | hints " + string.Join(",", All<MuseDesk.Workspace.OnboardingHintPresenter>().Select(x => x.Describe())));
         return sb.ToString();
     }
 
@@ -58,6 +59,7 @@ public static class ReleaseConfigDrive
                 case "grids": _copy.placementScanGrids = b; break;
                 case "voice": _copy.voice = b; break;
                 case "motiontoggle": _copy.reducedMotionToggle = b; break;
+                case "hints": _copy.onboardingHints = b; break;
                 default: return "unknown key " + k;
             }
         }

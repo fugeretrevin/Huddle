@@ -90,9 +90,13 @@ namespace MuseDesk.Agents
             }
         }
 
+        /// <summary>A fingertip held on an agent long enough to open its card. Used by first-use hints only.</summary>
+        public static event System.Action<AgentTouchSummary> Touched;
+
         void Open()
         {
             _open = true;
+            Touched?.Invoke(this);
             Render();
             cardRoot.SetActive(true);
             // The user asked this agent something: it looks up at them for a moment (then back to

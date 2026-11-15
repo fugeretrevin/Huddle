@@ -137,10 +137,14 @@ namespace MuseDesk.Workspace
         /// <summary>Poke target / voice hook: flip focus mode.</summary>
         public void Toggle() => SetFocus(!Active);
 
+        /// <summary>Focus changed (new state). Used by first-use hints only.</summary>
+        public static event Action<bool> FocusChanged;
+
         public void SetFocus(bool on)
         {
             bool was = Active;
             Active = on;
+            if (was != on) FocusChanged?.Invoke(on);
             if (focusIndicator != null) focusIndicator.SetActive(on);
             // Entering focus starts a fresh queue. Leaving focus KEEPS it, so the updates that were
             // held back can be reviewed afterwards; it is cleared the next time focus is enabled.

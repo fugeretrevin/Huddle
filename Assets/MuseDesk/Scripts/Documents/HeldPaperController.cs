@@ -244,8 +244,13 @@ namespace MuseDesk.Documents
             OnReleased();
         }
 
+        /// <summary>A hand took hold of a decision paper (also raised by TakeNow). Used by first-use hints only.</summary>
+        public static event System.Action<HeldPaperController> PaperGrabbed;
+
         void OnGrabbed()
         {
+            try { PaperGrabbed?.Invoke(this); }
+            catch (System.Exception ex) { Debug.LogError($"[MuseDesk] paper-grabbed listener error: {ex.Message}"); }
 
             // Taken from the agent's hand: detach to the world (keep world pose) and grow to full size
             // as the user lifts it to read — the physical "pick it up and hold it up" gesture.
