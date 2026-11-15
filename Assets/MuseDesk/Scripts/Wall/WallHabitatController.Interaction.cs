@@ -73,6 +73,7 @@ namespace MuseDesk.Wall
             _visit.Tick(dt);
             _portal.comfortMode = Comfort;
             _portal.Tick(dt);
+            TickPresentations();
 
             bool selectMode = WallActive && flags.agentSelectEnabled && (_visit.IsArmed || _visit.State == VisitState.Carrying);
             bool aimMode = WallPreviewing;
@@ -446,6 +447,7 @@ namespace MuseDesk.Wall
             if (_portal.State == PortalState.Preview || _portal.State == PortalState.AwaitConfirm)
             {
                 body = _portal.Message + (_portal.Spot.roomChecked ? "\nChecked against the room scan; things not in the scan were not checked." : "");
+                if (PortalSpotIsFallback) body += "\n" + PortalSpotAdapter.NotEnoughSpace + " for a large visitor; a small one can still come.";
                 keys.Add(new KeyValuePair<string, Action>(_portal.State == PortalState.AwaitConfirm ? "Open here" : null, () => _portal.Confirm()));
                 keys.Add(new KeyValuePair<string, Action>("Other spot", NextPortalSpot));
                 keys.Add(new KeyValuePair<string, Action>("Cancel", () => _portal.Interrupt("Cancelled")));
@@ -503,9 +505,8 @@ namespace MuseDesk.Wall
             // The desk projection leaves without flying home: the portal takes the same presentation.
             DestroyProxy();
             SideConversationSession keep = _side;
-            _portalSpots = PortalPlacementEvaluator.Find(roomService != null ? roomService.Room : null, ReadUser(), portalSettings);
             _portalSpotIndex = 0;
-            PortalCandidate spot = _portalSpots.Count > 0 ? _portalSpots[0] : PortalPlacementEvaluator.ManualSmall(ReadUser(), 70f, portalSettings);
+            PortalCandidate spot = PlanPortalSpots(ReadUser());      // A9: side spots via PortalSpotPlanner (legacy evaluator when off / non-rectangular room)
             if (!_portal.BeginPreview(agent, spot)) { Note(_portal.Message); return; }
             _side = keep;
             ShowPortalPreview();
@@ -513,6 +514,7 @@ namespace MuseDesk.Wall
 
         void NextPortalSpot()
         {
+            _portalSpotManual = true;                                // the user chose: the tracker no longer moves the ring
             if (_portalSpots.Count == 0) { _portal.UpdateSpot(PortalPlacementEvaluator.ManualSmall(ReadUser(), _portalSpotIndex++ % 2 == 0 ? -70f : 70f, portalSettings)); }
             else { _portalSpotIndex = (_portalSpotIndex + 1) % _portalSpots.Count; _portal.UpdateSpot(_portalSpots[_portalSpotIndex]); }
             ShowPortalPreview();
@@ -559,6 +561,7 @@ namespace MuseDesk.Wall
             }
             if (st == PortalState.Hidden)
             {
+                _portalForcedHome = false;
                 if (_portalRoot != null && _portalRoot.gameObject.activeSelf) _portalRoot.gameObject.SetActive(false);
                 if (_portalAvatar != null)
                 {
@@ -568,14 +571,14 @@ namespace MuseDesk.Wall
                 }
                 return;
             }
-            if (st == PortalState.Preview || st == PortalState.AwaitConfirm) { if (_portalRoot != null && (_portalRoot.position - _portal.Spot.position).sqrMagnitude > 1e-6f) ShowPortalPreview(); return; }
-            if (_portalAvatar == null && st >= PortalState.Opening)
+            if (st == PortalState.Preview || st == PortalState.AwaitConfirm) { TickPortalSpotTracking(); if (_portalRoot != null && (_portalRoot.position - _portal.Spot.position).sqrMagnitude > 1e-6f) ShowPortalPreview(); return; }
+            if (_portalAvatar == null && st >= PortalState.Opening && !_portalForcedHome)
             {
                 GameObject src = SourceFor(RoleOf(_portal.Agent));
                 _portalAvatar = WallHabitatView.CloneVisual(src, "PortalProjection_" + _portal.Agent, _portalRoot, _portal.Spot.avatarHeight);
                 if (_portalAvatar != null)
                 {
-                    _portalAvatarScale = _portalAvatar.localScale.x;
+                    _portalAvatarScale = _portalAvatar.localScale.x * PortalFitFactor();   // never taller than the ceiling allows
                     _portalAvatar.localPosition = Vector3.zero;
                     _portalAvatar.localRotation = Quaternion.identity;       // the root already faces the user
                     var an = _portalAvatar.GetComponentInChildren<Animator>();
