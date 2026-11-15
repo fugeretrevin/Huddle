@@ -16,7 +16,7 @@ Date: 2026-11-15. Branch `feature/living-world-polish`. Scope: the sprint qualit
 | M-2 | Agents turn before walking, no turn while walking above 50 degrees | Route corner on the desk; watch for turn-in-place | AUTO (`AgentWalkCornersTests` 6); PLAY (S9a). Worn: NOT_TESTED |
 | M-3 | No foot sliding (stride matched to ground speed) | Video of the walk cycle; step 2 | PLAY code only. Visual NOT_TESTED |
 | M-4 | Gentle stop; no snap on arrival | Step 2 | AUTO profile; PLAY. Worn NOT_TESTED |
-| M-5 | Desk walks do not clip props (clearance at 0.08 m collider radius) | Step 18; the Play Mode driver `DeskClearanceDrive` | **FAIL in PLAY: 6 of 7 routes overlap a prop** (R1/R2 -0.066 m, R3 to R7 -0.004 to -0.010 m). Owner decision open (`S9C_SETTINGS_SAFETY_UI_CHANGES.md`). rc6-1 worn complaint: "agents walk through their own desks" (`RC6_HARDWARE_QA.md:30`), still open |
+| M-5 | Desk walks do not clip props (clearance at 0.08 m collider radius) | Step 18; the Play Mode driver `DeskClearanceDrive` | **PASS in PLAY (V2 layout): all 7 routes clear in Desk, Floor and Ceiling, min 0.017 m at r 0.080** (`DESK_CHOREOGRAPHY_LAYOUT.md` V2; was 6 of 7 failing). Editor/PLAY evidence only, not worn; outer-desk deck overhang open. rc6-1 worn complaint: "agents walk through their own desks" (`RC6_HARDWARE_QA.md:30`), still open |
 | M-6 | Elevator: doors fully open before boarding, lined up with the floor | Wall step 9 | AUTO (every-tick clearance), PLAY round trip. Worn NOT_TESTED |
 | M-7 | Handoff token arcs between hands, no pop, no jump | Step 5 | PLAY (S3S4). Worn NOT_TESTED. rc6-1 Gate A (A4) passed the older token, before the timed arc was added |
 | M-8 | Card glides into its slot on every lane change | Step 6 (normal drop) | PLAY (S3S4). Worn NOT_TESTED |
