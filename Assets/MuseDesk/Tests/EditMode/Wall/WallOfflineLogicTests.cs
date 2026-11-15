@@ -278,6 +278,22 @@ namespace MuseDesk.Tests.EditMode.Wall
             StringAssert.Contains("Nothing was applied", body);
             StringAssert.StartsWith("Proposed change", summary);
         }
+
+        // A16: backend A8 /btw fields. Unknown statuses and new fields must not throw; negated actions never become a suggested change.
+        [Test]
+        public void TryParseSide_A8Fields_LabelPassesThrough_NegatedActionDropsAmendment()
+        {
+            string json = "{\"request_id\":\"q2\",\"reply\":\"ok\",\"provenance\":\"LIVE_MODEL\",\"status\":\"rate_limited\",\"label\":\"Live model answer\",\"intent\":\"question\","
+                + "\"proposed_amendment\":{\"summary\":\"use Redis\",\"requires_approval\":true},"
+                + "\"proposed_action\":{\"kind\":\"amend\",\"negated\":true,\"requires_confirmation\":true,\"applied\":false}}";
+            SideExchange ex;
+            Assert.IsTrue(WallOfflineLogic.TryParseSide(json, "fallback", out ex));
+            Assert.AreEqual("rate_limited", ex.status);
+            Assert.AreEqual("Live model answer", ex.label);
+            Assert.IsNull(ex.amendment);
+            Assert.IsTrue(WallOfflineLogic.TryParseSide(json.Replace("\"negated\":true", "\"negated\":false"), "fallback", out ex));
+            Assert.AreEqual("use Redis", ex.amendment);
+        }
     }
 }
 #endif

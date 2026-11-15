@@ -418,7 +418,7 @@ namespace MuseDesk.Wall
                 if (!string.IsNullOrEmpty(x.amendment)) body += "\nSuggested change NOT applied: needs your approval through the board.";
             }
             else body += flags.agentBtwEnabled ? "\nAsk a question. This never changes the task." : "";
-            string foot = (_side != null && _side.History.Count > 0 ? ProvenanceWords(_side.History[_side.History.Count - 1].provenance) + " · " : "")
+            string foot = (_side != null && _side.History.Count > 0 ? (!string.IsNullOrEmpty(_side.History[_side.History.Count - 1].label) ? _side.History[_side.History.Count - 1].label : ProvenanceWords(_side.History[_side.History.Count - 1].provenance)) + " · " : "")
                         + (_tasks != null ? _tasks.SourceModeLabel : "") + " · projection: the real agent keeps working";
             _visitCard.SetText(name + (_portal.State != PortalState.Hidden ? " (portal)" : " visiting"), body, foot);
             if (flags.agentBtwEnabled) for (int i = 0; i < 3; i++) { int qi = i; keys.Add(new KeyValuePair<string, Action>(QuestionKeys[i], () => Ask(qi))); }

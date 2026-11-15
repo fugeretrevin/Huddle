@@ -9,6 +9,9 @@ namespace MuseDesk.Spatial.Wall
 
     [Serializable] public sealed class WallSideAmendmentDto { public string summary; public bool requires_approval; }
 
+    // A16: backend A8 /btw adds proposed_action; it is NEVER applied by the client (applied:false), only surfaced as text.
+    [Serializable] public sealed class WallSideProposedActionDto { public string kind; public bool negated; public bool requires_confirmation; public bool applied; }
+
     [Serializable]
     public sealed class WallSideReplyDto
     {
@@ -16,6 +19,8 @@ namespace MuseDesk.Spatial.Wall
         public string reply; public string provenance; public string status;
         public int context_revision; public bool stale_context;
         public WallSideAmendmentDto proposed_amendment;
+        public string label; public string intent;                 // A8: provenance label / routed intent
+        public WallSideProposedActionDto proposed_action;
     }
 
     [Serializable]
@@ -434,7 +439,10 @@ namespace MuseDesk.Spatial.Wall
                     staleContext = d.stale_context,
                     contextRevision = d.context_revision,
                     amendment = d.proposed_amendment != null && !string.IsNullOrEmpty(d.proposed_amendment.summary) ? d.proposed_amendment.summary : null,
+                    label = d.label,
                 };
+                // A negated proposed action ("don't do X") must never surface as a suggested change.
+                if (d.proposed_action != null && d.proposed_action.negated) ex.amendment = null;
                 return true;
             }
             catch (Exception) { return false; }

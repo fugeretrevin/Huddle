@@ -242,6 +242,7 @@ namespace MuseDesk.Spatial.Wall
         public string requestId;
         public string question;
         public string reply;
+        public string label;           // backend-supplied provenance line (A8); shown instead of the derived words when present
         public string provenance;      // LIVE_MODEL, TASK_SNAPSHOT, SCRIPTED_DEMO, OFFLINE
         public string status;          // answered, unavailable, timeout, amendment_suggested, busy, failed
         public bool staleContext;
