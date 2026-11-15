@@ -215,7 +215,7 @@ public static class LivingOfficeDrive
         {
             if (_withFailure) G.ScriptFailNextOfflineCard("developer");
             return C.ApprovePlan() ? null : "approve refused: " + C.StatusLine;
-        }, () => (C.Manager.State == ManagerFlowState.Delegating || C.Manager.State == ManagerFlowState.Monitoring) && C.Board.Count > 0,
+        }, () => (C.Manager.State == ManagerFlowState.Delegating || C.Manager.State == ManagerFlowState.Monitoring) && C.Board.Count > 0 && C.Paper.StampWord == "APPROVED",
             _live ? 60f : 10f, () => "committed=" + C.Manager.CommittedCount + " boardCards=" + C.Board.Count + " | " + PaperLine());
 
         Add("9 cards print in the Manager's office (committed ids only)", null,
