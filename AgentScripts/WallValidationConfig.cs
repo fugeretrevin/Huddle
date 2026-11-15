@@ -2,7 +2,8 @@ using UnityEditor;
 using MuseDesk.Config;
 
 /// <summary>
-/// Switch the six Wall Habitat flags in Resources/ReleaseConfig for a VALIDATION build, and back.
+/// Switch the six Wall Habitat flags (and, since Polish S9c, the reducedMotionToggle key flag) in Resources/ReleaseConfig
+/// for a VALIDATION build, and back.
 /// The competition build must be made with Off(). Status() prints the current summary.
 /// </summary>
 public static class WallValidationConfig
@@ -21,6 +22,7 @@ public static class WallValidationConfig
         c.agentBtw = on;
         c.largeAgentPortal = on;
         c.wallElevatorVfx = false;            // not implemented
+        c.reducedMotionToggle = on;           // Polish S9c: the in-app Calm motion key is part of the validation build only
         if (on && !c.buildLabel.Contains("+wall")) c.buildLabel += "+wall";
         if (!on) c.buildLabel = c.buildLabel.Replace("+wall", "");
         EditorUtility.SetDirty(c);

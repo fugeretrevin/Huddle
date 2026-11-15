@@ -44,6 +44,9 @@ Mark each line PASS or FAIL, add a few words, and copy the results into `QUEST_E
 ## C. Comfort
 
 16. Optional: set Reduced Motion (`ReleaseConfig.reducedMotion`, or PlayerPrefs `MuseDesk.ReducedMotion = 1`). Transitions get shorter, there is no overshoot, and everything still makes sense.
+17. **Calm motion key (validation build only; the release has it hidden).** Under the mode console, below the Focus key, there is a small key reading `Calm motion OFF`. Poke it: the label turns to `ON`, the cap turns Teal, and the next walk, card glide and paper unfold are visibly quicker with no overshoot. Poke again: back to `OFF`, Paper cap. Quit the app and start it again: it remembers the last choice. Check that the three label lines are readable at seated distance and that the key is not hit by accident when you reach for Focus. (UI-05)
+18. **Desk walk clearance.** Start the task and watch the Researcher walk to you, then approve and watch the handoffs. Note any step where a body clips a desk edge, the Inbox tray, the book stack, a nameplate or a station prop (the Play Mode check predicts the delivery lane, the corner by the book stack and the stops in front of the Developer and Tester; `S9C_SETTINGS_SAFETY_UI_CHANGES.md`). (MOT-05)
+19. **Bubble footer.** Poke an agent: its speech bubble shows the sentence and a small `SCRIPTED DEMO` line under it (`LIVE` only on a live run), readable and not cut off. (UI-06)
 
 ## What to send back
 

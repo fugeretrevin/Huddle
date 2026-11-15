@@ -60,7 +60,7 @@ Status: **DONE** (code + test evidence named), **IN PROGRESS**, **PLANNED**, **B
 | C3 | No reaction to confirmed completion in Wall | none | one `Nodding` on a reducer `task.completed` | DONE (Editor-unseen) |
 | C4 | Turn_Left/Right, Nodding, Listening and ~18 more clips unused | not wired | Wall turn-in-place uses Turn_*; Desk: Turn_Left/Right on `TurnInPlaceChanged`, confirmed-completion `Nodding` (S9b). Listening NOT wired: no "mic open and addressed to this agent" signal exists | PARTIAL (Editor-seen) |
 | C5 | Desk idle gestures on random timers | `AgentAttention` | Ambient gestures off under Focus; status-backed paper offer at the slower focus repeat; hand reactions quiet while the user holds something or a Select Agents carry is on (S9b, `S9B_CHARACTER_AUDIO_CHANGES.md`) | DONE (Editor-seen; hand gating unverified without hands) |
-| C6 | Desk agent walks have no clearance check | straight lines | Document the authored waypoints; add bounds assertions in a Play Mode driver | PLANNED |
+| C6 | Desk agent walks have no clearance check | straight lines | S9c: Play Mode driver `DeskClearanceDrive` asserts every sample of the 7 authored routes against real mesh triangles (collider radius 0.08); pure helper `WalkClearance` (12 tests). **6 of 7 routes fail at 0.08** (R1/R2 -0.066 m: the lane is 42 mm wide between desk and inbox tray; R3/R5 -0.010; R6/R7 -0.004). Nothing moved; numbers and proposals in `S9C_SETTINGS_SAFETY_UI_CHANGES.md` | CHECK DONE, FAILURES OPEN (owner decision) |
 | C7 | No Manager model in production | Antigravity art not delivered | Placeholder stays labelled; manifest swap ready | BLOCKED (art) |
 
 ### UI / visual / audio
@@ -71,8 +71,9 @@ Status: **DONE** (code + test evidence named), **IN PROGRESS**, **PLANNED**, **B
 | U2 | Wall key disabled state invisible | dimmed label | DONE |
 | U3 | Provenance footer on Wall cards is the smallest text | 4.2 mm InkSoft | DONE |
 | U4 | No elevator, portal, page, card sounds | `WallAudio` cues; Wall key click Desk (S9b): `PaperArrived`, `CardLanded` added to `FeedbackController`; paper taken, delivered chime, outcomes already existed; ambient cues muted under Focus. Page-turn cue still open | PARTIAL (unheard) |
-| U5 | No global Reduced Motion / quiet setting | ReleaseConfig + PlayerPrefs; Focus mutes Wall cues; no in-app toggle | PARTIAL |
+| U5 | No global Reduced Motion / quiet setting | ReleaseConfig + PlayerPrefs; Focus mutes Wall cues; S9c: in-app "Calm motion" key `MotionToggleKey` beside the Focus key, flag `reducedMotionToggle` (0 committed, on in the validation build) | DONE (code, PLAY); needs a worn check |
 
 ## Not possible in this pass without a person
 
 Worn tests (every row of the QA matrix marked worn), physical hand success rates (9/10), comfort, headset video, device frame timing and soak. These remain `NOT_TESTED` in `QUEST_EVIDENCE_MATRIX.md` until someone wears the headset.
+

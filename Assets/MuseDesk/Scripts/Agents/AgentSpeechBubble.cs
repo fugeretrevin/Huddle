@@ -112,6 +112,7 @@ namespace MuseDesk.Agents
         float _k, _goal;
         float _hideAt;
         string _text = "";
+        string _footer;
 
         /// <summary>Plate width and total height (tail included), metres at scale 1.</summary>
         public float Width { get; private set; } = 0.05f;
@@ -145,12 +146,18 @@ namespace MuseDesk.Agents
         }
 
         /// <summary>Show <paramref name="text"/> for <paramref name="seconds"/>. Replaces what is there.</summary>
-        public void Show(string text, float seconds)
+        public void Show(string text, float seconds) { Show(text, seconds, null); }
+
+        /// <summary>Show with a provenance footer ("LIVE" / "SCRIPTED DEMO", see <see cref="BubbleProvenance"/>). A null footer
+        /// shows the text alone.</summary>
+        public void Show(string text, float seconds, string footer)
         {
             if (string.IsNullOrEmpty(text)) { Hide(); return; }
             float now = Time.time;
-            bool changed = !string.Equals(text, _text, System.StringComparison.Ordinal);
+            bool changed = !string.Equals(text, _text, System.StringComparison.Ordinal)
+                           || !string.Equals(footer, _footer, System.StringComparison.Ordinal);
             _text = text;
+            _footer = footer;
             if (changed || _mesh == null) Layout();
             if (changed && _k > 0.6f) _k = 0.6f;      // a new line gives a small second pop
             _goal = 1f;
@@ -194,16 +201,20 @@ namespace MuseDesk.Agents
             label.textWrappingMode = TextWrappingModes.Normal;
             label.overflowMode = TextOverflowModes.Ellipsis;
             label.alignment = TextAlignmentOptions.Center;
-            label.text = _text;
+            string shown = BubbleProvenance.Compose(_text, _footer);
+            label.text = shown;
 
             // Width: as narrow as the text allows, at most the widest block.
-            Vector2 pref = label.GetPreferredValues(_text, maxTextWidthCm, 0f);
+            Vector2 pref = label.GetPreferredValues(shown, maxTextWidthCm, 0f);
             float wCm = Mathf.Clamp(pref.x + 0.05f, 1.6f, maxTextWidthCm);
             RectTransform rt = label.rectTransform;
             rt.sizeDelta = new Vector2(wCm, lineCm * 12f);
             label.ForceMeshUpdate();
-            int lines = Mathf.Clamp(label.textInfo != null ? label.textInfo.lineCount : 1, 1, 3);
-            float hCm = lines * lineCm + 0.1f;
+            // Height from the measured text (the label is disabled until the bubble is drawn, and a disabled TMP label reports one
+            // line), at most three lines of text plus one for the footer.
+            Vector2 prefAtWidth = label.GetPreferredValues(shown, wCm, 0f);
+            float textCm = Mathf.Clamp(prefAtWidth.y, lineCm, lineCm * BubbleProvenance.MaxLines(_footer));
+            float hCm = textCm + 0.1f;
             rt.sizeDelta = new Vector2(wCm, hCm);              // anything past three lines is cut with an ellipsis
             label.ForceMeshUpdate();
 

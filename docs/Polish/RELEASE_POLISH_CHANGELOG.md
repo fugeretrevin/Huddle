@@ -26,7 +26,9 @@ Both built with 0 errors. **Neither was installed:** nobody was wearing the head
 
 | S9b commit | S9b | Desk Turn_Left/Right from `TurnInPlaceChanged`; confirmed-completion `Nodding`; ambient idle gestures off under Focus; hand reactions quiet while holding or carrying; held card defers its recycle hide and its drag is cancelled; `PaperArrived` / `CardLanded` cues, Focus-muted; monitor colours on the palette (`S9B_CHARACTER_AUDIO_CHANGES.md`) |
 
-Detail per change: `S9B_CHARACTER_AUDIO_CHANGES.md`, `S2_INTERACTION_CHANGES.md`, `S3S4_DESK_MOTION_CHANGES.md`, `IMPLEMENTATION_AUDIT.md`.
+| S9c commit | S9c | In-app "Calm motion" key `MotionToggleKey` (flag `reducedMotionToggle`, 0 committed); desk walk clearance driver and geometry helper (6 of 7 authored routes fail at the 0.08 collider radius: numbers and proposals in the doc, nothing moved); hover colour on the Teal token; LIVE / SCRIPTED DEMO footer on the agent speech bubble (receipt, archive and voice HUD already had it); `WallUi.MakeText` font fallback to Inter with a one-time warning (`S9C_SETTINGS_SAFETY_UI_CHANGES.md`) |
+
+Detail per change: `S9C_SETTINGS_SAFETY_UI_CHANGES.md`, `S9B_CHARACTER_AUDIO_CHANGES.md`, `S2_INTERACTION_CHANGES.md`, `S3S4_DESK_MOTION_CHANGES.md`, `IMPLEMENTATION_AUDIT.md`.
 
 ## Tests
 
@@ -41,7 +43,7 @@ Detail per change: `S9B_CHARACTER_AUDIO_CHANGES.md`, `S2_INTERACTION_CHANGES.md`
 
 ## Feature flags (ReleaseConfig, committed)
 
-`wallHabitat 0, wallManager 0, agentSelect 0, agentBtw 0, largeAgentPortal 0, wallElevatorVfx 0, reducedMotion 0`. Desk, Floor and Ceiling are on as in rc6-2.
+`wallHabitat 0, wallManager 0, agentSelect 0, agentBtw 0, largeAgentPortal 0, wallElevatorVfx 0, reducedMotion 0, reducedMotionToggle 0` (the last is new in S9c: the in-app Calm motion key, hidden by scale when 0; `WallValidationConfig.On()` turns it on for a validation build, `Off()` for the competition build). Desk, Floor and Ceiling are on as in rc6-2.
 
 ## Remaining defects and open items (severity)
 
@@ -51,10 +53,11 @@ Detail per change: `S9B_CHARACTER_AUDIO_CHANGES.md`, `S2_INTERACTION_CHANGES.md`
 | Med | 21 EditMode fixtures not re-run after the changes (memory stop) |
 | Med | Antigravity Wall art and the Manager model are uncommitted work in their worktree; production still uses proxy boxes and the Developer-clone Manager |
 | Med | Card role colours (Tester amber, Developer green) still overlap state colours: a prefab and identity decision for the owner (`UI_AND_VISUAL_CONSISTENCY_AUDIT.md` #2) |
-| Low | No in-app toggle for Reduced Motion (config and PlayerPrefs only) |
+| Low | ~~No in-app toggle for Reduced Motion~~ DONE in S9c behind `reducedMotionToggle` (0 in the release): needs a worn check (`NEXT_DEVICE_TEST.md` step 16) |
+| **Med** | **Desk walk clearance (S9c): 6 of 7 authored routes overlap a prop at the 0.08 m collider radius.** R1/R2 (-0.066 m) are structural: the Researcher delivery lane is 42 mm wide between the desk front and the Inbox tray, and the corner stop at `WalkExit_1` is 29 mm from `Decor_BookStack/Book_3`. R3 to R7 are 4 to 10 mm. Nothing moved; proposals in `S9C_SETTINGS_SAFETY_UI_CHANGES.md` (owner decision, needs a worn check) |
 | Low | ~~Card recycle and details-sheet `SetActive` pops; RebuildAll re-reveals every card on a resync~~ FIXED in S9a (see `S9A_POPIN_CHANGES.md`) |
 | Low | ~~Desk routed-walk corners above the turn limit turn while walking (Wall stops and turns)~~ FIXED in S9a (brake, turn in place, continue; `AgentMovement.TurnInPlaceDirection`) |
 | Med | `Listening` clip not wired on the desk: no voice signal says the mic is open AND addressed to one agent (needs agent-targeted voice routing) |
 | Low | Desk page-turn sound still missing; `Delivered` chime now silent under Focus |
-| Low | Two key visual systems not merged; off-palette hover cyan; provenance gaps on agent bubble and receipts |
+| Low | Two key visual systems not merged (open by decision). ~~Off-palette hover cyan; provenance gaps~~ FIXED in S9c |
 | Info | Claude provider wired but no real API call has been made (no key yet) |

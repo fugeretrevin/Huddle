@@ -57,6 +57,7 @@ public static class ReleaseConfigDrive
                 case "cone": _copy.ceilingPortalCone = b; break;
                 case "grids": _copy.placementScanGrids = b; break;
                 case "voice": _copy.voice = b; break;
+                case "motiontoggle": _copy.reducedMotionToggle = b; break;
                 default: return "unknown key " + k;
             }
         }

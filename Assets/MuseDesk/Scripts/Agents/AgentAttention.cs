@@ -346,18 +346,25 @@ namespace MuseDesk.Agents
             agents[i].Acknowledge(4f);
         }
 
+        /// <summary>The provenance line under every bubble: the session's own mode (LIVE or SCRIPTED DEMO), the same words as
+        /// the chip. No session, no footer (never a guessed "live").</summary>
+        string BubbleFooter()
+        {
+            return BubbleProvenance.Words(controller != null, controller != null && controller.IsLive);
+        }
+
         /// <summary>
         /// A speech bubble above <paramref name="role"/> with <paramref name="text"/> for
         /// <paramref name="seconds"/>. One bubble per character; a new one replaces the old. The
         /// text is shown as given (up to three short lines, then an ellipsis): the caller must
-        /// only pass text that is true to the run state.
+        /// only pass text that is true to the run state. A small LIVE / SCRIPTED DEMO line is added under it.
         /// </summary>
         public void Say(string role, string text, float seconds)
         {
             TryWire();
             int i = IndexOf(role);
             if (i < 0 || agents[i].bubble == null) return;
-            agents[i].bubble.Show(text, seconds);
+            agents[i].bubble.Show(text, seconds, BubbleFooter());
             // The small speaking nod, unless the pipeline is using the character or someone else
             // (the voice side) already drives it.
             AgentGaze g = agents[i].gaze;
@@ -712,7 +719,7 @@ namespace MuseDesk.Agents
             // The status is shown even when the body cannot react (it is standing with the paper),
             // but not while it walks or the completion sequence plays.
             if (p.HardBusy || p.bubble == null) return;
-            if (streak == 0) p.bubble.Show(DescribeStatus(_roles[i]), pokeBubbleSeconds);
+            if (streak == 0) p.bubble.Show(DescribeStatus(_roles[i]), pokeBubbleSeconds, BubbleFooter());
             else p.bubble.Extend(2f);
         }
 

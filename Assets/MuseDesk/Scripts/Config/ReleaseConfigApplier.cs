@@ -43,12 +43,19 @@ namespace MuseDesk.Config
             Debug.Log("[MuseDesk.Release] " + config.Summary());
         }
 
-        public const string ReducedMotionKey = "MuseDesk.ReducedMotion";
+        public const string ReducedMotionKey = MuseDesk.Motion.ReducedMotionPreference.Key;
+
+        sealed class PlayerPrefsStore : MuseDesk.Motion.IPrefStore
+        {
+            public int GetInt(string key, int fallback) { return PlayerPrefs.GetInt(key, fallback); }
+            public void SetInt(string key, int value) { PlayerPrefs.SetInt(key, value); }
+        }
+        static readonly PlayerPrefsStore Prefs = new PlayerPrefsStore();
 
         /// <summary>Save the user's Reduced Motion choice on this device and apply it now.</summary>
         public static void SetReducedMotionPreference(bool on)
         {
-            PlayerPrefs.SetInt(ReducedMotionKey, on ? 1 : 0);
+            MuseDesk.Motion.ReducedMotionPreference.Save(Prefs, on);
             PlayerPrefs.Save();
             MuseDesk.Motion.MotionSettings.SetReducedMotion(on);
         }
@@ -60,8 +67,10 @@ namespace MuseDesk.Config
             Active = c;
 
             // Comfort: Reduced Motion (build default, overridden by a saved per-device choice).
-            int saved = PlayerPrefs.GetInt(ReducedMotionKey, -1);
-            MuseDesk.Motion.MotionSettings.SetReducedMotion(saved >= 0 ? saved == 1 : c.reducedMotion);
+            MuseDesk.Motion.MotionSettings.SetReducedMotion(MuseDesk.Motion.ReducedMotionPreference.Resolve(Prefs, c.reducedMotion));
+
+            // The in-app Calm motion key follows its flag (hidden by scale when off).
+            MuseDesk.Workspace.MotionToggleKey.RefreshAll();
 
             // Spatial modes.
             var director = Object.FindAnyObjectByType<SpatialWorkspaceDirector>(FindObjectsInactive.Include);

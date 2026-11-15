@@ -16,17 +16,18 @@ Source evidence: [audit/C_UI_VISUAL_AUDIO.md](audit/C_UI_VISUAL_AUDIO.md) (code 
 | 1 | Success green has ≥7 values; amber and coral drift | Wall state colours now **are** `OfficeTokens` (Teal, Amber, Coral, Success, Lavender, Paper, Ink) in `WallHabitatView`. Board/agent copies (`TaskCardView:420-423`, `AgentView:192-197`, `WorkstationStatusDisplay:45-46`, `StationDropZone:30`) not yet migrated | PARTIAL |
 | 2 | Role tint collides with state colour (Tester = amber, Developer = green) | Not changed: the role colours are serialized on the card prefab and tied to character identity. **Recommendation:** soft pastel role accents that differ from the saturated state tokens, always shown with the role name | OPEN (owner decision) |
 | 3 | A disabled Wall key looks live | `WallKey` dims its label (alpha 0.38) while disabled | DONE (code, PLAY) |
-| 4 | Two key visual systems (`KeyStateVisual` vs `PokeKeyStateVisual`) | Not merged: both are on-head-proven; merging risks the submission keys | OPEN |
+| 4 | Two key visual systems (`KeyStateVisual` vs `PokeKeyStateVisual`) | Not merged: both are on-head-proven; merging risks the submission keys | OPEN by decision (S9c) |
 | 5 | Wall provenance footer is the smallest text (3.6 mm, grey) | 4.2 mm, InkSoft | DONE |
 | 6 | Wall palette duplicated in ~8 controllers | Wall view now uses the tokens; other controllers unchanged | PARTIAL |
-| 7 | Off-palette hover cyan (`GrabHoverHighlight:25`) | not changed | OPEN |
-| 8 | `WallUi.MakeText` falls back to the default font silently | not changed (the scene builder always injects Inter) | OPEN (low) |
+| 7 | Off-palette hover cyan (`GrabHoverHighlight:25`) | Hover is the Teal token (design system: Teal = hover); the legacy cyan serialized on 17 scene instances and 2 prefabs is mapped to Teal in `Awake` (S9c) | DONE (code, PLAY) |
+| 8 | `WallUi.MakeText` falls back to the default font silently | Falls back to the last Inter it was given, else a loaded Inter-Medium asset, with a one-time warning (S9c) | DONE (code) |
 | 9 | Wall keys pop between scale 0 and full; zero scale breaks poke maths | Keys reveal and hide on `panelAppear`/`panelHide` and never go below `ScaleEase.HiddenFactor` | DONE |
 | 10 | Wall cards appear by SetActive | Eased scale reveal (0.94 → 1) and tuck-away | DONE |
 | 11 | Missing sounds: card, page, elevator, portal, chime; Wall keys silent | `WallAudio`: door slide, arrival ding, printer tick, portal open and close, landing tick. Wall keys get the standard key click. Muted in Focus mode. Desk (S9b): `PaperArrived` and `CardLanded` cues added, desk `Delivered` muted in Focus; monitor colours follow the palette (WaitingForUser and Approaching amber, Waiting neutral) | DONE (code; audibility needs the headset). Page-turn cue still open |
-| 12 | No global Reduced Motion setting | `MotionSettings.ReducedMotion` exists and is honoured by every token; **no UI toggle or persistence yet** | PARTIAL |
-| 13 | Provenance gaps: agent bubble, receipts, archive, voice HUD | not changed | OPEN |
+| 12 | No global Reduced Motion setting | `MotionSettings.ReducedMotion` is honoured by every token; per-device preference persists; S9c adds the in-app "Calm motion" key (`MotionToggleKey`, behind ReleaseConfig `reducedMotionToggle`, 0 in the committed release) | DONE (code, PLAY); key is off in the release by flag |
+| 13 | Provenance gaps: agent bubble, receipts, archive, voice HUD | Receipt, archive and voice HUD already show LIVE / SCRIPTED DEMO from real mode data (the audit missed it). The agent bubble now has a small LIVE / SCRIPTED DEMO footer from `controller.IsLive` (none if the mode is unknown) (S9c) | DONE (code, PLAY) |
 
 ## Not verifiable here
 
 Stereo text depth, legibility at seated distance, colour contrast on the Quest 3 display and sound loudness all need the headset (QA rows UI-01, UI-02 and PERF-03).
+

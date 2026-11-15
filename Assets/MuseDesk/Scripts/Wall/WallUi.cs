@@ -129,6 +129,37 @@ namespace MuseDesk.Wall
             return k;
         }
 
+        static TMP_FontAsset s_lastGood, s_inter;
+        static bool s_warned;
+
+        /// <summary>Pure choice of the font a label gets: the one asked for, else the last Inter that was passed in, else any
+        /// loaded Inter asset, else null (TextMeshPro's default). <paramref name="usedFallback"/> says the asked-for font was
+        /// missing.</summary>
+        public static TMP_FontAsset ChooseFont(TMP_FontAsset asked, TMP_FontAsset lastGood, TMP_FontAsset loadedInter, out bool usedFallback)
+        {
+            usedFallback = asked == null;
+            if (asked != null) return asked;
+            return lastGood != null ? lastGood : loadedInter;
+        }
+
+        /// <summary>A null font used to fall back to TextMeshPro's default (Liberation) without a word. It now falls back to
+        /// Inter (the last Inter a Wall label was given, else a loaded Inter Medium asset) and warns once.</summary>
+        static TMP_FontAsset ResolveFont(TMP_FontAsset font, string labelName)
+        {
+            if (font != null) { s_lastGood = font; return font; }
+            if (s_inter == null)
+                foreach (var f in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
+                    if (f != null && f.name.StartsWith("Inter-Medium")) { s_inter = f; break; }
+            var chosen = ChooseFont(null, s_lastGood, s_inter, out _);
+            if (!s_warned)
+            {
+                s_warned = true;
+                Debug.LogWarning("[MuseDesk.Wall] WallUi.MakeText got no font for \"" + labelName + "\"; using "
+                    + (chosen != null ? chosen.name : "the TextMeshPro default (no Inter asset is loaded)") + ". Assign the Inter font on the controller.");
+            }
+            return chosen;
+        }
+
         /// <summary>A TextMeshPro label at the project's convention: scale 0.01 (sizes in cm, font size about mm).</summary>
         public static TMP_Text MakeText(Transform parent, string name, TMP_FontAsset font, Vector3 localPos, Vector2 sizeCm, float fontMm, Color color, TextAlignmentOptions align)
         {
@@ -137,6 +168,7 @@ namespace MuseDesk.Wall
             go.transform.localPosition = localPos;
             go.transform.localScale = Vector3.one * 0.01f;
             var t = go.AddComponent<TextMeshPro>();
+            font = ResolveFont(font, name);
             if (font != null) t.font = font;
             t.fontSize = fontMm;
             t.color = color;

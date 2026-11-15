@@ -26,4 +26,5 @@ MonoBehaviour:
   largeAgentPortal: 0
   wallElevatorVfx: 0
   reducedMotion: 0
+  reducedMotionToggle: 0
   buildLabel: rc6-dev

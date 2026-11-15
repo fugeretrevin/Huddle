@@ -22,7 +22,7 @@ namespace MuseDesk.Workspace
         public Renderer[] brighten;
         [Range(1f, 1.6f)] public float hoverBrightness = 1.15f;
         [Tooltip("Colour of the indicator while hovered / while held.")]
-        public Color hoverColor = new Color(0.35f, 0.85f, 0.95f, 0.22f);
+        public Color hoverColor = new Color(OfficeTokens.Teal.r, OfficeTokens.Teal.g, OfficeTokens.Teal.b, 0.22f);
         public Color heldColor = new Color(0.98f, 0.82f, 0.30f, 0.36f);
         [Tooltip("Seconds a hover must persist before it shows (debounce).")]
         public float enterDelay = 0.06f;
@@ -48,8 +48,25 @@ namespace MuseDesk.Workspace
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         static readonly int ColorId = Shader.PropertyToID("_Color");
 
+        /// <summary>The cyan the hover colour was authored with before the palette pass (0.35, 0.85, 0.95). Scene and prefab
+        /// instances have it serialized, so a changed default alone would not reach them.</summary>
+        public static bool IsLegacyHoverCyan(Color c)
+        {
+            return Mathf.Abs(c.r - 0.35f) < 0.01f && Mathf.Abs(c.g - 0.85f) < 0.01f && Mathf.Abs(c.b - 0.95f) < 0.01f;
+        }
+
+        /// <summary>Hover means "Teal: general interaction, primary affordance, hover" (design system colour table).
+        /// Keeps the authored alpha, so the strength of the frame is unchanged.</summary>
+        public static Color PaletteHover(Color authored)
+        {
+            if (!IsLegacyHoverCyan(authored)) return authored;
+            Color t = OfficeTokens.Teal;
+            return new Color(t.r, t.g, t.b, authored.a);
+        }
+
         void Awake()
         {
+            hoverColor = PaletteHover(hoverColor);
             _block = new MaterialPropertyBlock();
             ResolveView();
             if (indicator != null)

@@ -50,6 +50,9 @@ namespace MuseDesk.Config
         [Tooltip("Reduced Motion by default for this build: shorter transitions, no overshoot. A per-device choice saved " +
                  "in PlayerPrefs (MuseDesk.ReducedMotion = 1/0) overrides this.")]
         public bool reducedMotion = false;
+        [Tooltip("Show the in-app 'Calm motion' poke key (flips Reduced Motion live and saves it for this device). " +
+                 "Off in the committed release: the key sits at its hidden scale and nothing else changes.")]
+        public bool reducedMotionToggle = false;
 
         [Header("Build")]
         public string buildLabel = "rc6-dev";
@@ -59,7 +62,8 @@ namespace MuseDesk.Config
             return buildLabel + " floor=" + floorMode + " ceiling=" + ceilingMode + " pull=" + ceilingPullGesture
                 + " particles=" + ceilingParticles + " cone=" + ceilingPortalCone + " grids=" + placementScanGrids + " voice=" + voice
                 + " wall=" + wallHabitat + " manager=" + wallManager + " select=" + agentSelect + " btw=" + agentBtw
-                + " portal=" + largeAgentPortal + " elevatorVfx=" + wallElevatorVfx;
+                + " portal=" + largeAgentPortal + " elevatorVfx=" + wallElevatorVfx
+                + " reducedMotion=" + reducedMotion + " motionToggle=" + reducedMotionToggle;
         }
 
         public static MuseDeskReleaseConfig Load()
