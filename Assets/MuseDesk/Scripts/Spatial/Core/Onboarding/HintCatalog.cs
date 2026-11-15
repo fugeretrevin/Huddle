@@ -38,16 +38,17 @@ namespace MuseDesk.Spatial.Onboarding
     /// </summary>
     public enum OnboardingEvent
     {
-        SessionReady,          // SessionReducer.SnapshotLoaded
+        // Source names live in docs/Engineering/sprint/A15_ONBOARDING.md (this assembly must not name scene-side types).
+        SessionReady,          // snapshot loaded
         AgentTouched,          // needs event
         TaskStarted,           // session run-state change to running (scene side)
-        DecisionRequested,     // SessionReducer.DecisionRequested
+        DecisionRequested,     // decision requested
         PaperGrabbed,          // needs event
         PaperDetailsOpened,    // needs event
         DecisionSent,          // user pressed stamp/approve/reject (needs event; the session's respond call)
-        DecisionResolvedApproved, // SessionReducer.DecisionResolved(id, "approved")
-        HandoffObserved,       // needs event (SessionReducer.AgentChanged is the source)
-        TaskCompleted,         // SessionReducer.TaskCompleted
+        DecisionResolvedApproved, // decision resolved as approved
+        HandoffObserved,       // needs event (agent-changed is the source)
+        TaskCompleted,         // task completed
         ReceiptViewed,         // needs event
         WorkspaceMoved,        // WorkspacePlacement.Placed / WorkspaceTransitionMachine.MoveFinished(true)
         FocusEntered,          // needs event (FocusModeController)
