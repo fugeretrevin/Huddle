@@ -56,7 +56,24 @@ namespace MuseDesk.Wall
         readonly Dictionary<int, int> _deskStack = new Dictionary<int, int>();
         float _beaconPhase;
 
-        sealed class CardFlight { public Transform t; public Vector3 from, mid, to; public float time, duration; public int role; public bool landed; }
+        sealed class CardFlight { public Transform t; public Vector3 from, mid, to; public float time, duration; public int role; public bool landed; public bool hideOnLand; public string taskId; public Renderer r; public bool onDesk; }
+        readonly Dictionary<string, CardFlight> _cardById = new Dictionary<string, CardFlight>();
+        readonly Dictionary<int, int> _trayStack = new Dictionary<int, int>();
+        readonly bool[] _propHidden = new bool[4];
+        readonly bool[] _listening = new bool[4];
+        readonly bool[] _riding = new bool[4];
+        bool _managerHint;
+
+        /// <summary>The carried prop of a running act can be hidden (e.g. on the way UP to collect a card the agent does not hold yet).</summary>
+        public void SetPropVisible(HabitatRole r, bool visible) { _propHidden[(int)r] = !visible; }
+        /// <summary>Truthful per-agent Listening: only while the voice layer says this agent is the one being addressed.</summary>
+        public void SetListening(HabitatRole r, bool on) { if (_listening[(int)r] != on) { _listening[(int)r] = on; _animState[(int)r] = 0; } }
+        public bool IsListening(HabitatRole r) { return _listening[(int)r]; }
+        /// <summary>A ring under the Manager while a free hand points at it (pinch opens the Manager paper).</summary>
+        public void SetManagerHint(bool on) { _managerHint = on; }
+        /// <summary>True while the avatar is a child of the cabin (it rides WITH the cabin, no pose of its own).</summary>
+        public bool IsAttachedToCabin(HabitatRole r) { return _avatar[(int)r] != null && _avatar[(int)r].parent == _cabin; }
+        public Transform Cabin => _cabin;
 
         /// <summary>Visual-only avatar for a role (null when no source mesh was available).</summary>
         public Transform Avatar(HabitatRole r) { return _avatar[(int)r]; }
@@ -394,7 +411,7 @@ namespace MuseDesk.Wall
         /// <summary>Write everything that moves from the stage (pure logic) and the presentation state.</summary>
         public void Apply(HabitatStage stage, float dt, bool selectArmed, int hoveredRole, bool[] away, Color[] statusColors, Color beaconColor, bool beaconPulse)
         {
-            HabitatElevatorMachine e = stage.elevator;
+            IHabitatElevator e = stage.lift;
             Vector3 cp = new Vector3(layout.elevatorX, e.CabinY, layout.elevatorZ);
             if (_cabin.localPosition != cp) _cabin.localPosition = cp;
             for (int f = 0; f < layout.floors.Count; f++)
@@ -412,7 +429,16 @@ namespace MuseDesk.Wall
                 HabitatWalker w = stage.Walker((HabitatRole)r);
                 Transform a = _avatar[r];
                 if (a == null) continue;
-                a.localPosition = w.Position;
+                // A rider is attached to the cabin: it becomes the cabin's child and keeps a fixed local pose, so it cannot
+                // drift against the cabin. The cabin has unit scale and no rotation under the habitat root, so re-parenting
+                // with local values kept changes neither the avatar's size nor where it stands.
+                bool riding = w.State == WalkerState.Riding;
+                if (riding != _riding[r])
+                {
+                    _riding[r] = riding;
+                    a.SetParent(riding ? _cabin : root, false);
+                }
+                a.localPosition = riding ? new Vector3(w.Position.x - cp.x, 0f, w.Position.z - cp.z) : w.Position;
                 a.localRotation = Quaternion.Euler(0f, w.Yaw, 0f);
                 float vis = w.Visibility;
                 Vector3 s = _avatarScale[r] * Mathf.Max(0.001f, vis);
@@ -421,7 +447,7 @@ namespace MuseDesk.Wall
                 MatchStride(r, w);
 
                 HabitatAct act = stage.Running((HabitatRole)r);
-                bool carry = act != null && !w.AtHome && w.State != WalkerState.SoftTransfer;
+                bool carry = act != null && !w.AtHome && w.State != WalkerState.SoftTransfer && !_propHidden[r];
                 if (_prop[r].gameObject.activeSelf != carry) _prop[r].gameObject.SetActive(carry);
                 if (carry)
                 {
@@ -429,17 +455,17 @@ namespace MuseDesk.Wall
                     float inv = 1f / Mathf.Max(1e-5f, a.lossyScale.y / Mathf.Max(1e-5f, root.lossyScale.y));
                     _prop[r].localPosition = new Vector3(0, h * 0.5f, h * 0.22f) * inv;
                     _prop[r].localScale = new Vector3(h * 0.32f, h * 0.24f, 0.004f) * inv;
-                    Tint(_propR[r], act.prop == "warning" ? Amber : act.prop == "blueprint" ? Hex(0x6FB3E0) : Paper);
+                    Tint(_propR[r], act.prop == "warning" ? Amber : act.prop == "blueprint" ? Hex(0x6FB3E0) : act.prop == "receipt" ? Color.Lerp(Lavender, Paper, 0.55f) : Paper);
                 }
 
                 if (statusColors != null && r < statusColors.Length) Tint(_status[r], statusColors[r]);
-                bool ring = selectArmed && r != (int)HabitatRole.Manager || (selectArmed && r == (int)HabitatRole.Manager);
+                bool ring = selectArmed || (_managerHint && r == (int)HabitatRole.Manager);
                 if (_selectRing[r].gameObject.activeSelf != ring) _selectRing[r].gameObject.SetActive(ring);
                 if (ring)
                 {
                     _selectRing[r].localPosition = w.Position + new Vector3(0, 0.002f, 0);
                     float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 4f + r);
-                    Tint(_selectRingR[r], hoveredRole == r ? Color.Lerp(Teal, Color.white, 0.45f) : Teal * pulse);
+                    Tint(_selectRingR[r], !selectArmed ? Lavender : hoveredRole == r ? Color.Lerp(Teal, Color.white, 0.45f) : Teal * pulse);
                 }
                 bool onVisit = away != null && r < away.Length && away[r];
                 if (_visitMarker[r].gameObject.activeSelf != onVisit) _visitMarker[r].gameObject.SetActive(onVisit);
@@ -471,7 +497,15 @@ namespace MuseDesk.Wall
 
         static readonly int S_Thinking = Animator.StringToHash("Thinking"), S_Worried = Animator.StringToHash("Worried"),
             S_Writing = Animator.StringToHash("Writing"), S_Nodding = Animator.StringToHash("Nodding"),
-            S_TurnL = Animator.StringToHash("Turn_Left"), S_TurnR = Animator.StringToHash("Turn_Right");
+            S_TurnL = Animator.StringToHash("Turn_Left"), S_TurnR = Animator.StringToHash("Turn_Right"), S_Listening = Animator.StringToHash("Listening");
+        readonly float[] _worryUntil = new float[4];
+
+        /// <summary>One restrained worried beat for a CONFIRMED failure (task.failed). Desk pose only; never moves the character.</summary>
+        public void Worry(HabitatRole r, float seconds = 2f)
+        {
+            _worryUntil[(int)r] = Time.unscaledTime + seconds;
+            _animState[(int)r] = 0;
+        }
         readonly DeskActivity[] _activity = new DeskActivity[4];
         readonly float[] _oneShotUntil = new float[4];
 
@@ -489,6 +523,8 @@ namespace MuseDesk.Wall
         int DeskClip(int r, HabitatRole role)
         {
             if (Time.unscaledTime < _oneShotUntil[r]) return S_Nodding;
+            if (Time.unscaledTime < _worryUntil[r]) return S_Worried;
+            if (_listening[r]) return S_Listening;
             switch (_activity[r])
             {
                 case DeskActivity.Working:
@@ -546,7 +582,112 @@ namespace MuseDesk.Wall
             float e = u * u * (3f - 2f * u);
             Vector3 a = Vector3.Lerp(c.from, c.mid, e), b = Vector3.Lerp(c.mid, c.to, e);
             c.t.localPosition = Vector3.Lerp(a, b, e);
-            if (u >= 1f) c.landed = true;
+            if (u >= 1f)
+            {
+                c.landed = true;
+                if (c.hideOnLand && c.t.gameObject.activeSelf) c.t.gameObject.SetActive(false);
+            }
+        }
+
+        // ── Living Office: a committed card prints into the Manager's tray, is collected by its owner (who rides up for it),
+        //    carried down and put on the owner's desk. Only ever for canonical, committed task ids. ──
+
+        Vector3 TraySlot(int index)
+        {
+            HabitatSocket ps = layout.Socket("TaskPrinterSocket");
+            return ps.position + new Vector3(0f, 0.043f + 0.0025f * Mathf.Min(index, 8), 0.004f);
+        }
+
+        Vector3 DeskSlot(HabitatRole owner, int index)
+        {
+            HabitatSocket desk = layout.Socket(owner + ".WorkPose");
+            return desk.position + new Vector3(0.03f, 0.068f + 0.0025f * Mathf.Min(index, 6), 0.075f);
+        }
+
+        void Fly(CardFlight c, Vector3 to, float seconds, float lift, bool viaFront, bool hideOnLand)
+        {
+            if (!c.t.gameObject.activeSelf) c.t.gameObject.SetActive(true);
+            c.from = c.t.localPosition; c.to = to;
+            c.mid = new Vector3((c.from.x + to.x) * 0.5f, Mathf.Max(c.from.y, to.y) + lift, viaFront ? layout.size.z + 0.03f : (c.from.z + to.z) * 0.5f);
+            c.time = 0f; c.duration = Mathf.Max(0.05f, seconds); c.landed = false; c.hideOnLand = hideOnLand;
+        }
+
+        /// <summary>The printer prints one card for a committed task: it slides out of the slot onto the tray.</summary>
+        public void PrintToTray(string taskId, HabitatRole owner)
+        {
+            if (string.IsNullOrEmpty(taskId) || _cardById.ContainsKey(taskId)) return;
+            HabitatSocket ps = layout.Socket("TaskPrinterSocket");
+            var r = Box(root, "PlanCard_" + owner + "_" + taskId, ps.position + new Vector3(0, 0.03f, 0.03f), new Vector3(0.035f, 0.002f, 0.025f), Paper);
+            int n;
+            _trayStack.TryGetValue((int)owner, out n);
+            int total = 0;
+            foreach (var kv in _trayStack) total += kv.Value;
+            _trayStack[(int)owner] = n + 1;
+            var c = new CardFlight { t = r.transform, r = r, role = (int)owner, taskId = taskId };
+            _cardById[taskId] = c;
+            _cards.Add(c);
+            Fly(c, TraySlot(total), 0.7f, 0.012f, false, false);
+        }
+
+        /// <summary>The owner stands at the Manager's desk: its tray cards go to its hands (then the carried prop shows them).</summary>
+        public int CardsToAgent(HabitatRole owner, Vector3 agentLocalPos)
+        {
+            int moved = 0;
+            foreach (var kv in _cardById)
+            {
+                CardFlight c = kv.Value;
+                if (c.role != (int)owner || c.onDesk || c.hideOnLand) continue;
+                Fly(c, agentLocalPos + new Vector3(0f, layout.agentHeight * 0.5f, 0.02f), 0.6f, 0.03f, false, true);
+                moved++;
+            }
+            if (moved > 0) _trayStack[(int)owner] = 0;
+            return moved;
+        }
+
+        /// <summary>The owner's cards land on its desk: from its hands when it carried them, else straight from the tray by the
+        /// chute in front of the decks (the fallback when a pick-up trip could not run).</summary>
+        public int CardsToDesk(HabitatRole owner, Vector3 agentLocalPos)
+        {
+            int moved = 0;
+            foreach (var kv in _cardById)
+            {
+                CardFlight c = kv.Value;
+                if (c.role != (int)owner || c.onDesk) continue;
+                int count;
+                _deskStack.TryGetValue((int)owner, out count);
+                _deskStack[(int)owner] = count + 1;
+                bool carried = c.hideOnLand;
+                if (carried) { c.t.localPosition = agentLocalPos + new Vector3(0f, layout.agentHeight * 0.5f, 0.02f); }
+                c.onDesk = true;
+                Fly(c, DeskSlot(owner, count), carried ? 0.5f : 2.2f, carried ? 0.02f : 0.08f, !carried, false);
+                moved++;
+            }
+            if (moved > 0) _trayStack[(int)owner] = 0;
+            return moved;
+        }
+
+        /// <summary>The card's edge shows its REAL task state colour (the app's state palette).</summary>
+        public void SetCardColor(string taskId, Color c)
+        {
+            CardFlight f;
+            if (taskId != null && _cardById.TryGetValue(taskId, out f) && f.r != null) Tint(f.r, Color.Lerp(Paper, c, 0.55f));
+        }
+
+        public bool HasCard(string taskId) { return taskId != null && _cardById.ContainsKey(taskId); }
+        public int CardsInTray(HabitatRole r) { int c; return _trayStack.TryGetValue((int)r, out c) ? c : 0; }
+
+        /// <summary>Remove every printed card (session reset: the board they belonged to is gone).</summary>
+        public void ClearCards()
+        {
+            for (int i = 0; i < _cards.Count; i++) if (_cards[i].t != null) Object.Destroy(_cards[i].t.gameObject);
+            _cards.Clear(); _cardById.Clear(); _trayStack.Clear(); _deskStack.Clear();
+        }
+
+        /// <summary>Habitat-local position of a socket in world space (for things that leave the habitat, like the receipt).</summary>
+        public Vector3 SocketWorld(string socketId, Vector3 localOffset)
+        {
+            HabitatSocket s;
+            return root.TransformPoint((layout.TryGetSocket(socketId, out s) ? s.position : Vector3.zero) + localOffset);
         }
 
         public int CardsOnDesk(HabitatRole r) { int c; return _deskStack.TryGetValue((int)r, out c) ? c : 0; }

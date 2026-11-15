@@ -35,13 +35,47 @@ namespace MuseDesk.Spatial.Wall
     public sealed class WallCommittedTaskDto
     {
         public string client_item_id; public string task_id; public string agent_id; public string state; public int revision; public string title;
+        public string[] depends_on;
+    }
+
+    // ---- plan status (GET .../manager/plans/{id}/status) and retry ----
+
+    [Serializable]
+    public sealed class WallStatusCardDto
+    {
+        public string task_id; public string client_item_id; public string title; public string agent_id; public string state;
+        public int revision; public string[] depends_on; public string blocked_reason; public string[] blocked_by;
+        public string failure; public string result;
+    }
+
+    [Serializable]
+    public sealed class WallSynthesisDto { public string artifact_id; public string task_id; public string mode; public int completed; public int total; }
+
+    [Serializable]
+    public sealed class WallPlanStatusDto
+    {
+        public string plan_id; public string title; public string plan_status; public string provenance; public int total;
+        public WallStatusCardDto[] cards; public bool settled; public WallSynthesisDto synthesis; public string source_mode;
+    }
+
+    [Serializable]
+    public sealed class WallRetryDto { public string task_id; public bool retried; public string state; public int revision; }
+
+    public sealed class WallParsedPlanStatus
+    {
+        public string planId, title, planStatus, provenance, sourceMode;
+        public bool settled;
+        /// <summary>The summary artifact, or null/empty ids when the plan has none yet.</summary>
+        public string synthesisArtifactId, synthesisTaskId, synthesisMode;
+        public int synthesisCompleted, synthesisTotal;
+        public List<PlanCardUpdate> cards = new List<PlanCardUpdate>();
     }
 
     [Serializable]
     public sealed class WallPlanDto
     {
         public string plan_id; public string title; public string objective; public string provenance; public string provenance_note;
-        public string status; public int revision;
+        public string status; public int revision; public string[] assumptions; public string[] risks;
         public WallPlanItemDto[] items; public WallCommittedTaskDto[] committed_tasks;
     }
 
@@ -65,7 +99,8 @@ namespace MuseDesk.Spatial.Wall
 
     public sealed class WallParsedPlan
     {
-        public string planId, title, provenance, provenanceNote, status;
+        public string planId, title, provenance, provenanceNote, status, objective;
+        public string[] assumptions = new string[0], risks = new string[0];
         public int revision;
         public List<ManagerPlanItemView> items = new List<ManagerPlanItemView>();
     }
@@ -90,6 +125,7 @@ namespace MuseDesk.Spatial.Wall
     public sealed class WallTemplatePlan
     {
         public string planId, title, objective, provenance;
+        public string[] assumptions = new string[0], risks = new string[0];
         public int revision;
         public List<ManagerPlanItemView> items = new List<ManagerPlanItemView>();
     }
@@ -239,6 +275,13 @@ namespace MuseDesk.Spatial.Wall
                 objective = objective == null ? "" : objective.Trim(),
                 title = "Plan: " + Clip(objective, 50),
                 provenance = ProvScriptedDemo,
+                // The same words the backend's template plan carries (planner.template_plan).
+                assumptions = new[]
+                {
+                    "The existing repository and workspace are used as they are.",
+                    "Each step is a plain board card owned by one worker; the user approves before any card exists.",
+                },
+                risks = new[] { "Template plan: it does not analyse the objective, so scope and dependencies may need revising." },
             };
             plan.items.Add(new ManagerPlanItemView
             {
@@ -371,7 +414,8 @@ namespace MuseDesk.Spatial.Wall
             var p = new WallParsedPlan
             {
                 planId = d.plan_id, title = d.title, provenance = d.provenance, provenanceNote = d.provenance_note,
-                status = d.status, revision = d.revision,
+                status = d.status, revision = d.revision, objective = d.objective,
+                assumptions = S(d.assumptions), risks = S(d.risks),
             };
             if (d.items != null) for (int i = 0; i < d.items.Length; i++) if (d.items[i] != null) p.items.Add(MapItem(d.items[i]));
             return p;
@@ -446,6 +490,107 @@ namespace MuseDesk.Spatial.Wall
                 return true;
             }
             catch (Exception) { return false; }
+        }
+
+        // ---------------------------------------------------------------- plan status, retry, offline reasons and roll-up
+
+        public static bool TryParsePlanStatus(string json, out WallParsedPlanStatus status)
+        {
+            status = null;
+            if (string.IsNullOrEmpty(json)) return false;
+            try
+            {
+                var d = JsonUtility.FromJson<WallPlanStatusDto>(json);
+                if (d == null || string.IsNullOrEmpty(d.plan_id) || d.cards == null) return false;
+                var s = new WallParsedPlanStatus
+                {
+                    planId = d.plan_id, title = d.title, planStatus = d.plan_status, provenance = d.provenance,
+                    sourceMode = d.source_mode, settled = d.settled,
+                };
+                if (d.synthesis != null && !string.IsNullOrEmpty(d.synthesis.artifact_id))
+                {
+                    s.synthesisArtifactId = d.synthesis.artifact_id; s.synthesisTaskId = d.synthesis.task_id; s.synthesisMode = d.synthesis.mode;
+                    s.synthesisCompleted = d.synthesis.completed; s.synthesisTotal = d.synthesis.total;
+                }
+                for (int i = 0; i < d.cards.Length; i++)
+                {
+                    var c = d.cards[i];
+                    if (c == null || string.IsNullOrEmpty(c.task_id)) continue;
+                    s.cards.Add(new PlanCardUpdate
+                    {
+                        taskId = c.task_id, state = c.state, agentId = c.agent_id, title = c.title, revision = c.revision,
+                        dependsOn = S(c.depends_on),
+                        // A status read is the full truth for the card: an absent reason means there is none.
+                        blockedReason = c.blocked_reason ?? "", blockedBy = S(c.blocked_by), failureReason = c.failure ?? "",
+                        resultSummary = string.IsNullOrEmpty(c.result) ? null : c.result,
+                    });
+                }
+                status = s;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>Retry reply: true when it parsed. <paramref name="retried"/> false means the backend treated it as a repeat (no-op).</summary>
+        public static bool TryParseRetry(string json, out bool retried, out string state, out int revision)
+        {
+            retried = false; state = null; revision = -1;
+            if (string.IsNullOrEmpty(json)) return false;
+            try
+            {
+                var d = JsonUtility.FromJson<WallRetryDto>(json);
+                if (d == null || string.IsNullOrEmpty(d.task_id)) return false;
+                retried = d.retried; state = d.state; revision = d.revision;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        // The offline demo board says the same words the backend does (plan_ops.blocked_info), so a blocked card reads
+        // the same in both modes.
+        public static string BlockedByFailureReason(IList<string> failedTitles, string failedState = "failed")
+        {
+            var sb = new StringBuilder("Blocked: it depends on ");
+            for (int i = 0; i < failedTitles.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('\'').Append(failedTitles[i]).Append("' (").Append(failedState).Append(')'); }
+            return sb.Append(". Retry the failed step to continue.").ToString();
+        }
+
+        public static string BlockedWaitingReason(IList<string> waitingTitles)
+        {
+            if (waitingTitles == null || waitingTitles.Count == 0) return "Waiting to be released.";
+            var sb = new StringBuilder("Waiting for ");
+            for (int i = 0; i < waitingTitles.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('\'').Append(waitingTitles[i]).Append('\''); }
+            return sb.Append(" to finish.").ToString();
+        }
+
+        public const string ScriptedFailureReason = "[SCRIPTED DEMO] Scripted failure for the demonstration. No model was used and nothing was run.";
+        public const string ScriptedRollupLabel = "[SCRIPTED DEMO] No model was used; this is a roll-up of the scripted steps.";
+
+        /// <summary>One step of an offline plan for the roll-up (state and the recorded result text).</summary>
+        public struct RollupStep { public string title, agentId, state, result; }
+
+        /// <summary>The offline counterpart of the backend's deterministic plan roll-up (plan_ops.rollup): built only from the
+        /// recorded step states and results. <paramref name="summary"/> is the artifact's one-line summary.</summary>
+        public static void OfflineRollup(string planTitle, string objective, IList<RollupStep> steps, out string summary, out string body)
+        {
+            int done = 0, failed = 0, blocked = 0, cancelled = 0;
+            for (int i = 0; i < steps.Count; i++)
+            {
+                if (steps[i].state == "completed") done++;
+                else if (steps[i].state == "failed") failed++;
+                else if (steps[i].state == "blocked") blocked++;
+                else if (steps[i].state == "cancelled") cancelled++;
+            }
+            var sb = new StringBuilder();
+            sb.Append("Plan: ").Append(planTitle).Append('\n').Append("Objective: ").Append(objective).Append('\n');
+            sb.Append("Result: ").Append(done).Append(" of ").Append(steps.Count).Append(" steps completed, ").Append(failed).Append(" failed, ")
+              .Append(blocked).Append(" blocked, ").Append(cancelled).Append(" cancelled.\n\nSteps:");
+            for (int i = 0; i < steps.Count; i++)
+                sb.Append('\n').Append(i + 1).Append(". [").Append(steps[i].state).Append("] ").Append(steps[i].title).Append(" (").Append(steps[i].agentId).Append("): ")
+                  .Append(string.IsNullOrEmpty(steps[i].result) ? "No result recorded." : steps[i].result);
+            if (failed > 0 || blocked > 0 || cancelled > 0) sb.Append("\n\nOpen issues: not every step finished. Retry failed steps to continue.");
+            body = sb.ToString();
+            summary = "[SCRIPTED DEMO] Plan summary: " + done + " of " + steps.Count + " steps completed";
         }
 
         // ---------------------------------------------------------------- errors

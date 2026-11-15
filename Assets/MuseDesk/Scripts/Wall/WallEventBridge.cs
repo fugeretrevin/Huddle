@@ -106,6 +106,13 @@ namespace MuseDesk.Wall
         public event Action<HabitatEvent> HabitatEventRaised;
         public event Action<string> BoardTaskCreated;
         public event Action SessionReset;
+        public event Action<PlanCardUpdate> PlanCardReported;
+        public event Action<string, string, string> CompletionArtifactCreated;
+        public event Action<string, int, List<ManagerPrintJob>> PlanCommittedAnnounced;
+        public event Action<string, string> SystemWarning;
+
+        const string PlanCommittedType = "manager.plan_committed";
+        System.Threading.CancellationTokenSource _cts;
 
         const string Tag = "[MuseDesk.Wall] ";
         const int SemanticMemory = 256;
@@ -140,6 +147,88 @@ namespace MuseDesk.Wall
         void OnEnable() { FindRefsOnce(); TryBind(); }
 
         void OnDisable() { Unbind(); }
+
+        void OnDestroy()
+        {
+            try { if (_cts != null) _cts.Cancel(); } catch { }
+            if (_cts != null) _cts.Dispose();
+        }
+
+        // ------------------------------------------------------------------ artifacts (read-only)
+
+        public void FetchArtifactText(string artifactId, Action<string, string> done)
+        {
+            if (done == null) return;
+            IPhase2Gateway gw = phase2 != null ? phase2.Gateway : null;
+            if (gw == null || string.IsNullOrEmpty(artifactId)) { done(null, null); return; }
+            _ = FetchArtifactAsync(gw, artifactId, done);
+        }
+
+        async System.Threading.Tasks.Task FetchArtifactAsync(IPhase2Gateway gw, string artifactId, Action<string, string> done)
+        {
+            string title = null, content = null;
+            try
+            {
+                if (_cts == null) _cts = new System.Threading.CancellationTokenSource();
+                ArtifactPageResponse page = await gw.GetArtifactPageAsync(artifactId, 0, 1, _cts.Token);
+                if (page != null && page.Pages != null && page.Pages.Count > 0 && page.Pages[0] != null)
+                {
+                    title = page.Pages[0].Title;
+                    content = page.Pages[0].Content;
+                }
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Debug.LogWarning(Tag + "artifact " + artifactId + " could not be read: " + ex.Message); }
+            if (this == null) return;
+            try { done(title, content); } catch (Exception ex) { Debug.LogError(Tag + "listener error: " + ex.Message); }
+        }
+
+        // ------------------------------------------------------------------ plan cards (reasons the events carry)
+
+        void ReportCard(EventEnvelopeV2 e)
+        {
+            if (PlanCardReported == null || string.IsNullOrEmpty(e.TaskId) || _p2 == null) return;
+            TaskCardV2 c = _p2.GetTask(e.TaskId);
+            if (c == null) return;
+            var u = new PlanCardUpdate { taskId = c.TaskId, state = c.TaskState, revision = c.Revision, agentId = c.AgentId, title = c.Title };
+            if (c.Dependencies != null) u.dependsOn = c.Dependencies.ToArray();
+            string blocked = e.PayloadString("blocked_reason");
+            if (blocked != null)
+            {
+                u.blockedReason = blocked;
+                var by = e.Payload != null ? e.Payload["blocked_by"] as Newtonsoft.Json.Linq.JArray : null;
+                var ids = new List<string>();
+                if (by != null) foreach (var tok in by) { string s = (string)tok; if (!string.IsNullOrEmpty(s)) ids.Add(s); }
+                u.blockedBy = ids.ToArray();
+            }
+            string summary = e.PayloadString("result_summary");
+            if (e.Type == Phase2EventTypes.TaskFailed) u.failureReason = summary ?? "";
+            else if (e.Type == Phase2EventTypes.TaskCompleted && summary != null) u.resultSummary = summary;
+            Fire(PlanCardReported, u);
+        }
+
+        void AnnouncePlanCommitted(EventEnvelopeV2 e)
+        {
+            if (PlanCommittedAnnounced == null || e.Payload == null) return;
+            string planId = e.PayloadString("plan_id");
+            var arr = e.Payload["tasks"] as Newtonsoft.Json.Linq.JArray;
+            if (string.IsNullOrEmpty(planId) || arr == null) return;
+            var jobs = new List<ManagerPrintJob>();
+            foreach (var tok in arr)
+            {
+                var o = tok as Newtonsoft.Json.Linq.JObject;
+                if (o == null) continue;
+                string taskId = (string)o["task_id"];
+                if (string.IsNullOrEmpty(taskId)) continue;                 // never invent an id
+                TaskCardV2 c = _p2 != null ? _p2.GetTask(taskId) : null;
+                jobs.Add(new ManagerPrintJob { taskId = taskId, clientItemId = (string)o["client_item_id"], agentId = (string)o["agent_id"], title = c != null ? c.Title : null });
+            }
+            int rev;
+            e.TryPayloadInt("revision", out rev);
+            if (jobs.Count == 0) return;
+            var h = PlanCommittedAnnounced;
+            try { h(planId, rev, jobs); } catch (Exception ex) { Debug.LogError(Tag + "listener error: " + ex.Message); }
+        }
 
         void FindRefsOnce()
         {
@@ -215,11 +304,36 @@ namespace MuseDesk.Wall
         {
             if (e == null) return;
             string id = !string.IsNullOrEmpty(e.EventId) ? e.EventId : "v2-" + e.Seq;
+            if (e.Type != null && e.Type.StartsWith("task.")) ReportCard(e);
             switch (e.Type)
             {
                 case Phase2EventTypes.SessionReset:
                     RaiseReset();
                     break;
+                case PlanCommittedType:
+                    AnnouncePlanCommitted(e);
+                    break;
+                case Phase2EventTypes.ArtifactCreated:
+                {
+                    string kind = e.PayloadString("kind", e.PayloadString("artifact_type"));
+                    string artifactId = e.ArtifactId ?? e.PayloadString("artifact_id");
+                    string taskId = e.TaskId ?? e.PayloadString("task_id");
+                    var h = CompletionArtifactCreated;
+                    if (h != null && kind == ArtifactKinds.Completion && !string.IsNullOrEmpty(artifactId))
+                    {
+                        try { h(artifactId, taskId, e.PayloadString("summary", "")); } catch (Exception ex) { Debug.LogError(Tag + "listener error: " + ex.Message); }
+                    }
+                    break;
+                }
+                case Phase2EventTypes.SystemWarning:
+                {
+                    var h = SystemWarning;
+                    if (h != null)
+                    {
+                        try { h(e.PayloadString("code", ""), e.PayloadString("message", "")); } catch (Exception ex) { Debug.LogError(Tag + "listener error: " + ex.Message); }
+                    }
+                    break;
+                }
                 case Phase2EventTypes.TaskCreated:
                     if (!string.IsNullOrEmpty(e.TaskId))
                     {

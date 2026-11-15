@@ -5,7 +5,14 @@ using UnityEngine;
 namespace MuseDesk.Spatial.Wall
 {
     /// <summary>A real backend fact the habitat may illustrate. Built by the runtime from reducer events only.</summary>
-    public enum HabitatEventKind { TaskAssigned = 0, TaskStarted = 1, TaskCompleted = 2, TaskFailed = 3, Handoff = 4, ApprovalRequested = 5, Reset = 6 }
+    public enum HabitatEventKind
+    {
+        TaskAssigned = 0, TaskStarted = 1, TaskCompleted = 2, TaskFailed = 3, Handoff = 4, ApprovalRequested = 5, Reset = 6,
+        /// <summary>A COMMITTED plan card for this agent is in the Manager's printer tray (canonical task id).</summary>
+        CardPrinted = 7,
+        /// <summary>The backend created the plan's summary artifact: the Manager brings it down.</summary>
+        SynthesisReady = 8,
+    }
 
     public struct HabitatEvent
     {
@@ -24,7 +31,7 @@ namespace MuseDesk.Spatial.Wall
         { return new HabitatEvent { eventId = id, kind = HabitatEventKind.Handoff, agent = from, target = to, hasTarget = true, taskId = taskId }; }
     }
 
-    public enum HabitatActKind { CarryToManager = 0, CarryToAgent = 1, Dispatch = 2, Warning = 3 }
+    public enum HabitatActKind { CarryToManager = 0, CarryToAgent = 1, Dispatch = 2, Warning = 3, CollectCard = 4, DeliverReceipt = 5 }
 
     /// <summary>One short journey that illustrates an event. Cosmetic: dropping it never loses information,
     /// because status lights and cards always show the current authoritative state.</summary>
@@ -54,6 +61,11 @@ namespace MuseDesk.Spatial.Wall
         public float handoffDwell = 1.6f;
         public float managerDwell = 2.0f;
         public float dispatchDwell = 1.2f;
+        public float collectDwell = 1.4f;
+        public float receiptDwell = 1.8f;
+        // Card pick-ups and the receipt wait for the ride lane behind each other: they may start much later than an
+        // ordinary illustration. If one is dropped anyway the view delivers the card by the chute instead.
+        public float deliveryStartDeadline = 240f;
         public int dedupeMemory = 512;
     }
 
@@ -72,7 +84,13 @@ namespace MuseDesk.Spatial.Wall
     {
         public readonly HabitatLayout layout;
         public readonly HabitatReservations reservations;
+        /// <summary>The original one-rider machine. Null when the stage runs the dispatcher (<see cref="dispatch"/>).</summary>
         public readonly HabitatElevatorMachine elevator;
+        /// <summary>The A7 dispatcher behind the walkers. Null when the stage runs the original machine.</summary>
+        public readonly DispatchElevator dispatch;
+        /// <summary>Whichever of the two runs the cabin.</summary>
+        public readonly IHabitatElevator lift;
+        int _onDeck = -1;
         readonly HabitatWalker[] _walkers = new HabitatWalker[4];
         readonly List<HabitatAct>[] _queues = new List<HabitatAct>[4];
         readonly HabitatAct[] _running = new HabitatAct[4];
@@ -89,28 +107,58 @@ namespace MuseDesk.Spatial.Wall
         /// <summary>Raised when an act starts (the runtime shows the prop) and when it ends.</summary>
         public event Action<HabitatAct> ActStarted;
         public event Action<HabitatAct> ActEnded;
+        /// <summary>The actor reached the act's target node (it dwells there, then walks home).</summary>
+        public event Action<HabitatAct> ActArrived;
+        /// <summary>An act was dropped before it started (stale, no route, overflow): the view must not wait for it.</summary>
+        public event Action<HabitatAct, string> ActDropped;
 
-        public HabitatStage(HabitatLayout layout)
+        public HabitatStage(HabitatLayout layout) : this(layout, false) { }
+
+        public HabitatStage(HabitatLayout layout, bool useDispatcher)
         {
             this.layout = layout;
             reservations = new HabitatReservations(layout);
             var heights = new float[layout.floors.Count];
             for (int i = 0; i < heights.Length; i++) heights[i] = layout.floors[i].floorY;
-            elevator = new HabitatElevatorMachine(heights, 0);
+            if (useDispatcher)
+            {
+                dispatch = new DispatchElevator(layout, 0);
+                dispatch.approachGate = HoldsLane;
+                lift = dispatch;
+            }
+            else
+            {
+                elevator = new HabitatElevatorMachine(heights, 0);
+                lift = elevator;
+            }
             for (int r = 0; r < 4; r++)
             {
                 var role = (HabitatRole)r;
-                _walkers[r] = new HabitatWalker(role.ToString().ToLowerInvariant(), role, layout, reservations, elevator);
+                _walkers[r] = new HabitatWalker(role.ToString().ToLowerInvariant(), role, layout, reservations, lift);
                 _queues[r] = new List<HabitatAct>();
                 int idx = r;
                 _walkers[r].ReturnedHome += () => OnReturnedHome(idx);
+                _walkers[r].ArrivedAt += node => OnArrived(idx);
             }
         }
 
         public HabitatWalker Walker(HabitatRole r) { return _walkers[(int)r]; }
         public HabitatAct Running(HabitatRole r) { return _running[(int)r]; }
         public int Pending(HabitatRole r) { return _queues[(int)r].Count; }
+        /// <summary>True while an act of this kind is running or waiting for this role.</summary>
+        public bool HasAct(HabitatRole r, HabitatActKind k)
+        {
+            if (_running[(int)r] != null && _running[(int)r].kind == k) return true;
+            List<HabitatAct> q = _queues[(int)r];
+            for (int i = 0; i < q.Count; i++) if (q[i].kind == k) return true;
+            return false;
+        }
         public bool TravelLocked => _travelLock >= 0;
+        /// <summary>The role that holds the ride lane (-1: free) and the one standing by at its aisle for it (-1: nobody).</summary>
+        public int LaneHolder => _travelLock;
+        public int OnDeck => _onDeck;
+
+        bool HoldsLane(string agent) { return _travelLock >= 0 && _walkers[_travelLock].agent == agent; }
 
         /// <summary>Take a real event. False when it was a duplicate or illustrates nothing.</summary>
         public bool Accept(HabitatEvent e, float now)
@@ -153,6 +201,16 @@ namespace MuseDesk.Spatial.Wall
                     if (e.agent == HabitatRole.Manager) return null;
                     a.kind = HabitatActKind.Dispatch; a.target = e.agent; a.targetNode = HabitatLayout.DispatchNode; a.dwell = settings.dispatchDwell; a.prop = "document";
                     return a;
+                case HabitatEventKind.CardPrinted:
+                    if (e.agent == HabitatRole.Manager) return null;             // the Manager's own cards stay in the tray
+                    a.kind = HabitatActKind.CollectCard; a.target = HabitatRole.Manager; a.targetNode = HabitatLayout.HandoffAtManager; a.dwell = settings.collectDwell; a.prop = "card";
+                    a.deadline = now + settings.deliveryStartDeadline;
+                    return a;
+                case HabitatEventKind.SynthesisReady:
+                    if (e.agent != HabitatRole.Manager) return null;
+                    a.kind = HabitatActKind.DeliverReceipt; a.target = HabitatRole.Manager; a.targetNode = HabitatLayout.DispatchNode; a.dwell = settings.receiptDwell; a.prop = "receipt";
+                    a.deadline = now + settings.deliveryStartDeadline;
+                    return a;
                 default:
                     return null;   // assigned / started: shown by the status light and the work animation, not a trip
             }
@@ -167,12 +225,16 @@ namespace MuseDesk.Spatial.Wall
             while (q.Count > settings.maxPendingPerAgent) { Drop(q[0], "too many events: older one skipped"); q.RemoveAt(0); }
         }
 
-        void Drop(HabitatAct a, string why) { Dropped++; LastDropReason = why + " (" + a.kind + " " + a.actor + ")"; }
+        void Drop(HabitatAct a, string why)
+        {
+            Dropped++; LastDropReason = why + " (" + a.kind + " " + a.actor + ")";
+            var h = ActDropped; if (h != null) h(a, why);
+        }
 
         public void Tick(float dt, float now)
         {
             _now = now;
-            elevator.Tick(dt);
+            lift.Tick(dt);
             for (int r = 0; r < 4; r++) _walkers[r].Tick(dt);
             for (int r = 0; r < 4; r++) TryStart(r);
         }
@@ -188,20 +250,58 @@ namespace MuseDesk.Spatial.Wall
             HabitatAct a = q[0];
             bool ride;
             if (!w.CanRoute(a.targetNode, out ride)) { Drop(a, "no route"); q.RemoveAt(0); return; }
-            if (ride && _travelLock >= 0 && _travelLock != r) return;           // wait for the elevator lane
+            bool onDeck = false;
+            if (dispatch == null)
+            {
+                if (ride && _travelLock >= 0 && _travelLock != r) return;       // wait for the elevator lane
+            }
+            else if (ride)
+            {
+                // Dispatcher: the lane is handed out first come, first served. While it is busy, the next rider in line
+                // may stand by at its aisle (off the corridor); it is not let onto the corridor until the lane is its own.
+                if (LaneNext() != r) return;
+                if (_travelLock >= 0 && _travelLock != r)
+                {
+                    if (_onDeck >= 0) return;
+                    onDeck = true;
+                }
+            }
             q.RemoveAt(0);
             a.needsRide = ride;
             if (!w.GoTo(a.targetNode, a.dwell, true)) { Drop(a, "no route"); return; }
-            if (ride) _travelLock = r;
+            if (onDeck) _onDeck = r;
+            else if (ride) _travelLock = r;
             a.started = true;
             _running[r] = a;
             var h = ActStarted; if (h != null) h(a);
         }
 
+        /// <summary>The waiting rider whose head-of-queue ride act is the oldest (ties: lower role), or -1.</summary>
+        int LaneNext()
+        {
+            int best = -1; float t = float.MaxValue;
+            for (int i = 0; i < 4; i++)
+            {
+                if (_running[i] != null || !_walkers[i].AtHome || _queues[i].Count == 0) continue;
+                bool ride;
+                if (!_walkers[i].CanRoute(_queues[i][0].targetNode, out ride) || !ride) continue;
+                if (_queues[i][0].enqueuedAt < t) { t = _queues[i][0].enqueuedAt; best = i; }
+            }
+            return best;
+        }
+
+        void OnArrived(int r)
+        {
+            HabitatAct a = _running[r];
+            if (a == null) return;
+            var h = ActArrived; if (h != null) h(a);
+        }
+
         void OnReturnedHome(int r)
         {
             HabitatAct a = _running[r];
-            if (_travelLock == r) _travelLock = -1;
+            if (_onDeck == r) _onDeck = -1;
+            if (_travelLock == r) { _travelLock = _onDeck; _onDeck = -1; }
             if (a == null) return;
             _running[r] = null;
             Completed++;
@@ -211,7 +311,8 @@ namespace MuseDesk.Spatial.Wall
         /// <summary>Everyone home now, queues cleared, elevator stopped at a landing. Task state is untouched.</summary>
         public void ResetAll()
         {
-            elevator.Interrupt();
+            lift.Interrupt();
+            _onDeck = -1;
             for (int r = 0; r < 4; r++)
             {
                 _queues[r].Clear();

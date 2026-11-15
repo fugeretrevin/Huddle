@@ -40,7 +40,13 @@ namespace MuseDesk.Wall
         // Older scenes serialized shorter timeouts; never wait less than the backend does.
         const int MinSideTimeout = 35, MinPlanTimeout = 70;
 
-        sealed class OfflineCard { public string taskId, agentId, title, objective; }
+        sealed class OfflineCard { public string taskId, agentId, title, objective, planId, result; }
+        string _failNextAgent;
+
+        /// <summary>SCRIPTED DEMO ONLY: the next offline plan card worked by <paramref name="agentId"/> ends FAILED with a labelled
+        /// scripted reason instead of a deliverable, so the blocked/Retry path can be shown without a backend. One shot.
+        /// Does nothing in a live session (the backend decides what fails there).</summary>
+        public void ScriptFailNextOfflineCard(string agentId) { _failNextAgent = IsLive ? null : agentId; }
         readonly List<OfflineCard> _offlineCards = new List<OfflineCard>();
         OfflineCard _working;
         float _workingUntil;
@@ -52,6 +58,9 @@ namespace MuseDesk.Wall
             public bool committing;
             public string commitKey;
             public ManagerCommitResult lastResult;
+            public bool synthesized;
+            public int summaryCount;
+            public string summaryArtifactId, summaryAnchor;
         }
 
         readonly Dictionary<string, OfflinePlan> _offline = new Dictionary<string, OfflinePlan>();
@@ -86,11 +95,28 @@ namespace MuseDesk.Wall
             {
                 if (demo.PlanCardState(_working.taskId) != TaskStates.Running) { _working = null; return; }   // paused or reset
                 if (Time.unscaledTime < _workingUntil) return;
+                if (_failNextAgent != null && _failNextAgent == _working.agentId)
+                {
+                    _failNextAgent = null;
+                    if (demo.TryFailPlanCard(_working.taskId, WallOfflineLogic.ScriptedFailureReason,
+                                             failedTitle => WallOfflineLogic.BlockedByFailureReason(new List<string> { failedTitle })))
+                    {
+                        _working.result = WallOfflineLogic.ScriptedFailureReason;
+                        Debug.Log(Tag + "offline plan card " + _working.taskId + " failed (SCRIPTED DEMO, scripted failure)");
+                    }
+                    OfflineSynthesize(demo, _working.planId);
+                    _working = null;
+                    return;
+                }
                 string kind, summary, pageTitle, body;
                 WallOfflineLogic.ScriptedDeliverable(_working.agentId, _working.title, _working.objective,
                                                      out kind, out summary, out pageTitle, out body);
                 if (demo.TryCompletePlanCard(_working.taskId, kind, summary, pageTitle, body))
+                {
+                    _working.result = summary;
                     Debug.Log(Tag + "offline plan card " + _working.taskId + " completed (SCRIPTED DEMO)");
+                }
+                OfflineSynthesize(demo, _working.planId);
                 _working = null;
                 return;
             }
@@ -107,6 +133,83 @@ namespace MuseDesk.Wall
                 Debug.Log(Tag + "offline plan card " + c.taskId + " started by " + c.agentId);
                 return;
             }
+        }
+
+        /// <summary>
+        /// Offline counterpart of the backend's plan synthesis: once every card of an offline plan has finished (or is
+        /// blocked behind a failure), publish ONE labelled roll-up of the recorded step results as a completion artifact.
+        /// A retry makes the plan unfinished again, so a later settle publishes a new one.
+        /// </summary>
+        void OfflineSynthesize(Phase2DemoGateway demo, string planId)
+        {
+            OfflinePlan op;
+            if (demo == null || string.IsNullOrEmpty(planId) || !_offline.TryGetValue(planId, out op) || op.synthesized) return;
+            var steps = new List<WallOfflineLogic.RollupStep>();
+            string anchor = null, firstCard = null;
+            for (int i = 0; i < _offlineCards.Count; i++)
+            {
+                OfflineCard c = _offlineCards[i];
+                if (c.planId != planId) continue;
+                TaskCardV2 card = demo.PlanCardSnapshot(c.taskId);
+                if (card == null) return;                                   // the board was reset
+                string st = card.TaskState;
+                bool terminal = st == TaskStates.Completed || st == TaskStates.Failed || st == TaskStates.Cancelled;
+                if (!terminal && !(st == TaskStates.Blocked && OfflineRootFailures(demo, card).Count > 0)) return;   // not settled
+                if (firstCard == null) firstCard = c.taskId;
+                if (st == TaskStates.Completed) anchor = c.taskId;
+                steps.Add(new WallOfflineLogic.RollupStep { title = c.title, agentId = c.agentId, state = st,
+                    result = st == TaskStates.Blocked ? OfflineBlockedReason(demo, card, out _) : c.result });
+            }
+            if (steps.Count == 0) return;
+            string summary, body;
+            WallOfflineLogic.OfflineRollup(op.plan.title, op.plan.objective, steps, out summary, out body);
+            op.summaryCount++;
+            string id = "art-demo-plansum-" + planId + "-" + op.summaryCount;
+            if (demo.TryPublishPlanSummary(anchor ?? firstCard, id, summary, "Plan summary (" + WallOfflineLogic.ScriptedRollupLabel + ")",
+                                           WallOfflineLogic.ScriptedRollupLabel + "\n\n" + body))
+            {
+                op.synthesized = true;
+                op.summaryArtifactId = id;
+                op.summaryAnchor = anchor ?? firstCard;
+                Debug.Log(Tag + "offline plan " + planId + " summary published (SCRIPTED DEMO roll-up)");
+            }
+        }
+
+        /// <summary>Failed or cancelled cards that keep <paramref name="card"/> from ever running (transitive), from the demo board.</summary>
+        static List<TaskCardV2> OfflineRootFailures(Phase2DemoGateway demo, TaskCardV2 card, HashSet<string> seen = null)
+        {
+            var roots = new List<TaskCardV2>();
+            if (seen == null) seen = new HashSet<string>();
+            foreach (string d in card.Dependencies ?? new List<string>())
+            {
+                if (!seen.Add(d)) continue;
+                TaskCardV2 dep = demo.PlanCardSnapshot(d);
+                if (dep == null) continue;
+                if (dep.TaskState == TaskStates.Failed || dep.TaskState == TaskStates.Cancelled) roots.Add(dep);
+                else if (dep.TaskState != TaskStates.Completed) roots.AddRange(OfflineRootFailures(demo, dep, seen));
+            }
+            return roots;
+        }
+
+        /// <summary>The same words the backend uses for a blocked card (plan_ops.blocked_info), from the demo board's own state.</summary>
+        static string OfflineBlockedReason(Phase2DemoGateway demo, TaskCardV2 card, out string[] blockedBy)
+        {
+            var roots = OfflineRootFailures(demo, card);
+            if (roots.Count > 0)
+            {
+                var titles = new List<string>(); var ids = new List<string>();
+                for (int i = 0; i < roots.Count; i++) { titles.Add(roots[i].Title); ids.Add(roots[i].TaskId); }
+                blockedBy = ids.ToArray();
+                return WallOfflineLogic.BlockedByFailureReason(titles, roots[0].TaskState);
+            }
+            blockedBy = new string[0];
+            var waiting = new List<string>();
+            foreach (string d in card.Dependencies ?? new List<string>())
+            {
+                TaskCardV2 dep = demo.PlanCardSnapshot(d);
+                if (dep == null || dep.TaskState != TaskStates.Completed) waiting.Add(dep != null ? dep.Title : d);
+            }
+            return WallOfflineLogic.BlockedWaitingReason(waiting);
         }
 
         void OnDestroy()
@@ -272,14 +375,20 @@ namespace MuseDesk.Wall
                         var titles = new Dictionary<string, string>();
                         for (int i = 0; i < p.items.Count; i++) titles[p.items[i].clientItemId] = p.items[i].title;
                         _liveTitles[p.planId] = titles;
-                        var r = new ManagerPlanResult { ok = true, planId = p.planId, revision = p.revision, title = p.title, provenance = p.provenance };
-                        r.items = p.items;
-                        done(r);
+                        done(PlanOk(p));
                         return;
                     }
                     var err = WallOfflineLogic.ParseError(status, resp);
                     done(PlanFail(err.code, WallOfflineLogic.FriendlyMessage(err)));
                 });
+        }
+
+        static ManagerPlanResult PlanOk(WallParsedPlan p)
+        {
+            var r = new ManagerPlanResult { ok = true, planId = p.planId, revision = p.revision, title = p.title, provenance = p.provenance,
+                                            objective = p.objective, assumptions = p.assumptions, risks = p.risks };
+            r.items = p.items;
+            return r;
         }
 
         static ManagerPlanResult PlanFail(string code, string message)
@@ -293,9 +402,169 @@ namespace MuseDesk.Wall
             var plan = WallOfflineLogic.BuildTemplatePlan(objective, _planCounter);
             _offline[plan.planId] = new OfflinePlan { plan = plan };
             Debug.Log(Tag + "offline template plan " + plan.planId + " (SCRIPTED_DEMO, " + plan.items.Count + " items)");
-            var r = new ManagerPlanResult { ok = true, planId = plan.planId, revision = plan.revision, title = plan.title, provenance = plan.provenance };
+            return OfflineResult(plan);
+        }
+
+        static ManagerPlanResult OfflineResult(WallTemplatePlan plan)
+        {
+            var r = new ManagerPlanResult { ok = true, planId = plan.planId, revision = plan.revision, title = plan.title, provenance = plan.provenance,
+                                            objective = plan.objective, assumptions = plan.assumptions, risks = plan.risks };
             for (int i = 0; i < plan.items.Count; i++) r.items.Add(plan.items[i]);
             return r;
+        }
+
+        // ------------------------------------------------------------------ manager: revise (an open plan; creates nothing)
+
+        public void RevisePlan(string planId, int revision, List<ManagerPlanItemView> keptItems, string idempotencyKey, Action<ManagerPlanResult> done)
+        {
+            if (done == null) return;
+            if (keptItems == null || keptItems.Count == 0) { done(PlanFail("PLAN_INVALID", "A plan needs at least one step")); return; }
+            OfflinePlan op;
+            if (!string.IsNullOrEmpty(planId) && _offline.TryGetValue(planId, out op))
+            {
+                if (op.status != "proposed") { done(PlanFail(op.status == "committed" ? "PLAN_ALREADY_COMMITTED" : "PLAN_NOT_OPEN", "That plan is no longer open")); return; }
+                if (revision != op.plan.revision) { done(PlanFail("REVISION_CONFLICT", "The plan changed (it is now revision " + op.plan.revision + "). Ask again.")); return; }
+                var ids = new List<string>();
+                for (int i = 0; i < keptItems.Count; i++) ids.Add(keptItems[i].clientItemId);
+                for (int i = 0; i < keptItems.Count; i++)
+                    for (int d = 0; d < keptItems[i].dependsOn.Length; d++)
+                        if (!ids.Contains(keptItems[i].dependsOn[d])) { done(PlanFail("PLAN_INVALID", "\"" + keptItems[i].title + "\" depends on a step that was removed")); return; }
+                op.plan.items.Clear();
+                op.plan.items.AddRange(keptItems);
+                op.plan.revision++;
+                Debug.Log(Tag + "offline plan " + planId + " revised to r" + op.plan.revision + " (" + keptItems.Count + " items)");
+                done(OfflineResult(op.plan));
+                return;
+            }
+            if (!IsLive) { done(PlanFail("PLAN_NOT_OPEN", "That plan is no longer available")); return; }
+
+            var items = new JArray();
+            for (int i = 0; i < keptItems.Count; i++)
+            {
+                ManagerPlanItemView it = keptItems[i];
+                var o = new JObject
+                {
+                    ["client_item_id"] = it.clientItemId, ["title"] = it.title, ["kind"] = it.kind, ["proposed_agent"] = it.proposedAgent,
+                    ["depends_on"] = JArray.FromObject(it.dependsOn ?? new string[0]),
+                    ["acceptance_criteria"] = JArray.FromObject(it.acceptanceCriteria ?? new string[0]),
+                };
+                if (!string.IsNullOrEmpty(it.requiredPermission)) o["required_permission"] = it.requiredPermission;
+                items.Add(o);
+            }
+            var body = new JObject { ["revision"] = revision, ["items"] = items, ["idempotency_key"] = Key(idempotencyKey, "mgr-revise-", planId + "-r" + revision) };
+            Send(UnityWebRequest.kHttpVerbPOST, "/v2/sessions/" + Sid + "/manager/plans/" + Uri.EscapeDataString(planId) + "/revise",
+                body.ToString(Newtonsoft.Json.Formatting.None), planTimeoutSeconds, (status, resp, net) =>
+                {
+                    if (net != null) { done(PlanFail("UNREACHABLE", IsTimeout(net) ? "No answer in time. The plan is unchanged" : WallOfflineLogic.UnreachableMessage)); return; }
+                    if (status >= 200 && status < 300)
+                    {
+                        WallParsedPlan p;
+                        if (!WallOfflineLogic.TryParsePlan(resp, out p)) { done(PlanFail("BAD_REPLY", "The backend sent a plan this app could not read")); return; }
+                        var titles = new Dictionary<string, string>();
+                        for (int i = 0; i < p.items.Count; i++) titles[p.items[i].clientItemId] = p.items[i].title;
+                        _liveTitles[p.planId] = titles;
+                        done(PlanOk(p));
+                        return;
+                    }
+                    var err = WallOfflineLogic.ParseError(status, resp);
+                    done(PlanFail(err.code, WallOfflineLogic.FriendlyMessage(err)));
+                });
+        }
+
+        // ------------------------------------------------------------------ manager: retry a failed card
+
+        string OfflinePlanOf(string taskId)
+        {
+            for (int i = 0; i < _offlineCards.Count; i++) if (_offlineCards[i].taskId == taskId) return _offlineCards[i].planId;
+            return null;
+        }
+
+        public void RetryPlanCard(string planId, string taskId, string idempotencyKey, Action<PlanRetryResult> done)
+        {
+            if (done == null) return;
+            FindRefsOnce();
+            string offlinePlan = OfflinePlanOf(taskId);
+            if (offlinePlan != null && !IsLive)
+            {
+                Phase2DemoGateway demo = phase2 != null ? phase2.DemoGateway : null;
+                string state; int rev;
+                if (demo == null) { done(new PlanRetryResult { ok = false, definitive = true, code = "BOARD_NOT_READY", message = "The task board is not ready" }); return; }
+                bool retried = demo.TryRetryPlanCard(taskId, out state, out rev);
+                if (!retried && state != TaskStates.Queued && state != TaskStates.Running && state != TaskStates.Completed)
+                {
+                    done(new PlanRetryResult { ok = false, definitive = true, code = state == null ? "NOT_FOUND" : "NOT_RETRYABLE", state = state, revision = rev,
+                                               message = state == null ? "That card is gone" : "Only a failed card can be retried (it is " + state + ")" });
+                    return;
+                }
+                OfflinePlan op;
+                if (retried && _offline.TryGetValue(offlinePlan, out op)) op.synthesized = false;     // unfinished again: the old summary is stale
+                Debug.Log(Tag + "offline plan card " + taskId + " retry: retried=" + retried + " state=" + state);
+                done(new PlanRetryResult { ok = true, definitive = true, retried = retried, state = state, revision = rev });
+                return;
+            }
+            if (!IsLive) { done(new PlanRetryResult { ok = false, definitive = true, code = "NOT_FOUND", message = "That plan is no longer available" }); return; }
+
+            var body = new JObject { ["idempotency_key"] = Key(idempotencyKey, "mgr-retry-", taskId) };
+            string path = "/v2/sessions/" + Sid + "/manager/plans/" + Uri.EscapeDataString(planId ?? "") + "/tasks/" + Uri.EscapeDataString(taskId ?? "") + "/retry";
+            Send(UnityWebRequest.kHttpVerbPOST, path, body.ToString(Newtonsoft.Json.Formatting.None), planTimeoutSeconds, (status, resp, net) =>
+            {
+                if (net != null) { done(new PlanRetryResult { ok = false, definitive = false, code = "UNREACHABLE", message = IsTimeout(net) ? "No answer in time. Press Retry again" : WallOfflineLogic.UnreachableMessage }); return; }
+                if (status >= 200 && status < 300)
+                {
+                    bool retried; string state; int rev;
+                    if (!WallOfflineLogic.TryParseRetry(resp, out retried, out state, out rev))
+                    { done(new PlanRetryResult { ok = false, definitive = true, code = "BAD_REPLY", message = "The backend sent a reply this app could not read" }); return; }
+                    done(new PlanRetryResult { ok = true, definitive = true, retried = retried, state = state, revision = rev });
+                    return;
+                }
+                var err = WallOfflineLogic.ParseError(status, resp);
+                done(new PlanRetryResult { ok = false, definitive = true, code = err.code, message = WallOfflineLogic.FriendlyMessage(err) });
+            });
+        }
+
+        // ------------------------------------------------------------------ manager: plan status (read-only)
+
+        public void GetPlanStatus(string planId, Action<WallParsedPlanStatus> done)
+        {
+            if (done == null) return;
+            FindRefsOnce();
+            OfflinePlan op;
+            if (!string.IsNullOrEmpty(planId) && _offline.TryGetValue(planId, out op))
+            {
+                done(IsLive ? null : OfflineStatus(planId, op));
+                return;
+            }
+            if (!IsLive || string.IsNullOrEmpty(planId)) { done(null); return; }
+            Send(UnityWebRequest.kHttpVerbGET, "/v2/sessions/" + Sid + "/manager/plans/" + Uri.EscapeDataString(planId) + "/status", null, sideTimeoutSeconds,
+                (status, resp, net) =>
+                {
+                    WallParsedPlanStatus s;
+                    if (net == null && status >= 200 && status < 300 && WallOfflineLogic.TryParsePlanStatus(resp, out s)) done(s);
+                    else done(null);
+                });
+        }
+
+        /// <summary>The offline demo board's own picture of an offline plan, in the backend's status shape and words.</summary>
+        WallParsedPlanStatus OfflineStatus(string planId, OfflinePlan op)
+        {
+            Phase2DemoGateway demo = phase2 != null ? phase2.DemoGateway : null;
+            if (demo == null) return null;
+            var s = new WallParsedPlanStatus { planId = planId, title = op.plan.title, planStatus = op.status, provenance = op.plan.provenance, sourceMode = "demo", settled = op.synthesized };
+            if (op.synthesized) { s.synthesisArtifactId = op.summaryArtifactId; s.synthesisTaskId = op.summaryAnchor; s.synthesisMode = "scripted_demo"; }
+            for (int i = 0; i < _offlineCards.Count; i++)
+            {
+                OfflineCard c = _offlineCards[i];
+                if (c.planId != planId) continue;
+                TaskCardV2 card = demo.PlanCardSnapshot(c.taskId);
+                if (card == null) continue;
+                var u = new PlanCardUpdate { taskId = card.TaskId, state = card.TaskState, revision = card.Revision, agentId = card.AgentId, title = card.Title,
+                                             dependsOn = (card.Dependencies ?? new List<string>()).ToArray(), blockedReason = "", blockedBy = new string[0], failureReason = "" };
+                if (card.TaskState == TaskStates.Blocked) u.blockedReason = OfflineBlockedReason(demo, card, out u.blockedBy);
+                if (card.TaskState == TaskStates.Failed) u.failureReason = c.result ?? "";
+                if (card.TaskState == TaskStates.Completed && !string.IsNullOrEmpty(c.result)) u.resultSummary = c.result;
+                s.cards.Add(u);
+            }
+            return s;
         }
 
         // ------------------------------------------------------------------ manager: commit
@@ -413,7 +682,7 @@ namespace MuseDesk.Wall
             op.lastResult = result;
             for (int i = 0; i < result.tasks.Count; i++)
                 _offlineCards.Add(new OfflineCard { taskId = result.tasks[i].taskId, agentId = result.tasks[i].agentId,
-                                                    title = result.tasks[i].title, objective = plan.objective });
+                                                    title = result.tasks[i].title, objective = plan.objective, planId = plan.planId });
             Debug.Log(Tag + "offline plan " + plan.planId + " committed: " + result.tasks.Count + " task(s) on the demo board");
             return result;
         }

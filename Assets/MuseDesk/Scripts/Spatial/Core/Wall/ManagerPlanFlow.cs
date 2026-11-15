@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace MuseDesk.Spatial.Wall
 {
-    public enum ManagerFlowState { Idle = 0, Proposing = 1, AwaitingApproval = 2, Committing = 3, Delegating = 4, Monitoring = 5, Rejected = 6, Failed = 7 }
+    public enum ManagerFlowState { Idle = 0, Proposing = 1, AwaitingApproval = 2, Committing = 3, Delegating = 4, Monitoring = 5, Rejected = 6, Failed = 7, Revising = 8 }
 
     /// <summary>One proposed item as the plan card shows it. Mirrors the backend ManagerPlan item.</summary>
     public sealed class ManagerPlanItemView
@@ -46,8 +46,19 @@ namespace MuseDesk.Spatial.Wall
         readonly HashSet<string> _seenOnBoard = new HashSet<string>();
         readonly HashSet<string> _printed = new HashSet<string>();
         readonly Queue<ManagerPrintJob> _print = new Queue<ManagerPrintJob>();
+        readonly List<string> _assumptions = new List<string>();
+        readonly List<string> _risks = new List<string>();
         int _requestCounter;
-        string _commitKey;
+        string _commitKey, _reviseKey;
+
+        /// <summary>The plan's own objective, assumptions and risks, exactly as the backend sent them (may be empty).</summary>
+        public string PlanObjective { get; private set; }
+        public IList<string> Assumptions => _assumptions;
+        public IList<string> Risks => _risks;
+        /// <summary>The plan id the committed cards belong to (kept after a new request clears <see cref="PlanId"/>).</summary>
+        public string CommittedPlanId { get; private set; }
+        /// <summary>Raised once per commit with the canonical cards the backend created.</summary>
+        public event Action<string, IList<ManagerPrintJob>> Committed;
 
         public ManagerFlowState State { get; private set; }
         public string RequestId { get; private set; }
@@ -65,7 +76,7 @@ namespace MuseDesk.Spatial.Wall
         public bool Request(string objective, out string requestId, out string idempotencyKey)
         {
             requestId = idempotencyKey = null;
-            if (State == ManagerFlowState.Proposing || State == ManagerFlowState.Committing) { Message = "The manager is busy with the last request"; return false; }
+            if (State == ManagerFlowState.Proposing || State == ManagerFlowState.Committing || State == ManagerFlowState.Revising) { Message = "The manager is busy with the last request"; return false; }
             if (string.IsNullOrEmpty(objective) || objective.Trim().Length < 3) { Message = "Say what you want done"; return false; }
             _requestCounter++;
             Objective = objective.Trim();
@@ -73,7 +84,8 @@ namespace MuseDesk.Spatial.Wall
             requestId = RequestId;
             idempotencyKey = "mgr-propose-" + RequestId;
             _items.Clear();
-            PlanId = null; Revision = 0; Title = null; Provenance = null; _commitKey = null;
+            PlanId = null; Revision = 0; Title = null; Provenance = null; _commitKey = null; _reviseKey = null;
+            PlanObjective = null; _assumptions.Clear(); _risks.Clear();
             Go(ManagerFlowState.Proposing);
             Message = "The manager is drafting a plan";
             return true;
@@ -82,7 +94,8 @@ namespace MuseDesk.Spatial.Wall
         /// <summary>The proposed plan arrived. Items start approved except dangerous ones (they need an explicit tick and a confirm).</summary>
         public void OnProposed(string planId, int revision, string title, string provenance, IList<ManagerPlanItemView> items)
         {
-            if (State != ManagerFlowState.Proposing && State != ManagerFlowState.AwaitingApproval) return;
+            if (State != ManagerFlowState.Proposing && State != ManagerFlowState.AwaitingApproval && State != ManagerFlowState.Revising) return;
+            _reviseKey = null;
             PlanId = planId; Revision = revision; Title = title; Provenance = provenance;
             _items.Clear();
             if (items != null)
@@ -97,6 +110,58 @@ namespace MuseDesk.Spatial.Wall
             Message = provenance == "TEMPLATE_PLAN" ? "Template plan (no AI model configured). Review before approving."
                     : provenance == "SCRIPTED_DEMO" ? "SCRIPTED DEMO plan. Review before approving."
                     : "Review the plan. Nothing runs until you approve.";
+        }
+
+        /// <summary>The plan's descriptive fields (objective, assumptions, risks). Only what the backend sent.</summary>
+        public void SetPlanNotes(string planObjective, IList<string> assumptions, IList<string> risks)
+        {
+            PlanObjective = planObjective;
+            _assumptions.Clear(); _risks.Clear();
+            if (assumptions != null) foreach (string s in assumptions) if (!string.IsNullOrEmpty(s)) _assumptions.Add(s);
+            if (risks != null) foreach (string s in risks) if (!string.IsNullOrEmpty(s)) _risks.Add(s);
+        }
+
+        // ── revise: drop the unticked steps and get a new revision to review ──
+
+        /// <summary>
+        /// Build a revision that keeps only the ticked steps. False with a reason when there is nothing to drop, nothing
+        /// would be left, or a kept step depends on a dropped one. The key is stable for the same selection.
+        /// </summary>
+        public bool TryBuildRevision(out List<ManagerPlanItemView> kept, out int revision, out string idempotencyKey, out string problem)
+        {
+            kept = new List<ManagerPlanItemView>(); revision = Revision; idempotencyKey = null; problem = null;
+            if (State != ManagerFlowState.AwaitingApproval) { problem = "No plan waiting for review"; return false; }
+            foreach (var it in _items) if (it.approved) kept.Add(it);
+            if (kept.Count == _items.Count) { problem = "Untick the steps you want removed, then press Revise"; return false; }
+            if (kept.Count == 0) { problem = "A plan needs at least one step"; return false; }
+            foreach (var it in kept)
+                foreach (var d in it.dependsOn)
+                {
+                    var dep = Find(d);
+                    if (dep == null || !dep.approved) { problem = "\"" + it.title + "\" needs \"" + (dep != null ? dep.title : d) + "\": keep both or drop both"; return false; }
+                }
+            var ids = new List<string>();
+            foreach (var it in kept) ids.Add(it.clientItemId);
+            ids.Sort(StringComparer.Ordinal);
+            if (_reviseKey == null) _reviseKey = "mgr-revise-" + PlanId + "-r" + Revision + "-" + StableHash(string.Join(",", ids));
+            idempotencyKey = _reviseKey;
+            return true;
+        }
+
+        public void BeginRevise()
+        {
+            if (State != ManagerFlowState.AwaitingApproval) return;
+            Go(ManagerFlowState.Revising);
+            Message = "Revising the plan";
+        }
+
+        /// <summary>The revision was refused or never answered: the same plan stays on the paper. Nothing changed.</summary>
+        public void OnReviseFailed(string code, string message)
+        {
+            if (State != ManagerFlowState.Revising) return;
+            if (code != "UNREACHABLE") _reviseKey = null;        // a definitive refusal: the next try is a new command
+            Go(ManagerFlowState.AwaitingApproval);
+            Message = "Not revised: " + (string.IsNullOrEmpty(message) ? code : message);
         }
 
         public void OnProposeFailed(string reason)
@@ -119,7 +184,7 @@ namespace MuseDesk.Spatial.Wall
             if (it == null) return;
             it.approved = on;
             if (!on) it.authorized = false;
-            _commitKey = null;
+            _commitKey = null; _reviseKey = null;
         }
 
         /// <summary>The separate, explicit confirmation for a dangerous item.</summary>
@@ -176,6 +241,7 @@ namespace MuseDesk.Spatial.Wall
         {
             if (State != ManagerFlowState.Committing && State != ManagerFlowState.AwaitingApproval) return;
             Revision = revision;
+            CommittedPlanId = PlanId;
             if (tasks != null)
                 foreach (var t in tasks)
                 {
@@ -187,6 +253,8 @@ namespace MuseDesk.Spatial.Wall
                 }
             Go(ManagerFlowState.Delegating);
             Message = _committed.Count + " task" + (_committed.Count == 1 ? "" : "s") + " added to the board";
+            var done = Committed;
+            if (done != null && tasks != null) done(CommittedPlanId, tasks);
         }
 
         /// <summary>
@@ -233,9 +301,20 @@ namespace MuseDesk.Spatial.Wall
             return false;
         }
 
+        /// <summary>The backend stream announced the commit (manager.plan_committed). Same effect as the commit reply, whichever
+        /// arrives first; the other is then ignored. An announcement for another plan is ignored.</summary>
+        public bool OnCommittedEvent(string planId, int revision, IList<ManagerPrintJob> tasks)
+        {
+            if (string.IsNullOrEmpty(planId) || planId != PlanId) return false;
+            if (State != ManagerFlowState.Committing && State != ManagerFlowState.AwaitingApproval) return false;
+            OnCommitted(revision, tasks);
+            return true;
+        }
+
         public void Reset()
         {
             _items.Clear(); _committed.Clear(); _seenOnBoard.Clear(); _printed.Clear(); _print.Clear();
+            _assumptions.Clear(); _risks.Clear(); PlanObjective = null; CommittedPlanId = null; _reviseKey = null;
             PlanId = null; Revision = 0; _commitKey = null; Message = "";
             Go(ManagerFlowState.Idle);
         }

@@ -145,7 +145,7 @@ public static class WallDrive
             var w = s.Walker((HabitatRole)r);
             sb.Append((HabitatRole)r + ":" + w.State + "@" + w.Position.ToString("F3") + " soft=" + w.SoftTransfers + (w.LastBlock != null ? " block=" + w.LastBlock : "") + "; ");
         }
-        sb.Append("elevator=" + s.elevator.State + " y=" + s.elevator.CabinY.ToString("F3") + " completed=" + s.Completed + " dropped=" + s.Dropped);
+        sb.Append("elevator=" + (s.elevator != null ? s.elevator.State.ToString() : s.dispatch.dispatcher.Cabin.ToString()) + " y=" + s.lift.CabinY.ToString("F3") + " completed=" + s.Completed + " dropped=" + s.Dropped);
         return sb.ToString();
     }
 
