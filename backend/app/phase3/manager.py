@@ -20,6 +20,8 @@ from ..phase2.task_graph import TaskGraphService
 from .common import PlanCommandError
 from .planner import (DEMO_NOTE, MODEL_NOTE, PLANNER_SYSTEM, TEMPLATE_NOTE,
                       build_model_messages, parse_model_plan, template_plan)
+from .plan_ops import PlanOps
+from .plan_schema import validate_plan_document
 from .provider import ModelProvider
 from .store import Phase3Store
 from .validation import ValidationResult, topological_order, validate_items
@@ -105,7 +107,7 @@ class ManagerPlanService:
             raw = template_plan(objective)
             provenance, note = ("SCRIPTED_DEMO", DEMO_NOTE) if demo else ("TEMPLATE_PLAN", TEMPLATE_NOTE)
 
-        res = validate_items(raw.get("items"))
+        res = validate_plan_document(raw, objective)
         if not res.ok:
             code = "MODEL_PLAN_INVALID" if provenance == "LIVE_MODEL" else "PLAN_INVALID"
             raise self._invalid(code, res)
@@ -198,6 +200,22 @@ class ManagerPlanService:
     def get(self, session_id: str, plan_id: str) -> dict[str, Any]:
         return public_plan(self._require(session_id, plan_id))
 
+    # ─────────────────────── status / retry (domain; see plan_ops.py) ───────────────────────
+    def _ops(self) -> PlanOps:
+        return PlanOps(self._s2, self._s3, self._bus, self._mode, lambda: self._provider,
+                       timeout=self._timeout)
+
+    def plan_status(self, session_id: str, plan_id: str) -> dict[str, Any]:
+        self._require(session_id, plan_id)
+        return self._ops().plan_status(plan_id)
+
+    def manager_status(self, session_id: str) -> dict[str, Any]:
+        return self._ops().manager_status(session_id)
+
+    async def retry_card(self, session_id: str, plan_id: str, task_id: str) -> dict[str, Any]:
+        self._require(session_id, plan_id)
+        return await self._ops().retry_card(session_id, plan_id, task_id)
+
     # ─────────────────────── commit ───────────────────────
     async def commit(self, session_id: str, plan_id: str, revision: int,
                      approved_ids: list[str], authorized_ids: list[str]) -> dict[str, Any]:
@@ -261,7 +279,10 @@ class ManagerPlanService:
 
         plan["committed_tasks"] = [
             {"client_item_id": cid, "task_id": c.task_id, "agent_id": c.agent_id,
-             "state": c.task_state.value, "revision": c.revision} for cid, c in cards]
+             "state": c.task_state.value, "revision": c.revision,
+             "depends_on": list(c.dependencies)} for cid, c in cards]
+        edges = [{"from_task_id": d, "to_task_id": t["task_id"]}
+                 for t in plan["committed_tasks"] for d in t["depends_on"]]
         try:
             self._bump(plan, revision, "committed")
         except PlanCommandError:
@@ -272,7 +293,7 @@ class ManagerPlanService:
         for _, card in cards:
             await self._graph.announce_created(session_id, card)
         await self._emit(session_id, EventTypeV2.manager_plan_committed, plan,
-                         {"tasks": plan["committed_tasks"],
+                         {"tasks": plan["committed_tasks"], "edges": edges,
                           "task_ids": {t["client_item_id"]: t["task_id"]
                                        for t in plan["committed_tasks"]}})
         return {"plan_id": plan["plan_id"], "status": "committed",

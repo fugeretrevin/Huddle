@@ -55,6 +55,13 @@ class Phase3Store:
                 " ORDER BY created_at DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
         return json.loads(row["plan_json"]) if row else None
 
+    def plans_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        with self._s._lock:
+            rows = self._s._conn.execute(
+                "SELECT plan_json FROM manager_plans_v3 WHERE session_id=?"
+                " ORDER BY created_at, rowid", (session_id,)).fetchall()
+        return [json.loads(r["plan_json"]) for r in rows]
+
     def committed_plans(self) -> list[dict[str, Any]]:
         """Every committed plan, oldest first (the plan runner's work list)."""
         with self._s._lock:

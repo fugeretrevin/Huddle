@@ -29,6 +29,7 @@ from ..phase2.handoffs import HandoffService
 from ..phase2.models import ArtifactKind, EventTypeV2, HandoffKind, TaskStateV2
 from ..phase2.sanitize import sanitize_text
 from ..phase2.store import Phase2Store
+from .plan_ops import PlanOps
 from .provider import ModelProvider
 from .store import Phase3Store
 
@@ -109,6 +110,28 @@ class PlanRunner:
         self._board = BoardRunBridge(store2, bus)
         self._warned: set[str] = set()
         self._stop = asyncio.Event()
+        self._ops_cache: PlanOps | None = None
+
+    @property
+    def ops(self) -> PlanOps:
+        if self._ops_cache is None:
+            self._ops_cache = PlanOps(self._s2, self._s3, self._bus, self._mode, self._provider,
+                                      timeout=float(self._settings.p3_work_timeout_seconds))
+        return self._ops_cache
+
+    async def _after_card_ended(self, task_id: str) -> None:
+        """A plan card reached a terminal state: report who is blocked, then summarise the
+        plan if everything has finished. Never raises into the work loop."""
+        try:
+            row = self._s2.get_task_v2(task_id)
+            for plan in self._s3.committed_plans():
+                if task_id not in {e["task_id"] for e in plan.get("committed_tasks", [])}:
+                    continue
+                if row and row["task_state"] in ("failed", "cancelled"):
+                    await self.ops.announce_blocked_dependents(plan, row)
+                await self.ops.synthesize_if_settled(plan["plan_id"])
+        except Exception:  # noqa: BLE001
+            log.exception("post-card bookkeeping failed for %s", task_id)
 
     # ─────────────────────── lifecycle ───────────────────────
     @property
@@ -126,6 +149,7 @@ class PlanRunner:
                                        "Stopped: the backend restarted while this step was "
                                        "being worked. Resume it to try again.",
                                        {"code": "RUN_INTERRUPTED"})
+                    await self._after_card_ended(row["id"])
                     n += 1
         return n
 
@@ -166,6 +190,10 @@ class PlanRunner:
         for plan in self._s3.committed_plans():
             by_session.setdefault(plan["session_id"], []).append(plan)
         worked = 0
+        for plans in by_session.values():       # sweep: user-cancelled cards also settle a plan
+            for p in plans:
+                if not p.get("synthesis"):
+                    await self._after_sweep(p)
         for sid, plans in by_session.items():
             if any(self._s2.get_task_v2(e["task_id"]) and
                    self._s2.get_task_v2(e["task_id"])["task_state"] == TaskStateV2.running.value
@@ -189,6 +217,12 @@ class PlanRunner:
             await self._work(sid, *nxt, provider)
             worked += 1
         return worked
+
+    async def _after_sweep(self, plan: dict[str, Any]) -> None:
+        try:
+            await self.ops.synthesize_if_settled(plan["plan_id"])
+        except Exception:  # noqa: BLE001
+            log.exception("plan synthesis failed for %s", plan.get("plan_id"))
 
     # ─────────────────────── one card ───────────────────────
     def _dependency_inputs(self, row: dict) -> str:
@@ -269,6 +303,7 @@ class PlanRunner:
                             "work_mode": work_mode})
         await self._board.release_dependents(sid, row["id"])
         await self._handoffs(sid, plan, row["id"], agent, art.artifact_id)
+        await self._after_card_ended(row["id"])
 
     async def _handoffs(self, sid: str, plan: dict, done_id: str, from_agent: str,
                         artifact_id: str) -> None:
@@ -293,6 +328,7 @@ class PlanRunner:
         if row and row["task_state"] == TaskStateV2.running.value:
             await self._finish(row, TaskStateV2.failed, EventTypeV2.task_failed, reason,
                                {"code": code})
+            await self._after_card_ended(task_id)
 
     async def _finish(self, row: dict, state: TaskStateV2, type_: EventTypeV2, summary: str,
                       extra: dict[str, Any]) -> None:
