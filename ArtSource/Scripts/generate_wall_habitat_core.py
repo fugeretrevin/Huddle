@@ -11,45 +11,174 @@ if SCRIPTS_DIR not in sys.path:
 import wall_habitat_common as wh
 
 
+def get_layout_spec(compact=False):
+    """Exact mirror of HabitatLayoutBuilder.Build(Full | Compact) in HabitatLayout.cs.
+    Coordinate convention verified from Unity prefabs:
+      Blender +X -> Unity +X
+      Blender +Y -> Unity +Z (out from wall)
+      Blender +Z -> Unity +Y (vertical up)
+    """
+    if not compact:
+        W, H, D = 1.050, 0.900, 0.260
+        slab, base_frame, back = 0.020, 0.050, 0.015
+        elev_w, elev_margin = 0.130, 0.020
+        agent_r, agent_h, clear = 0.032, 0.170, 0.005
+        corridor_depth, railing = 0.080, 0.010
+        desk_depth, desk_w_frac, partition = 0.045, 0.50, 0.012
+        story_clear = [0.270, 0.240, 0.240]
+        deck_xmin_from_left = [0.020, 0.475, 0.225]
+    else:
+        W, H, D = 0.740, 0.620, 0.240
+        slab, base_frame, back = 0.020, 0.050, 0.015
+        elev_w, elev_margin = 0.110, 0.020
+        agent_r, agent_h, clear = 0.028, 0.150, 0.005
+        corridor_depth, railing = 0.080, 0.010
+        desk_depth, desk_w_frac, partition = 0.040, 0.42, 0.012
+        story_clear = [0.240, 0.220]
+        deck_xmin_from_left = [0.020, 0.170]
+
+    hw, hh = W * 0.5, H * 0.5
+    shaft_x1 = hw - elev_margin
+    shaft_x0 = shaft_x1 - elev_w
+    elev_x = (shaft_x0 + shaft_x1) * 0.5
+    door_w = elev_w - 0.030
+
+    z_c1 = D - railing
+    z_c0 = z_c1 - corridor_depth
+    zc = (z_c0 + z_c1) * 0.5
+    cabin_d = z_c0 - back - 0.010
+    cabin_half = (elev_w * 0.5 - 0.010, cabin_d * 0.5)
+    cabin_z = back + 0.005 + cabin_half[1]
+
+    floors = []
+    cur_z = -hh + base_frame
+    for i, sc_h in enumerate(story_clear):
+        xmin = -hw + deck_xmin_from_left[i]
+        floors.append({
+            "index": i,
+            "floorY": cur_z,
+            "ceilingY": cur_z + sc_h,
+            "clearH": sc_h,
+            "xMin": xmin,
+            "xMax": shaft_x0,
+            "width": shaft_x0 - xmin,
+        })
+        cur_z += sc_h + slab
+    roof_top = cur_z
+
+    office_y0, office_y1 = back, z_c0
+    office_yc = (office_y0 + office_y1) * 0.5
+    zd1 = z_c0 - 0.005
+    zd0 = zd1 - desk_depth
+    work_y = (back + agent_r + clear + zd0 - agent_r - clear) * 0.5
+    entry_y = (zd0 + zd1) * 0.5
+
+    f0 = floors[0]
+    x_l0 = f0["xMin"] + 0.010
+    x_l1 = shaft_x0 - 0.010
+    cw = (x_l1 - x_l0) / 3.0
+    cx_res = x_l0 + 0.5 * cw
+    cx_dev = x_l0 + 1.5 * cw
+    cx_tst = x_l0 + 2.5 * cw
+
+    mgr = floors[-1]
+    mgr_off_x0 = mgr["xMin"] + 0.010
+    mgr_off_x1 = shaft_x0 - 0.010
+    printer_w = 0.100
+    printer_x = mgr_off_x0 + printer_w * 0.5 + 0.010
+    mcw = min(0.300, mgr_off_x1 - mgr_off_x0 - printer_w - 0.020)
+    mcx = mgr_off_x1 - mcw * 0.5
+    mgr_part_x = mcx - mcw * 0.5
+
+    mid = floors[1] if not compact else None
+    mx = (mid["xMin"] + shaft_x0) * 0.5 if mid else 0.0
+
+    def role_workstation(role_name, floor_z, cx, bay_w):
+        inner_r = cx + bay_w * 0.5 - partition * 0.5
+        desk_w = bay_w * desk_w_frac
+        dx0 = cx - bay_w * 0.5 + 0.020
+        dx1 = dx0 + desk_w
+        wx = (dx0 + dx1) * 0.5
+        gap_x = (dx1 + inner_r) * 0.5
+        qx = shaft_x0 - agent_r - 0.020
+        return {
+            "role": role_name,
+            "cx": cx,
+            "bay_w": bay_w,
+            "desk_x0": dx0,
+            "desk_x1": dx1,
+            "desk_w": desk_w,
+            "desk_y0": zd0,
+            "desk_y1": zd1,
+            "work_x": wx,
+            "work_y": work_y,
+            "gap_x": gap_x,
+            "entry_y": entry_y,
+            "floor_z": floor_z,
+            "qx": qx,
+        }
+
+    role_stations = [
+        role_workstation("Researcher", f0["floorY"], cx_res, cw),
+        role_workstation("Developer",  f0["floorY"], cx_dev, cw),
+        role_workstation("Tester",     f0["floorY"], cx_tst, cw),
+        role_workstation("Manager",    mgr["floorY"], mcx, mcw),
+    ]
+
+    beacon_pos = (-hw + deck_xmin_from_left[-1] + 0.050, D * 0.5, roof_top)
+    courier_pos = (f0["xMin"] + 0.050, zc, f0["floorY"])
+    portal_pos = (0.0, D + 0.020, f0["floorY"])
+    printer_pos = (printer_x, office_yc, mgr["floorY"] + 0.050)
+
+    return {
+        "compact": compact,
+        "W": W, "H": H, "D": D, "hw": hw, "hh": hh,
+        "slab": slab, "base_frame": base_frame, "back": back,
+        "elev_w": elev_w, "elev_margin": elev_margin,
+        "agent_r": agent_r, "agent_h": agent_h, "clear": clear,
+        "shaft_x0": shaft_x0, "shaft_x1": shaft_x1, "elev_x": elev_x, "door_w": door_w,
+        "corridor_depth": corridor_depth, "railing": railing,
+        "z_c0": z_c0, "z_c1": z_c1, "zc": zc,
+        "cabin_half": cabin_half, "cabin_z": cabin_z,
+        "floors": floors, "f0": f0, "mid": mid, "mgr": mgr, "roof_top": roof_top,
+        "office_y0": office_y0, "office_y1": office_y1, "office_yc": office_yc,
+        "desk_y0": zd0, "desk_y1": zd1, "desk_depth": desk_depth, "desk_w_frac": desk_w_frac,
+        "work_y": work_y, "entry_y": entry_y, "partition": partition,
+        "x_l0": x_l0, "x_l1": x_l1, "cw": cw,
+        "cx_res": cx_res, "cx_dev": cx_dev, "cx_tst": cx_tst,
+        "mx": mx,
+        "mgr_off_x0": mgr_off_x0, "mgr_off_x1": mgr_off_x1,
+        "printer_w": printer_w, "printer_x": printer_x,
+        "mcw": mcw, "mcx": mcx, "mgr_part_x": mgr_part_x,
+        "role_stations": role_stations,
+        "beacon_pos": beacon_pos,
+        "courier_pos": courier_pos,
+        "portal_pos": portal_pos,
+        "printer_pos": printer_pos,
+    }
+
+
 def _build_wall_backplate(name="WallHabitat_Backplate_Full", compact=False):
     """
-    Shallow architectural wall backplate & mounting chassis for The Workshop Treehouse.
-    - Pivot = WallContact at (0, 0, 0) flush on wall.
-    - Blender +Y -> Unity +Z (outward into room); Blender +Z -> Unity +Y (up).
-    - Very shallow thickness (0.016m) so cubicles sit cleanly in front without clipping into wall.
+    Wall-flush architectural Workshop Treehouse backplate matching HabitatLayoutBuilder envelope:
+      Full:    1.050 x 0.900 x 0.260 m
+      Compact: 0.740 x 0.620 x 0.240 m
+    Pivot (0, 0, 0) = WallContact (center X/Y, Y=0 flush against wall).
     """
     wh.reset_scene()
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
-    if not compact:
-        w, h = 0.960, 0.740
-        deck_ys = {"Lower": -0.345, "Mid": -0.115, "Manager": +0.115}
-        # Blender X = -Unity X
-        bx_res, bx_dev, bx_tst = +0.345, +0.115, -0.115
-        bx_elev = -0.345
-        bx_stop = -0.255
-        bx_mid = +0.040
-        bx_mgr = +0.050
-        bx_printer = -0.135
-        bx_wing = -0.440
-    else:
-        w, h = 0.740, 0.510
-        deck_ys = {"Lower": -0.230, "Manager": +0.000}
-        bx_res, bx_dev, bx_tst = +0.235, +0.055, -0.125
-        bx_elev = -0.285
-        bx_stop = -0.210
-        bx_mid = 0.0
-        bx_mgr = +0.040
-        bx_printer = -0.125
-        bx_wing = -0.352
+    s = get_layout_spec(compact)
+    W, H, hw, hh, back = s["W"], s["H"], s["hw"], s["hh"], s["back"]
+    f0, mid, mgr = s["f0"], s["mid"], s["mgr"]
 
     static_parts = []
     trim_parts = []
 
-    # 1. Soft charcoal rubber wall-contact pads at 6 anchor points (flush at Blender Y = 0)
-    pad_xs = [-w * 0.43, 0.0, +w * 0.43]
-    pad_zs = [-h * 0.42, +h * 0.42]
+    # 1. Soft charcoal/brass wall-contact pads strictly within W x H
+    pad_xs = [-W * 0.43, 0.0, +W * 0.43]
+    pad_zs = [-H * 0.42, +H * 0.42]
     for xi, px in enumerate(pad_xs):
         for zi, pz in enumerate(pad_zs):
             wh.make_cylinder(f"{name}_WallPad_{xi}_{zi}", 0.014, 0.004,
@@ -59,253 +188,265 @@ def _build_wall_backplate(name="WallHabitat_Backplate_Full", compact=False):
                              (px, 0.003, pz), "Mat_Brass", vertices=12,
                              rot_deg=(90, 0, 0), parent=root, parts_list=static_parts)
 
-    # 2. Main soft ivory contoured wall backing plate (Y in [0.003, 0.015])
-    # Rotated slab in XZ plane: use make_rounded_slab extruded along Z then rotated 90 deg X
-    wh.make_rounded_slab(f"{name}_IvoryPlate", w, h, 0.012, 0.048,
-                         (0.0, 0.009, 0.0), "Mat_CreamCeramic", bevel=0.0025,
+    # 2. Main contoured ivory backplate spanning W x H, front face strictly at Blender Y = back (0.015)
+    wh.make_rounded_slab(f"{name}_IvoryPlate", W, H, 0.012, 0.028,
+                         (0.0, 0.009, 0.0), "Mat_CreamCeramic", bevel=0.0018,
                          corner_segs=5, rot_deg=(90, 0, 0), parent=root, parts_list=static_parts)
 
-    # 3. Warm-wood outer perimeter timber frame & horizontal deck ledger strips
+    # 3. Warm-wood outer perimeter timber rails (1.5mm proud of IvoryPlate to eliminate coplanar z-fighting)
     frame_d = 0.014
-    frame_y = 0.011
-    # Top & bottom horizontal stringers
-    for lbl, sz in [("Bottom", -h * 0.5 + 0.012), ("Top", +h * 0.5 - 0.012)]:
-        wh.make_beveled_box(f"{name}_TimberBeam_{lbl}", (w - 0.040, frame_d, 0.018),
-                            (0.0, frame_y, sz), "Mat_WarmWood", bevel_width=0.002,
+    frame_y = 0.0095
+    for lbl, sz in [("Bottom", -hh + 0.009), ("Top", +hh - 0.009)]:
+        wh.make_beveled_box(f"{name}_TimberBeam_{lbl}", (W - 0.036, frame_d, 0.016),
+                            (0.0, frame_y, sz), "Mat_WarmWood", bevel_width=0.0018,
                             parent=root, parts_list=static_parts)
-    # Left & right vertical stiles
-    for lbl, sx in [("Right", +w * 0.5 - 0.016), ("Left", -w * 0.5 + 0.016)]:
-        wh.make_beveled_box(f"{name}_TimberStile_{lbl}", (0.018, frame_d, h - 0.060),
-                            (sx, frame_y, 0.0), "Mat_WarmWood", bevel_width=0.002,
+    for lbl, sx in [("Left", -hw + 0.009), ("Right", +hw - 0.009)]:
+        wh.make_beveled_box(f"{name}_TimberStile_{lbl}", (0.016, frame_d, H - 0.044),
+                            (sx, frame_y, 0.0), "Mat_WarmWood", bevel_width=0.0018,
                             parent=root, parts_list=static_parts)
 
-    # Decorative vertical wood louvers along backplate behind cubicles for cozy treehouse rhythm
-    slat_count = 11 if not compact else 9
+    # Decorative vertical wood louvers & floor ledgers flush on backplate
+    slat_count = 13 if not compact else 9
     for idx in range(slat_count):
         t = (idx / (slat_count - 1)) - 0.5
-        sx = t * (w - 0.120)
-        wh.make_beveled_box(f"{name}_BackSlat_{idx}", (0.010, 0.004, h - 0.095),
-                            (sx, 0.0155, 0.0), "Mat_WarmBeige", bevel_width=0.0008,
+        sx = t * (W - 0.110)
+        wh.make_beveled_box(f"{name}_BackSlat_{idx}", (0.009, 0.003, H - 0.070),
+                            (sx, 0.014, 0.0), "Mat_WarmBeige", bevel_width=0.0006,
                             parent=root, parts_list=static_parts)
 
-    # 4. Warm recessed shelf cove-light accent bar & muted teal architectural trim band
-    for tier_lbl, tz in deck_ys.items():
-        bar_w = w - 0.090 if tier_lbl == "Lower" else (0.520 if not compact else 0.420)
-        bar_x = 0.0 if tier_lbl == "Lower" else (0.065 if not compact else 0.055)
-        wh.make_beveled_box(f"{name}_LedgerRail_{tier_lbl}", (bar_w, 0.016, 0.010),
-                            (bar_x, 0.014, tz - 0.006), "Mat_DarkWood", bevel_width=0.0015,
+    for fl in s["floors"]:
+        fw = fl["width"]
+        fcx = (fl["xMin"] + fl["xMax"]) * 0.5
+        fz = fl["floorY"]
+        wh.make_beveled_box(f"{name}_LedgerRail_{fl['index']}", (fw, 0.005, 0.010),
+                            (fcx, 0.015, fz - 0.012), "Mat_DarkWood", bevel_width=0.001,
                             parent=root, parts_list=static_parts)
-        wh.make_beveled_box(f"{name}_CoveTrim_{tier_lbl}", (bar_w * 0.90, 0.005, 0.005),
-                            (bar_x, 0.0175, tz + 0.002), "Mat_Researcher_Teal", bevel_width=0.0008,
-                            parent=root, parts_list=trim_parts)
+        wh.make_beveled_box(f"{name}_CoveTrim_{fl['index']}", (fw * 0.94, 0.004, 0.004),
+                            (fcx, 0.0165, fz + fl["clearH"] - 0.006), "Mat_Researcher_Teal",
+                            bevel_width=0.0006, parent=root, parts_list=trim_parts)
 
-    # 5. Right-side Cantilevered Beacon & Courier Porch Sill (Flush on Lower tier right wing)
-    low_z = deck_ys["Lower"]
-    porch_w = 0.110 if not compact else 0.088
-    wh.make_rounded_slab(f"{name}_BeaconPorchSlab", porch_w, 0.195, 0.014, 0.024,
-                         (bx_wing, 0.112, low_z - 0.007), "Mat_WarmWood",
-                         bevel=0.002, parent=root, parts_list=static_parts)
-    # Curved wood corbel bracket under right wing porch
-    wh.make_beveled_box(f"{name}_BeaconCorbel", (0.018, 0.110, 0.032),
-                        (bx_wing, 0.068, low_z - 0.030), "Mat_DarkWood", bevel_width=0.0025,
-                        rot_deg=(-18, 0, 0), parent=root, parts_list=static_parts)
-    # Cozy beacon plinth pad + brass rim on porch
-    wh.make_cylinder(f"{name}_BeaconPad", 0.034, 0.008, (bx_wing, 0.110, low_z + 0.004),
-                     "Mat_CreamCeramic", vertices=18, parent=root, parts_list=static_parts)
-    wh.make_torus(f"{name}_BeaconBrassRim", 0.035, 0.0025, (bx_wing, 0.110, low_z + 0.006),
-                  "Mat_Brass", maj_seg=20, min_seg=6, parent=root, parts_list=static_parts)
-    # Courier landing disk right in front on the wing porch
-    wh.make_cylinder(f"{name}_CourierPad", 0.038, 0.006, (bx_wing, 0.175, low_z + 0.003),
-                     "Mat_FeltSlate", vertices=18, parent=root, parts_list=static_parts)
+    # 4. Under-corbel brackets below Floor 0 & Leftmost EndWall filler [f0.xMin, x_l0]
+    skirt_z0 = -hh + 0.010
+    skirt_z1 = f0["floorY"] - s["slab"]
+    if skirt_z1 > skirt_z0:
+        skirt_w = s["shaft_x1"] - f0["xMin"]
+        skirt_cx = (f0["xMin"] + s["shaft_x1"]) * 0.5
+        for c_off in (-skirt_w * 0.36, 0.0, +skirt_w * 0.36):
+            wh.make_beveled_box(f"{name}_UnderCorbel_{c_off:+.2f}", (0.022, 0.095, skirt_z1 - skirt_z0),
+                                (skirt_cx + c_off, back + 0.048, (skirt_z0 + skirt_z1) * 0.5),
+                                "Mat_DarkWood", bevel_width=0.002, parent=root, parts_list=static_parts)
 
-    # 6. Left-side small botanical planter bracket for Workshop Treehouse whimsy
-    left_bx = +w * 0.445
-    wh.make_rounded_slab(f"{name}_LeftPlanterShelf", 0.085, 0.110, 0.012, 0.018,
-                         (left_bx, 0.068, deck_ys["Manager"] - 0.006), "Mat_WarmWood",
-                         bevel=0.0018, parent=root, parts_list=static_parts)
-    wh.make_cylinder(f"{name}_PlanterPot", 0.022, 0.028, (left_bx, 0.072, deck_ys["Manager"] + 0.014),
-                     "Mat_Terracotta", vertices=16, parent=root, parts_list=static_parts)
+    # Small left edge floor strip closing the 1cm margin [f0.xMin, x_l0] & right 1cm strip [x_l1, shaft_x0]
+    for slbl, sx0, sx1 in [("LowerMarginL", f0["xMin"], s["x_l0"]), ("LowerMarginR", s["x_l1"], s["shaft_x0"])]:
+        mw = sx1 - sx0
+        mc = (sx0 + sx1) * 0.5
+        wh.make_beveled_box(f"{name}_{slbl}", (mw, s["D"] - back, s["slab"]),
+                            (mc, (back + s["D"]) * 0.5, f0["floorY"] - s["slab"] * 0.5),
+                            "Mat_WarmWood", bevel_width=0.0008, parent=root, parts_list=static_parts)
+
+    # 5. Grounded Beacon Perch Plinth directly atop Manager Roof Deck at AttentionBeaconSocket
+    bx, by, bz = s["beacon_pos"]
+    wh.make_cylinder(f"{name}_BeaconPerchPad", 0.024, 0.004,
+                     (bx, by, bz + 0.002), "Mat_CreamCeramic", vertices=18,
+                     parent=root, parts_list=static_parts)
+    wh.make_torus(f"{name}_BeaconBrassRim", 0.025, 0.0018,
+                  (bx, by, bz + 0.003), "Mat_Brass", maj_seg=20, min_seg=6,
+                  parent=root, parts_list=trim_parts)
+
+    # 6. Whimsical Botanical Wall Sconce in clear negative-X upper void (strictly outside all floor decks!)
+    planter_x = (-0.415 if not compact else -0.285)
+    planter_z = (+0.040 if not compact else +0.080)
+    wh.make_rounded_slab(f"{name}_SidePlanterShelf", 0.072, 0.058, 0.009, 0.014,
+                         (planter_x, back + 0.029, planter_z), "Mat_WarmWood",
+                         bevel=0.0015, parent=root, parts_list=static_parts)
+    wh.make_cylinder(f"{name}_PlanterPot", 0.018, 0.022,
+                     (planter_x, back + 0.030, planter_z + 0.015),
+                     "Mat_Terracotta", vertices=14, parent=root, parts_list=static_parts)
     for lx, ly, lz, sc_xyz in [
-        (-0.008,  0.004, 0.034, (0.013, 0.010, 0.009)),
-        ( 0.009, -0.003, 0.036, (0.012, 0.009, 0.008)),
-        ( 0.000,  0.002, 0.044, (0.010, 0.010, 0.012)),
+        (-0.007, +0.003, 0.030, (0.011, 0.008, 0.008)),
+        (+0.008, -0.002, 0.032, (0.010, 0.008, 0.007)),
+        ( 0.000, +0.001, 0.039, (0.009, 0.009, 0.011)),
     ]:
         wh.make_sphere(f"{name}_Leaf_{lz:.3f}", sc_xyz,
-                       (left_bx + lx, 0.072 + ly, deck_ys["Manager"] + lz),
+                       (planter_x + lx, back + 0.030 + ly, planter_z + lz),
                        "Mat_PlantGreen", segments=10, rings=8, parent=root, parts_list=static_parts)
+
+    # Courier Dispatch landing pad at CourierDispatchSocket
+    cx_d, cy_d, cz_d = s["courier_pos"]
+    wh.make_cylinder(f"{name}_CourierPad", 0.022, 0.002,
+                     (cx_d, cy_d, cz_d + 0.001),
+                     "Mat_FeltSlate", vertices=16, parent=root, parts_list=static_parts)
 
     wh.join_static_parts(static_parts, f"{name}_Chassis", parent=root)
     wh.join_static_parts(trim_parts, f"{name}_StatusTrim", parent=root)
 
-    # Required Habitat & Deck Mounting Sockets (all directly under root at unit scale!)
+    # Exact Contract Habitat Sockets (Blender (x, y_out, z_up) == Unity (x, z_up, y_out))
     wh.make_anchor("WallContact",             (0.0, 0.0, 0.0), root)
-    wh.make_anchor("ResearchCubicleSocket",   (bx_res, 0.015, low_z), root)
-    wh.make_anchor("DeveloperCubicleSocket",  (bx_dev, 0.015, low_z), root)
-    wh.make_anchor("TesterCubicleSocket",     (bx_tst, 0.015, low_z), root)
-    wh.make_anchor("ElevatorSpineSocket",     (bx_elev, 0.015, low_z), root)
-    wh.make_anchor("ElevatorStop_Lower",      (bx_stop, 0.196, low_z), root)
-    if "Mid" in deck_ys:
-        wh.make_anchor("SharedMeetingSocket", (bx_mid, 0.015, deck_ys["Mid"]), root)
-        wh.make_anchor("ElevatorStop_Mid",    (bx_stop, 0.196, deck_ys["Mid"]), root)
-    wh.make_anchor("ManagerOfficeSocket",     (bx_mgr, 0.015, deck_ys["Manager"]), root)
-    wh.make_anchor("TaskPrinterSocket",       (bx_printer, 0.105, deck_ys["Manager"] + 0.012), root)
-    wh.make_anchor("ElevatorStop_Manager",    (bx_stop, 0.196, deck_ys["Manager"]), root)
-    wh.make_anchor("AttentionBeaconSocket",   (bx_wing, 0.110, low_z + 0.008), root)
-    wh.make_anchor("CourierDispatchSocket",   (bx_wing, 0.175, low_z + 0.006), root)
-    wh.make_anchor("PortalDepartureSocket",   (0.0, 0.255, low_z), root)
+    wh.make_anchor("ResearchCubicleSocket",   (s["cx_res"], s["office_yc"], f0["floorY"]), root)
+    wh.make_anchor("DeveloperCubicleSocket",  (s["cx_dev"], s["office_yc"], f0["floorY"]), root)
+    wh.make_anchor("TesterCubicleSocket",     (s["cx_tst"], s["office_yc"], f0["floorY"]), root)
+    if mid is not None:
+        wh.make_anchor("SharedMeetingSocket", (s["mx"], s["office_yc"], mid["floorY"]), root)
+        wh.make_anchor("ElevatorStop_Mid",    (s["elev_x"], s["zc"], mid["floorY"]), root)
+    wh.make_anchor("ManagerOfficeSocket",     (s["mcx"], s["office_yc"], mgr["floorY"]), root)
+    wh.make_anchor("TaskPrinterSocket",       s["printer_pos"], root)
+    wh.make_anchor("AttentionBeaconSocket",   s["beacon_pos"], root)
+    wh.make_anchor("CourierDispatchSocket",   s["courier_pos"], root)
+    wh.make_anchor("PortalDepartureSocket",   s["portal_pos"], root)
 
-    # Priority B Navigation, Elevator Threshold, Handoff & Interaction Sockets
-    wh.make_anchor("PathNode_Lower_L",        (bx_res, 0.196, low_z + 0.014), root)
-    wh.make_anchor("PathNode_Lower_C",        (bx_dev, 0.196, low_z + 0.014), root)
-    wh.make_anchor("PathNode_Lower_R",        (bx_tst, 0.196, low_z + 0.014), root)
-    wh.make_anchor("PathNode_Lower_Elev",     (bx_stop + 0.045, 0.196, low_z + 0.014), root)
-    wh.make_anchor("ElevatorEntry_Lower",     (bx_stop + 0.025, 0.196, low_z + 0.014), root)
-    wh.make_anchor("ElevatorExit_Lower",      (bx_stop + 0.040, 0.196, low_z + 0.014), root)
-    if "Mid" in deck_ys:
-        wh.make_anchor("PathNode_Mid_C",      (bx_mid, 0.196, deck_ys["Mid"] + 0.014), root)
-        wh.make_anchor("PathNode_Mid_Elev",   (bx_stop + 0.045, 0.196, deck_ys["Mid"] + 0.014), root)
-        wh.make_anchor("ElevatorEntry_Mid",   (bx_stop + 0.025, 0.196, deck_ys["Mid"] + 0.014), root)
-        wh.make_anchor("ElevatorExit_Mid",    (bx_stop + 0.040, 0.196, deck_ys["Mid"] + 0.014), root)
-    wh.make_anchor("PathNode_Manager_C",      (bx_mgr, 0.196, deck_ys["Manager"] + 0.014), root)
-    wh.make_anchor("PathNode_Manager_Printer",(bx_printer, 0.170, deck_ys["Manager"] + 0.014), root)
-    wh.make_anchor("ElevatorEntry_Manager",   (bx_stop + 0.025, 0.196, deck_ys["Manager"] + 0.014), root)
-    wh.make_anchor("ElevatorExit_Manager",    (bx_stop + 0.040, 0.196, deck_ys["Manager"] + 0.014), root)
-    wh.make_anchor("DoorClearance",           (bx_stop, 0.210, low_z + 0.095), root)
-    wh.make_anchor("PortalSource_Wall",       (0.0, 0.240, low_z + 0.080), root)
+    # Elevator spine mount & exact contract elevator sockets
+    wh.make_anchor("ElevatorSpineSocket",     (s["elev_x"], 0.0, f0["floorY"]), root)
+    wh.make_anchor("ElevatorCarSocket",       (s["elev_x"], s["cabin_z"], f0["floorY"]), root)
+    wh.make_anchor("ElevatorStop_Lower",      (s["elev_x"], s["zc"], f0["floorY"]), root)
+    wh.make_anchor("ElevatorStop_Manager",    (s["elev_x"], s["zc"], mgr["floorY"]), root)
+
+    # Exact Per-Role Agent Sockets from HabitatLayoutBuilder.AddWorkstation + AddElevatorStop
+    ah = s["agent_h"]
+    for rs in s["role_stations"]:
+        r = rs["role"]
+        fz = rs["floor_z"]
+        wx, wy = rs["work_x"], rs["work_y"]
+        gx, ey = rs["gap_x"], rs["entry_y"]
+        zc, qx = s["zc"], rs["qx"]
+        wh.make_anchor(f"{r}.AgentHomePose",     (wx, wy, fz), root)
+        wh.make_anchor(f"{r}.WorkPose",          (wx, wy, fz), root)
+        wh.make_anchor(f"{r}.SeatPose",          (wx, wy, fz), root)
+        wh.make_anchor(f"{r}.EntryPose",         (gx, ey, fz), root)
+        wh.make_anchor(f"{r}.HandoffPose",       (gx, zc, fz), root)
+        wh.make_anchor(f"{r}.ElevatorQueuePose", (qx, zc, fz), root)
+        wh.make_anchor(f"{r}.DocumentAttach",    (wx, wy + 0.030, fz + ah * 0.55), root)
+        wh.make_anchor(f"{r}.HeadLookTarget",    (wx, wy, fz + ah * 0.90), root)
 
     return wh.export_wall_static(
         name,
-        cam_pos=(0.38, 1.35, 0.08),
+        cam_pos=(0.35, 1.45, 0.08),
         target=(0.0, 0.05, 0.0),
-        extra_cam=(-0.55, 1.10, 0.30) and ((-0.55, 1.15, 0.30), (0.0, 0.06, 0.0)),
+        extra_cam=((-0.55, 1.20, 0.30), (0.0, 0.06, 0.0)),
     )
 
 
-def _build_cubicle_bay(name="WallHabitat_CubicleBay", width=0.228, compact=False):
+def _build_cubicle_bay(name="WallHabitat_CubicleBay", compact=False):
     """
-    Modular Treehouse Cubicle Shell:
-    - Pivot = (0, 0, 0) at wall-side bottom center (Y=0 rests against backplate+0.015m; Z=0 is floor).
-    - Local +Y extent [0, 0.232m] (interior floor Z=0.012m top; clear ceiling to 0.222m).
-    - Front promenade walkway unobstructed along Y in [0.155, 0.225] through 0.094m side arches!
-    - Exposes WorkstationSocket + ALL 8 required_agent_sockets.
+    Modular Treehouse Cubicle Shell matching exact HabitatLayoutBuilder bay geometry.
+    - Mounted at {Research|Developer|Tester}CubicleSocket = (cx, office_yc, f0.floorY).
+    - Local origin (0, 0, 0) sits at cubicle center X, office_yc, floor top Z=0.000.
+    - Partition stays inside office zone [back, z_c0 - 0.005] so corridor [z_c0, z_c1] is 100% open!
+    - WorkstationSocket placed at exact HabitatLayoutBuilder Desk_* footprint [deskX0..deskX1] x [zD0..zD1].
+    - AgentHomePose placed at exact workX, workY behind desk with open aisle gapX on +X side!
     """
     wh.reset_scene()
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
-    depth = 0.232 if not compact else 0.224
-    height = 0.224
-    floor_h = 0.012
-    wall_t = 0.010
+    s = get_layout_spec(compact)
+    width = s["cw"]
+    ref_y = s["office_yc"]
+    ly_back = s["back"] - ref_y
+    ly_front = s["D"] - ref_y
+    ly_c0 = s["z_c0"] - ref_y
+    ly_c1 = s["z_c1"] - ref_y
+    ly_corr = s["zc"] - ref_y
+    depth = ly_front - ly_back
+    clear_h = s["f0"]["clearH"]
+    slab = s["slab"]
+    part_t = s["partition"]
+
+    # Sample offsets from Researcher station (identical for Researcher/Developer/Tester relative to cx)
+    rs = s["role_stations"][0]
+    lx_work = rs["work_x"] - rs["cx"]
+    ly_work = rs["work_y"] - ref_y
+    lx_gap = rs["gap_x"] - rs["cx"]
+    ly_entry = rs["entry_y"] - ref_y
+    ly_desk_c = ((rs["desk_y0"] + rs["desk_y1"]) * 0.5) - ref_y
 
     parts = []
     trim = []
 
-    # 1. Floor deck slab (bottom at Z=0, top walkable floor at Z=0.012)
-    wh.make_rounded_slab(f"{name}_FloorDeck", width, depth, floor_h, 0.016,
-                         (0.0, depth * 0.5, floor_h * 0.5), "Mat_WarmWood",
-                         bevel=0.0018, parent=root, parts_list=parts)
+    # 1. Floor deck slab (bottom at -0.020, walkable top flush at Z=0.000)
+    wh.make_beveled_box(f"{name}_FloorDeck", (width - 0.001, depth, slab),
+                        (0.0, (ly_back + ly_front) * 0.5, -slab * 0.5),
+                        "Mat_WarmWood", bevel_width=0.0015, parent=root, parts_list=parts)
 
-    # Walkway runner rug in front promenade (Y centered at 0.184m, flush top at 0.013m)
-    walk_y = 0.184 if not compact else 0.178
-    wh.make_rounded_slab(f"{name}_WalkwayRug", width - 0.010, 0.064, 0.002, 0.008,
-                         (0.0, walk_y, floor_h + 0.001), "Mat_FeltSlate",
-                         bevel=0.0004, parent=root, parts_list=parts)
+    # Flush felt corridor runner strictly inside corridor [z_c0, z_c1]
+    wh.make_rounded_slab(f"{name}_WalkwayRug", width - 0.008, s["corridor_depth"] - 0.012, 0.0015, 0.006,
+                         (0.0, ly_corr, 0.0008), "Mat_FeltSlate",
+                         bevel=0.0003, parent=root, parts_list=parts)
 
-    # Cozy round station mat under desk/chair zone
-    wh.make_cylinder(f"{name}_WorkRug", 0.068 if not compact else 0.056, 0.002,
-                     (0.0, 0.088, floor_h + 0.001), "Mat_WarmBeige",
-                     vertices=22, parent=root, parts_list=parts)
+    # Subtle work mat under agent standing zone (lx_work, ly_work)
+    wh.make_cylinder(f"{name}_WorkRug", min(rs["desk_w"] * 0.45, 0.044), 0.0015,
+                     (lx_work, ly_work, 0.0008), "Mat_WarmBeige",
+                     vertices=20, parent=root, parts_list=parts)
 
-    # 2. Rear cozy wainscot back panel (Y = 0.005, stops nicely with window niche cutout silhouette)
-    wh.make_beveled_box(f"{name}_RearPanel", (width - 0.020, 0.008, height - 0.036),
-                        (0.0, 0.006, floor_h + (height - 0.036) * 0.5), "Mat_CreamCeramic",
-                        bevel_width=0.0015, parent=root, parts_list=parts)
-    # Recessed window frame ornament on rear wall for depth & warmth
-    win_w = width * 0.44
-    wh.make_beveled_box(f"{name}_RearWindowTrim", (win_w, 0.006, 0.072),
-                        (0.0, 0.011, floor_h + 0.118), "Mat_WarmWood",
+    # 2. Rear wainscot back panel + cozy framed window against backplate
+    panel_h = clear_h - 0.024
+    wh.make_beveled_box(f"{name}_RearPanel", (width - 0.018, 0.005, panel_h),
+                        (0.0, ly_back + 0.0025, panel_h * 0.5), "Mat_CreamCeramic",
+                        bevel_width=0.001, parent=root, parts_list=parts)
+    win_w = min(width * 0.42, 0.105)
+    wh.make_beveled_box(f"{name}_RearWindowTrim", (win_w, 0.004, 0.068),
+                        (0.0, ly_back + 0.005, 0.135), "Mat_WarmWood",
+                        bevel_width=0.001, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_RearWindowPane", (win_w - 0.010, 0.005, 0.054),
+                        (0.0, ly_back + 0.0055, 0.135), "Mat_ChamberGlass",
+                        bevel_width=0.0004, parent=root, parts_list=parts)
+
+    # 3. Left (-X) Half-Height Partition matching HabitatLayoutBuilder Partition_0..2 [back, z_c0 - 0.005]
+    part_y0 = ly_back + 0.002
+    part_y1 = ly_c0 - 0.008
+    part_len = max(0.040, part_y1 - part_y0)
+    part_yc = (part_y0 + part_y1) * 0.5
+    part_h = 0.110
+    wh.make_beveled_box(f"{name}_LeftPartition", (part_t, part_len, part_h),
+                        (-width * 0.5, part_yc, part_h * 0.5),
+                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_LeftPartitionCap", (part_t + 0.003, part_len + 0.002, 0.007),
+                        (-width * 0.5, part_yc, part_h + 0.0035),
+                        "Mat_WarmWood", bevel_width=0.0008, parent=root, parts_list=parts)
+
+    wh.make_cylinder(f"{name}_RearCornerPost", 0.0050, clear_h - 0.008,
+                     (-width * 0.5 + 0.005, ly_back + 0.008, (clear_h - 0.008) * 0.5),
+                     "Mat_WarmWood", vertices=10, parent=root, parts_list=parts)
+
+    # 4. Warm Overhead Valance Rib strictly along rear wall
+    wh.make_beveled_box(f"{name}_RearValance", (width - 0.010, 0.032, 0.010),
+                        (0.0, ly_back + 0.018, clear_h - 0.007), "Mat_WarmWood",
                         bevel_width=0.0012, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_RearWindowPane", (win_w - 0.012, 0.007, 0.058),
-                        (0.0, 0.0115, floor_h + 0.118), "Mat_ChamberGlass",
-                        bevel_width=0.0005, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_RoleNameplateTrim", (width * 0.36, 0.006, 0.009),
+                        (0.0, ly_back + 0.035, clear_h - 0.007), "Mat_Brass",
+                        bevel_width=0.0008, parent=root, parts_list=trim)
 
-    # 3. Left & Right Arched Side Partition Walls (centered at Y = walk_y? No: pass-through arch centered at Y = walk_y!)
-    # wall_depth covers rear & corridor: center wall at Y = 0.122m, depth 0.210m -> Y in [0.017, 0.227].
-    # Relative to wall center Y=0.122, walk_y=0.184 is offset +0.062m!
-    # Cleanest solution: build rear wing solid [0.015, 0.128] + arched corridor frame [0.128, 0.228] centered on walk_y!
-    rear_len = walk_y - 0.052 - 0.012
-    arch_depth = 0.104 if not compact else 0.098
-    arch_open_w = 0.090 if not compact else 0.084
-    arch_open_h = 0.168
-    hx_side = width * 0.5 - wall_t * 0.5
-    for side_lbl, sx in [("R", +hx_side), ("L", -hx_side)]:
-        wh.make_beveled_box(f"{name}_SideRearWall_{side_lbl}", (wall_t, rear_len, height - 0.020),
-                            (sx, 0.012 + rear_len * 0.5, floor_h + (height - 0.020) * 0.5),
-                            "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
-        wh.make_arch_wall(f"{name}_SideArch_{side_lbl}", arch_depth, height - 0.018, wall_t,
-                          arch_open_w, arch_open_h,
-                          (sx, walk_y, floor_h), "Mat_CreamCeramic", arch_segs=10,
-                          parent=root, parts_list=parts)
-        # Warm brass arch keystone post cap at front corner
-        wh.make_cylinder(f"{name}_CornerPillar_{side_lbl}", 0.0065, height - 0.006,
-                         (sx, depth - 0.010, floor_h + (height - 0.006) * 0.5),
-                         "Mat_WarmWood", vertices=12, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_LampCanopy", 0.011, 0.004, (0.0, ly_back + 0.028, clear_h - 0.013),
+                     "Mat_Brass", vertices=12, parent=root, parts_list=parts)
+    wh.make_sphere(f"{name}_CeilingLightBulb", (0.008, 0.008, 0.005),
+                   (0.0, ly_back + 0.028, clear_h - 0.017), "Mat_LampGlow",
+                   segments=10, rings=8, parent=root, parts_list=trim)
 
-    # 4. Gently curved overhead ceiling rib & warm interior ceiling sconce light
-    wh.make_curved_canopy(f"{name}_CeilingRib", width - 0.004, depth - 0.012, 0.010, 0.016,
-                          (0.0, 0.006, height - 0.010), "Mat_CreamCeramic", segs=10,
-                          parent=root, parts_list=parts)
-    # Front fascia header beam with role nameplate slot
-    wh.make_beveled_box(f"{name}_FrontHeader", (width - 0.008, 0.014, 0.018),
-                        (0.0, depth - 0.010, height - 0.006), "Mat_WarmWood",
-                        bevel_width=0.002, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_RoleNameplateTrim", (width * 0.36, 0.006, 0.012),
-                        (0.0, depth - 0.002, height - 0.006), "Mat_Brass",
-                        bevel_width=0.001, parent=root, parts_list=trim)
-
-    # Cozy dome pendant ceiling bulb inside top rear
-    wh.make_cylinder(f"{name}_LampCanopy", 0.014, 0.005, (0.0, 0.095, height - 0.006),
-                     "Mat_Brass", vertices=14, parent=root, parts_list=parts)
-    wh.make_sphere(f"{name}_CeilingLightBulb", (0.010, 0.010, 0.006),
-                   (0.0, 0.095, height - 0.011), "Mat_LampGlow", segments=12, rings=8,
-                   parent=root, parts_list=trim)
-
-    # 5. Front balcony safety railing with open center step-out apron so view of agent/desk stays wide open
-    gap_half = 0.044 if not compact else 0.036
-    side_rail_end = width * 0.5 - 0.014
-    wh.make_railing(f"{name}_FrontRail_R", (gap_half, depth - 0.008), (side_rail_end, depth - 0.008),
-                    floor_h, rail_h=0.026, posts=2, parent=root, parts_list=parts)
-    wh.make_railing(f"{name}_FrontRail_L", (-side_rail_end, depth - 0.008), (-gap_half, depth - 0.008),
-                    floor_h, rail_h=0.026, posts=2, parent=root, parts_list=parts)
+    # 5. Front Balcony Safety Railing strictly inside [z_c1, D]
+    rail_y = (ly_c1 + ly_front) * 0.5
+    wh.make_railing(f"{name}_FrontRail", (-width * 0.46, rail_y), (+width * 0.46, rail_y),
+                    0.0, rail_h=0.028, posts=3, parent=root, parts_list=parts)
 
     wh.join_static_parts(parts, f"{name}_Structure", parent=root)
     wh.join_static_parts(trim, f"{name}_Accents", parent=root)
 
-    # Interaction & Agent Sockets (floor surface Z = 0.013m)
-    fz = floor_h + 0.001
-    # Workstation mounted toward rear-center so front promenade walk_y is 100% collision-free!
-    wh.make_anchor("WorkstationSocket",  (0.0, 0.088, fz), root)
-    wh.make_anchor("WorkPose",           (0.0, 0.062, fz), root)
-    wh.make_anchor("SeatPose",           (0.0, 0.072, fz), root)
-    wh.make_anchor("AgentHomePose",      (0.0, walk_y, fz), root)
-    wh.make_anchor("EntryPose",          (-width * 0.5, walk_y, fz), root)
-    wh.make_anchor("HandoffPose",        (0.038, walk_y, fz), root)
-    wh.make_anchor("ElevatorQueuePose",  (-width * 0.5 + 0.022, walk_y, fz), root)
-    wh.make_anchor("DocumentAttach",     (0.038, 0.092, fz + 0.056), root)
-    wh.make_anchor("HeadLookTarget",     (0.0, 0.075, fz + 0.095), root)
-    wh.make_anchor("AgentStand_Cubicle", (0.0, walk_y, fz), root)
-    wh.make_anchor("PathNode_Entry",     (-width * 0.45, walk_y, fz), root)
-    wh.make_anchor("Handoff_In",         (+0.045, walk_y, fz), root)
-    wh.make_anchor("Handoff_Out",        (-0.045, walk_y, fz), root)
-    wh.make_anchor("DoorClearance",      (-width * 0.5 + 0.025, walk_y, fz + 0.085), root)
-    wh.make_anchor("RaySelectCollider",  (0.0, 0.120, fz + 0.095), root)
+    # Workstation inside Desk_* box + Agent poses matching HabitatLayoutBuilder AddWorkstation!
+    fz = 0.001
+    ah = s["agent_h"]
+    wh.make_anchor("WorkstationSocket",  (lx_work, ly_desk_c, fz), root)
+    wh.make_anchor("WorkPose",           (lx_work, ly_work, fz), root)
+    wh.make_anchor("SeatPose",           (lx_work, ly_work, fz), root)
+    wh.make_anchor("AgentHomePose",      (lx_work, ly_work, fz), root)
+    wh.make_anchor("EntryPose",          (lx_gap, ly_entry, fz), root)
+    wh.make_anchor("HandoffPose",        (lx_gap, ly_corr, fz), root)
+    wh.make_anchor("ElevatorQueuePose",  (width * 0.45, ly_corr, fz), root)
+    wh.make_anchor("DocumentAttach",     (lx_work, ly_work + 0.030, fz + ah * 0.55), root)
+    wh.make_anchor("HeadLookTarget",     (lx_work, ly_work, fz + ah * 0.90), root)
 
     return wh.export_wall_static(
         name,
         cam_pos=(0.24, 0.48, 0.24),
-        target=(0.0, 0.11, 0.10),
-        extra_cam=((-0.26, 0.45, 0.24), (0.0, 0.11, 0.10)),
+        target=(0.0, 0.0, 0.10),
+        extra_cam=((-0.26, 0.45, 0.24), (0.0, 0.0, 0.10)),
     )
 
 
@@ -315,331 +456,355 @@ def _build_hallway_segment():
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
+    s = get_layout_spec(False)
+    w = 0.140
+    d = s["corridor_depth"] + s["railing"]
+    slab = s["slab"]
+    yc = (s["z_c0"] + s["D"]) * 0.5 - s["office_yc"]
+    y_rail = s["D"] - 0.005 - s["office_yc"]
+
     parts = []
-    # Modular connecting skybridge/corridor (0.140m W x 0.088m D corridor)
-    w, d = 0.140, 0.086
-    floor_h = 0.012
-    wh.make_rounded_slab(f"{name}_Deck", w, d, floor_h, 0.012, (0.0, 0.184, floor_h * 0.5),
-                         "Mat_WarmWood", bevel=0.0015, parent=root, parts_list=parts)
-    wh.make_rounded_slab(f"{name}_Runner", w - 0.006, 0.058, 0.002, 0.006, (0.0, 0.184, floor_h + 0.001),
-                         "Mat_FeltSlate", bevel=0.0003, parent=root, parts_list=parts)
-    wh.make_railing(f"{name}_FrontRail", (-w * 0.48, 0.222), (w * 0.48, 0.222), floor_h,
+    wh.make_beveled_box(f"{name}_Deck", (w, d, slab), (0.0, yc, -slab * 0.5),
+                        "Mat_WarmWood", bevel_width=0.0015, parent=root, parts_list=parts)
+    wh.make_rounded_slab(f"{name}_Runner", w - 0.006, s["corridor_depth"] - 0.010, 0.0015, 0.005,
+                         (0.0, s["zc"] - s["office_yc"], 0.0008), "Mat_FeltSlate",
+                         bevel=0.0003, parent=root, parts_list=parts)
+    wh.make_railing(f"{name}_FrontRail", (-w * 0.46, y_rail), (w * 0.46, y_rail), 0.0,
                     rail_h=0.028, posts=3, parent=root, parts_list=parts)
-    # Rear wall mount brace
-    wh.make_beveled_box(f"{name}_BackBrace", (w - 0.016, 0.008, 0.048), (0.0, 0.144, floor_h + 0.024),
-                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
 
     wh.join_static_parts(parts, f"{name}_Mesh", parent=root)
 
-    fz = floor_h + 0.001
-    wh.make_anchor("AgentHomePose",     (0.0, 0.184, fz), root)
-    wh.make_anchor("WorkPose",          (0.0, 0.184, fz), root)
-    wh.make_anchor("SeatPose",          (0.0, 0.184, fz), root)
-    wh.make_anchor("EntryPose",         (w * 0.5, 0.184, fz), root)
-    wh.make_anchor("HandoffPose",       (-w * 0.5, 0.184, fz), root)
-    wh.make_anchor("ElevatorQueuePose", (-w * 0.5 + 0.02, 0.184, fz), root)
-    wh.make_anchor("DocumentAttach",    (0.0, 0.184, fz + 0.055), root)
-    wh.make_anchor("HeadLookTarget",    (0.0, 0.184, fz + 0.095), root)
+    yc_corr = s["zc"] - s["office_yc"]
+    wh.make_anchor("AgentHomePose",     (0.0, yc_corr, 0.001), root)
+    wh.make_anchor("WorkPose",          (0.0, yc_corr, 0.001), root)
+    wh.make_anchor("SeatPose",          (0.0, yc_corr, 0.001), root)
+    wh.make_anchor("EntryPose",         (-w * 0.5, yc_corr, 0.001), root)
+    wh.make_anchor("HandoffPose",       (+w * 0.5, yc_corr, 0.001), root)
+    wh.make_anchor("ElevatorQueuePose", (+w * 0.4, yc_corr, 0.001), root)
+    wh.make_anchor("DocumentAttach",    (0.0, yc_corr, 0.056), root)
+    wh.make_anchor("HeadLookTarget",    (0.0, yc_corr, 0.095), root)
 
-    return wh.export_wall_static(name, cam_pos=(0.20, 0.46, 0.18), target=(0.0, 0.18, 0.03))
+    return wh.export_wall_static(name, cam_pos=(0.20, 0.46, 0.18), target=(0.0, yc, 0.03))
 
 
 def _build_mid_planning_nook():
     """
-    Middle Work Deck: Shared Blueprint Balcony, Meeting Nook & Brass Task-Card Rail.
-    Spans 0.456m wide (over Developer + Tester bays), connecting straight to ElevatorStop_Mid.
+    Full-Layout Middle Deck (`SharedMeetingSocket` = (+0.1625, 0.0925, -0.1100)):
+      X span: [-0.050, +0.375] -> width 0.425m, centered at lx=0.
+      MeetingTable strictly inside [mx-0.06..mx+0.06] x [back+0.02..zC0-0.01].
+      Corridor [z_c0, z_c1] 100% open straight to ElevatorStop_Mid!
     """
     name = "WallHabitat_MidPlanningNook"
     wh.reset_scene()
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
-    w, d, h = 0.456, 0.232, 0.218
-    floor_h = 0.012
+    s = get_layout_spec(False)
+    mid = s["mid"]
+    w = mid["width"]
+    ref_y = s["office_yc"]
+    ly_back = s["back"] - ref_y
+    ly_front = s["D"] - ref_y
+    ly_c0 = s["z_c0"] - ref_y
+    ly_c1 = s["z_c1"] - ref_y
+    ly_corr = s["zc"] - ref_y
+    depth = ly_front - ly_back
+    slab = s["slab"]
+    clear_h = mid["clearH"]
+
     parts = []
     accents = []
 
-    # 1. Floor deck & corridor strip
-    wh.make_rounded_slab(f"{name}_Deck", w, d, floor_h, 0.020, (0.0, d * 0.5, floor_h * 0.5),
-                         "Mat_WarmWood", bevel=0.002, parent=root, parts_list=parts)
-    wh.make_rounded_slab(f"{name}_CorridorPad", w - 0.024, 0.066, 0.002, 0.010, (0.0, 0.184, floor_h + 0.001),
-                         "Mat_FeltSlate", bevel=0.0004, parent=root, parts_list=parts)
-    # Recessed teal brass-trimmed meeting rug under shared round blueprint table
-    wh.make_cylinder(f"{name}_MeetingRug", 0.088, 0.002, (0.040, 0.088, floor_h + 0.001),
-                     "Mat_Researcher_Teal", vertices=24, parent=root, parts_list=parts)
+    # 1. Floor deck slab + corridor strip + meeting mat
+    wh.make_beveled_box(f"{name}_Deck", (w, depth, slab),
+                        (0.0, (ly_back + ly_front) * 0.5, -slab * 0.5),
+                        "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
+    wh.make_rounded_slab(f"{name}_CorridorPad", w - 0.016, s["corridor_depth"] - 0.012, 0.0015, 0.006,
+                         (0.0, ly_corr, 0.0008), "Mat_FeltSlate", bevel=0.0003,
+                         parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_MeetingRug", 0.068, 0.0015,
+                     (0.0, -0.005, 0.0008), "Mat_Researcher_Teal", vertices=24,
+                     parent=root, parts_list=parts)
 
-    # 2. Curved Pergola Arched Frame (open, airy middle deck silhouette)
-    for rx in (-0.218, -0.020, +0.218):
-        wh.make_cylinder(f"{name}_RearPost_{rx:+.2f}", 0.008, h - floor_h, (rx, 0.018, floor_h + (h - floor_h) * 0.5),
+    # 2. Left (-X) End Wall & Rear Posts (keeps +X edge 100% OPEN to ElevatorStop_Mid!)
+    wh.make_beveled_box(f"{name}_LeftEndWall", (s["partition"], depth - 0.012, clear_h * 0.52),
+                        (-w * 0.5 + s["partition"] * 0.5, (ly_back + ly_front) * 0.5, clear_h * 0.26),
+                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_LeftEndWallCap", (s["partition"] + 0.004, depth - 0.008, 0.008),
+                        (-w * 0.5 + s["partition"] * 0.5, (ly_back + ly_front) * 0.5, clear_h * 0.52 + 0.004),
+                        "Mat_WarmWood", bevel_width=0.001, parent=root, parts_list=parts)
+
+    for rx in (-w * 0.44, +0.02, +w * 0.44):
+        wh.make_cylinder(f"{name}_RearPost_{rx:+.2f}", 0.0065, clear_h - 0.008,
+                         (rx, ly_back + 0.007, (clear_h - 0.008) * 0.5),
                          "Mat_WarmWood", vertices=12, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_BackHeader", (w - 0.016, 0.016, 0.014),
-                        (0.0, 0.018, h - 0.008), "Mat_CreamCeramic", bevel_width=0.0015,
-                        parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_BackHeader", (w - 0.016, 0.014, 0.012),
+                        (0.0, ly_back + 0.009, clear_h - 0.008), "Mat_CreamCeramic",
+                        bevel_width=0.0012, parent=root, parts_list=parts)
 
-    # Right end arch leading into ElevatorStop_Mid (-X in Blender -> +X Unity elevator)
-    wh.make_arch_wall(f"{name}_ElevSideArch", 0.104, h - 0.014, 0.010, 0.090, 0.168,
-                      (-w * 0.5 + 0.005, 0.184, floor_h), "Mat_CreamCeramic", arch_segs=10,
-                      parent=root, parts_list=parts)
-    # Left end decorative wooden pergola rail + wall trellis
-    wh.make_railing(f"{name}_LeftSideRail", (w * 0.5 - 0.008, 0.030), (w * 0.5 - 0.008, d - 0.012),
-                    floor_h, rail_h=0.030, posts=3, parent=root, parts_list=parts)
-
-    # 3. Shared Round Blueprint Table & Dual Minimalist Stools
-    tx, ty = 0.040, 0.088
-    wh.make_cylinder(f"{name}_TablePedestal", 0.012, 0.042, (tx, ty, floor_h + 0.021),
-                     "Mat_DarkWood", vertices=14, parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_TableFoot", 0.032, 0.005, (tx, ty, floor_h + 0.003),
-                     "Mat_Brass", vertices=18, parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_TableTop", 0.056, 0.007, (tx, ty, floor_h + 0.044),
-                     "Mat_CreamCeramic", vertices=24, bevel_caps=0.001, parent=root, parts_list=parts)
-    # Unrolled Blueprint sheet & miniature pin markers on table
-    wh.make_beveled_box(f"{name}_SharedBlueprint", (0.064, 0.044, 0.002), (tx, ty, floor_h + 0.049),
-                        "Mat_BlueprintBlue", bevel_width=0.0004, rot_deg=(0, 0, -6),
+    # 3. Shared Round Blueprint Table strictly inside [mx-0.06..mx+0.06] x [back+0.02..zC0-0.01]
+    tx, ty = 0.0, 0.0
+    wh.make_cylinder(f"{name}_TablePedestal", 0.010, 0.044, (tx, ty, 0.022),
+                     "Mat_DarkWood", vertices=12, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_TableFoot", 0.026, 0.004, (tx, ty, 0.002),
+                     "Mat_Brass", vertices=16, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_TableTop", 0.048, 0.006, (tx, ty, 0.047),
+                     "Mat_CreamCeramic", vertices=22, bevel_caps=0.0008, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_SharedBlueprint", (0.058, 0.038, 0.002), (tx, ty, 0.051),
+                        "Mat_BlueprintBlue", bevel_width=0.0004, rot_deg=(0, 0, -5),
                         parent=root, parts_list=parts)
-    for px, py, pmat in [(-0.014, 0.006, "Mat_Developer_Coral"), (0.016, -0.008, "Mat_Researcher_Lavender"), (0.002, 0.010, "Mat_Tester_Mint")]:
-        wh.make_cylinder(f"{name}_PlanPin_{px:+.3f}", 0.0035, 0.008, (tx + px, ty + py, floor_h + 0.054),
+    for px, py, pmat in [(-0.012, 0.004, "Mat_Developer_Coral"), (0.013, -0.006, "Mat_Researcher_Lavender"), (0.001, 0.008, "Mat_Tester_Mint")]:
+        wh.make_cylinder(f"{name}_PlanPin_{px:+.3f}", 0.003, 0.007, (tx + px, ty + py, 0.055),
                          pmat, vertices=10, parent=root, parts_list=accents)
 
-    # Two miniature perch stools on left & right of meeting table
-    for side_lbl, sx in [("L", tx + 0.068), ("R", tx - 0.068)]:
-        wh.make_cylinder(f"{name}_StoolLeg_{side_lbl}", 0.007, 0.024, (sx, ty, floor_h + 0.012),
+    for side_lbl, sx in [("L", -0.072), ("R", +0.072)]:
+        wh.make_cylinder(f"{name}_StoolLeg_{side_lbl}", 0.006, 0.022, (sx, ty, 0.011),
                          "Mat_DarkWood", vertices=12, parent=root, parts_list=parts)
-        wh.make_cylinder(f"{name}_StoolCushion_{side_lbl}", 0.018, 0.006, (sx, ty, floor_h + 0.025),
-                         "Mat_WarmBeige", vertices=16, parent=root, parts_list=parts)
+        wh.make_cylinder(f"{name}_StoolCushion_{side_lbl}", 0.015, 0.005, (sx, ty, 0.024),
+                         "Mat_WarmBeige", vertices=14, parent=root, parts_list=parts)
 
-    # 4. Horizontal Task-Card Distribution Rail mounted cleanly above WallBoard (level & bracketed)
-    rail_x0, rail_x1 = -0.165, +0.165
-    rail_z = floor_h + 0.162
-    wh.make_beveled_box(f"{name}_CardRailBack", (rail_x1 - rail_x0, 0.010, 0.012),
-                        ((rail_x0 + rail_x1) * 0.5, 0.022, rail_z), "Mat_DarkWood",
-                        bevel_width=0.0015, rot_deg=(0, 0, 0), parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_CardRailBar", 0.0032, rail_x1 - rail_x0,
-                     ((rail_x0 + rail_x1) * 0.5, 0.030, rail_z), "Mat_Brass",
+    # 4. Pinned Kanban Board & Task-Card Rail mounted flat along rear wall
+    wh.make_beveled_box(f"{name}_WallBoard", (0.115, 0.006, 0.068),
+                        (0.0, ly_back + 0.008, 0.112), "Mat_WarmWood",
+                        bevel_width=0.0015, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_WallBoardFace", (0.102, 0.007, 0.054),
+                        (0.0, ly_back + 0.009, 0.112), "Mat_PaperWarm",
+                        bevel_width=0.0004, parent=root, parts_list=parts)
+    rail_z = 0.172
+    wh.make_beveled_box(f"{name}_CardRailBack", (0.280, 0.008, 0.010),
+                        (0.0, ly_back + 0.010, rail_z), "Mat_DarkWood",
+                        bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_CardRailBar", 0.0028, 0.275,
+                     (0.0, ly_back + 0.017, rail_z), "Mat_Brass",
                      vertices=12, rot_deg=(0, 90, 0), parent=root, parts_list=parts)
-    for bkx in (rail_x0 + 0.018, rail_x1 - 0.018):
-        wh.make_beveled_box(f"{name}_RailBracket_{bkx:+.2f}", (0.008, 0.016, 0.010),
-                            (bkx, 0.024, rail_z), "Mat_Brass", bevel_width=0.0008,
-                            parent=root, parts_list=accents)
-    for tok_lbl, tx_tok, tok_mat in [("L", -0.105, "Mat_Researcher_Lavender"), ("R", +0.115, "Mat_Developer_Coral")]:
-        wh.make_beveled_box(f"{name}_RailToken_{tok_lbl}", (0.018, 0.004, 0.022),
-                            (tx_tok, 0.033, rail_z - 0.010), tok_mat, bevel_width=0.0006,
-                            parent=root, parts_list=accents)
-    # Miniature pinned Kanban diagram board behind meeting table
-    wh.make_beveled_box(f"{name}_WallBoard", (0.115, 0.008, 0.072), (tx, 0.018, floor_h + 0.104),
-                        "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_WallBoardFace", (0.102, 0.009, 0.058), (tx, 0.019, floor_h + 0.104),
-                        "Mat_PaperWarm", bevel_width=0.0005, parent=root, parts_list=parts)
+    for tok_lbl, tx_tok, tok_mat in [("L", -0.095, "Mat_Researcher_Lavender"), ("R", +0.095, "Mat_Developer_Coral")]:
+        wh.make_beveled_box(f"{name}_RailToken_{tok_lbl}", (0.016, 0.003, 0.020),
+                            (tx_tok, ly_back + 0.019, rail_z - 0.009), tok_mat,
+                            bevel_width=0.0005, parent=root, parts_list=accents)
 
-    # Front safety balcony railings with open promenade center
-    wh.make_railing(f"{name}_FrontRail_L", (-w * 0.47, d - 0.008), (-0.060, d - 0.008),
-                    floor_h, rail_h=0.028, posts=3, parent=root, parts_list=parts)
-    wh.make_railing(f"{name}_FrontRail_R", (0.060, d - 0.008), (w * 0.47, d - 0.008),
-                    floor_h, rail_h=0.028, posts=3, parent=root, parts_list=parts)
+    # 5. Front safety railing strictly inside [z_c1, D]
+    rail_y = (ly_c1 + ly_front) * 0.5
+    wh.make_railing(f"{name}_FrontRail", (-w * 0.45, rail_y), (+w * 0.45, rail_y),
+                    0.0, rail_h=0.028, posts=4, parent=root, parts_list=parts)
 
-    # Cozy overhead pendant lamp
-    wh.make_cylinder(f"{name}_PendantCord", 0.002, 0.042, (tx, ty, h - 0.024),
+    wh.make_cylinder(f"{name}_PendantCord", 0.0018, 0.024, (tx, ty, clear_h - 0.018),
                      "Mat_Brass", vertices=10, parent=root, parts_list=parts)
-    wh.make_cone(f"{name}_PendantShade", 0.024, 0.008, 0.016, (tx, ty, h - 0.048),
-                 "Mat_Researcher_Teal", vertices=18, parent=root, parts_list=parts)
-    wh.make_sphere(f"{name}_PendantBulb", (0.008, 0.008, 0.006), (tx, ty, h - 0.056),
+    wh.make_cone(f"{name}_PendantShade", 0.020, 0.007, 0.014, (tx, ty, clear_h - 0.032),
+                 "Mat_Researcher_Teal", vertices=16, parent=root, parts_list=parts)
+    wh.make_sphere(f"{name}_PendantBulb", (0.007, 0.007, 0.005), (tx, ty, clear_h - 0.040),
                    "Mat_LampGlow", segments=10, rings=8, parent=root, parts_list=accents)
 
     wh.join_static_parts(parts, f"{name}_Structure", parent=root)
     wh.join_static_parts(accents, f"{name}_Accents", parent=root)
 
-    fz = floor_h + 0.001
-    wh.make_anchor("SharedMeetingSocket", (tx, ty, fz), root)
-    wh.make_anchor("DeliverySocket",      (tx - 0.040, 0.184, fz), root)
-    wh.make_anchor("AgentHomePose",       (tx + 0.068, ty, fz), root)
-    wh.make_anchor("WorkPose",            (tx - 0.068, ty, fz), root)
-    wh.make_anchor("SeatPose",            (tx + 0.068, ty, fz), root)
-    wh.make_anchor("EntryPose",           (-w * 0.5, 0.184, fz), root)
-    wh.make_anchor("HandoffPose",         (0.0, 0.184, fz), root)
-    wh.make_anchor("ElevatorQueuePose",   (-w * 0.5 + 0.026, 0.184, fz), root)
-    wh.make_anchor("DocumentAttach",      (tx, ty, fz + 0.052), root)
-    wh.make_anchor("HeadLookTarget",      (tx, ty, fz + 0.095), root)
-    wh.make_anchor("AgentStand_Nook_L",   (tx + 0.068, 0.184, fz), root)
-    wh.make_anchor("AgentStand_Nook_R",   (tx - 0.068, 0.184, fz), root)
-    wh.make_anchor("Handoff_Mid",         (tx, 0.184, fz), root)
-    wh.make_anchor("DoorClearance",       (-w * 0.5 + 0.025, 0.184, fz + 0.085), root)
-    wh.make_anchor("PathNode_MidDeck",    (tx, 0.184, fz), root)
-    wh.make_anchor("RaySelectCollider",   (tx, 0.120, fz + 0.090), root)
+    fz = 0.001
+    wh.make_anchor("SharedMeetingSocket", (0.0, 0.0, fz), root)
+    wh.make_anchor("AgentHomePose",       (0.0, ly_corr, fz), root)
+    wh.make_anchor("WorkPose",            (0.0, ly_corr, fz), root)
+    wh.make_anchor("SeatPose",            (-0.072, ty, fz), root)
+    wh.make_anchor("EntryPose",           (+w * 0.46, ly_corr, fz), root)
+    wh.make_anchor("HandoffPose",         (+0.080, ly_corr, fz), root)
+    wh.make_anchor("ElevatorQueuePose",   (+w * 0.46, ly_corr, fz), root)
+    wh.make_anchor("DocumentAttach",      (0.0, ty, fz + 0.055), root)
+    wh.make_anchor("HeadLookTarget",      (0.0, ly_corr, fz + 0.095), root)
 
     return wh.export_wall_static(
         name,
         cam_pos=(0.30, 0.65, 0.22),
-        target=(0.0, 0.11, 0.09),
-        extra_cam=((-0.34, 0.62, 0.24), (0.0, 0.11, 0.09)),
+        target=(0.0, 0.02, 0.09),
+        extra_cam=((-0.34, 0.62, 0.24), (0.0, 0.02, 0.09)),
     )
 
 
-def _build_manager_lookout():
+def _build_manager_lookout(name="WallHabitat_ManagerLookout", compact=False):
     """
-    Top-Tier Elevated Manager Deck & Architect Study:
-    - Whimsical vaulted canopy roof with warm brass rib trim (Workshop Treehouse crown).
-    - Central Manager executive curved drafting desk, glowing tactical map board,
-      inspectable physical plan receipt tray, brass banker lamp, plush executive seat,
-      and dedicated right-wing Printer Alcove (`TaskPrinterSocket`).
+    Top-Tier Elevated Manager Deck & Printer Alcove (`ManagerOfficeSocket` = (mcx, office_yc, mgr.floorY)).
+      Exact match to HabitatLayoutBuilder Manager floor, PrinterTable, ManagerPartition, Desk_Manager & Roof:
+      Full:    deck [-0.300, +0.375], mcx=+0.215, printerX=-0.230, ManagerPartition x=+0.065, roofTop=+0.260 local.
+      Compact: deck [-0.200, +0.240], mcx=+0.080, printerX=-0.130, ManagerPartition x=-0.070, roofTop=+0.240 local.
     """
-    name = "WallHabitat_ManagerLookout"
     wh.reset_scene()
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
-    w, d, h = 0.495, 0.238, 0.250
-    floor_h = 0.014
+    s = get_layout_spec(compact)
+    mgr = s["mgr"]
+    mcx = s["mcx"]
+    ref_y = s["office_yc"]
+    lx_min = mgr["xMin"] - mcx
+    lx_max = mgr["xMax"] - mcx
+    w = mgr["width"]
+    deck_cx = (lx_min + lx_max) * 0.5
+
+    lx_printer = s["printer_x"] - mcx
+    lx_part = s["mgr_part_x"] - mcx
+
+    ly_back = s["back"] - ref_y
+    ly_front = s["D"] - ref_y
+    ly_c0 = s["z_c0"] - ref_y
+    ly_c1 = s["z_c1"] - ref_y
+    ly_corr = s["zc"] - ref_y
+    depth = ly_front - ly_back
+    slab = s["slab"]
+    clear_h = mgr["clearH"]
+
+    mgr_rs = s["role_stations"][3]
+    lx_work = mgr_rs["work_x"] - mcx
+    ly_work = mgr_rs["work_y"] - ref_y
+    lx_gap = mgr_rs["gap_x"] - mcx
+    ly_entry = mgr_rs["entry_y"] - ref_y
+    ly_desk = ((mgr_rs["desk_y0"] + mgr_rs["desk_y1"]) * 0.5) - ref_y
+
     parts = []
     accents = []
 
-    # 1. Floor deck & corridor
-    wh.make_rounded_slab(f"{name}_Deck", w, d, floor_h, 0.024, (0.0, d * 0.5, floor_h * 0.5),
-                         "Mat_WarmWood", bevel=0.0022, parent=root, parts_list=parts)
-    wh.make_rounded_slab(f"{name}_Carpet", 0.210, 0.135, 0.002, 0.025, (+0.035, 0.112, floor_h + 0.001),
-                         "Mat_Researcher_Lavender", bevel=0.0005, parent=root, parts_list=parts)
-    wh.make_rounded_slab(f"{name}_CorridorStrip", 0.220, 0.064, 0.002, 0.010, (-0.125, 0.184, floor_h + 0.001),
-                         "Mat_FeltSlate", bevel=0.0004, parent=root, parts_list=parts)
+    # 1. Manager Floor Deck Slab
+    wh.make_beveled_box(f"{name}_Deck", (w, depth, slab),
+                        (deck_cx, (ly_back + ly_front) * 0.5, -slab * 0.5),
+                        "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
+    # Executive rug under Manager office zone & corridor runner strip
+    off_w = lx_max - lx_part
+    wh.make_rounded_slab(f"{name}_Carpet", max(0.14, off_w - 0.04), 0.115, 0.0015, 0.016,
+                         (0.0, -0.005, 0.0008), "Mat_Researcher_Lavender",
+                         bevel=0.0004, parent=root, parts_list=parts)
+    wh.make_rounded_slab(f"{name}_CorridorStrip", w - 0.020, s["corridor_depth"] - 0.012, 0.0015, 0.006,
+                         (deck_cx, ly_corr, 0.0008), "Mat_FeltSlate",
+                         bevel=0.0003, parent=root, parts_list=parts)
 
-    # 2. Architectural Treehouse Vaulted Canopy Roof & Corner Columns
-    vault_base_z = 0.195
-    wh.make_curved_canopy(f"{name}_RoofOuterShell", w + 0.022, d + 0.014, 0.014, 0.042,
-                          (0.0, 0.0, vault_base_z), "Mat_WarmWood", segs=16,
-                          parent=root, parts_list=parts)
-    wh.make_curved_canopy(f"{name}_RoofInnerCrown", w - 0.020, d + 0.004, 0.009, 0.038,
-                          (0.0, 0.004, vault_base_z - 0.006), "Mat_CreamCeramic", segs=14,
-                          parent=root, parts_list=parts)
-    # Brass roof ridge finial crest
-    wh.make_beveled_box(f"{name}_RoofFinialBar", (0.140, d - 0.020, 0.010),
-                        (0.0, d * 0.5 + 0.002, vault_base_z + 0.056), "Mat_Brass",
-                        bevel_width=0.002, parent=root, parts_list=parts)
+    # 2. Architectural Roof Slab strictly inside [clear_h, clear_h + slab]
+    wh.make_beveled_box(f"{name}_RoofDeck", (w + 0.004, depth + 0.002, slab),
+                        (deck_cx, (ly_back + ly_front) * 0.5, clear_h + slab * 0.5),
+                        "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_RoofFasciaTrim", (w * 0.85, 0.006, 0.010),
+                        (deck_cx, ly_front + 0.001, clear_h + slab * 0.5),
+                        "Mat_Brass", bevel_width=0.0010, parent=root, parts_list=accents)
 
-    # Columns & rear curved study window wall
-    wh.make_beveled_box(f"{name}_RearStudyWall", (w - 0.028, 0.010, vault_base_z - floor_h + 0.015),
-                        (0.0, 0.010, floor_h + (vault_base_z - floor_h) * 0.5),
-                        "Mat_CreamCeramic", bevel_width=0.0015, parent=root, parts_list=parts)
-    for cx in (-w * 0.47, +w * 0.47):
-        wh.make_cylinder(f"{name}_FrontPillar_{cx:+.2f}", 0.0085, vault_base_z - floor_h,
-                         (cx, d - 0.014, floor_h + (vault_base_z - floor_h) * 0.5),
-                         "Mat_WarmWood", vertices=12, parent=root, parts_list=parts)
+    # Left (-X) end wall at lx_min & rear study wall
+    wh.make_beveled_box(f"{name}_LeftEndWall", (s["partition"], depth - 0.012, clear_h * 0.52),
+                        (lx_min + s["partition"] * 0.5, (ly_back + ly_front) * 0.5, clear_h * 0.26),
+                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_RearStudyWall", (w - 0.024, 0.006, clear_h - 0.016),
+                        (deck_cx, ly_back + 0.003, (clear_h - 0.016) * 0.5),
+                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+    for cx_col in (lx_min + 0.008, lx_part, lx_max - 0.008):
+        wh.make_cylinder(f"{name}_RearPillar_{cx_col:+.2f}", 0.006, clear_h,
+                         (cx_col, ly_back + 0.008, clear_h * 0.5),
+                         "Mat_WarmWood", vertices=10, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_FrontLeftPillar", 0.0065, clear_h,
+                     (lx_min + 0.008, ly_front - 0.010, clear_h * 0.5),
+                     "Mat_WarmWood", vertices=10, parent=root, parts_list=parts)
 
-    # Right pass-through arch connecting to ElevatorStop_Manager
-    wh.make_arch_wall(f"{name}_ElevSideArch", 0.104, vault_base_z - floor_h, 0.010, 0.090, 0.168,
-                      (-w * 0.5 + 0.005, 0.184, floor_h), "Mat_CreamCeramic", arch_segs=10,
-                      parent=root, parts_list=parts)
+    # 3. ManagerPartition between Printer Alcove & Manager Office
+    part_y0 = ly_back + 0.002
+    part_y1 = ly_c0 - 0.008
+    part_len = max(0.040, part_y1 - part_y0)
+    wh.make_beveled_box(f"{name}_PrinterPartition", (s["partition"], part_len, 0.110),
+                        (lx_part, (part_y0 + part_y1) * 0.5, 0.055),
+                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_PrinterPartitionCap", (s["partition"] + 0.003, part_len + 0.002, 0.007),
+                        (lx_part, (part_y0 + part_y1) * 0.5, 0.1135),
+                        "Mat_WarmWood", bevel_width=0.0008, parent=root, parts_list=parts)
 
-    # 3. Manager Curved Executive Desk (Blender X = +0.035 -> Unity -0.035; slightly left-of-center lookout)
-    dx, dy = +0.035, 0.125
-    desk_h = 0.052
-    wh.make_rounded_slab(f"{name}_ExecDeskTop", 0.165, 0.078, 0.009, 0.022,
-                         (dx, dy, floor_h + desk_h), "Mat_WarmWood", bevel=0.0018,
+    # 4. PrinterStand strictly matching HabitatLayoutBuilder PrinterTable (h = 0.050 -> top at lz = +0.050!)
+    stand_h = 0.050
+    stand_w = 0.088
+    stand_d = min(0.068, (ly_c0 - ly_back) - 0.025)
+    wh.make_rounded_slab(f"{name}_PrinterStand", stand_w, stand_d, stand_h, 0.010,
+                         (lx_printer, 0.0, stand_h * 0.5),
+                         "Mat_WarmWood", bevel=0.0015, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_PrinterBaseTrim", (stand_w - 0.008, stand_d - 0.008, 0.004),
+                        (lx_printer, 0.0, stand_h - 0.002),
+                        "Mat_Brass", bevel_width=0.0006, parent=root, parts_list=accents)
+
+    # 5. Executive Manager Desk strictly inside Desk_Manager bounds (workX, deskZ)
+    desk_w = min(mgr_rs["desk_w"], 0.145)
+    desk_d = s["desk_depth"]
+    desk_h = 0.046 if not compact else 0.042
+    wh.make_rounded_slab(f"{name}_ExecDeskTop", desk_w, desk_d, 0.007, 0.012,
+                         (lx_work, ly_desk, desk_h), "Mat_WarmWood", bevel=0.0012,
                          parent=root, parts_list=parts)
-    for lx in (dx - 0.062, dx + 0.062):
-        wh.make_cylinder(f"{name}_DeskLeg_{lx:+.2f}", 0.006, desk_h, (lx, dy, floor_h + desk_h * 0.5),
-                         "Mat_DarkWood", vertices=12, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_DeskFrontModesty", (0.124, 0.007, desk_h * 0.68),
-                        (dx, dy + 0.028, floor_h + desk_h * 0.52), "Mat_CreamCeramic",
-                        bevel_width=0.0012, parent=root, parts_list=parts)
-    # Brass badge emblem on front of Manager desk
-    wh.make_beveled_box(f"{name}_DeskBrassBadge", (0.042, 0.004, 0.014),
-                        (dx, dy + 0.033, floor_h + desk_h * 0.56), "Mat_Brass",
-                        bevel_width=0.0008, parent=root, parts_list=accents)
-
-    # Desk props: Overview project map/slate, inspectable Plan Receipt Tray, Brass Banker Lamp
-    wh.make_beveled_box(f"{name}_OverviewMapPad", (0.068, 0.046, 0.004),
-                        (dx + 0.010, dy, floor_h + desk_h + 0.006), "Mat_BlueprintBlue",
-                        bevel_width=0.0008, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_PlanReceiptTray", (0.044, 0.036, 0.006),
-                        (dx - 0.050, dy - 0.004, floor_h + desk_h + 0.007), "Mat_DarkWood",
-                        bevel_width=0.001, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_PlanReceiptSheet", (0.034, 0.026, 0.002),
-                        (dx - 0.050, dy - 0.004, floor_h + desk_h + 0.011), "Mat_PaperWarm",
-                        bevel_width=0.0004, rot_deg=(0, 0, 5), parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_BankerLampBase", 0.010, 0.004, (dx + 0.062, dy - 0.018, floor_h + desk_h + 0.006),
-                     "Mat_Brass", vertices=14, parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_BankerLampNeck", 0.0025, 0.034, (dx + 0.062, dy - 0.018, floor_h + desk_h + 0.023),
-                     "Mat_Brass", vertices=10, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_BankerLampShade", (0.024, 0.014, 0.010), (dx + 0.058, dy - 0.012, floor_h + desk_h + 0.040),
-                        "Mat_Tester_Mint", bevel_width=0.002, rot_deg=(12, 0, -18), parent=root, parts_list=accents)
-
-    # Rear panoramic overview project board on Manager rear wall
-    wh.make_beveled_box(f"{name}_OverviewWallFrame", (0.140, 0.010, 0.082),
-                        (dx, 0.020, floor_h + 0.118), "Mat_WarmWood", bevel_width=0.0018,
-                        parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_OverviewScreen", (0.128, 0.011, 0.070),
-                        (dx, 0.021, floor_h + 0.118), "Mat_ScreenCode", bevel_width=0.0008,
+    for lx_leg in (-desk_w * 0.40, +desk_w * 0.40):
+        wh.make_cylinder(f"{name}_DeskLeg_{lx_leg:+.2f}", 0.005, desk_h,
+                         (lx_work + lx_leg, ly_desk, desk_h * 0.5), "Mat_DarkWood",
+                         vertices=10, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_DeskModesty", (desk_w * 0.78, 0.005, desk_h * 0.65),
+                        (lx_work, ly_desk + desk_d * 0.35, desk_h * 0.5),
+                        "Mat_CreamCeramic", bevel_width=0.0008, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_DeskBrassBadge", (0.036, 0.003, 0.010),
+                        (lx_work, ly_desk + desk_d * 0.38, desk_h * 0.55),
+                        "Mat_Brass", bevel_width=0.0006, parent=root, parts_list=accents)
+    wh.make_beveled_box(f"{name}_OverviewMapPad", (desk_w * 0.44, desk_d * 0.62, 0.003),
+                        (lx_work, ly_desk, desk_h + 0.0045), "Mat_BlueprintBlue",
+                        bevel_width=0.0005, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_BankerLampBase", 0.008, 0.003,
+                     (lx_work + desk_w * 0.34, ly_desk - 0.006, desk_h + 0.005),
+                     "Mat_Brass", vertices=12, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_BankerLampNeck", 0.002, 0.024,
+                     (lx_work + desk_w * 0.34, ly_desk - 0.006, desk_h + 0.018),
+                     "Mat_Brass", vertices=8, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_BankerLampShade", (0.018, 0.010, 0.007),
+                        (lx_work + desk_w * 0.31, ly_desk - 0.003, desk_h + 0.030),
+                        "Mat_Tester_Mint", bevel_width=0.0012, rot_deg=(10, 0, -14),
                         parent=root, parts_list=accents)
 
-    # Executive Plush Swivel Chair behind desk facing +Z room (tucked neatly back for standing Manager clearance)
-    wh.make_cylinder(f"{name}_ChairPedestal", 0.006, 0.022, (dx, dy - 0.072, floor_h + 0.011),
-                     "Mat_Brass", vertices=12, parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_ChairSeat", 0.022, 0.008, (dx, dy - 0.072, floor_h + 0.026),
-                     "Mat_Researcher_Teal", vertices=18, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_ChairBack", (0.038, 0.009, 0.044), (dx, dy - 0.088, floor_h + 0.052),
-                        "Mat_Researcher_Teal", bevel_width=0.003, parent=root, parts_list=parts)
+    # Rear panoramic overview project screen flat against rear wall behind Manager
+    scr_w = 0.130 if not compact else 0.105
+    scr_h = 0.072 if not compact else 0.060
+    wh.make_beveled_box(f"{name}_OverviewWallFrame", (scr_w, 0.006, scr_h),
+                        (lx_work, ly_back + 0.009, 0.125), "Mat_WarmWood", bevel_width=0.0012,
+                        parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_OverviewScreen", (scr_w - 0.012, 0.007, scr_h - 0.012),
+                        (lx_work, ly_back + 0.010, 0.125), "Mat_ScreenCode", bevel_width=0.0005,
+                        parent=root, parts_list=accents)
 
-    # 4. Printer Alcove Plinth on right side near elevator (Blender X = -0.145, Y = 0.100)
-    px, py = -0.145, 0.095
-    wh.make_rounded_slab(f"{name}_PrinterStand", 0.096, 0.082, 0.042, 0.014,
-                         (px, py, floor_h + 0.021), "Mat_WarmWood", bevel=0.0018,
-                         parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_PrinterCardTray", (0.064, 0.040, 0.005),
-                        (px, py + 0.046, floor_h + 0.036), "Mat_Brass", bevel_width=0.001,
-                        rot_deg=(15, 0, 0), parent=root, parts_list=parts)
-
-    # Balcony lookout safety railings at front
-    wh.make_railing(f"{name}_LookoutRail_L", (-w * 0.46, d - 0.010), (-0.060, d - 0.010),
-                    floor_h, rail_h=0.030, posts=3, parent=root, parts_list=parts)
-    wh.make_railing(f"{name}_LookoutRail_R", (-0.015, d - 0.010), (+w * 0.46, d - 0.010),
-                    floor_h, rail_h=0.030, posts=4, parent=root, parts_list=parts)
+    # 6. Front lookout railing strictly inside [z_c1, D]
+    rail_y = (ly_c1 + ly_front) * 0.5
+    wh.make_railing(f"{name}_LookoutRail", (lx_min + 0.018, rail_y), (lx_max - 0.012, rail_y),
+                    0.0, rail_h=0.028, posts=5 if not compact else 4, parent=root, parts_list=parts)
 
     wh.join_static_parts(parts, f"{name}_Structure", parent=root)
     wh.join_static_parts(accents, f"{name}_Accents", parent=root)
 
-    fz = floor_h + 0.001
-    wh.make_anchor("ManagerOfficeSocket", (dx, dy, fz), root)
-    wh.make_anchor("ManagerDeskSocket",   (dx, dy - 0.048, fz), root)
-    wh.make_anchor("TaskPrinterSocket",   (px, py, floor_h + 0.042), root)
-    wh.make_anchor("DeliverySocket",      (dx - 0.050, dy + 0.036, fz + desk_h + 0.012), root)
-    wh.make_anchor("AgentHomePose",       (dx, dy - 0.048, fz), root)
-    wh.make_anchor("WorkPose",            (dx, dy - 0.048, fz), root)
-    wh.make_anchor("SeatPose",            (dx, dy - 0.072, fz + 0.018), root)
-    wh.make_anchor("EntryPose",           (-w * 0.5, 0.184, fz), root)
-    wh.make_anchor("HandoffPose",         (-0.080, 0.184, fz), root)
-    wh.make_anchor("ElevatorQueuePose",   (-w * 0.5 + 0.026, 0.184, fz), root)
-    wh.make_anchor("DocumentAttach",      (dx - 0.045, dy + 0.010, fz + desk_h + 0.015), root)
-    wh.make_anchor("HeadLookTarget",      (dx, dy - 0.048, fz + 0.105), root)
-    wh.make_anchor("AgentStand_Manager",  (dx, dy - 0.048, fz), root)
-    wh.make_anchor("CardOutput_Manager",  (px, py + 0.046, fz + 0.040), root)
-    wh.make_anchor("Handoff_Manager",     (-0.080, 0.184, fz), root)
-    wh.make_anchor("DoorClearance",       (-w * 0.5 + 0.025, 0.184, fz + 0.085), root)
-    wh.make_anchor("RaySelectCollider",   (dx, 0.110, fz + 0.095), root)
+    fz = 0.001
+    ah = s["agent_h"]
+    wh.make_anchor("ManagerOfficeSocket", (0.0, 0.0, fz), root)
+    wh.make_anchor("WorkstationSocket",   (lx_work, ly_desk, fz), root)
+    wh.make_anchor("ManagerDeskSocket",   (lx_work, ly_work, fz), root)
+    wh.make_anchor("TaskPrinterSocket",   (lx_printer, 0.0, stand_h), root)
+    wh.make_anchor("AgentHomePose",       (lx_work, ly_work, fz), root)
+    wh.make_anchor("WorkPose",            (lx_work, ly_work, fz), root)
+    wh.make_anchor("SeatPose",            (lx_work, ly_work, fz), root)
+    wh.make_anchor("EntryPose",           (lx_gap, ly_entry, fz), root)
+    wh.make_anchor("HandoffPose",         (lx_gap, ly_corr, fz), root)
+    wh.make_anchor("ElevatorQueuePose",   (lx_max - 0.015, ly_corr, fz), root)
+    wh.make_anchor("DocumentAttach",      (lx_work, ly_work + 0.030, fz + ah * 0.55), root)
+    wh.make_anchor("HeadLookTarget",      (lx_work, ly_work, fz + ah * 0.90), root)
 
     return wh.export_wall_static(
         name,
         cam_pos=(0.35, 0.72, 0.25),
-        target=(0.0, 0.11, 0.11),
-        extra_cam=((-0.38, 0.68, 0.26), (0.0, 0.11, 0.11)),
+        target=(deck_cx, 0.02, 0.10),
+        extra_cam=((-0.38, 0.68, 0.26), (deck_cx, 0.02, 0.10)),
     )
 
 
 def _build_wall_placement_ghost():
     """
-    Lightweight Wall Placement Preview Ghost:
-    - Rounded flush back perimeter outline + 4 crisp L-corner depth brackets showing full 0.245m swept volume
-    - Bold outward (+Y Blender -> +Z Unity wall_outward) facing indicator chevron
-    - Compatible with MaterialPropertyBlock Red (Invalid) / Amber (Review) / Teal (Valid) tinting!
+    Lightweight Wall Placement Preview Ghost sized to Full HabitatLayout envelope (1.050 x 0.900 x 0.260 m).
+    Pivot = WallContact (0, 0, 0).
     """
     name = "WallHabitat_PlacementGhost"
     wh.reset_scene()
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
-    w, h, d = 0.980, 0.760, 0.245
+    s = get_layout_spec(False)
+    w, h, d = s["W"], s["H"], s["D"]
     hw, hh = w * 0.5, h * 0.5
     bar_t = 0.012
     ghost_parts = []
     arrow_parts = []
 
-    # 1. Perimeter wall frame (Blender Y = 0.004)
     for lbl, loc, sz in [
         ("Top",    (0, 0.006, +hh), (w, 0.008, bar_t)),
         ("Bottom", (0, 0.006, -hh), (w, 0.008, bar_t)),
@@ -649,29 +814,24 @@ def _build_wall_placement_ghost():
         wh.make_beveled_box(f"{name}_WallBar_{lbl}", sz, loc, "Mat_Spatial_Ghost",
                             bevel_width=0.001, parent=root, parts_list=ghost_parts)
 
-    # 2. 4 Front Swept-Volume Corner L-Brackets showing exact depth clearance (+0.245m out from wall)
     arm = 0.085
     for cx_s in (-1.0, +1.0):
         for cz_s in (-1.0, +1.0):
             cx, cz = cx_s * hw, cz_s * hh
-            # Depth strut
             wh.make_beveled_box(f"{name}_Strut_{cx_s:+.0f}_{cz_s:+.0f}", (bar_t * 0.85, d, bar_t * 0.85),
                                 (cx, d * 0.5, cz), "Mat_Spatial_Ghost", bevel_width=0.001,
                                 parent=root, parts_list=ghost_parts)
-            # Horizontal L-tip
             wh.make_beveled_box(f"{name}_LTipH_{cx_s:+.0f}_{cz_s:+.0f}", (arm, bar_t, bar_t),
                                 (cx - cx_s * arm * 0.5, d, cz), "Mat_Spatial_Ghost", bevel_width=0.001,
                                 parent=root, parts_list=ghost_parts)
-            # Vertical L-tip
             wh.make_beveled_box(f"{name}_LTipV_{cx_s:+.0f}_{cz_s:+.0f}", (bar_t, bar_t, arm),
                                 (cx, d, cz - cz_s * arm * 0.5), "Mat_Spatial_Ghost", bevel_width=0.001,
                                 parent=root, parts_list=ghost_parts)
 
-    # 3. Bold outward wall-facing chevron indicator at front-bottom center (+Y Blender = +Z Unity wall_outward)
-    wh.make_cylinder(f"{name}_FacingStem", 0.010, 0.095, (0.0, 0.140, -hh + 0.020),
+    wh.make_cylinder(f"{name}_FacingStem", 0.010, 0.095, (0.0, 0.145, -hh + 0.025),
                      "Mat_Researcher_Teal", vertices=14, rot_deg=(90, 0, 0),
                      parent=root, parts_list=arrow_parts)
-    wh.make_cone(f"{name}_FacingTip", 0.028, 0.002, 0.048, (0.0, 0.210, -hh + 0.020),
+    wh.make_cone(f"{name}_FacingTip", 0.028, 0.002, 0.048, (0.0, 0.215, -hh + 0.025),
                  "Mat_Researcher_Teal", vertices=16, rot_deg=(-90, 0, 0),
                  parent=root, parts_list=arrow_parts)
 
@@ -679,20 +839,21 @@ def _build_wall_placement_ghost():
     wh.join_static_parts(arrow_parts, f"{name}_FacingArrow", parent=root)
 
     wh.make_anchor("WallContact", (0.0, 0.0, 0.0), root)
-    wh.make_anchor("ConfirmationBadgeSocket", (0.0, 0.250, -hh + 0.025), root)
+    wh.make_anchor("ConfirmationBadgeSocket", (0.0, d + 0.010, -hh + 0.025), root)
 
-    return wh.export_wall_static(name, cam_pos=(0.55, 1.35, 0.15), target=(0.0, 0.10, 0.0))
+    return wh.export_wall_static(name, cam_pos=(0.55, 1.45, 0.15), target=(0.0, 0.10, 0.0))
 
 
 def generate_all():
     results = [
         _build_wall_backplate("WallHabitat_Backplate_Full", compact=False),
         _build_wall_backplate("WallHabitat_Backplate_Compact", compact=True),
-        _build_cubicle_bay("WallHabitat_CubicleBay", width=0.228, compact=False),
-        _build_cubicle_bay("WallHabitat_CubicleBay_Compact", width=0.178, compact=True),
+        _build_cubicle_bay("WallHabitat_CubicleBay", compact=False),
+        _build_cubicle_bay("WallHabitat_CubicleBay_Compact", compact=True),
         _build_hallway_segment(),
         _build_mid_planning_nook(),
-        _build_manager_lookout(),
+        _build_manager_lookout("WallHabitat_ManagerLookout", compact=False),
+        _build_manager_lookout("WallHabitat_ManagerLookout_Compact", compact=True),
         _build_wall_placement_ghost(),
     ]
     report_path = os.path.join(wh.PREVIEW_WALL_DIR, "wall_habitat_core_report.json")
@@ -704,7 +865,7 @@ def generate_all():
 if __name__ == "__main__":
     try:
         generate_all()
-    except Exception as ex:
+    except Exception:
         import traceback
         err_path = os.path.join(wh.PREVIEW_WALL_DIR, "wall_habitat_core_ERROR.txt")
         with open(err_path, "w") as f:

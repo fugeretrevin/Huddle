@@ -1,7 +1,7 @@
 ﻿{
-    "generatedAtUtc": "2026-11-15T18:54:54.3957564Z",
+    "generatedAtUtc": "2026-11-15T23:11:32.6494374Z",
     "unityVersion": "6000.6.8f1",
-    "totalPrefabs": 24,
+    "totalPrefabs": 26,
     "totalMissingScripts": 0,
     "totalBrokenSockets": 0,
     "totalMissingMaterials": 0,
@@ -123,8 +123,8 @@
             "rendererCount": 2,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 7945,
-            "triangleCount": 5156,
+            "vertexCount": 7919,
+            "triangleCount": 5016,
             "uniqueMaterialCount": 10,
             "materialNames": [
                 "Mat_Brass",
@@ -138,10 +138,10 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 24,
+            "socketCount": 13,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.768 x 0.546 x 0.213 m",
+            "boundsSize": "0.740 x 0.620 x 0.240 m",
             "animatorStates": []
         },
         {
@@ -151,8 +151,8 @@
             "rendererCount": 2,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 8693,
-            "triangleCount": 5588,
+            "vertexCount": 9087,
+            "triangleCount": 5664,
             "uniqueMaterialCount": 10,
             "materialNames": [
                 "Mat_Brass",
@@ -166,21 +166,21 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 30,
+            "socketCount": 15,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.975 x 0.776 x 0.213 m",
+            "boundsSize": "1.050 x 0.900 x 0.260 m",
             "animatorStates": []
         },
         {
             "prefabName": "WallHabitat_Complete_2Tier",
             "prefabPath": "Assets/MuseDesk/Art/Prefabs/WallHabitat/WallHabitat_Complete_2Tier.prefab",
-            "meshCount": 88,
-            "rendererCount": 88,
+            "meshCount": 104,
+            "rendererCount": 104,
             "skinnedRendererCount": 20,
             "colliderCount": 7,
-            "vertexCount": 82178,
-            "triangleCount": 77650,
+            "vertexCount": 83321,
+            "triangleCount": 80794,
             "uniqueMaterialCount": 30,
             "materialNames": [
                 "Mat_BlueprintBlue",
@@ -214,21 +214,21 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 53,
+            "socketCount": 36,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.770 x 0.564 x 0.267 m",
+            "boundsSize": "0.740 x 0.620 x 0.244 m",
             "animatorStates": []
         },
         {
             "prefabName": "WallHabitat_Complete_3Tier",
             "prefabPath": "Assets/MuseDesk/Art/Prefabs/WallHabitat/WallHabitat_Complete_3Tier.prefab",
-            "meshCount": 90,
-            "rendererCount": 90,
+            "meshCount": 106,
+            "rendererCount": 106,
             "skinnedRendererCount": 20,
             "colliderCount": 7,
-            "vertexCount": 91548,
-            "triangleCount": 83530,
+            "vertexCount": 93045,
+            "triangleCount": 86770,
             "uniqueMaterialCount": 30,
             "materialNames": [
                 "Mat_BlueprintBlue",
@@ -262,10 +262,10 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 65,
+            "socketCount": 42,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.975 x 0.794 x 0.267 m",
+            "boundsSize": "1.050 x 0.917 x 0.264 m",
             "animatorStates": []
         },
         {
@@ -275,8 +275,8 @@
             "rendererCount": 2,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 4921,
-            "triangleCount": 3176,
+            "vertexCount": 3256,
+            "triangleCount": 2040,
             "uniqueMaterialCount": 7,
             "materialNames": [
                 "Mat_Brass",
@@ -287,10 +287,10 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 15,
+            "socketCount": 9,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.231 x 0.240 x 0.236 m",
+            "boundsSize": "0.294 x 0.288 x 0.245 m",
             "animatorStates": []
         },
         {
@@ -300,8 +300,8 @@
             "rendererCount": 2,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 4921,
-            "triangleCount": 3176,
+            "vertexCount": 3256,
+            "triangleCount": 2040,
             "uniqueMaterialCount": 7,
             "materialNames": [
                 "Mat_Brass",
@@ -312,10 +312,10 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 15,
+            "socketCount": 9,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.181 x 0.240 x 0.227 m",
+            "boundsSize": "0.197 x 0.258 x 0.225 m",
             "animatorStates": []
         },
         {
@@ -384,8 +384,8 @@
             "rendererCount": 1,
             "skinnedRendererCount": 1,
             "colliderCount": 0,
-            "vertexCount": 4065,
-            "triangleCount": 2720,
+            "vertexCount": 4558,
+            "triangleCount": 2976,
             "uniqueMaterialCount": 6,
             "materialNames": [
                 "Mat_Brass",
@@ -398,7 +398,37 @@
             "socketCount": 10,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.112 x 0.190 x 0.112 m",
+            "boundsSize": "0.100 x 0.193 x 0.130 m",
+            "animatorStates": [
+                "Cabin_Idle_Closed",
+                "Cabin_Gate_Open",
+                "Cabin_Gate_Close",
+                "Cabin_Travel_Bob",
+                "Cabin_Arrive_Chime"
+            ]
+        },
+        {
+            "prefabName": "WallHabitat_ElevatorCar_Compact",
+            "prefabPath": "Assets/MuseDesk/Art/Prefabs/WallHabitat/WallHabitat_ElevatorCar_Compact.prefab",
+            "meshCount": 1,
+            "rendererCount": 1,
+            "skinnedRendererCount": 1,
+            "colliderCount": 0,
+            "vertexCount": 4558,
+            "triangleCount": 2976,
+            "uniqueMaterialCount": 6,
+            "materialNames": [
+                "Mat_Brass",
+                "Mat_ChamberGlass",
+                "Mat_CreamCeramic",
+                "Mat_FeltSlate",
+                "Mat_LampGlow",
+                "Mat_WarmWood"
+            ],
+            "socketCount": 10,
+            "allSocketsUnitScale": true,
+            "missingScripts": 0,
+            "boundsSize": "0.082 x 0.181 x 0.112 m",
             "animatorStates": [
                 "Cabin_Idle_Closed",
                 "Cabin_Gate_Open",
@@ -414,9 +444,9 @@
             "rendererCount": 1,
             "skinnedRendererCount": 1,
             "colliderCount": 0,
-            "vertexCount": 6156,
-            "triangleCount": 3876,
-            "uniqueMaterialCount": 9,
+            "vertexCount": 8652,
+            "triangleCount": 5224,
+            "uniqueMaterialCount": 10,
             "materialNames": [
                 "Mat_Brass",
                 "Mat_BrushedMetal",
@@ -424,14 +454,15 @@
                 "Mat_CharcoalVisor",
                 "Mat_CreamCeramic",
                 "Mat_DarkWood",
+                "Mat_FeltSlate",
                 "Mat_StatusCyan",
                 "Mat_StatusGreen",
                 "Mat_WarmWood"
             ],
-            "socketCount": 21,
+            "socketCount": 20,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.165 x 0.503 x 0.219 m",
+            "boundsSize": "0.116 x 0.538 x 0.229 m",
             "animatorStates": [
                 "ElevatorDoors_Idle_Closed",
                 "ElevatorDoors_Open_Lower",
@@ -448,9 +479,9 @@
             "rendererCount": 1,
             "skinnedRendererCount": 1,
             "colliderCount": 0,
-            "vertexCount": 7884,
-            "triangleCount": 4908,
-            "uniqueMaterialCount": 10,
+            "vertexCount": 12146,
+            "triangleCount": 7352,
+            "uniqueMaterialCount": 11,
             "materialNames": [
                 "Mat_Brass",
                 "Mat_BrushedMetal",
@@ -459,14 +490,15 @@
                 "Mat_CreamCeramic",
                 "Mat_DarkWood",
                 "Mat_Developer_Amber",
+                "Mat_FeltSlate",
                 "Mat_StatusCyan",
                 "Mat_StatusGreen",
                 "Mat_WarmWood"
             ],
-            "socketCount": 26,
+            "socketCount": 25,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.165 x 0.733 x 0.219 m",
+            "boundsSize": "0.136 x 0.848 x 0.249 m",
             "animatorStates": [
                 "ElevatorDoors_Idle_Closed",
                 "ElevatorDoors_Open_Lower",
@@ -485,19 +517,18 @@
             "rendererCount": 1,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 2292,
-            "triangleCount": 1544,
-            "uniqueMaterialCount": 4,
+            "vertexCount": 1524,
+            "triangleCount": 988,
+            "uniqueMaterialCount": 3,
             "materialNames": [
                 "Mat_Brass",
-                "Mat_CreamCeramic",
                 "Mat_FeltSlate",
                 "Mat_WarmWood"
             ],
             "socketCount": 8,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.140 x 0.060 x 0.087 m",
+            "boundsSize": "0.140 x 0.051 x 0.090 m",
             "animatorStates": []
         },
         {
@@ -573,26 +604,51 @@
             "rendererCount": 2,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 8297,
-            "triangleCount": 5512,
-            "uniqueMaterialCount": 11,
+            "vertexCount": 6889,
+            "triangleCount": 4420,
+            "uniqueMaterialCount": 9,
             "materialNames": [
                 "Mat_BlueprintBlue",
                 "Mat_Brass",
                 "Mat_CreamCeramic",
                 "Mat_DarkWood",
                 "Mat_FeltSlate",
-                "Mat_PaperWarm",
                 "Mat_Researcher_Lavender",
-                "Mat_Researcher_Teal",
                 "Mat_ScreenCode",
                 "Mat_Tester_Mint",
                 "Mat_WarmWood"
             ],
-            "socketCount": 17,
+            "socketCount": 12,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.517 x 0.256 x 0.252 m",
+            "boundsSize": "0.679 x 0.280 x 0.250 m",
+            "animatorStates": []
+        },
+        {
+            "prefabName": "WallHabitat_ManagerLookout_Compact",
+            "prefabPath": "Assets/MuseDesk/Art/Prefabs/WallHabitat/WallHabitat_ManagerLookout_Compact.prefab",
+            "meshCount": 2,
+            "rendererCount": 2,
+            "skinnedRendererCount": 0,
+            "colliderCount": 0,
+            "vertexCount": 6829,
+            "triangleCount": 4384,
+            "uniqueMaterialCount": 9,
+            "materialNames": [
+                "Mat_BlueprintBlue",
+                "Mat_Brass",
+                "Mat_CreamCeramic",
+                "Mat_DarkWood",
+                "Mat_FeltSlate",
+                "Mat_Researcher_Lavender",
+                "Mat_ScreenCode",
+                "Mat_Tester_Mint",
+                "Mat_WarmWood"
+            ],
+            "socketCount": 12,
+            "allSocketsUnitScale": true,
+            "missingScripts": 0,
+            "boundsSize": "0.444 x 0.260 x 0.230 m",
             "animatorStates": []
         },
         {
@@ -602,8 +658,8 @@
             "rendererCount": 2,
             "skinnedRendererCount": 0,
             "colliderCount": 0,
-            "vertexCount": 6894,
-            "triangleCount": 4416,
+            "vertexCount": 5002,
+            "triangleCount": 3164,
             "uniqueMaterialCount": 13,
             "materialNames": [
                 "Mat_BlueprintBlue",
@@ -620,10 +676,10 @@
                 "Mat_WarmBeige",
                 "Mat_WarmWood"
             ],
-            "socketCount": 16,
+            "socketCount": 9,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.456 x 0.218 x 0.236 m",
+            "boundsSize": "0.427 x 0.258 x 0.245 m",
             "animatorStates": []
         },
         {
@@ -643,7 +699,7 @@
             "socketCount": 0,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.992 x 0.774 x 0.251 m",
+            "boundsSize": "1.062 x 0.912 x 0.266 m",
             "animatorStates": []
         },
         {
@@ -760,8 +816,8 @@
             "rendererCount": 1,
             "skinnedRendererCount": 1,
             "colliderCount": 0,
-            "vertexCount": 2950,
-            "triangleCount": 1980,
+            "vertexCount": 2898,
+            "triangleCount": 1928,
             "uniqueMaterialCount": 7,
             "materialNames": [
                 "Mat_Brass",
@@ -775,7 +831,7 @@
             "socketCount": 5,
             "allSocketsUnitScale": true,
             "missingScripts": 0,
-            "boundsSize": "0.082 x 0.071 x 0.067 m",
+            "boundsSize": "0.064 x 0.062 x 0.051 m",
             "animatorStates": [
                 "Printer_Idle",
                 "Printer_Print_TaskCard",

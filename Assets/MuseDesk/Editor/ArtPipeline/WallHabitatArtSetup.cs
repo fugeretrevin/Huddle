@@ -74,6 +74,7 @@ namespace MuseDesk.Editor.ArtPipeline
             "WallHabitat_HallwaySegment",
             "WallHabitat_MidPlanningNook",
             "WallHabitat_ManagerLookout",
+            "WallHabitat_ManagerLookout_Compact",
             "WallHabitat_PlacementGhost",
             "WallHabitat_TaskCard_Researcher",
             "WallHabitat_TaskCard_Developer",
@@ -87,6 +88,7 @@ namespace MuseDesk.Editor.ArtPipeline
             "WallHabitat_ElevatorSpine_3Tier",
             "WallHabitat_ElevatorSpine_2Tier",
             "WallHabitat_ElevatorCar",
+            "WallHabitat_ElevatorCar_Compact",
             "WallHabitat_TaskPrinter",
             "WallHabitat_DeskVisitPerch",
             "WallHabitat_LargeAgentPortal",
@@ -313,6 +315,19 @@ namespace MuseDesk.Editor.ArtPipeline
             dict["WallHabitat_ElevatorCar"] = CreateStateController(
                 $"{ControllersDir}/MuseDesk_WallElevatorCar.controller",
                 $"{ModelsDir}/WallHabitat_ElevatorCar.fbx",
+                "Cabin_Idle_Closed",
+                new[]
+                {
+                    "Cabin_Idle_Closed",
+                    "Cabin_Gate_Open",
+                    "Cabin_Gate_Close",
+                    "Cabin_Travel_Bob",
+                    "Cabin_Arrive_Chime",
+                });
+
+            dict["WallHabitat_ElevatorCar_Compact"] = CreateStateController(
+                $"{ControllersDir}/MuseDesk_WallElevatorCar_Compact.controller",
+                $"{ModelsDir}/WallHabitat_ElevatorCar_Compact.fbx",
                 "Cabin_Idle_Closed",
                 new[]
                 {
@@ -628,8 +643,8 @@ namespace MuseDesk.Editor.ArtPipeline
                 ghostCtrl.SetStatus(WallPlacementStatus.ValidTeal);
 
                 var box = go.AddComponent<BoxCollider>();
-                box.center = new Vector3(0f, 0.0f, 0.125f);
-                box.size = new Vector3(0.98f, 0.76f, 0.25f);
+                box.center = new Vector3(0f, 0.0f, 0.130f);
+                box.size = new Vector3(1.05f, 0.90f, 0.26f);
                 box.isTrigger = true;
                 return;
             }
@@ -749,9 +764,11 @@ namespace MuseDesk.Editor.ArtPipeline
             string prefabName = isCompact ? "WallHabitat_Complete_2Tier" : "WallHabitat_Complete_3Tier";
             string backplateKey = isCompact ? "WallHabitat_Backplate_Compact" : "WallHabitat_Backplate_Full";
             string bayKey = isCompact ? "WallHabitat_CubicleBay_Compact" : "WallHabitat_CubicleBay";
+            string mgrKey = isCompact ? "WallHabitat_ManagerLookout_Compact" : "WallHabitat_ManagerLookout";
             string spineKey = isCompact ? "WallHabitat_ElevatorSpine_2Tier" : "WallHabitat_ElevatorSpine_3Tier";
-            float agentScale = 0.56f;
-            float deskScale = isCompact ? 0.50f : 0.62f;
+            string carKey = isCompact ? "WallHabitat_ElevatorCar_Compact" : "WallHabitat_ElevatorCar";
+            float agentScale = isCompact ? 0.50f : 0.56f;
+            float deskScale = isCompact ? 0.36f : 0.48f;
 
             var root = new GameObject(prefabName);
 
@@ -794,15 +811,15 @@ namespace MuseDesk.Editor.ArtPipeline
 
             // 3. Mount Top Manager Lookout + Manager Mascot + Manager Workstation + TaskPrinter
             Transform mgrSock = FindChildRecursive(backplate.transform, "ManagerOfficeSocket");
-            if (mgrSock != null && prefabs.TryGetValue("WallHabitat_ManagerLookout", out var mgrOfficePrefab))
+            if (mgrSock != null && prefabs.TryGetValue(mgrKey, out var mgrOfficePrefab))
             {
                 var mgrOffice = (GameObject)PrefabUtility.InstantiatePrefab(mgrOfficePrefab, mgrSock);
-                mgrOffice.name = "WallHabitat_ManagerLookout";
+                mgrOffice.name = mgrKey;
                 SpatialScaleUtility.MountPreservingWorldScale(mgrOffice.transform, mgrSock, Vector3.one);
 
                 Transform mgrWorkSock = FindChildRecursive(mgrOffice.transform, "WorkstationSocket");
                 MountExistingPrefab("Assets/MuseDesk/Art/Prefabs/VisualPolish/Workstation_Research_Optimized.prefab",
-                    mgrWorkSock, Vector3.one * 0.56f, 0f, "Manager_TerminalProp");
+                    mgrWorkSock, Vector3.one * (deskScale * 0.78f), 0f, "Manager_TerminalProp");
 
                 Transform mgrPose = FindChildRecursive(mgrOffice.transform, "ManagerDeskSocket")
                                     ?? FindChildRecursive(mgrOffice.transform, "AgentHomePose");
@@ -832,10 +849,10 @@ namespace MuseDesk.Editor.ArtPipeline
                 SpatialScaleUtility.MountPreservingWorldScale(spine.transform, spineSock, Vector3.one);
 
                 Transform carSock = FindChildRecursive(spine.transform, "ElevatorCarSocket");
-                if (carSock != null && prefabs.TryGetValue("WallHabitat_ElevatorCar", out var carPrefab))
+                if (carSock != null && prefabs.TryGetValue(carKey, out var carPrefab))
                 {
                     var car = (GameObject)PrefabUtility.InstantiatePrefab(carPrefab, carSock);
-                    car.name = "WallHabitat_ElevatorCar";
+                    car.name = carKey;
                     SpatialScaleUtility.MountPreservingWorldScale(car.transform, carSock, Vector3.one);
                 }
 
@@ -847,19 +864,19 @@ namespace MuseDesk.Editor.ArtPipeline
                 }
             }
 
-            // 5. Mount Attention Beacon & Courier on Right Porch Wing
+            // 5. Mount Attention Beacon & Courier
             Transform beaconSock = FindChildRecursive(backplate.transform, "AttentionBeaconSocket");
             MountExistingPrefab("Assets/MuseDesk/Art/Prefabs/Spatial/WorkspaceAttentionBeacon.prefab",
-                beaconSock, Vector3.one * 0.72f, 0f, "WallAttentionBeacon");
+                beaconSock, Vector3.one * (isCompact ? 0.48f : 0.55f), 0f, "WallAttentionBeacon");
 
             Transform courierSock = FindChildRecursive(backplate.transform, "CourierDispatchSocket");
             MountExistingPrefab("Assets/MuseDesk/Art/Prefabs/Spatial/DocumentCourier.prefab",
-                courierSock, Vector3.one * 0.65f, 0f, "WallCourierDock");
+                courierSock, Vector3.one * (isCompact ? 0.36f : 0.42f), 0f, "WallCourierDock");
 
             // 6. Add aggregate BoxCollider covering habitat envelope & resolve top-level SocketRegistry
             var col = root.AddComponent<BoxCollider>();
-            col.center = new Vector3(0f, 0.0f, 0.125f);
-            col.size = isCompact ? new Vector3(0.74f, 0.52f, 0.25f) : new Vector3(0.98f, 0.76f, 0.25f);
+            col.center = new Vector3(0f, 0.0f, isCompact ? 0.120f : 0.130f);
+            col.size = isCompact ? new Vector3(0.74f, 0.62f, 0.24f) : new Vector3(1.05f, 0.90f, 0.26f);
             col.isTrigger = true;
 
             AddAndResolveSocketRegistry(root, isCompact);
@@ -1135,27 +1152,27 @@ namespace MuseDesk.Editor.ArtPipeline
             matMap.TryGetValue("Mat_WarmBeige", out var wallMat);
             matMap.TryGetValue("Mat_WarmWood", out var deskMat);
 
-            CreateStudioBox("Studio_Floor", new Vector3(2.2f, -0.025f, 0.5f), new Vector3(13.0f, 0.05f, 4.5f), floorMat);
-            CreateStudioBox("Studio_MockWall", new Vector3(2.2f, 1.45f, -0.02f), new Vector3(10.0f, 2.9f, 0.04f), wallMat);
+            CreateStudioBox("Studio_Floor", new Vector3(2.8f, -0.025f, 0.5f), new Vector3(18.0f, 0.05f, 4.5f), floorMat);
+            CreateStudioBox("Studio_MockWall", new Vector3(2.8f, 1.45f, -0.02f), new Vector3(17.0f, 2.9f, 0.04f), wallMat);
             CreateStudioBox("Studio_DeskProxy", new Vector3(-0.95f, 0.37f, 0.85f), new Vector3(0.95f, 0.74f, 0.50f), deskMat);
 
             // 1. Full 3-Tier Workshop Treehouse mounted flush on wall at comfortable eye height (center y = 1.48m)
             var full3Tier = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["WallHabitat_Complete_3Tier"]);
             full3Tier.name = "Showcase_01_WallHabitat_3Tier";
-            full3Tier.transform.position = new Vector3(-0.75f, 1.48f, 0f);
+            full3Tier.transform.position = new Vector3(-1.45f, 1.48f, 0f);
 
-            // 2. Compact 2-Tier Workshop Treehouse beside it
+            // 2. Compact 2-Tier Workshop Treehouse beside it (spaced >= 2.9m clear so neither Front nor 3/4 shots bleed)
             var compact2Tier = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["WallHabitat_Complete_2Tier"]);
             compact2Tier.name = "Showcase_02_WallHabitat_2TierCompact";
-            compact2Tier.transform.position = new Vector3(0.45f, 1.38f, 0f);
+            compact2Tier.transform.position = new Vector3(1.45f, 1.38f, 0f);
 
             // 3. 3-State Wall Placement Ghosts (Valid Teal, Review Amber, Invalid Red)
             SpawnPlacementGhost(prefabs["WallHabitat_PlacementGhost"], "Showcase_03a_Ghost_ValidTeal",
-                new Vector3(1.60f, 1.48f, 0f), WallPlacementStatus.ValidTeal);
+                new Vector3(3.20f, 1.48f, 0f), WallPlacementStatus.ValidTeal);
             SpawnPlacementGhost(prefabs["WallHabitat_PlacementGhost"], "Showcase_03b_Ghost_ReviewAmber",
-                new Vector3(2.70f, 1.48f, 0f), WallPlacementStatus.ReviewAmber);
+                new Vector3(4.45f, 1.48f, 0f), WallPlacementStatus.ReviewAmber);
             SpawnPlacementGhost(prefabs["WallHabitat_PlacementGhost"], "Showcase_03c_Ghost_InvalidRed",
-                new Vector3(3.80f, 1.48f, 0f), WallPlacementStatus.InvalidRed);
+                new Vector3(5.70f, 1.48f, 0f), WallPlacementStatus.InvalidRed);
 
             // 4. Desk Visit Perch (/btw proxy on desk) + Role TaskCards row
             var deskVisit = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["WallHabitat_DeskVisit_Complete"]);
@@ -1177,7 +1194,7 @@ namespace MuseDesk.Editor.ArtPipeline
             // 5. Large-Agent Restrained Portal (~1.0m presentation avatar + offset side DialoguePanelSocket card)
             var largePortal = (GameObject)PrefabUtility.InstantiatePrefab(prefabs["WallHabitat_LargePortal_WithProxy"]);
             largePortal.name = "Showcase_05_LargePortal_WithProxy";
-            largePortal.transform.position = new Vector3(5.60f, 0f, 0.85f);
+            largePortal.transform.position = new Vector3(7.20f, 0f, 0.85f);
 
             // Camera + captures
             var camGo = new GameObject("Main Camera") { tag = "MainCamera" };
@@ -1199,17 +1216,17 @@ namespace MuseDesk.Editor.ArtPipeline
             var shots = new List<string>
             {
                 CaptureCameraShot(cam, "01_WallHabitat_3Tier_Front.png",
-                    new Vector3(-0.75f, 1.48f, 1.42f), new Vector3(-0.75f, 1.46f, 0.06f), 1440, 960),
+                    new Vector3(-1.45f, 1.48f, 1.42f), new Vector3(-1.45f, 1.46f, 0.06f), 1440, 960),
                 CaptureCameraShot(cam, "02_WallHabitat_3Tier_ThreeQuarter.png",
-                    new Vector3(-1.55f, 1.68f, 1.25f), new Vector3(-0.75f, 1.44f, 0.08f), 1440, 960),
+                    new Vector3(-2.25f, 1.68f, 1.25f), new Vector3(-1.45f, 1.44f, 0.08f), 1440, 960),
                 CaptureCameraShot(cam, "03_WallHabitat_2Tier_Compact.png",
-                    new Vector3(0.45f, 1.40f, 1.18f), new Vector3(0.45f, 1.36f, 0.06f), 1280, 800),
+                    new Vector3(1.45f, 1.40f, 1.18f), new Vector3(1.45f, 1.36f, 0.06f), 1280, 800),
                 CaptureCameraShot(cam, "04_WallHabitat_DeskVisit_And_Cards.png",
                     new Vector3(-0.70f, 1.00f, 1.36f), new Vector3(-0.74f, 0.80f, 0.86f), 1280, 800),
                 CaptureCameraShot(cam, "05_WallHabitat_LargePortal_Front.png",
-                    new Vector3(5.68f, 0.70f, 2.95f), new Vector3(5.68f, 0.62f, 0.85f), 1280, 900),
+                    new Vector3(7.28f, 0.70f, 2.95f), new Vector3(7.28f, 0.62f, 0.85f), 1280, 900),
                 CaptureCameraShot(cam, "06_WallHabitat_PlacementGhost_States.png",
-                    new Vector3(2.70f, 1.48f, 2.15f), new Vector3(2.70f, 1.48f, 0.05f), 1440, 720),
+                    new Vector3(4.45f, 1.48f, 2.35f), new Vector3(4.45f, 1.48f, 0.05f), 1440, 720),
             };
 
             cam.transform.position = new Vector3(-0.15f, 1.38f, 2.45f);
@@ -1325,6 +1342,100 @@ namespace MuseDesk.Editor.ArtPipeline
             File.WriteAllBytes(fullPath, tex.EncodeToPNG());
             UnityEngine.Object.DestroyImmediate(tex);
             return fullPath;
+        }
+
+        [MenuItem("MuseDesk/Art Pipeline/Build All & Validate Wall Habitat Fit")]
+        public static void BuildAndValidateWallHabitat()
+        {
+            BuildAll();
+            LivingWorldVfxAndGallerySetup.BuildVfxLibrary();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            RunWallArtFitCheckFromEditor();
+        }
+
+        [MenuItem("MuseDesk/Art Pipeline/Run Wall Habitat Fit Check")]
+        public static void RunWallArtFitCheckFromEditor()
+        {
+            var sb = new StringBuilder();
+            bool okFull = EvaluateFit(MuseDesk.Spatial.Wall.WallLayoutKind.Full,
+                $"{PrefabsDir}/WallHabitat_Complete_3Tier.prefab", sb);
+            sb.AppendLine();
+            bool okCompact = EvaluateFit(MuseDesk.Spatial.Wall.WallLayoutKind.Compact,
+                $"{PrefabsDir}/WallHabitat_Complete_2Tier.prefab", sb);
+
+            string outTxt = sb.ToString();
+            Debug.Log(outTxt);
+            Directory.CreateDirectory("docs/Art");
+            File.WriteAllText("docs/Art/WALL_HABITAT_FIT_RAW.txt", outTxt, Encoding.UTF8);
+
+            if (!okFull || !okCompact)
+            {
+                throw new Exception($"[WallHabitatArtSetup] WallArtFitCheck reported MISS/MISS-FIT! Full={okFull}, Compact={okCompact}");
+            }
+        }
+
+        private static bool EvaluateFit(MuseDesk.Spatial.Wall.WallLayoutKind kind, string prefabPath, StringBuilder sb)
+        {
+            var layout = MuseDesk.Spatial.Wall.HabitatLayoutBuilder.Build(kind);
+            if (!File.Exists(prefabPath))
+            {
+                sb.AppendLine($"missing prefab {prefabPath}");
+                return false;
+            }
+
+            var root = PrefabUtility.LoadPrefabContents(prefabPath);
+            int fit = 0, nofit = 0, miss = 0;
+            try
+            {
+                var all = root.GetComponentsInChildren<Transform>(true);
+                Transform FindSocket(string sockName)
+                {
+                    for (int i = 0; i < all.Length; i++)
+                        if (all[i].name == sockName) return all[i];
+                    return null;
+                }
+
+                var rs = root.GetComponentsInChildren<Renderer>(true);
+                var b = rs.Length > 0 ? rs[0].bounds : new Bounds(root.transform.position, Vector3.zero);
+                for (int i = 0; i < rs.Length; i++) b.Encapsulate(rs[i].bounds);
+
+                Transform wc = FindSocket("WallContact");
+                Vector3 origin = wc != null ? root.transform.InverseTransformPoint(wc.position) : Vector3.zero;
+                sb.AppendLine($"{Path.GetFileNameWithoutExtension(prefabPath)} vs layout {kind}: layout size {layout.size:F3}, art bounds size {b.size:F3} (min {b.min:F3} max {b.max:F3}), art WallContact at prefab-root {origin:F3}");
+                sb.AppendLine("socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 0.010 m)");
+
+                var deltas = new List<Vector3>();
+                foreach (var sock in layout.sockets)
+                {
+                    Transform artT = FindSocket(sock.id);
+                    if (artT == null)
+                    {
+                        sb.AppendLine($"  {sock.id}: layout {sock.position:F3} | art socket MISSING");
+                        miss++;
+                        continue;
+                    }
+                    Vector3 a = root.transform.InverseTransformPoint(artT.position) - origin;
+                    Vector3 d = a - sock.position;
+                    if (sock.id != "WallContact") deltas.Add(d);
+                    bool ok = d.magnitude <= 0.010f;
+                    if (ok) fit++; else nofit++;
+                    sb.AppendLine($"  {sock.id} <- {artT.name}: layout {sock.position:F3} | art {a:F3} | delta {d:F3} ({d.magnitude:F3} m) | {(ok ? "FIT" : "NO FIT")}");
+                }
+                sb.AppendLine($"summary: fit {fit}, no fit {nofit}, missing {miss}");
+                if (deltas.Count > 0)
+                {
+                    Vector3 mean = Vector3.zero; foreach (var d in deltas) mean += d; mean /= deltas.Count;
+                    float resid = deltas.Max(d => (d - mean).magnitude);
+                    sb.AppendLine($"after the best single translation {mean:F3}, the worst remaining socket error is {resid:F3} m");
+                }
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(root);
+            }
+
+            return nofit == 0 && miss == 0;
         }
     }
 }
