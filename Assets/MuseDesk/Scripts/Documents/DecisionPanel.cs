@@ -450,9 +450,14 @@ namespace MuseDesk.Documents
             return true;
         }
 
+        /// <summary>The user opened a paper's details sheet. Used by first-use hints only.</summary>
+        public static event System.Action DetailsOpened;
+
         public void Expand()
         {
+            bool was = IsExpanded;
             IsExpanded = true;
+            if (!was) DetailsOpened?.Invoke();
             if (detailsChipLabel) detailsChipLabel.text = "Close";
             Apply();
         }

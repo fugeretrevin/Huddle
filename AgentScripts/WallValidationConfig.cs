@@ -23,6 +23,7 @@ public static class WallValidationConfig
         c.largeAgentPortal = on;
         c.wallElevatorVfx = false;            // not implemented
         c.reducedMotionToggle = on;           // Polish S9c: the in-app Calm motion key is part of the validation build only
+        c.onboardingHints = on;               // A15: first-use hints are part of the validation build only
         if (on && !c.buildLabel.Contains("+wall")) c.buildLabel += "+wall";
         if (!on) c.buildLabel = c.buildLabel.Replace("+wall", "");
         EditorUtility.SetDirty(c);

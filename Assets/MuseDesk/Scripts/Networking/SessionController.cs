@@ -105,6 +105,10 @@ namespace MuseDesk.Networking
         /// The paper restores its buttons and the stamps re-arm, so the user can retry.</summary>
         public event Action<string, string> RespondFailed;
 
+        /// <summary>The user's answer to a decision was handed to the backend (decisionId, action). Raised once per accepted
+        /// Respond call, before the answer is known to be saved. Used by first-use hints only; changes no behaviour.</summary>
+        public event Action<string, string> DecisionSent;
+
         string _endpoint = "(offline)";
 
         async void Start()
@@ -471,6 +475,8 @@ namespace MuseDesk.Networking
                 return;
             }
             string key = _respondLedger.KeyFor(decisionId + "|" + action, () => NextKey($"resolve-{decisionId}"));
+            try { DecisionSent?.Invoke(decisionId, action); }
+            catch (Exception ex) { Debug.LogError($"[MuseDesk] decision-sent listener error: {ex.Message}"); }
             try
             {
                 var res = await Gateway.RespondToDecisionAsync(decisionId, action, key, comment, _cts.Token);

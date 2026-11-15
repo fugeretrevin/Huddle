@@ -54,6 +54,11 @@ namespace MuseDesk.Config
                  "Off in the committed release: the key sits at its hidden scale and nothing else changes.")]
         public bool reducedMotionToggle = false;
 
+        [Tooltip("First-use hints: at most one small world-space hint at a time, only after a real event. Off in the committed " +
+                 "release; ON in the validation build (WallValidationConfig.On). Needs the OnboardingHintPresenter in the scene " +
+                 "(AgentScripts/BuildOnboardingHintsV1).")]
+        public bool onboardingHints = false;
+
         [Header("Build")]
         public string buildLabel = "rc6-dev";
 
@@ -63,7 +68,8 @@ namespace MuseDesk.Config
                 + " particles=" + ceilingParticles + " cone=" + ceilingPortalCone + " grids=" + placementScanGrids + " voice=" + voice
                 + " wall=" + wallHabitat + " manager=" + wallManager + " select=" + agentSelect + " btw=" + agentBtw
                 + " portal=" + largeAgentPortal + " elevatorVfx=" + wallElevatorVfx
-                + " reducedMotion=" + reducedMotion + " motionToggle=" + reducedMotionToggle;
+                + " reducedMotion=" + reducedMotion + " motionToggle=" + reducedMotionToggle
+                + " onboardingHints=" + onboardingHints;
         }
 
         public static MuseDeskReleaseConfig Load()

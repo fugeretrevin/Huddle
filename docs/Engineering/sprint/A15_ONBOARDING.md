@@ -105,3 +105,56 @@ Note on RecoverNoUndo: after a decision is sent, reject cannot reverse it. The c
 - Timings (delays, 6 s read time, show durations) are guesses until worn.
 - `StampDecision` is timed from the paper grab, not from the user's reading; a fast reader sees a hint they do not need (it completes silently if they press first).
 - `PlayerPrefsOnboardingStore` calls `PlayerPrefs.Save()` on each done mark; fine at this rate.
+
+## Integration (applied 2026-11-15, nothing compiled or run)
+
+Written without the Editor. Nothing here was compiled, run or tested; the integration owner compiles, runs the builder and the tests.
+
+### What was added
+
+- `Assets/MuseDesk/Scripts/Workspace/Onboarding/OnboardingHintPresenter.cs` (MonoBehaviour, namespace `MuseDesk.Workspace`, outside `Scripts/Spatial`). Owns one `OnboardingCoach` with `PlayerPrefsOnboardingStore`, shows at most one hint card (plate, Inter Medium text sized by `TypeScale.ComfortMmAt(distance)` clamped to 4.8..9 mm, dismiss dot). Card eases with `PresenceFader` and the `panelAppear` / `panelHide` tokens, snaps under Reduced Motion, is never scaled to zero, and sits above its anchor, clamped to the reach window with `PanelLayoutMath.ClampToReach`. Dismiss: a fingertip rests on the dot for 0.12 s (it must lift first if it was already there). No ISDK object is added.
+- Pure adapters in `Scripts/Spatial/Core/Onboarding/OnboardingAdapters.cs` (`RiseEdge`, `ChangeEdge`, `HandoffTracker`, `OnboardingFlagMap`, `ManualOnboardingClock`) with 11 tests in `Tests/EditMode/Onboarding/OnboardingAdapterTests.cs`.
+- New C# events (additive, no behaviour change): `SessionController.DecisionSent(decisionId, action)` raised once per accepted `Respond`; `HeldPaperController.PaperGrabbed` (static); `DecisionPanel.DetailsOpened` (static, only on a closed-to-open change); `AgentTouchSummary.Touched` (static); `FocusModeController.FocusChanged(bool)` (static); `MotionToggleKey.Toggled(bool)` (static).
+- Flag `onboardingHints` (default 0) in `MuseDeskReleaseConfig` and `Summary()`, refreshed by `ReleaseConfigApplier.Apply`, `ReleaseConfigDrive` (`Set("hints=1")`, `Report()` prints the presenter state), ON in `WallValidationConfig.On()`, OFF in `Off()`. The presenter is inert when off: no subscriptions, no PlayerPrefs reads, no card.
+- Builder `AgentScripts/BuildOnboardingHintsV1.cs`.
+
+### Event sources actually wired
+
+| Coach event | Source |
+|---|---|
+| SessionReady | reducer `SnapshotLoaded` (or, if the flag comes on later, `controller.Initialized`) |
+| DecisionRequested | reducer `DecisionRequested` (also a pending decision found at bind time) |
+| DecisionResolvedApproved | reducer `DecisionResolved` with state `approved` |
+| HandoffObserved | first `AgentChanged` of an agent other than the requester, after an approval (`HandoffTracker`) |
+| TaskStarted | `controller.RunStateChanged`, rising edge of `RunInProgress` |
+| TaskCompleted | reducer `WorkDelivered` (a completion that references an artifact), not bare `TaskCompleted`, so a cancelled branch never says "Delivered" |
+| AgentTouched | `AgentTouchSummary.Touched` |
+| PaperGrabbed | `HeldPaperController.PaperGrabbed` |
+| PaperDetailsOpened | `DecisionPanel.DetailsOpened` |
+| DecisionSent | `SessionController.DecisionSent` |
+| FocusEntered / Focus context | `FocusModeController.FocusChanged` / `FocusModeController.Active` |
+| CalmMotionToggled | `MotionToggleKey.Toggled` |
+| WorkspaceMoved, WallPlaced | polled `SpatialWorkspaceDirector.Mode` change (first value is only a baseline); Wall when the new mode is Wall |
+| HandsBusy | `HandClaimRegistry.Shared.Owner(0/1) != None` |
+| ReducedMotion | `MotionSettings.ReducedMotion` |
+
+### Not wired (their hints time out and end, nothing breaks)
+
+ReceiptViewed, ManagerPlanShown/Approved, AgentSelected, PortalOpened, PaperDropped/Returned (a release is not a drop: a user lets go of a read paper all the time, so a "put it back" hint would be false), WorkspaceMovedByAccident, WorkspaceReturnedToDesk, TrackingLostWhileHolding, TrackingRegained, UndoAttempted.
+
+### How to run
+
+1. Compile (new files have no .meta yet; Unity creates them).
+2. Run the EditMode tests (`OnboardingCoachTests`, `OnboardingAdapterTests`).
+3. With the Editor and the main scene open and not in Play Mode: `unity command script run --file AgentScripts/BuildOnboardingHintsV1.cs --entry BuildOnboardingHintsV1.Apply`. It adds one scene-root object `OnboardingHints` (reversible with `Revert`).
+4. For a validation build: `WallValidationConfig.On()` (sets the flag, saves the asset). The committed asset keeps it 0.
+
+### What to verify
+
+Play Mode: `ReleaseConfigDrive.Set("hints=1")`, then `Report()` shows `hints on=True bound=True`. With `hints=0` the report shows `on=False` and no `OnboardingHintCard` object exists. Clear progress between runs with `PlayerPrefs.DeleteKey` on `MuseDesk.Onboarding.*` or `OnboardingCoach.ResetProgress()`.
+Headset: use the UX acceptance checklist above, plus:
+- The card sits above its anchor and never over the paper's question text or the stamp (the Stamp anchor, `StampApprove` then `Doc_StampRestPad`, is the most likely to need a side offset).
+- The agent anchor is the agent nearest the eye; the "right" agent for WatchHandoff may need the decision's agent instead.
+- Text at 4.8..9 mm wraps to 2 lines in a 130 mm card; check legibility at seated distance and the dot is easy to reach.
+- Missing anchors (name not found) put the card low in front of the user; check the log for that case.
+- No hint while a placement/summon/agent-select claim holds a hand, none in Focus, none after Replay is off.
