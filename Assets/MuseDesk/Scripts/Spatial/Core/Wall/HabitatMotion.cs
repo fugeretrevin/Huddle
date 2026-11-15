@@ -91,8 +91,17 @@ namespace MuseDesk.Spatial.Wall
     /// so a missing clip cannot stall it. A rider that never boards or never leaves is timed out and the
     /// walker re-homes it; nothing here touches task state.
     /// </summary>
-    public sealed class HabitatElevatorMachine
+    public sealed class HabitatElevatorMachine : IHabitatElevator
     {
+        // IHabitatElevator: this machine has no wait-spot phases (the doors wait while the rider walks over).
+        public bool UsesWaitSpot => false;
+        public bool MayApproach(string agent) { return true; }
+        public void ReportAtWaitSpot(string agent) { }
+        public void ReportFacingDoor(string agent) { }
+        public void ReportReachedDestination(string agent) { }
+        public bool DoorsMoving => State == ElevatorState.DoorsOpening || State == ElevatorState.DoorsClosing || State == ElevatorState.Recovering;
+        public bool CabinMoving => Mathf.Abs(_cabinVel) > 1e-5f;
+
         sealed class Ticket { public int id; public string agent; public int from; public int to; public bool aboard; }
 
         readonly float[] _floorY;
