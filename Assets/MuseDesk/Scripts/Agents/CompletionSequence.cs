@@ -65,6 +65,9 @@ namespace MuseDesk.Agents
         public bool deliverySupersedesHandoff = true;
         [Tooltip("Longest wait for a give / receive beat that is being held to finish before the sequence starts.")]
         public float handoffWaitMax = 1.2f;
+        [Tooltip("Longest wait for the whole chain of reported handoffs (including queued ones) to finish their " +
+                 "give / receive beat before the celebration starts. Past it, unfinished ones are retired. Presentation only.")]
+        public float handoffChainWaitMax = 15f;
 
         [Header("Success timing, seconds from the start of the sequence")]
         [Tooltip("When the Developer and Researcher acknowledge the Tester.")]
@@ -160,7 +163,11 @@ namespace MuseDesk.Agents
                     if (_hiddenToken == null) HideNewToken();
                 }
                 _wait += dt;
-                if (AgentHandoffController.ExchangePending && _wait < handoffWaitMax) return;
+                float waitMax = Mathf.Max(handoffWaitMax, handoffChainWaitMax);
+                if (HandoffWaitPolicy.KeepWaiting(AgentHandoffController.ExchangePending, _wait, waitMax)) return;
+                // Out of time with a reported handoff still unfinished: retire it rather than show it late.
+                if (HandoffWaitPolicy.ShouldAbandon(deliverySupersedesHandoff, AgentHandoffController.ExchangePending, _wait, waitMax)
+                    && handoffs != null) handoffs.AbandonPending();
                 _phase = Phase.Success;
                 _t = 0f;
             }
@@ -242,7 +249,9 @@ namespace MuseDesk.Agents
             if (_phase == Phase.WaitHandoff || _phase == Phase.Success) SettleDelivery();
             // The cue is ours only if the feedback controller really stood down for this event.
             _cueOwed = _feedback != null && _feedback.DeliveredCueSequenced;
-            if (deliverySupersedesHandoff && handoffs != null) handoffs.AbandonPending();
+            // Handoffs the event stream reported (Developer -> Tester on artifact.created) are NOT dropped here: at
+            // 1x the delivery arrives while that one is still queued behind the Researcher -> Developer walk, and
+            // dropping it hid a real event. The sequence waits for the chain (bounded) in Update instead.
             BeginSuccess(false);
         }
 

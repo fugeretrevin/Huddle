@@ -131656,6 +131656,7 @@ MonoBehaviour:
   handoffs: {fileID: 1998025118}
   deliverySupersedesHandoff: 1
   handoffWaitMax: 1.2
+  handoffChainWaitMax: 15
   acknowledgeDelay: 0.4
   factoryDeliveryDelay: 1.1
   tokenDelay: 1.6
