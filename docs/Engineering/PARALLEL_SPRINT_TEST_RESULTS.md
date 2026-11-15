@@ -79,3 +79,38 @@ This completes the 21 fixtures the earlier sweep never reached (PlacementGuideLo
 | WallOfflineLogicTests | 31 | 0 | 1 s |  |
 
 Totals: passed 921 (unique 899), failed 0.
+
+## After integration (Sprint A16, 2026-11-15)
+
+Fixtures run one at a time via scripts\tests.ps1 after all merges (Editor compile clean, 0 CS errors).
+
+| Fixture | Passed | Failed | Note |
+|---|---|---|---|
+| MotionTests | 32 | 0 | |
+| PresenceTests | 8 | 0 | |
+| DeskPolishLogicTests | 22 | 0 | |
+| HandOwnershipTests | 10 | 0 | |
+| CommandLedgerTests | 3 | 0 | |
+| GrabTrackingWatchTests | 4 | 0 | |
+| BoardPresenterLogicSpecTests | 22 | 0 | |
+| WallOfflineLogicTests | 32 | 0 | +1 new (A8 fields) |
+| WallPlacementTests | 26 | 0 | |
+| HabitatMotionTests | 22 | 0 | |
+| WalkClearanceTests | 12 | 0 | |
+| AgentVisitPortalManagerTests | 19 | 0 | |
+| TransformOwnershipTests (A1) | 41 | 0 | |
+| ReactionArbiterTests (A3) | 35 | 0 | |
+| PortalVisitLifecycleTests (A9) | 25 | 0 | |
+| ElevatorSequenceTests (A7) | 21 | 0 | 1 more ignored, see map |
+| LatestWinsToggleTests (A4b) | 6 | 0 | |
+| VoiceAddressingTests (A12) | 13 | 0 | |
+| VoiceIntentClassifierTests (A12) | 58 | 0 | |
+| TypeScaleTests / TextFitTests / PlanReviewLayoutTests (A6) | 12 / 15 / 26 | 0 | |
+| OnboardingCoachTests (A15) | 36 | 0 | |
+| Real group (A14 runner) | 50 | 0 | 3 fixtures |
+| Board group (A14 runner) | 33 | 0 | 3 fixtures |
+
+Backend (pytest, includes A11 and the coordinator's untracked phase3 status test): 298 passed, 1 skipped.
+
+Play Mode (desk, scripted demo): Start -> paper -> TakePaper -> Approve reached Completed; 0 game errors in the console.
+Editor-only perf rows (not Quest): desk-idle 1678 frames avg 3.58 ms p95 4.28 max 53.46, 199 draw calls, 22 SetPass; board-open 1698 frames avg 3.53 ms p95 4.29 max 47.16, 199 draw calls (identical counts to idle: the board may not have been visible; treat as unproven).
