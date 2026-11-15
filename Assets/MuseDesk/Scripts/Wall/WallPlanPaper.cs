@@ -38,6 +38,8 @@ namespace MuseDesk.Wall
         public int RowCount => _shownRows;
         public string StampWord => _stampWord;
         public bool Visible => card.Visible;
+        /// <summary>Where a held stamp presses: the spot the APPROVED / REJECTED mark is later drawn at (world space).</summary>
+        public Vector3 StampSpotWorld => _stamp.transform.position;
 
         public WallPlanPaper(Transform parent, string name, Transform keyTemplate, TMP_FontAsset font, WallHabitatView art, Vector2 size, float keyScale)
         {

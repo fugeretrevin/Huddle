@@ -346,6 +346,16 @@ namespace MuseDesk.Documents
             Debug.Log($"[MuseDesk] self-stamp {action} -> ApprovePending/RejectPending for {decisionId}");
         }
 
+        /// <summary>The press cue (model dip, thunk, pop) for a press that something else handles: the Wall's Manager plan paper
+        /// reads this stamp's ink head and acts through its own guarded commit. It claims no outcome.</summary>
+        public void PlayPressCue()
+        {
+            if (pressVisual != null) { _dipping = true; _dipT = 0f; }
+            Play(_thunk);
+            StopAllCoroutines();
+            StartCoroutine(Pop());
+        }
+
         IEnumerator Pop()
         {
             if (headRenderer == null) yield break;

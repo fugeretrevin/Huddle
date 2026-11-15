@@ -163,6 +163,10 @@ namespace MuseDesk.Spatial
         /// <summary>True while the decision-only items (stamps) are shown.</summary>
         public bool DecisionItemsShown => _reveal > 0.5f;
 
+        /// <summary>Set by the Wall controller while the Manager's plan paper awaits the user's stamp (flagged feature; false
+        /// otherwise, so with the Wall flags off nothing changes). Main thread only.</summary>
+        public static bool ExternalStampDemand;
+
         void Update()
         {
             if (decisionOnly == null || decisionOnly.Length == 0) return;
@@ -178,7 +182,7 @@ namespace MuseDesk.Spatial
             if (_detached)
             {
                 AttentionController a = AttentionController.Instance;
-                want = a != null && a.PendingDecisionCount > 0;
+                want = (a != null && a.PendingDecisionCount > 0) || ExternalStampDemand;
             }
             float target = want ? 1f : 0f;
             if (Mathf.Approximately(_reveal, target)) return;
