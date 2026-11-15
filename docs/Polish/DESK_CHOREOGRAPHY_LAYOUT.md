@@ -8,6 +8,42 @@ Owner's decision: the desks may move apart and the layout may change so that age
 
 The three desks are spread so there is a 0.20 m aisle between the Researcher's desk and the Developer's. The Researcher now steps back from its desk, walks behind it, comes out through the aisle and offers the paper at the aisle mouth, 14 degrees to the right of straight ahead. After an approval it walks back through the aisle and hands the work to the Developer behind the desks; both turn to face each other. The Developer hands to the Tester the same way. Every walk is an authored lane of scene transforms (`WorkspaceRoot/DeskLanes`); no position lives in a runtime script. All seven routes keep at least 0.019 m at the 0.080 m collider radius in Desk mode (before: six of seven overlapped, the worst by 0.066 m).
 
+## V2 (2026-11-15): the Ceiling pod now clears
+
+Owner's option (a). The Researcher's station moves another 70 mm toward the user (V1 25 mm, V2 total 95 mm; `ResearchStation` z 0.025 to **0.095**), and the Inbox tray and the decor cluster in front of the desk move with it. 5 cm was not enough: probing in Play Mode (`DeskV2Probe`, then `DeskClearanceDrive.Try`) the best lane at +50 mm reached 0.011 m in the Ceiling, at +60 mm 0.013 m, at +70 mm 0.017 m, so 70 mm. The strip between the desk back and the pod's arch post is now 0.194 m. Five lane points moved (all in `DeskChoreographyLayoutV1.cs`, same builder, same record file, same `Revert`):
+
+| Object | V1 | V2 |
+|---|---|---|
+| `ResearchStation` | -0.366, 0, 0.025 | -0.366, 0, 0.095 |
+| `OfficeV2/Nameplate_Researcher` | -0.366, 0.091, 0.133 | -0.366, 0.091, 0.203 |
+| `Phase6/InboxTray` (new record entry; old -0.320, 0, 0.250) | -0.320, 0, 0.250 | -0.320, 0, 0.320 |
+| `Decor_BookStack` / `Decor_MiniPlant` / `Decor_DeskLamp` | (-0.432, 0.212) / (-0.462, 0.262) / (-0.405, 0.275) | (-0.432, 0.282) / (-0.462, 0.332) / (-0.405, 0.345) |
+| `Res_Exit_1` | (-0.285, -0.047) | (-0.290, 0.025) |
+| `Res_Exit_2` | (-0.124, -0.032) | (-0.210, 0.028) |
+| `ResToDev_FromHome_2` | (-0.200, -0.042) | (-0.150, 0.034) |
+| `ResToDev_FromDelivery_1` | (-0.124, 0.020) | (-0.122, 0.050) |
+| `ResToDev_Stand` | (-0.075, -0.030) | (-0.070, -0.005) |
+
+`DeliveryZone` (-0.124, 0.120), the Developer, the Tester and `DevToTester_Stand` are unchanged. The Researcher's lane now runs on the strip behind its desk (z about 0.025 to 0.034) instead of hugging the post, so the walk out is a 45 degree corner at `Res_Exit_1` and another at `Res_Exit_2` (V1 stopped at `Res_Exit_2`); the walk to the Developer now stops 0.19 m from it (was 0.21).
+
+Clearance, r = 0.080 m, `DeskClearanceDrive Report`, minimum per route (target 0.015):
+
+| Route | Desk | Floor | Ceiling | (Ceiling V1) |
+|---|---:|---:|---:|---:|
+| R1 / R2 home <-> delivery | 0.018 | 0.018 | 0.018 | -0.046 |
+| R3 / R5 home <-> Developer | 0.018 | 0.018 | 0.017 | -0.049 |
+| R4 delivery to Developer | 0.020 | 0.020 | 0.020 | +0.007 |
+| R6 / R7 Developer <-> Tester | 0.019 | 0.018 | 0.019 | +0.019 |
+
+All 21 cells pass. Desk was also read in Edit Mode (same numbers). Play Mode trace of the real walks (`TraceFor` / `TraceReport`, handoff researcher to developer and developer to tester, Ceiling not entered during the trace): Researcher 0.67 m walked, min 0.017 at (-0.292, 0.027); Developer 0.23 m, min 0.019.
+
+Reach: the delivery spot did not move, so the figures in the Reach table stand (0.52 m from the eye, 14 degrees right). The Inbox tray is now 7 cm nearer the user (z 0.320 against an eye at 0.62); it is a place to put papers, not something the hand has to reach for the paper handover.
+
+Outer-desk overhang in Floor and Ceiling: **not reduced.** The Researcher's x (-0.500) and the Tester's (0.489) are set by the 0.20 m aisle and by the Developer-Tester gap (0.013 m between the desks already), so an inward shift would either close the aisle below 0.015 m clearance or put the desks into each other. Overhang stays 4.0 / 2.9 cm (Floor deck +-0.46) and 6.0 / 4.9 cm (Ceiling deck +-0.44); needs re-fitting the platform and pod art, or the mode-dependent layout of option (c). In z the Researcher's desk front (0.256) is inside both decks (Floor to 0.433, Ceiling to 0.368); the Inbox tray's far wall (0.368) sits on the Ceiling deck edge.
+
+Observation to check, not caused by this change as far as I can tell: in the scripted demo at timeScale 1 (two runs) the Developer-to-Tester handoff was not seen after the approval, while at 4x (two runs) it was, and `DeskChoreographyDrive Handoff developer,tester` always works. The handoff is triggered by `ArtifactCreated`; the layout does not enter that path.
+
+Screenshots (Editor, not headset): `desk_layout_v2_plan.png`, `desk_layout_v2_seat.png`, `desk_layout_v2_right.png` (Edit Mode), `desk_layout_v2_play_floor_right.png`, `desk_layout_v2_play_floor_back.png`, `desk_layout_v2_play_ceiling_right.png`, `desk_layout_v2_play_ceiling_back.png`, `desk_layout_v2_exchange_res_dev.png`. Revert is unchanged (`Revert` restores every recorded position, including the tray, and removes `DeskLanes`; checked: Revert then Apply reproduces the V2 positions and the record). The V1 tables below are history; where they disagree with this section, this section wins.
 Frame for every number: `WorkspaceRoot`-local metres, +z toward the user, -x the user's right.
 
 ## Layout: old and new
@@ -83,7 +119,7 @@ Validated office footprint (`SpatialWorkspaceDirector.footprint`, used by every 
 
 - **Desk.** Static meshes now span x -0.500..0.489 (before -0.520..0.496: the books and the lamp were the outliers). Walking agents stay inside x -0.446..0.465 (before, the delivery lane at x = -0.47 put the body out to -0.55). Everything is inside the footprint.
 - **Floor.** Platform deck x -0.46..0.46 with a low rail at the back and sides. All seven routes clear the platform (minimum +0.016; before, R1/R2 went through the side rail at -0.080). **Cost:** the outer desks overhang the deck edge, the Researcher's by 4.0 cm and the Tester's by 2.9 cm (before: both inside), and the Developer no longer sits on its floor pad (the pads are part of the platform art, fitted to the old positions).
-- **Ceiling.** Pod deck x -0.44..0.44, with the arch posts standing at x -0.24..-0.15 and 0.15..0.24, z -0.14..-0.07. **Not clean.** The strip behind the Researcher's desk is 0.124 m wide between the desk and the west arch post, so the Researcher's lanes brush the post foot: R1/R2 -0.046 (before -0.080, through the side rail), **R3/R5 -0.049 (before +0.005: a regression in this mode)**, R4 +0.007, R6/R7 +0.019. The outer desks overhang the deck by 6.0 and 4.9 cm, and the Developer is off its pad.
+- **Ceiling.** Pod deck x -0.44..0.44, with the arch posts standing at x -0.24..-0.15 and 0.15..0.24, z -0.14..-0.07. **Not clean in V1 (clean in V2, see the V2 section).** The strip behind the Researcher's desk is 0.124 m wide between the desk and the west arch post, so the Researcher's lanes brush the post foot: R1/R2 -0.046 (before -0.080, through the side rail), **R3/R5 -0.049 (before +0.005: a regression in this mode)**, R4 +0.007, R6/R7 +0.019. The outer desks overhang the deck by 6.0 and 4.9 cm, and the Developer is off its pad.
 
 Why not fix Floor and Ceiling here: an aisle needs 0.776 m of desks plus 0.19 m, about 0.98 m; the decks are 0.92 and 0.88 m and cannot grow without leaving the validated footprint (`BuildCeilingPolishV1` already says so). Options, none taken: (a) move the Researcher's station another 5 cm toward the user and re-place the Inbox tray, which opens the strip enough to clear the arch post; (b) re-fit the pod and platform art to the new station positions; (c) keep the compact layout in Floor and Ceiling and switch at mode change (new runtime code and tests). The Wall is separate and unaffected.
 

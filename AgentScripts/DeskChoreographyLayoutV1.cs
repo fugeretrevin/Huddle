@@ -38,34 +38,39 @@ public static class DeskChoreographyLayoutV1
 
     // ── the layout (data) ──────────────────────────────────────────────────────────────────────────────────────────
     // Shifts (metres along root x and z). Desk extents after the shift: Researcher -0.500..-0.224, aisle 0.200 wide,
-    // Developer -0.024..0.226, Tester 0.239..0.489. The Researcher's station also comes 25 mm toward the user: that
-    // widens the strip behind its desk, so the lane behind it clears the desk here AND the back rail of the Floor
-    // platform and the arch post of the Ceiling pod (which stand behind the office in those modes).
+    // Developer -0.024..0.226, Tester 0.239..0.489. The Researcher's station also comes 95 mm toward the user
+    // (V1 25 mm, V2 another 70 mm): that widens the strip behind its desk to 0.194 m, so the lane behind it clears the desk
+    // here AND the back rail of the Floor platform and the arch post of the Ceiling pod (which stand behind the office in
+    // those modes). The Inbox tray and the decor cluster in front of the desk move with it.
     static readonly (string name, float dx, float dz)[] Shifts =
     {
-        ("ResearchStation", -0.066f, 0.025f), ("Nameplate_Researcher", -0.066f, 0.025f),
+        ("ResearchStation", -0.066f, 0.095f), ("Nameplate_Researcher", -0.066f, 0.095f),
         ("DevStation", 0.122f, 0f),           ("Nameplate_Developer", 0.122f, 0f),
         ("QAStation", 0.085f, 0f),            ("Nameplate_Tester", 0.085f, 0f),
+        ("InboxTray", 0f, 0.070f),                // V2: moves with the Researcher's desk so the desk does not stand in the tray
     };
+
+    // V2: objects that older records (V1) do not hold. They were not touched by V1, so on an applied scene their CURRENT
+    // position is their old position; Apply records it once, before the first move.
+    static readonly string[] V2Added = { "InboxTray" };
 
     // Objects placed at a root-local (x, z); their height and rotation are kept.
     static readonly (string name, float x, float z)[] Places =
     {
         ("DeliveryZone", -0.124f, 0.120f),       // the Researcher offers the paper at the aisle mouth, behind the factory line
-        ("Decor_BookStack", -0.432f, 0.212f),    // a small cluster beside the Inbox tray, in front of the Researcher's desk
-        ("Decor_MiniPlant", -0.462f, 0.262f),
-        ("Decor_DeskLamp", -0.405f, 0.275f),     // (its old place at the Tester's end is now under the widened desk)
+        ("Decor_BookStack", -0.432f, 0.282f),    // a small cluster beside the Inbox tray, in front of the Researcher's desk (V2: +70 mm with the desk)
+        ("Decor_MiniPlant", -0.462f, 0.332f),
+        ("Decor_DeskLamp", -0.405f, 0.345f),     // (its old place at the Tester's end is now under the widened desk)
     };
 
     // Lane points (new transforms under WorkspaceRoot/DeskLanes), root-local (x, z).
     static readonly (string name, float x, float z)[] Points =
     {
-        ("Res_Exit_1", -0.285f, -0.047f),            // a step back and aside, clear of the back of its own desk (a 47 degree corner: no stop)
-        ("Res_Exit_2", -0.124f, -0.032f),            // behind the aisle; the one corner where it stops and turns. The strip rises a little toward
-                                                     // the aisle so it passes the Ceiling pod's arch post (behind the office in that mode) as far off as it can
-        ("ResToDev_FromHome_2", -0.200f, -0.042f),   // keeps the walk to the Developer on the same strip (two gentle corners, no stop)
-        ("ResToDev_FromDelivery_1", -0.124f, 0.020f),// back through the aisle after an approval (a 44 degree corner: no stop)
-        ("ResToDev_Stand", -0.075f, -0.030f),        // beside the Developer, 0.21 m from it
+        ("Res_Exit_1", -0.290f, 0.025f),             // a step back and aside, clear of the back of its own desk (a 45 degree corner: no stop)
+        ("Res_Exit_2", -0.210f, 0.028f),             // on the strip behind the desk, centred between the desk back and the Ceiling pod's arch post (V2: no stop, two 45 degree corners)
+        ("ResToDev_FromHome_2", -0.150f, 0.034f),   // keeps the walk to the Developer on the same strip, past the arch post (two gentle corners, no stop)
+        ("ResToDev_FromDelivery_1", -0.122f, 0.050f),// back through the aisle after an approval (a 39 degree corner: no stop)
+        ("ResToDev_Stand", -0.070f, -0.005f),        // beside the Developer, 0.19 m from it (V2: a little nearer the user than V1, clear of the arch post)
         ("DevToTester_Stand", 0.185f, -0.045f),      // beside the Tester, 0.21 m from it
     };
 
@@ -200,6 +205,19 @@ public static class DeskChoreographyLayoutV1
         // without an old value an object would be shifted again on every run.
         rec = LoadRecord();
         var unrecorded = targets.Keys.Where(k => rec == null || rec.positions.All(i => i.name != k)).ToArray();
+        // V2 top-up: an applied scene whose record predates V2 gets the V2-only objects added, at their current (untouched) position.
+        if (unrecorded.Length > 0 && rec != null && unrecorded.All(k => V2Added.Contains(k)))
+        {
+            foreach (var k in unrecorded)
+            {
+                var lp = targets[k].localPosition;
+                rec.positions.Add(new Item { name = k, x = lp.x, y = lp.y, z = lp.z });
+                sb.AppendLine("  V2: recorded the old position of " + k + " " + P(lp));
+            }
+            SaveRecord(rec);
+            rec = LoadRecord();
+            unrecorded = targets.Keys.Where(k => rec == null || rec.positions.All(i => i.name != k)).ToArray();
+        }
         if (unrecorded.Length > 0)
             return sb.Append("  " + RecordPath + " has no old value for: " + string.Join(", ", unrecorded) + ". Nothing changed.\n").ToString();
 
