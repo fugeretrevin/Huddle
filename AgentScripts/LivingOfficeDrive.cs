@@ -58,16 +58,29 @@ public static class LivingOfficeDrive
     public static string RunOfflineWithFailure() { return Begin(false, true); }
     public static string RunLive() { return Begin(true, false); }
 
+    // Every 'script run' call compiles this file into a fresh assembly, so the statics of the call that started the run are
+    // not visible to a later Status call. The running instance therefore writes its report to a file once a second, and
+    // Status / Stop talk to it through files.
+    const string ReportFile = "Library/LivingOfficeDrive.txt";
+    const string StopFile = "Library/LivingOfficeDrive.stop";
+    static float _lastWrite;
+
+    static void WriteReport() { try { System.IO.File.WriteAllText(ReportFile, Report()); } catch (Exception) { } }
+
     public static string Stop()
     {
-        End("stopped by the driver");
-        return Status();
+        if (_running) { End("stopped by the driver"); return Report(); }
+        System.IO.File.WriteAllText(StopFile, "stop");
+        return "stop requested; call Status in a moment";
     }
 
     static string Begin(bool live, bool withFailure)
     {
         if (!Application.isPlaying) return "not playing: enter Play Mode first";
-        if (_running) return "already running: " + Status();
+        if (System.IO.File.Exists(ReportFile) && (DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(ReportFile)).TotalSeconds < 5
+            && System.IO.File.ReadAllText(ReportFile).Contains("\nRUNNING"))
+            return "a run is already in progress: " + Status();
+        if (System.IO.File.Exists(StopFile)) System.IO.File.Delete(StopFile);
         var c = C;
         if (c == null) return "no WallHabitatController in the scene";
         var g = G;
@@ -106,6 +119,7 @@ public static class LivingOfficeDrive
         UnityEditor.EditorApplication.update -= Tick;
         Application.logMessageReceived -= OnLog;
         _log.Add("== run ended: " + why + " after " + (Now - _runT0).ToString("F1") + " s");
+        WriteReport();
     }
 
     // ───────────────────────── the script ─────────────────────────
@@ -282,6 +296,8 @@ public static class LivingOfficeDrive
     {
         if (!_running) return;
         if (!Application.isPlaying) { End("Play Mode ended"); return; }
+        if (System.IO.File.Exists(StopFile)) { System.IO.File.Delete(StopFile); End("stopped by the driver"); return; }
+        if (Now - _lastWrite > 1f) { _lastWrite = Now; WriteReport(); }
         var c = C;
         if (c == null) { End("the controller is gone"); return; }
         Observe(c);
@@ -358,6 +374,12 @@ public static class LivingOfficeDrive
     }
 
     public static string Status()
+    {
+        if (_steps.Count > 0) return Report();
+        return System.IO.File.Exists(ReportFile) ? System.IO.File.ReadAllText(ReportFile) : "no run yet";
+    }
+
+    static string Report()
     {
         var sb = new StringBuilder();
         sb.AppendLine("LIVING OFFICE DRIVE — " + _mode + " — evidence level PLAY (Editor), not on-head");
