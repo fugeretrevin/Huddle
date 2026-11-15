@@ -333,6 +333,7 @@ namespace MuseDesk.Spatial.Wall
             if (nn.kind == HabitatNodeKind.Cabin && _step < _route.Count && _L.nav.nodes[_route[_step]].kind == HabitatNodeKind.Cabin)
             {
                 _elev.ReportBoarded(agent);
+                _speed = 0f;   // A16: a rider is stationary from the first riding tick (no walk cycle in the cabin)
                 State = WalkerState.Riding;
                 return;
             }
