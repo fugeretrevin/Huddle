@@ -1,4 +1,4 @@
-# Art integration result
+﻿# Art integration result
 
 Branch `feature/living-world-polish`, 2026-11-15. **Editor and Play Mode only (AUTO + PLAY). Nothing here has been on a headset.** `Builds/` untouched, nothing pushed or tagged. Wall, Manager and Portal flags stay 0 in the committed `ReleaseConfig`.
 
@@ -85,5 +85,15 @@ Created: `AgentScripts/ArtMergeDrive.cs` (Play: `Start`, `Report`, `Stop`, `Shot
 1. Desk agents: do the 77-clip animations look right at seat distance (nothing popping or sliding on the new Turn and Walk clips)?
 2. Ceiling pod: the Researcher's walk behind its desk past the arch post, and the desk now 7 cm nearer the user; the Inbox tray on the pod's deck edge.
 3. Floor and Ceiling: the outer desks still overhang the deck by 3 to 6 cm.
-4. Whether the scripted-demo Developer-to-Tester handoff appears at normal speed (see section 3).
+4. Whether the scripted-demo Developer-to-Tester handoff reads well at normal speed (it plays in PLAY; see section 9).
 5. Everything about the Wall art is untested on device and unhooked.
+
+## 9. Desk demo handoff and the loop-flag guard
+
+**Desk demo handoff (fixed).** The scripted demo emits `artifact.created` about 1.2 s before `task.completed`. At timeScale 1 the Researcher to Developer exchange is still running then, so the Developer to Tester handoff was only queued, and `CompletionSequence.OnWorkDelivered` called `AgentHandoffController.AbandonPending()`, which cleared the queue: a handoff the event stream really reported was never shown (at 4x the first one had finished, so the second played). Now `OnWorkDelivered` does not drop it; the completion sequence waits for the whole chain of reported handoffs (new `handoffChainWaitMax`, 15 s, pure rule in `Agents/Core/HandoffWaitPolicy.cs`) and only retires what is still unfinished after that. Backend and reducer state are untouched; only the celebration starts later, and no handoff is invented. The demo timeline was not changed.
+
+PLAY, three consecutive desk demo runs at timeScale 1 (`DeskDemoHandoffDrive` trace): Developer to Tester Approaching, Exchanging and Returning in every run; the completion sequence then ran (WaitHandoff, Success, done); celebration started 3.95 s, 3.99 s and 3.98 s after `task.completed` (handoff chain finished first); 0 console errors. The scene file gained one line, the serialized `handoffChainWaitMax: 15`.
+
+**Loop-flag guard.** `AgentClipLoopFlagTests` (Editor-only `MuseDesk.Tests.AgentInteraction`) reads `ModelImporter.clipAnimations` of Agent_Researcher, Agent_Developer and Agent_Tester (Agent_Manager only if its clips exist) and fails if any of 17 looping clips (Idle_Breathing, Walk_Loop, Typing, Reading, Inspecting, Waiting_For_Input, Thinking and ten more from `LoopingCharacterClips`) lost `loopTime`. If it fails after a reimport, `git checkout -- <Agent_*.fbx.meta>`.
+
+Tests: AgentClipLoopFlagTests 5/5, HandoffWaitPolicyTests 4/4, DeskPolishLogicTests 22/22, AgentWalkPathTests 12/12. New driver: `AgentScripts/DeskDemoHandoffDrive.cs` (`Start`, `Report`, `Stop`).
