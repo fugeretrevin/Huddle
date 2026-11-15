@@ -55,6 +55,10 @@ class CommitBody(_Body):
     idempotency_key: str = Field(min_length=8, max_length=200)
 
 
+class RetryBody(_Body):
+    idempotency_key: str = Field(min_length=8, max_length=200)
+
+
 def register_phase3_routes(app: FastAPI) -> None:
     async def require_session(session_id: str, request: Request,
                               authorization: str | None = Header(default=None)) -> dict[str, Any]:
@@ -154,6 +158,27 @@ def register_phase3_routes(app: FastAPI) -> None:
                 store2(request), session_id, f"manager.{plan_id}.reject",
                 body.model_dump(mode="json"),
                 lambda: svc.reject(session_id, plan_id, body.revision, body.reason))
+
+    @app.get("/v2/sessions/{session_id}/manager/status")
+    async def manager_status(session_id: str, request: Request,
+                             session=Depends(manager_gate)) -> dict[str, Any]:
+        return manager_service(request).manager_status(session_id)
+
+    @app.get("/v2/sessions/{session_id}/manager/plans/{plan_id}/status")
+    async def plan_status(session_id: str, plan_id: str, request: Request,
+                          session=Depends(manager_gate)) -> dict[str, Any]:
+        return manager_service(request).plan_status(session_id, plan_id)
+
+    @app.post("/v2/sessions/{session_id}/manager/plans/{plan_id}/tasks/{task_id}/retry")
+    async def retry_plan_card(session_id: str, plan_id: str, task_id: str, body: RetryBody,
+                              request: Request, session=Depends(manager_gate)) -> dict[str, Any]:
+        # Explicit user command only; the service is itself idempotent (a repeat is a no-op).
+        svc = manager_service(request)
+        async with plan_lock(request, plan_id):
+            return await idempotent(
+                store2(request), session_id, f"manager.{plan_id}.retry.{task_id}",
+                body.model_dump(mode="json"),
+                lambda: svc.retry_card(session_id, plan_id, task_id))
 
     @app.post("/v2/sessions/{session_id}/manager/plans/{plan_id}/commit")
     async def commit_plan(session_id: str, plan_id: str, body: CommitBody, request: Request,
