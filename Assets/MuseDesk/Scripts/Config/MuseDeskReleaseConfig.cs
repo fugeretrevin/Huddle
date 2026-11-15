@@ -46,6 +46,11 @@ namespace MuseDesk.Config
         [Tooltip("Elevator door/indicator light effects (wall_elevator_vfx_enabled). Cosmetic.")]
         public bool wallElevatorVfx = false;
 
+        [Header("Comfort (polish pass)")]
+        [Tooltip("Reduced Motion by default for this build: shorter transitions, no overshoot. A per-device choice saved " +
+                 "in PlayerPrefs (MuseDesk.ReducedMotion = 1/0) overrides this.")]
+        public bool reducedMotion = false;
+
         [Header("Build")]
         public string buildLabel = "rc6-dev";
 

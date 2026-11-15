@@ -71,7 +71,7 @@ namespace MuseDesk.Wall
         void TickInteraction(float dt)
         {
             _visit.Tick(dt);
-            _portal.comfortMode = comfortMode;
+            _portal.comfortMode = Comfort;
             _portal.Tick(dt);
 
             bool selectMode = WallActive && flags.agentSelectEnabled && (_visit.IsArmed || _visit.State == VisitState.Carrying);
@@ -269,6 +269,7 @@ namespace MuseDesk.Wall
                         _landFromPos = _proxy.position;
                         _landFromScale = _proxy.localScale.x;
                         _landClock.Start(MuseDesk.Motion.MuseMotionProfile.Active.visitLand);
+                        if (_audio != null) _audio.Play(WallCue.Land, true);
                     }
                     _landClock.Step(dt);
                     float u = _landClock.Value;
@@ -496,9 +497,17 @@ namespace MuseDesk.Wall
             _portalRoot.gameObject.SetActive(true);
         }
 
+        PortalState _lastPortalSound = PortalState.Hidden;
+
         void TickPortalVisual(float dt)
         {
             PortalState st = _portal.State;
+            if (st != _lastPortalSound)
+            {
+                if (_audio != null && st == PortalState.Emerging) _audio.Play(WallCue.PortalOpen, true);
+                if (_audio != null && st == PortalState.Returning) _audio.Play(WallCue.PortalClose, true);
+                _lastPortalSound = st;
+            }
             if (st == PortalState.Hidden)
             {
                 if (_portalRoot != null && _portalRoot.gameObject.activeSelf) _portalRoot.gameObject.SetActive(false);

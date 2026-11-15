@@ -112,6 +112,7 @@ namespace MuseDesk.Wall
                 HabitatRole owner;
                 if (!HabitatStage.TryRole(job.agentId, out owner) || owner == HabitatRole.Manager) owner = HabitatRole.Developer;
                 _view.PrintCard(owner);
+                if (_audio != null) _audio.Play(WallCue.PrintTick);
                 Debug.Log("[MuseDesk.Wall] Printed card for task " + job.taskId + " -> " + job.agentId);
             }
             if (_planCard == null || !_planCard.Visible) return;

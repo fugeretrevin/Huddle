@@ -43,11 +43,25 @@ namespace MuseDesk.Config
             Debug.Log("[MuseDesk.Release] " + config.Summary());
         }
 
+        public const string ReducedMotionKey = "MuseDesk.ReducedMotion";
+
+        /// <summary>Save the user's Reduced Motion choice on this device and apply it now.</summary>
+        public static void SetReducedMotionPreference(bool on)
+        {
+            PlayerPrefs.SetInt(ReducedMotionKey, on ? 1 : 0);
+            PlayerPrefs.Save();
+            MuseDesk.Motion.MotionSettings.SetReducedMotion(on);
+        }
+
         /// <summary>Apply a config to the live scene. Safe to call repeatedly (a driver does).</summary>
         public static void Apply(MuseDeskReleaseConfig c)
         {
             if (c == null) return;
             Active = c;
+
+            // Comfort: Reduced Motion (build default, overridden by a saved per-device choice).
+            int saved = PlayerPrefs.GetInt(ReducedMotionKey, -1);
+            MuseDesk.Motion.MotionSettings.SetReducedMotion(saved >= 0 ? saved == 1 : c.reducedMotion);
 
             // Spatial modes.
             var director = Object.FindAnyObjectByType<SpatialWorkspaceDirector>(FindObjectsInactive.Include);

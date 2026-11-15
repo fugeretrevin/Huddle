@@ -16,9 +16,14 @@ namespace MuseDesk.Wall
     /// </summary>
     public sealed class WallHabitatView
     {
-        public static readonly Color Paper = Hex(0xF7F2E3), Ink = Hex(0x1F2530), Teal = Hex(0x2FA39A), Ivory = Hex(0xEFE8DA),
-            Wood = Hex(0xD9B98C), WoodDark = Hex(0xB89466), Lavender = Hex(0xA99BD1), Brass = Hex(0xC9A54A),
-            Amber = Hex(0xE8A33C), Coral = Hex(0xE0654F), Green = Hex(0x5DBB7A), Grey = Hex(0x9AA0A8), Glass = Hex(0xBFD9D6);
+        // State and UI colours ARE the app's design tokens (OfficeTokens), so teal / amber / green / coral / lavender
+        // mean the same thing on the wall as on the desk board (audit C #1, #7). Only the treehouse materials
+        // (ivory, woods, brass, glass) are Wall-specific.
+        public static readonly Color Paper = Workspace.OfficeTokens.Paper, Ink = Workspace.OfficeTokens.Ink, Teal = Workspace.OfficeTokens.Teal,
+            Lavender = Workspace.OfficeTokens.Lavender, Amber = Workspace.OfficeTokens.Amber, Coral = Workspace.OfficeTokens.Coral,
+            Green = Workspace.OfficeTokens.Success,
+            Ivory = Hex(0xEFE8DA), Wood = Hex(0xD9B98C), WoodDark = Hex(0xB89466), Brass = Hex(0xC9A54A),
+            Grey = Hex(0x9AA0A8), Glass = Hex(0xBFD9D6);
 
         static Color Hex(int rgb) { return new Color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1f); }
 
@@ -82,7 +87,7 @@ namespace MuseDesk.Wall
             foreach (HabitatFloor f in layout.floors)
             {
                 Box(structure, "BackPanel_" + f.id, new Vector3((f.xMin + size.x * 0.5f) * 0.5f, f.floorY + f.Clearance * 0.5f, back + 0.002f),
-                    new Vector3(size.x * 0.5f - f.xMin, f.Clearance, 0.004f), f.index == layout.ManagerFloor ? Lavender * 0.9f + Ivory * 0.1f : Paper);
+                    new Vector3(size.x * 0.5f - f.xMin, f.Clearance, 0.004f), f.index == layout.ManagerFloor ? Color.Lerp(Lavender, Ivory, 0.45f) : Paper);
                 Box(structure, "Post_" + f.id, new Vector3(f.xMin + 0.004f, f.floorY + f.Clearance * 0.5f, size.z - 0.006f), new Vector3(0.008f, f.Clearance, 0.008f), WoodDark);
             }
             foreach (HabitatBox b in layout.boxes)

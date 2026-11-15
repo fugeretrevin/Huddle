@@ -66,6 +66,8 @@ namespace MuseDesk.Wall
         [Header("Comfort")]
         [Tooltip("Shorter, calmer portal and visit animations; no beacon pulsing.")]
         public bool comfortMode;
+        /// <summary>Comfort is on when set here OR when the app-wide Reduced Motion setting is on.</summary>
+        public bool Comfort => comfortMode || MuseDesk.Motion.MotionSettings.ReducedMotion;
 
         const string SaveKey = "MuseDesk.WallHabitat.v1";
         const string ActiveKey = "MuseDesk.WallHabitat.active";
@@ -281,7 +283,7 @@ namespace MuseDesk.Wall
                 for (int r = 0; r < 4; r++) _away[r] = _registry.Of(AgentId((HabitatRole)r)) != AgentPresentation.Home;
                 Color beacon; bool pulse;
                 BeaconState(out beacon, out pulse);
-                _view.Apply(_stage, dt, _visit.IsArmed, _hoverRole, _away, _statusColors, beacon, pulse && !comfortMode);
+                _view.Apply(_stage, dt, _visit.IsArmed, _hoverRole, _away, _statusColors, beacon, pulse && !Comfort);
                 _suppressor.Tick();
             }
 
@@ -367,6 +369,8 @@ namespace MuseDesk.Wall
 
         // ───────────────────────── habitat view ─────────────────────────
 
+        WallAudio _audio;
+
         void EnsureView(WallLayoutKind kind)
         {
             if (_view != null && _viewKind == kind) return;
@@ -382,6 +386,14 @@ namespace MuseDesk.Wall
             for (int r = 0; r < 4; r++) _stage.Walker((HabitatRole)r).settings = walker;
             _view = new WallHabitatView(_habitatRoot, L, ResolveMaterial(), agentSources, artManifest);
             _viewKind = kind;
+            if (_audio == null) _audio = new WallAudio(_habitatRoot, nearUserRig != null ? nearUserRig : transform);
+            // Sounds follow the elevator machine's REAL transitions (doors slide, a small ding on arrival).
+            _stage.elevator.StateChanged += s =>
+            {
+                if (_audio == null || !WallActive) return;
+                if (s == ElevatorState.DoorsOpening || s == ElevatorState.DoorsClosing) _audio.Play(WallCue.DoorSlide);
+                else if (s == ElevatorState.Arrived) _audio.Play(WallCue.Ding);
+            };
             var issues = HabitatLayoutValidator.Validate(L);
             if (issues.Count > 0) Debug.LogError("[MuseDesk.Wall] Layout " + kind + " failed validation: " + issues[0].what);
         }

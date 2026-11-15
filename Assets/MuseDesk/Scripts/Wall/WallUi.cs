@@ -119,6 +119,8 @@ namespace MuseDesk.Wall
                     catch (Exception e) { Debug.LogException(e); }
                 });
             }
+            // The same soft click every other poke key in the app makes (the clone was made after start-up).
+            MuseDesk.Feedback.FeedbackController.RegisterLateKeys(go);
             k.label = go.GetComponentInChildren<TMP_Text>(true);
             if (k.label != null) { k.label.text = text; k.label.enableAutoSizing = false; }
             k.shown = false;
