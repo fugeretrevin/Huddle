@@ -40,11 +40,11 @@ namespace MuseDesk.Spatial.Onboarding
     {
         SessionReady,          // SessionReducer.SnapshotLoaded
         AgentTouched,          // needs event
-        TaskStarted,           // SessionController.RunStateChanged (running)
+        TaskStarted,           // session run-state change to running (scene side)
         DecisionRequested,     // SessionReducer.DecisionRequested
         PaperGrabbed,          // needs event
         PaperDetailsOpened,    // needs event
-        DecisionSent,          // user pressed stamp/approve/reject (needs event; SessionController.Respond)
+        DecisionSent,          // user pressed stamp/approve/reject (needs event; the session's respond call)
         DecisionResolvedApproved, // SessionReducer.DecisionResolved(id, "approved")
         HandoffObserved,       // needs event (SessionReducer.AgentChanged is the source)
         TaskCompleted,         // SessionReducer.TaskCompleted
