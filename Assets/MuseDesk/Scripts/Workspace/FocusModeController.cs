@@ -149,23 +149,39 @@ namespace MuseDesk.Workspace
 
             // Tell the real backend (unless this change CAME from the backend). The server/demo is
             // authoritative; the local change above is optimistic and the echoed focus.changed confirms it.
-            if (!_applyingFromBackend) _ = SendFocusAsync(on);
+            if (_applyingFromBackend) _focusSend.Observe(on);
+            else { _focusSend.Want(on); _ = PumpFocusAsync(); }
         }
 
-        async System.Threading.Tasks.Task SendFocusAsync(bool on)
+        // One focus request in flight; the newest wish wins; one stable key per on/off value until the
+        // server answers (a retry reuses it); a failure leaves the toggle free to try again (Sprint A4b).
+        readonly MuseDesk.Spatial.LatestWinsToggle _focusSend = new MuseDesk.Spatial.LatestWinsToggle();
+
+        string MintFocusKey(bool on) =>
+            $"focus-{SystemInfo.deviceUniqueIdentifier[..6]}-{(on ? "on" : "off")}-{++_idem:D4}";
+
+        async System.Threading.Tasks.Task PumpFocusAsync()
         {
             var gw = phase2 != null ? phase2.Gateway : null;
             if (gw == null) return;   // no board/backend wired → local-only focus
-            try
+            while (_focusSend.TryBegin(MintFocusKey, out bool sendOn, out string key))
             {
-                await gw.SetFocusAsync(new FocusCommand
+                bool answered = false;
+                try
                 {
-                    Mode = on ? FocusModes.Focus : FocusModes.Normal,
-                    IdempotencyKey = $"focus-{SystemInfo.deviceUniqueIdentifier[..6]}-{++_idem:D4}",
-                }, _cts != null ? _cts.Token : CancellationToken.None);
+                    await gw.SetFocusAsync(new FocusCommand
+                    {
+                        Mode = sendOn ? FocusModes.Focus : FocusModes.Normal,
+                        IdempotencyKey = key,
+                    }, _cts != null ? _cts.Token : CancellationToken.None);
+                    answered = true;
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { Debug.LogWarning($"[MuseDesk] set focus failed: {ex.Message}"); }
+                if (this == null) return;
+                bool again = _focusSend.Complete(sendOn, key, answered);
+                if (!again) break;
             }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { Debug.LogWarning($"[MuseDesk] set focus failed: {ex.Message}"); }
         }
 
         void RefreshInbox()

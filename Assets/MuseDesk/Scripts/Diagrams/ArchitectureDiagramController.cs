@@ -56,6 +56,8 @@ namespace MuseDesk.Diagrams
         Phase2Bootstrap _phase2;
         CancellationTokenSource _cts;
         int _idem;
+        int _gen;   // bumped by Clear/Dismiss; a backend answer for an older generation is dropped
+        readonly MuseDesk.Spatial.CommandLedger _ledger = new MuseDesk.Spatial.CommandLedger();
 
         void OnDestroy()
         {
@@ -66,6 +68,7 @@ namespace MuseDesk.Diagrams
 
         public void Clear()
         {
+            _gen++;
             foreach (var g in _spawned) if (g != null) Destroy(g);
             _spawned.Clear();
             _nodeTx.Clear();
@@ -103,12 +106,30 @@ namespace MuseDesk.Diagrams
             var gw = ResolveGateway();
             if (gw == null) return false;
             _cts ??= new CancellationTokenSource();
-            var dv2 = await gw.CreateDiagramAsync(new DiagramCommand
+            // One request per template in flight (a double poke sends once); one stable key per template
+            // until the server answers, so a retry after a failure deduplicates (Sprint A4b).
+            string lockId = "diagram|" + template;
+            if (!_ledger.TryLock(lockId)) return true;   // already being fetched: not a failure, no example fallback
+            string key = _ledger.KeyFor(lockId, () =>
+                $"diagram-{SystemInfo.deviceUniqueIdentifier[..6]}-{template}-{++_idem:D4}");
+            int gen = _gen;
+            DiagramV2 dv2;
+            try
             {
-                Template = template,
-                IdempotencyKey = $"diagram-{SystemInfo.deviceUniqueIdentifier[..6]}-{++_idem:D4}",
-            }, _cts.Token);
+                dv2 = await gw.CreateDiagramAsync(new DiagramCommand
+                {
+                    Template = template,
+                    IdempotencyKey = key,
+                }, _cts.Token);
+            }
+            catch
+            {
+                if (this != null) _ledger.Unlock(lockId, key, false);   // keep the key; the user can try again
+                throw;
+            }
             if (this == null) return false;
+            _ledger.Unlock(lockId, key, true);
+            if (gen != _gen) return true;   // dismissed/cleared while in flight: a late answer must not rebuild it
             if (dv2 == null || dv2.Nodes == null || dv2.Nodes.Count == 0) return false;
             gameObject.SetActive(true);
             Build(ToSpec(dv2));
