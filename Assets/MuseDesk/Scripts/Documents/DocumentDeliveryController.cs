@@ -169,7 +169,10 @@ namespace MuseDesk.Documents
         {
             // One response per decision: a second poke (or a stamp landing while a poke is in flight)
             // is ignored until the backend answers or the request fails.
-            if (_responding || controller == null || string.IsNullOrEmpty(controller.PendingDecisionId)) return false;
+            // controller.IsRespondingTo is the session-wide guard (every entry point ends in
+            // SessionController.Respond); this local flag only drives the paper's "Saving" state.
+            if (_responding || controller == null || string.IsNullOrEmpty(controller.PendingDecisionId)
+                || controller.IsRespondingTo(controller.PendingDecisionId)) return false;
             _responding = true;
             if (panel) panel.SetResponding();
             return true;

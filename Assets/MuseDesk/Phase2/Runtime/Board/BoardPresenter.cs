@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using MuseDesk.Phase2.Contracts;
+using MuseDesk.Spatial;
 
 namespace MuseDesk.Phase2.Board
 {
@@ -298,25 +299,52 @@ namespace MuseDesk.Phase2.Board
 
         // ─────────────────────────── commands ───────────────────────────
 
+        // ── Polish S2: one command in flight per task card, one stable idempotency key per logical action ──
+        // The lock is taken inside RequestAssignAsync / RunCardCommandAsync, so every entry point (pad and
+        // chip pokes, the drag, the dock Start key) shares it. A second poke while one is in flight is
+        // ignored with an "Already sending" note. The key for an action (task + kind + parameter) is
+        // minted once and reused by a retry; it is dropped only when the server has answered.
+        readonly CommandLedger _ledger = new CommandLedger();
+        readonly Dictionary<string, float> _acceptedAt = new Dictionary<string, float>();
+
+        /// <summary>The stable key for one logical card action (same action, same key until answered).</summary>
+        public string StableKey(string taskId, string action, string param, string prefix)
+            => _ledger.KeyFor(taskId + "|" + action + "|" + param, () => NextIdemKey(prefix));
+
+        static bool IsDefinitive(Phase2CommandResult<TaskCardV2> r)
+        {
+            if (r == null) return false;
+            if (r.Ok) return true;
+            string code = r.Error?.Code;
+            return code != "CANCELLED" && code != "TRANSPORT_ERROR" && code != "CLIENT_NOT_READY" && code != "BUSY";
+        }
+
+        static Phase2CommandResult<TaskCardV2> Busy() =>
+            Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
+            { Code = "BUSY", Message = "a command for this card is already in flight" });
+
         void OnPokeAssign(TaskCardView card, string targetAgentId)
         {
-            _ = RequestAssignAsync(card, targetAgentId, NextIdemKey("assign"));
+            if (card?.Data == null) return;
+            _ = RequestAssignAsync(card, targetAgentId, StableKey(card.Data.TaskId, "assign", targetAgentId, "assign"));
         }
 
         void OnPokePauseResume(TaskCardView card)
         {
             if (card?.Data == null) return;
+            // Decided from local state; with the in-flight lock a second poke cannot send a duplicate.
             bool paused = card.Data.TaskState == TaskStates.Paused ||
                           card.Data.TaskState == TaskStates.PauseRequested;
-            _ = paused ? RequestResumeAsync(card, NextIdemKey("resume"))
-                       : RequestPauseAsync(card, NextIdemKey("pause"));
+            string id = card.Data.TaskId;
+            _ = paused ? RequestResumeAsync(card, StableKey(id, "resume", "", "resume"))
+                       : RequestPauseAsync(card, StableKey(id, "pause", "", "pause"));
         }
 
         void OnPokeCyclePriority(TaskCardView card)
         {
             if (card?.Data == null) return;
             int next = (Mathf.Clamp(card.Data.Priority, 0, 3) + 1) % 4;
-            _ = RequestPriorityAsync(card, next, NextIdemKey("priority"));
+            _ = RequestPriorityAsync(card, next, StableKey(card.Data.TaskId, "priority", next.ToString(), "priority"));
         }
 
         /// <summary>Set a task's priority (0..3), reconciling to canonical truth; same idempotency +
@@ -330,7 +358,7 @@ namespace MuseDesk.Phase2.Board
                 ExpectedRevision = card.Data.Revision,
                 IdempotencyKey = idempotencyKey,
             };
-            return RunCardCommandAsync(card, ct => Gateway.SetPriorityAsync(card.Data.TaskId, cmd, ct), "priority");
+            return RunCardCommandAsync(card, ct => Gateway.SetPriorityAsync(card.Data.TaskId, cmd, ct), "priority", idempotencyKey);
         }
 
         /// <summary>Pause a running task (canonical-reconciled).</summary>
@@ -338,7 +366,7 @@ namespace MuseDesk.Phase2.Board
         {
             if (card?.Data == null || Gateway == null) return Task.FromResult(NotReady());
             var cmd = new PauseCommand { ExpectedRevision = card.Data.Revision, IdempotencyKey = idempotencyKey };
-            return RunCardCommandAsync(card, ct => Gateway.PauseAsync(card.Data.TaskId, cmd, ct), "pause");
+            return RunCardCommandAsync(card, ct => Gateway.PauseAsync(card.Data.TaskId, cmd, ct), "pause", idempotencyKey);
         }
 
         /// <summary>Resume a paused task (canonical-reconciled).</summary>
@@ -346,7 +374,7 @@ namespace MuseDesk.Phase2.Board
         {
             if (card?.Data == null || Gateway == null) return Task.FromResult(NotReady());
             var cmd = new ResumeCommand { ExpectedRevision = card.Data.Revision, IdempotencyKey = idempotencyKey };
-            return RunCardCommandAsync(card, ct => Gateway.ResumeAsync(card.Data.TaskId, cmd, ct), "resume");
+            return RunCardCommandAsync(card, ct => Gateway.ResumeAsync(card.Data.TaskId, cmd, ct), "resume", idempotencyKey);
         }
 
         /// <summary>Create a new backlog task. The server's task.created event adds the card to the
@@ -413,6 +441,7 @@ namespace MuseDesk.Phase2.Board
                 CommandErrorCodes.RevisionConflict => "It just changed. Try again",
                 "CLIENT_NOT_READY" => "Board is still loading",
                 "TRANSPORT_ERROR" => "Couldn't reach the desktop",
+                "BUSY" => "Already sending",
                 "CANCELLED" => "Cancelled before it was sent",
                 _ => string.IsNullOrEmpty(e.Message) ? "Not accepted" : e.Message,
             };
@@ -426,8 +455,34 @@ namespace MuseDesk.Phase2.Board
         /// or the 409's canonical_task), keep the reducer coherent, and surface the result — never
         /// fabricating success. Mirrors RequestAssignAsync's contract for the other task commands.</summary>
         async Task<Phase2CommandResult<TaskCardV2>> RunCardCommandAsync(
+            TaskCardView card, Func<CancellationToken, Task<Phase2CommandResult<TaskCardV2>>> invoke, string label,
+            string idempotencyKey)
+        {
+            // One in flight per card (S2): a second command on the same card is ignored with a note.
+            string lockId = card.Data.TaskId;
+            if (!_ledger.TryLock(lockId)) { card.ShowPending("Already sending"); return Busy(); }
+            Phase2CommandResult<TaskCardV2> outcome = null;
+            try { outcome = await RunCardCommandCoreAsync(card, invoke, label); return outcome; }
+            finally { _ledger.Unlock(lockId, idempotencyKey, IsDefinitive(outcome)); }
+        }
+
+        /// <summary>Records an accepted command, and tells whether a refusal is a late stale 409 that
+        /// must not replace a recent success line for the same card.</summary>
+        bool ShieldedByRecentSuccess(string taskId, float startedAt, Phase2CommandResult<TaskCardV2> result)
+        {
+            if (taskId == null) return false;
+            if (result.Ok) { _acceptedAt[taskId] = Time.unscaledTime; return false; }
+            // Only a command that was accepted WHILE this one was in flight can make this refusal stale
+            // (the lock normally prevents that; this covers an event-driven change or a lock-less path).
+            return result.Error?.Code == CommandErrorCodes.RevisionConflict
+                && _acceptedAt.TryGetValue(taskId, out float t) && t >= startedAt;
+        }
+
+        async Task<Phase2CommandResult<TaskCardV2>> RunCardCommandCoreAsync(
             TaskCardView card, Func<CancellationToken, Task<Phase2CommandResult<TaskCardV2>>> invoke, string label)
         {
+            string taskId = card.Data?.TaskId;
+            float startedAt = Time.unscaledTime;
             Phase2CommandResult<TaskCardV2> result;
             card.ShowPending();
             try
@@ -463,7 +518,8 @@ namespace MuseDesk.Phase2.Board
             }
             if (!result.Ok)
                 Debug.Log($"[MuseDesk.P2] {label} rejected: {result.Error?.Code} — {result.Error?.Message}");
-            card.ShowResult(result.Ok, result.Ok ? Confirmation(label, canonical) : Reason(result.Error));
+            if (!ShieldedByRecentSuccess(taskId, startedAt, result))
+                card.ShowResult(result.Ok, result.Ok ? Confirmation(label, canonical) : Reason(result.Error));
 
             AssignResolved?.Invoke(card, result);
             return result;
@@ -481,6 +537,20 @@ namespace MuseDesk.Phase2.Board
             if (card?.Data == null || Gateway == null)
                 return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
                 { Code = "CLIENT_NOT_READY", Message = "board not initialized" });
+
+            // One in flight per card (S2), shared with the pad / chip pokes, the drag and the dock Start key.
+            string lockId = card.Data.TaskId;
+            if (!_ledger.TryLock(lockId)) { card.ShowPending("Already sending"); return Busy(); }
+            Phase2CommandResult<TaskCardV2> outcome = null;
+            try { outcome = await RequestAssignCoreAsync(card, targetAgentId, idempotencyKey); return outcome; }
+            finally { _ledger.Unlock(lockId, idempotencyKey, IsDefinitive(outcome)); }
+        }
+
+        async Task<Phase2CommandResult<TaskCardV2>> RequestAssignCoreAsync(
+            TaskCardView card, string targetAgentId, string idempotencyKey)
+        {
+            string taskId = card.Data.TaskId;
+            float startedAt = Time.unscaledTime;
 
             var cmd = new AssignCommand
             {
@@ -528,7 +598,8 @@ namespace MuseDesk.Phase2.Board
 
             if (!result.Ok)
                 Debug.Log($"[MuseDesk.P2] assign rejected: {result.Error?.Code} — {result.Error?.Message}");
-            card.ShowResult(result.Ok, result.Ok ? Confirmation("assign", canonical) : Reason(result.Error));
+            if (!ShieldedByRecentSuccess(taskId, startedAt, result))
+                card.ShowResult(result.Ok, result.Ok ? Confirmation("assign", canonical) : Reason(result.Error));
 
             AssignResolved?.Invoke(card, result);
             return result;

@@ -2,6 +2,9 @@ using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using MuseDesk.Phase2.Contracts;
+using MuseDesk.Spatial;
+using Oculus.Interaction;
+using Oculus.Interaction.Input;
 
 namespace MuseDesk.Phase2.Board
 {
@@ -41,6 +44,36 @@ namespace MuseDesk.Phase2.Board
         StationDropZone _invalidHover;       // nearest zone shown red when not a valid target
         bool _resolving;                     // an async assign is in flight / settling
 
+        // Tracking-loss rule (S2). Pure decision lives in MuseDesk.Spatial.GrabTrackingWatch (EditMode tested).
+        // A hand that was lost within this window before the grab ended makes the end a cancel. ISDK may
+        // drop the grab a few frames after tracking is lost; 0.25 s covers that and the HandOwnership 0.20 s grace.
+        const float LostHandLookbackSeconds = 0.25f;
+        GrabTrackingWatch _watch;
+        static HandVisual s_leftHand, s_rightHand;
+        static float s_nextHandSearch;
+
+        /// <summary>Tracking of both hands from the rig's HandVisuals (same IsTrackedDataValid signal the
+        /// floor, ceiling and wall gestures use). When a hand visual cannot be found (Editor without a rig,
+        /// the Play Mode simulated hold) it is reported tracked, which keeps the old behaviour there.
+        /// Searches at most once a second; no per-frame allocation.</summary>
+        static void ReadHandsTracked(out bool left, out bool right)
+        {
+            if ((s_leftHand == null || s_rightHand == null) && Time.unscaledTime >= s_nextHandSearch)
+            {
+                s_nextHandSearch = Time.unscaledTime + 1f;
+                var all = FindObjectsByType<HandVisual>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var v = all[i];
+                    if (v == null || v.Hand == null) continue;
+                    if (v.Hand.Handedness == Handedness.Left) { if (s_leftHand == null) s_leftHand = v; }
+                    else if (s_rightHand == null) s_rightHand = v;
+                }
+            }
+            left = s_leftHand == null || s_leftHand.Hand == null || s_leftHand.Hand.IsTrackedDataValid;
+            right = s_rightHand == null || s_rightHand.Hand == null || s_rightHand.Hand.IsTrackedDataValid;
+        }
+
         /// <summary>Called by BoardPresenter when this card view is (re)used.</summary>
         public void Bind(BoardPresenter presenter, TaskCardView card)
         {
@@ -58,13 +91,28 @@ namespace MuseDesk.Phase2.Board
             switch (State)
             {
                 case DragState.Idle:
-                    if (held) State = DragState.Held;
+                    if (held)
+                    {
+                        State = DragState.Held;
+                        ReadHandsTracked(out bool b0, out bool b1);
+                        _watch.Begin(b0, b1);
+                    }
                     break;
 
                 case DragState.Held:
                 case DragState.Candidate:
-                    if (!held) { OnReleased(); break; }
-                    UpdateHover();
+                    ReadHandsTracked(out bool t0, out bool t1);
+                    if (held) { _watch.Sample(t0, t1, Time.unscaledTime); UpdateHover(); break; }
+                    // The grab ended. ISDK also ends a grab when its hand is lost, which looks exactly
+                    // like a release from here: only a grab that ended with its hand still tracked is a
+                    // drop. A lost hand returns the card home and sends nothing (Polish S2).
+                    if (_watch.Decide(t0, t1, Time.unscaledTime, LostHandLookbackSeconds) == GrabEnd.Cancel)
+                    {
+                        CancelHeldGrab();
+                        if (_card != null) _card.ShowResult(false, "Hand lost. Nothing sent");
+                        break;
+                    }
+                    OnReleased();
                     break;
 
                 // Pending/Confirmed/Error are advanced by the async flow, not by hold changes.
@@ -160,7 +208,8 @@ namespace MuseDesk.Phase2.Board
             SnapTo(zone.RestAnchor);
 
             // One idempotency key per drop attempt (reused only if WE retried the same key).
-            string key = _presenter.NextIdemKey("assign");
+            // (S2: the key is stable per task + target; a re-drop after a transport failure reuses it.)
+            string key = _presenter.StableKey(_card.Data.TaskId, "assign", zone.agentId, "assign");
             Phase2CommandResult<TaskCardV2> result;
             try
             {

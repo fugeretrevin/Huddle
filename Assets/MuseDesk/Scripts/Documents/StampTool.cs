@@ -311,9 +311,14 @@ namespace MuseDesk.Documents
 
         void Fire(string decisionId)
         {
-            s_handledDecision = decisionId;          // block the other stamp for this decision
             _cooldownUntil = Time.time + cooldownSeconds;
             _dwell = 0f;
+            // (S2) A response already in flight is handled by that response: do NOT mark this decision
+            // "handled" here, or a failed first response would leave the stamp dead until a new decision.
+            if (_delivery == null) _delivery = FindAnyObjectByType<DocumentDeliveryController>();
+            if (_delivery != null && _delivery.ResponseInFlight) return;
+            if (controller != null && controller.IsRespondingTo(decisionId)) return;
+            s_handledDecision = decisionId;          // block the other stamp for this decision
 
             // The ONLY state change: the real approval path. Never fabricate a result. Go through the
             // paper's own response hooks when there is one, so a stamp and a button press share a

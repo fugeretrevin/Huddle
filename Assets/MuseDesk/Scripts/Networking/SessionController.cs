@@ -5,6 +5,7 @@ using UnityEngine;
 using MuseDesk.Config;
 using MuseDesk.DebugTools;
 using MuseDesk.Models;
+using MuseDesk.Spatial;
 
 namespace MuseDesk.Networking
 {
@@ -451,22 +452,48 @@ namespace MuseDesk.Networking
             catch (Exception ex) { Debug.LogError($"[MuseDesk] start task failed: {ex.Message}"); }
         }
 
+        // Polish S2: ONE guard for every way a decision is answered (paper keys, stamps, voice, the demo
+        // director, ApprovePending/RejectPending all end here). One response per decision id in flight
+        // (approve and reject share the lock), and one stable idempotency key per (decision id, action):
+        // a retry after a lost answer reuses it, so the server de-duplicates instead of seeing two actions.
+        readonly CommandLedger _respondLedger = new CommandLedger();
+
+        /// <summary>True while a Respond for this decision id has been sent and not yet answered.</summary>
+        public bool IsRespondingTo(string decisionId) => _respondLedger.IsBusy(decisionId);
+
         public async void Respond(string decisionId, string action, string comment = null)
         {
             if (Gateway == null || string.IsNullOrEmpty(decisionId)) return;
+            if (!_respondLedger.TryLock(decisionId))
+            {
+                // Not a failure: the first one is still going. No RespondFailed (it would clear "Saving").
+                Debug.Log($"[MuseDesk] respond {action} ignored: decision {decisionId} already has a response in flight.");
+                return;
+            }
+            string key = _respondLedger.KeyFor(decisionId + "|" + action, () => NextKey($"resolve-{decisionId}"));
             try
             {
-                var res = await Gateway.RespondToDecisionAsync(decisionId, action,
-                    NextKey($"resolve-{decisionId}"), comment, _cts.Token);
+                var res = await Gateway.RespondToDecisionAsync(decisionId, action, key, comment, _cts.Token);
                 Debug.Log($"[MuseDesk] decision {decisionId} -> {res.State} (applied={res.Applied})");
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                // Cancelled (reconnect, teardown): nothing is known to be saved. Give the paper back
+                // with a plain retry line instead of leaving it on "Saving" forever.
+                if (_cts != null && !_cts.IsCancellationRequested)
+                    RespondFailed?.Invoke(decisionId, "Cancelled. Your decision was NOT saved. Try again.");
+            }
             catch (Exception ex)
             {
                 Debug.LogError($"[MuseDesk] respond failed: {ex.Message}");
                 RespondFailed?.Invoke(decisionId, IsLive
                     ? "Couldn't reach the desktop. Your decision was NOT saved. Try again."
                     : "Couldn't save the decision. Try again.");
+            }
+            finally
+            {
+                // The key is kept (definitive:false): the same (decision, action) always reuses it.
+                _respondLedger.Unlock(decisionId, key, definitive: false);
             }
         }
 

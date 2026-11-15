@@ -202,10 +202,18 @@ namespace MuseDesk.Spatial
 
         // ── hand ray ──
 
+        // (S2) One action per select: a ray pinch can report Select more than once (re-hover, tracking
+        // flutter). Repeats on the same target inside this window are ignored.
+        const float SelectDebounceSeconds = 0.6f;
+        float _lastBeaconAt = -100f;
+        float[] _lastAgentAt;
+
         void OnBeaconRay(InteractableStateChangeArgs args)
         {
             if (args.NewState != InteractableState.Select) return;
             if (!SpatialWorkspaceState.IsRemote || SpatialWorkspaceState.IsTransitioning) return;
+            if (Time.unscaledTime - _lastBeaconAt < SelectDebounceSeconds) return;
+            _lastBeaconAt = Time.unscaledTime;
             SummonRequests.RaiseBringOfficeHere();
         }
 
@@ -214,6 +222,13 @@ namespace MuseDesk.Spatial
             if (args.NewState != InteractableState.Select) return;
             if (!SpatialWorkspaceState.IsRemote) return;
             if (agentIds == null || index < 0 || index >= agentIds.Length) return;
+            if (_lastAgentAt == null || _lastAgentAt.Length != agentIds.Length)
+            {
+                _lastAgentAt = new float[agentIds.Length];
+                for (int i = 0; i < _lastAgentAt.Length; i++) _lastAgentAt[i] = -100f;
+            }
+            if (Time.unscaledTime - _lastAgentAt[index] < SelectDebounceSeconds) return;
+            _lastAgentAt[index] = Time.unscaledTime;
             SummonRequests.RaiseAskAgent(agentIds[index]);
         }
     }

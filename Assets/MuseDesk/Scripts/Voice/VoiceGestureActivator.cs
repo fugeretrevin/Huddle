@@ -42,6 +42,12 @@ namespace MuseDesk.Voice
         {
             if (!gestureEnabled || center == null) { _held = 0f; return; }
             if (center.IsListening || Time.unscaledTime < _readyAt) { _held = 0f; return; }
+            // (S2) A pinch that is holding a paper, stamp or card, or that already belongs to a far gesture
+            // (floor drag, ceiling pull, wall carry), is not a request for the microphone. Same signals the
+            // FloorAimSession / CeilingPullLogic arbiters read.
+            if (HandInteractionProbe.AnyHeld) { _held = 0f; return; }
+            HandClaimRegistry claims = HandClaimRegistry.Shared;
+            if (claims.Owner(0) != HandClaim.None || claims.Owner(1) != HandClaim.None) { _held = 0f; return; }
             Transform head = RemoteNearUser.Head();
             if (head == null) { _held = 0f; return; }
 

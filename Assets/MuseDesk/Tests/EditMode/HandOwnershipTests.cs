@@ -242,6 +242,50 @@ namespace MuseDesk.Tests.EditMode
             Assert.IsFalse(r2.TryClaim(0, HandClaim.Summon));
             Assert.IsTrue(r2.TryClaim(1, HandClaim.Summon), "the other hand is free");
         }
+
+        [Test]
+        public void FarClaimPrecedence_AgentSelect_Then_Placement_Then_Summon()
+        {
+            var r = new HandClaimRegistry();
+            Assert.IsTrue(r.TryClaim(0, HandClaim.Summon));
+            Assert.IsTrue(r.TryClaim(0, HandClaim.Placement), "placement outranks summon");
+            Assert.IsFalse(r.TryClaim(0, HandClaim.Summon));
+            Assert.IsTrue(r.TryClaim(0, HandClaim.AgentSelect), "agent selection outranks placement");
+            Assert.IsFalse(r.TryClaim(0, HandClaim.Placement));
+            Assert.IsFalse(r.TryClaim(0, HandClaim.Summon));
+            Assert.AreEqual(HandClaim.AgentSelect, r.Owner(0));
+        }
+
+        [Test]
+        public void Registry_IsOwnerAware_TwoArbitersSameKindCannotBothHoldAHand()
+        {
+            var registry = new HandClaimRegistry();
+            var a = new HandOwnershipArbiter(registry);
+            var b = new HandOwnershipArbiter(registry);
+            for (int i = 0; i < 36; i++) { a.Tick(Hands.Dt, AimHandSample.None, Hands.Open()); b.Tick(Hands.Dt, AimHandSample.None, Hands.Open()); }
+            bool aTook = false, bTook = false;
+            for (int i = 0; i < 25 && !(aTook && i > 12); i++)
+            {
+                a.Tick(Hands.Dt, AimHandSample.None, Hands.Pinch());
+                b.Tick(Hands.Dt, AimHandSample.None, Hands.Pinch());
+                if (a.Signal(1) == HandGateSignal.Ready) aTook = a.TryClaim(1, HandClaim.Placement);
+                if (b.Signal(1) == HandGateSignal.Ready) bTook = b.TryClaim(1, HandClaim.Placement);
+            }
+            Assert.IsTrue(aTook);
+            Assert.IsFalse(bTook, "a second arbiter with the same claim kind is refused");
+            Assert.AreEqual(HandBlock.Preempted, b.LastBlock(1));
+
+            // Direct registry use: same kind, different owner refused; same owner is idempotent.
+            var r = new HandClaimRegistry();
+            var o1 = new object(); var o2 = new object();
+            Assert.IsTrue(r.TryClaim(0, HandClaim.Placement, o1));
+            Assert.IsTrue(r.TryClaim(0, HandClaim.Placement, o1));
+            Assert.IsFalse(r.TryClaim(0, HandClaim.Placement, o2));
+            r.Release(0, HandClaim.Placement, o2);
+            Assert.AreEqual(HandClaim.Placement, r.Owner(0), "a non-owner cannot release it");
+            r.Release(0, HandClaim.Placement, o1);
+            Assert.AreEqual(HandClaim.None, r.Owner(0));
+        }
     }
 
     // ───────────────────────── the ceiling pull with ownership ─────────────────────────
@@ -529,6 +573,96 @@ namespace MuseDesk.Tests.EditMode
             guiding.Begin(GuideTarget.Ceiling);
             Assert.IsFalse(guiding.Adopt(GuideTarget.Floor), "never takes over a guide in progress");
             Assert.IsFalse(new PlacementGuideLogic().Adopt(GuideTarget.None));
+        }
+    }
+
+    // ───────────────────────── one command in flight, stable idempotency keys (S2) ─────────────────────────
+
+    [Category("MuseDesk")]
+    public class CommandLedgerTests
+    {
+        [Test]
+        public void SecondCommandOnTheSameTarget_IsRefusedWhileOneIsInFlight()
+        {
+            var l = new CommandLedger();
+            Assert.IsTrue(l.TryLock("task-1"));
+            Assert.IsFalse(l.TryLock("task-1"));
+            Assert.IsTrue(l.TryLock("task-2"), "another card is independent");
+            l.Unlock("task-1", "k", true);
+            Assert.IsTrue(l.TryLock("task-1"));
+        }
+
+        [Test]
+        public void KeyIsStableForARetry_AndNewOnlyAfterADefinitiveAnswer()
+        {
+            var l = new CommandLedger();
+            int n = 0;
+            string a1 = l.KeyFor("t|pause", () => "k" + (++n));
+            Assert.IsTrue(l.TryLock("t"));
+            l.Unlock("t", a1, definitive: false);                     // transport failure
+            string a2 = l.KeyFor("t|pause", () => "k" + (++n));
+            Assert.AreEqual(a1, a2, "the retry reuses the key");
+            Assert.IsTrue(l.TryLock("t"));
+            l.Unlock("t", a2, definitive: true);                      // the server answered
+            string a3 = l.KeyFor("t|pause", () => "k" + (++n));
+            Assert.AreNotEqual(a1, a3);
+            Assert.AreNotEqual(l.KeyFor("t|resume", () => "k" + (++n)), a3, "a different action has its own key");
+        }
+
+        [Test]
+        public void DecisionApproveAndReject_ShareOneLock_ButKeepSeparateKeys()
+        {
+            var l = new CommandLedger();
+            int n = 0;
+            string ka = l.KeyFor("d1|approve", () => "a" + (++n));
+            string kr = l.KeyFor("d1|reject", () => "r" + (++n));
+            Assert.AreNotEqual(ka, kr);
+            Assert.IsTrue(l.TryLock("d1"));
+            Assert.IsFalse(l.TryLock("d1"), "reject cannot be sent while approve is in flight");
+        }
+    }
+
+    // ───────────────────────── a grab that ends by tracking loss is a cancel (S2) ─────────────────────────
+
+    [Category("MuseDesk")]
+    public class GrabTrackingWatchTests
+    {
+        [Test]
+        public void TrackedHandLettingGo_IsARelease()
+        {
+            var w = new GrabTrackingWatch();
+            w.Begin(false, true);
+            for (int i = 0; i < 30; i++) w.Sample(false, true, i * 0.014f);
+            Assert.AreEqual(GrabEnd.Release, w.Decide(false, true, 0.5f, 0.25f), "left hand was never in play");
+        }
+
+        [Test]
+        public void HandUntrackedAtTheEnd_IsACancel()
+        {
+            var w = new GrabTrackingWatch();
+            w.Begin(true, true);
+            w.Sample(true, true, 0.1f);
+            Assert.AreEqual(GrabEnd.Cancel, w.Decide(true, false, 0.2f, 0.25f));
+        }
+
+        [Test]
+        public void HandLostJustBeforeTheDeselect_IsACancel_EvenIfBackNow()
+        {
+            var w = new GrabTrackingWatch();
+            w.Begin(true, false);
+            w.Sample(true, false, 0.10f);
+            w.Sample(false, false, 0.20f);                 // lost while held
+            Assert.AreEqual(GrabEnd.Cancel, w.Decide(true, false, 0.30f, 0.25f));
+            Assert.AreEqual(GrabEnd.Release, w.Decide(true, false, 0.60f, 0.25f), "lost long ago, tracked since: a real release");
+        }
+
+        [Test]
+        public void HandNotTrackedWhenTheHoldBegan_IsIgnored()
+        {
+            var w = new GrabTrackingWatch();
+            w.Begin(true, false);                          // right hand was never tracked
+            w.Sample(true, false, 0.1f);
+            Assert.AreEqual(GrabEnd.Release, w.Decide(true, false, 0.2f, 0.25f));
         }
     }
 }

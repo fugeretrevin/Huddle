@@ -14,18 +14,19 @@ namespace MuseDesk.Spatial
     //                         placement or summon gesture in progress is cancelled when something is picked up.
     //   2 CloseInteraction .. a grab (near or distance), a poke, or a ray over a UI control is hovering or
     //                         selecting, or was within the last nearClearSeconds. Its pinch belongs to it.
-    //   3 Placement ......... an explicitly opened placement control (the floor footprint drag).
-    //   4 Summon ............ a targeted distant summon gesture (the ceiling pull on the docked pod).
-    //   5 Ambient ........... nothing claims the hand (gaze, glances).
-
-    //   (Wall Habitat) AgentSelect ... the explicitly armed Select Agents far pinch. It only exists in Wall
-    //                         mode, where no floor footprint drag or ceiling pull can be armed, so its
-    //                         number (6) never competes with Placement/Summon; Holding and CloseInteraction
-    //                         still beat it exactly as above (a paper, stamp or card pinch is never taken).
-    public enum HandOwner { None = 0, Holding = 1, CloseInteraction = 2, Placement = 3, Summon = 4, Ambient = 5, AgentSelect = 6 }
+    //   3 AgentSelect ....... the explicitly armed Select Agents far pinch (Wall Habitat): an explicit
+    //                         agent-selection drag.
+    //   4 Placement ......... an explicitly opened placement control (the floor footprint drag, the wall ghost aim).
+    //   5 Summon ............ a targeted distant summon gesture (the ceiling pull on the docked pod).
+    //   6 Ambient ........... nothing claims the hand (gaze, glances).
+    //
+    // Polish S2: the far-gesture order is now AgentSelect > Placement > Summon (it used to be Placement >
+    // Summon > AgentSelect). Holding and CloseInteraction still beat every far claim, exactly as before
+    // (a paper, stamp or card pinch is never taken). Lower number wins.
+    public enum HandOwner { None = 0, Holding = 1, CloseInteraction = 2, AgentSelect = 3, Placement = 4, Summon = 5, Ambient = 6 }
 
     /// <summary>What a gesture claims a hand for. The number is the priority (lower wins).</summary>
-    public enum HandClaim { None = 0, Placement = 3, Summon = 4, AgentSelect = 6 }
+    public enum HandClaim { None = 0, AgentSelect = 3, Placement = 4, Summon = 5 }
 
     /// <summary>What the arbiter tells the gesture about one hand on one tick.</summary>
     public enum HandGateSignal
@@ -97,29 +98,41 @@ namespace MuseDesk.Spatial
         public static readonly HandClaimRegistry Shared = new HandClaimRegistry();
 
         readonly HandClaim[] _owner = new HandClaim[2];
+        // Who holds each claim (S2): a claim is (kind, owner object). Two different arbiters claiming the
+        // same kind on the same hand no longer both succeed. null is a valid owner (direct callers/tests).
+        readonly object[] _holder = new object[2];
 
         public HandClaim Owner(int hand) { return _owner[hand & 1]; }
 
-        /// <summary>Take a hand. Allowed when it is free, already this claim's, or held by a lower-priority claim
-        /// (which then sees itself preempted).</summary>
-        public bool TryClaim(int hand, HandClaim claim)
+        /// <summary>True when this exact (claim, owner) pair holds the hand.</summary>
+        public bool Holds(int hand, HandClaim claim, object owner)
+        {
+            return _owner[hand & 1] == claim && ReferenceEquals(_holder[hand & 1], owner);
+        }
+
+        /// <summary>Take a hand. Allowed when it is free, already this same (claim, owner), or held by a
+        /// lower-priority claim (which then sees itself preempted). A different owner of the SAME kind is refused.</summary>
+        public bool TryClaim(int hand, HandClaim claim, object owner = null)
         {
             if (claim == HandClaim.None) return false;
-            HandClaim cur = _owner[hand & 1];
-            if (cur == HandClaim.None || cur == claim || (int)claim < (int)cur)
+            int h = hand & 1;
+            HandClaim cur = _owner[h];
+            if (cur == HandClaim.None || (cur == claim && ReferenceEquals(_holder[h], owner)) || (int)claim < (int)cur)
             {
-                _owner[hand & 1] = claim;
+                _owner[h] = claim;
+                _holder[h] = owner;
                 return true;
             }
             return false;
         }
 
-        public void Release(int hand, HandClaim claim)
+        public void Release(int hand, HandClaim claim, object owner = null)
         {
-            if (_owner[hand & 1] == claim) _owner[hand & 1] = HandClaim.None;
+            int h = hand & 1;
+            if (_owner[h] == claim && ReferenceEquals(_holder[h], owner)) { _owner[h] = HandClaim.None; _holder[h] = null; }
         }
 
-        public void Clear() { _owner[0] = _owner[1] = HandClaim.None; }
+        public void Clear() { _owner[0] = _owner[1] = HandClaim.None; _holder[0] = _holder[1] = null; }
     }
 
     /// <summary>
@@ -188,7 +201,7 @@ namespace MuseDesk.Spatial
 
         void Drop(ref Gate g, int hand)
         {
-            if (g.claim != HandClaim.None) _registry.Release(hand, g.claim);
+            if (g.claim != HandClaim.None) _registry.Release(hand, g.claim, this);
             g.claim = HandClaim.None;
         }
 
@@ -203,7 +216,15 @@ namespace MuseDesk.Spatial
         public HandOwner Owner(int hand)
         {
             Gate g = hand == 0 ? _left : _right;
-            if (g.claim != HandClaim.None) return (HandOwner)(int)g.claim;
+            if (g.claim != HandClaim.None)
+            {
+                switch (g.claim)
+                {
+                    case HandClaim.AgentSelect: return HandOwner.AgentSelect;
+                    case HandClaim.Placement: return HandOwner.Placement;
+                    default: return HandOwner.Summon;
+                }
+            }
             if (!g.tracked) return HandOwner.None;
             if (g.holding || _anyHeld) return HandOwner.Holding;
             if (g.busyNear || g.busyUi || g.clearTime < settings.nearClearSeconds) return HandOwner.CloseInteraction;
@@ -231,7 +252,7 @@ namespace MuseDesk.Spatial
         bool Claim(ref Gate g, int hand, HandClaim claim)
         {
             if (g.state != GateState.Ready) return false;
-            if (!_registry.TryClaim(hand, claim))
+            if (!_registry.TryClaim(hand, claim, this))
             {
                 Spend(ref g, hand, HandBlock.Preempted);
                 return false;
@@ -255,7 +276,7 @@ namespace MuseDesk.Spatial
 
         void Spend(ref Gate g, int hand, HandBlock why)
         {
-            if (g.claim != HandClaim.None) _registry.Release(hand, g.claim);
+            if (g.claim != HandClaim.None) _registry.Release(hand, g.claim, this);
             g.claim = HandClaim.None;
             g.state = GateState.Spent;
             if (why != HandBlock.None) g.block = why;
@@ -263,7 +284,7 @@ namespace MuseDesk.Spatial
 
         void Cancel(ref Gate g, int hand, HandBlock why)
         {
-            if (g.claim != HandClaim.None) _registry.Release(hand, g.claim);
+            if (g.claim != HandClaim.None) _registry.Release(hand, g.claim, this);
             g.claim = HandClaim.None;
             g.state = GateState.Spent;
             g.block = why;
@@ -287,7 +308,7 @@ namespace MuseDesk.Spatial
             if (busy) { g.clearTime = 0f; g.lastBusy = busyWhy; } else g.clearTime += dt;
 
             // A higher-priority claim took this hand in the registry.
-            if ((g.state == GateState.Claimed || g.state == GateState.Lost) && _registry.Owner(hand) != g.claim)
+            if ((g.state == GateState.Claimed || g.state == GateState.Lost) && !_registry.Holds(hand, g.claim, this))
             {
                 g.claim = HandClaim.None;                       // not ours to release any more
                 g.state = GateState.Spent;
@@ -336,7 +357,7 @@ namespace MuseDesk.Spatial
                     g.offTime += dt;
                     if (g.offTime >= settings.releaseDebounce)
                     {
-                        _registry.Release(hand, g.claim);
+                        _registry.Release(hand, g.claim, this);
                         g.claim = HandClaim.None;
                         g.state = GateState.Open;
                         g.openTime = g.offTime;
