@@ -27,9 +27,11 @@ namespace MuseDesk.Phase2.Board
         public GameObject halo;
 
         [Tooltip("Tint the halo when the hovered card is a VALID target here.")]
-        public Color validColor = new Color(0.30f, 0.80f, 0.45f, 0.24f);
+        public Color validColor = WithAlpha(MuseDesk.Workspace.OfficeTokens.Success, 0.24f);
         [Tooltip("Tint the halo when the hovered card is INVALID here (e.g. running/terminal).")]
-        public Color invalidColor = new Color(0.85f, 0.35f, 0.30f, 0.26f);
+        public Color invalidColor = WithAlpha(MuseDesk.Workspace.OfficeTokens.Coral, 0.26f);
+
+        static Color WithAlpha(Color c, float a) { c.a = a; return c; }
 
         [Tooltip("Optional: the pad's own plate. It grows a little while a held card would be accepted " +
                  "here, so the valid target is shown by shape as well as by colour.")]
