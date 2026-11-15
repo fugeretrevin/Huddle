@@ -345,16 +345,8 @@ namespace MuseDesk.Wall
             }
         }
 
-        public static Color StateColor(string state)
-        {
-            if (string.IsNullOrEmpty(state)) return WallHabitatView.Grey;
-            string s = state.ToLowerInvariant();
-            if (s.Contains("fail") || s.Contains("error")) return WallHabitatView.Coral;
-            if (s.Contains("block") || s.Contains("wait") || s.Contains("approval") || s.Contains("pause") || s.Contains("input")) return WallHabitatView.Amber;
-            if (s.Contains("complete") || s.Contains("done") || s.Contains("success")) return WallHabitatView.Green;
-            if (s.Contains("run") || s.Contains("progress") || s.Contains("work") || s.Contains("start") || s.Contains("active")) return WallHabitatView.Teal;
-            return WallHabitatView.Grey;
-        }
+        /// <summary>The app-wide state palette (blocked is neutral, not amber: amber means "needs you").</summary>
+        public static Color StateColor(string state) { return Workspace.OfficeTokens.StateColor(state); }
 
         void BeaconState(out Color c, out bool pulse)
         {

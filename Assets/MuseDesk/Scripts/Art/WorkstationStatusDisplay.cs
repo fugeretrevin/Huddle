@@ -40,10 +40,11 @@ namespace MuseDesk.Art
         [Tooltip("Optional small activity lamp recoloured by state.")]
         public Renderer activityLamp;
 
-        static readonly Color Idle    = new Color(0.45f, 0.5f, 0.56f);
-        static readonly Color Working = new Color(0.25f, 0.62f, 0.95f);
-        static readonly Color Done    = new Color(0.22f, 0.76f, 0.45f);
-        static readonly Color Alert   = new Color(0.95f, 0.45f, 0.25f);
+        // Shared state palette (polish): working = teal, done = success green, error = coral, idle = neutral.
+        static readonly Color Idle    = MuseDesk.Workspace.OfficeTokens.Neutral;
+        static readonly Color Working = MuseDesk.Workspace.OfficeTokens.Teal;
+        static readonly Color Done    = MuseDesk.Workspace.OfficeTokens.Success;
+        static readonly Color Alert   = MuseDesk.Workspace.OfficeTokens.Coral;
 
         AgentView _bound;
         MaterialPropertyBlock _mpb;

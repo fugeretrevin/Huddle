@@ -429,16 +429,8 @@ namespace MuseDesk.Phase2.Board
         void ApplyStateTint()
         {
             // Non-authoritative color hint; never a substitute for the text marker.
-            Color c = Data.TaskState switch
-            {
-                TaskStates.Completed => new Color(0.30f, 0.70f, 0.35f),
-                TaskStates.Failed => new Color(0.80f, 0.30f, 0.30f),
-                TaskStates.Running => new Color(0.30f, 0.55f, 0.85f),
-                TaskStates.AwaitingApproval => new Color(0.90f, 0.70f, 0.20f),
-                TaskStates.Blocked => new Color(0.55f, 0.55f, 0.60f),
-                TaskStates.Paused or TaskStates.PauseRequested => new Color(0.65f, 0.60f, 0.35f),
-                _ => new Color(0.75f, 0.75f, 0.78f),
-            };
+            // The shared state palette (polish: one colour = one meaning on the board, agents and the Wall).
+            Color c = MuseDesk.Workspace.OfficeTokens.StateColor(Data.TaskState);
             // Property block, not renderer.material: that created a material instance per card.
             if (_tintBlock == null) _tintBlock = new MaterialPropertyBlock();
             statusMarker.GetPropertyBlock(_tintBlock);

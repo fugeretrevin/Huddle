@@ -186,17 +186,19 @@ namespace MuseDesk.Agents
         }
 
         // state -> (color, busyFactor 0..~2)
+        // Colours come from the shared state palette (working = teal for every role, needs you = amber, done =
+        // success green, error = coral). Previously coding was "completed" green and testing "needs you" amber.
         static (Color, float) Style(string s) => s switch
         {
-            AgentStates.Researching => (new Color(0.30f, 0.55f, 0.95f), 1.4f),
-            AgentStates.Coding      => (new Color(0.30f, 0.80f, 0.45f), 1.6f),
-            AgentStates.Testing     => (new Color(0.95f, 0.65f, 0.25f), 1.4f),
-            AgentStates.Reporting   => (new Color(0.70f, 0.70f, 0.95f), 1.0f),
-            AgentStates.Waiting     => (new Color(0.85f, 0.80f, 0.35f), 0.4f),
-            AgentStates.Approaching => (new Color(0.85f, 0.80f, 0.35f), 1.0f),
-            AgentStates.Complete    => (new Color(0.40f, 0.85f, 0.55f), 0.3f),
-            AgentStates.Error       => (new Color(0.90f, 0.35f, 0.35f), 0.6f),
-            _                       => (new Color(0.72f, 0.72f, 0.76f), 0.3f), // idle
+            AgentStates.Researching => (MuseDesk.Workspace.OfficeTokens.Teal, 1.4f),
+            AgentStates.Coding      => (MuseDesk.Workspace.OfficeTokens.Teal, 1.6f),
+            AgentStates.Testing     => (MuseDesk.Workspace.OfficeTokens.Teal, 1.4f),
+            AgentStates.Reporting   => (MuseDesk.Workspace.OfficeTokens.Teal, 1.0f),
+            AgentStates.Waiting     => (MuseDesk.Workspace.OfficeTokens.Amber, 0.4f),
+            AgentStates.Approaching => (MuseDesk.Workspace.OfficeTokens.Amber, 1.0f),
+            AgentStates.Complete    => (MuseDesk.Workspace.OfficeTokens.Success, 0.3f),
+            AgentStates.Error       => (MuseDesk.Workspace.OfficeTokens.Coral, 0.6f),
+            _                       => (MuseDesk.Workspace.OfficeTokens.Neutral, 0.3f), // idle
         };
 
         static Motion MotionFor(string s) => s switch

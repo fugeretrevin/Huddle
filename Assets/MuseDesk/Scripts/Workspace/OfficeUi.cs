@@ -22,6 +22,28 @@ namespace MuseDesk.Workspace
         public static readonly Color Coral = new Color32(0xD9, 0x53, 0x4A, 0xFF);
         public static readonly Color Amber = new Color32(0xE0, 0xA0, 0x30, 0xFF);
 
+        /// <summary>Neutral status (idle, queued, unknown).</summary>
+        public static readonly Color Neutral = new Color32(0x9A, 0xA0, 0xA8, 0xFF);
+
+        /// <summary>
+        /// THE task-state colour, shared by the board, agent glows, workstation displays and the Wall habitat (polish:
+        /// one colour = one meaning everywhere). Running = Teal (active), needs you = Amber, completed = Success,
+        /// problem = Coral, paused = Lavender-grey (user-held, not an alarm), blocked/idle = Neutral. Always paired with
+        /// text or a symbol by the caller; colour alone never carries the state.
+        /// </summary>
+        public static Color StateColor(string state)
+        {
+            if (string.IsNullOrEmpty(state)) return Neutral;
+            string s = state.ToLowerInvariant();
+            if (s.Contains("fail") || s.Contains("error")) return Coral;
+            if (s.Contains("approval") || s.Contains("input") || s.Contains("waiting") || s.Contains("approach")) return Amber;
+            if (s.Contains("pause")) return Color.Lerp(Lavender, Neutral, 0.5f);
+            if (s.Contains("complete") || s.Contains("done") || s.Contains("success") || s.Contains("deliver")) return Success;
+            if (s.Contains("run") || s.Contains("progress") || s.Contains("work") || s.Contains("start") || s.Contains("active")
+                || s.Contains("research") || s.Contains("cod") || s.Contains("test") || s.Contains("report")) return Teal;
+            return Neutral;   // queued, blocked, idle, cancelled, unknown
+        }
+
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         static readonly int ColorId = Shader.PropertyToID("_Color");
 
