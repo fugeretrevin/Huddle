@@ -54,9 +54,13 @@ public static class LivingOfficeDrive
     static WallBackendGateway G => One<WallBackendGateway>();
     static float Now => Time.realtimeSinceStartup;
 
-    public static string RunOffline() { return Begin(false, false); }
-    public static string RunOfflineWithFailure() { return Begin(false, true); }
-    public static string RunLive() { return Begin(true, false); }
+    static bool _stamp;
+    public static string RunOffline() { _stamp = false; return Begin(false, false); }
+    public static string RunOfflineWithFailure() { _stamp = false; return Begin(false, true); }
+    public static string RunLive() { _stamp = false; return Begin(true, false); }
+    /// <summary>As RunOffline, but the plan is rejected and then approved with the physical desk stamps (the stamp press path, same
+    /// guarded commit as the key) instead of the keys. The stamp's pose is not simulated: the press itself is.</summary>
+    public static string RunOfflineStamp() { _stamp = true; return Begin(false, false); }
 
     // Every 'script run' call compiles this file into a fresh assembly, so the statics of the call that started the run are
     // not visible to a later Status call. The running instance therefore writes its report to a file once a second, and
@@ -203,20 +207,38 @@ public static class LivingOfficeDrive
         }, () => C.Manager.State == ManagerFlowState.AwaitingApproval && C.Manager.Revision >= 2, _live ? 60f : 10f,
             () => "rev=" + C.Manager.Revision + " items=" + C.Manager.Items.Count + " boardCards=" + C.Board.Count + " | " + PaperLine(), true);
 
-        Add("6 reject -> REJECTED stamp only after confirmation, nothing created", () => { C.RejectPlan(); return null; },
+        Add("6 reject" + (_stamp ? " with the Reject stamp" : "") + " -> REJECTED stamp only after confirmation, nothing created", () =>
+            {
+                if (_stamp)
+                {
+                    // The stamps are summoned while the plan awaits the user; the Approve and Reject stamps must be in the scene.
+                    if (!C.PressPlanStampForDriver(false)) return "no Reject stamp could be pressed (none in the scene, or the plan does not await approval)";
+                    _stampNote = "reject stamp presses=" + C.PlanStampRejects + " kitShown=" + KitShown();
+                    return null;
+                }
+                C.RejectPlan(); return null;
+            },
             () => C.Manager.State == ManagerFlowState.Rejected && C.Paper.StampWord == "REJECTED", _live ? 60f : 10f,
-            () => "boardCards=" + C.Board.Count + " | " + PaperLine(), true);
+            () => "boardCards=" + C.Board.Count + " | " + PaperLine() + (_stamp ? " | " + _stampNote : ""), true);
 
         Add("7 ask again -> a fresh plan", () => C.RequestPlan(goal) ? null : "request refused: " + C.Manager.Message,
             () => C.Manager.State == ManagerFlowState.AwaitingApproval && C.Paper.StampWord == "", _live ? 90f : 10f,
             () => "plan=" + C.Manager.PlanId + " rev=" + C.Manager.Revision + " items=" + C.Manager.Items.Count);
 
-        Add("8 approve -> the backend creates the cards -> APPROVED stamp", () =>
+        Add("8 approve" + (_stamp ? " with the Approve stamp" : "") + " -> the backend creates the cards -> APPROVED stamp", () =>
         {
             if (_withFailure) G.ScriptFailNextOfflineCard("developer");
+            if (_stamp)
+            {
+                if (C.Paper.StampWord != "") return "a mark is already on the fresh paper";
+                if (!C.PressPlanStampForDriver(true)) return "no Approve stamp could be pressed (none in the scene, or the plan does not await approval)";
+                bool second = C.PressPlanStampForDriver(true);       // a second press while the commit is in flight must be refused
+                _stampNote = "approve stamp presses=" + C.PlanStampApproves + " secondPressAccepted=" + second + " kitShown=" + KitShown() + " stampWordRightAfter='" + C.Paper.StampWord + "'";
+                return null;
+            }
             return C.ApprovePlan() ? null : "approve refused: " + C.StatusLine;
         }, () => (C.Manager.State == ManagerFlowState.Delegating || C.Manager.State == ManagerFlowState.Monitoring) && C.Board.Count > 0 && C.Paper.StampWord == "APPROVED",
-            _live ? 60f : 10f, () => "committed=" + C.Manager.CommittedCount + " boardCards=" + C.Board.Count + " | " + PaperLine());
+            _live ? 60f : 10f, () => "committed=" + C.Manager.CommittedCount + " boardCards=" + C.Board.Count + " | " + PaperLine() + (_stamp ? " | " + _stampNote : ""));
 
         Add("9 cards print in the Manager's office (committed ids only)", null,
             () => C.Manager.PrintedCount >= C.Manager.CommittedCount && C.Manager.CommittedCount > 0, 20f,
@@ -284,8 +306,32 @@ public static class LivingOfficeDrive
                 bool scaleOk = true;
                 for (int r = 0; r < 4; r++) { var a = C.View.Avatar((HabitatRole)r); if (a != null && (a.lossyScale - _scale0[r]).magnitude > 1e-4f) scaleOk = false; }
                 return "softTransfers=" + soft + " acts completed=" + s.Completed + " dropped=" + s.Dropped + (s.dispatch != null ? " | " + s.dispatch : "") + " | avatar scale preserved=" + scaleOk
-                     + " | reactions played=" + C.ReactionsPlayed + " held=" + C.ReactionsHeld;
+                     + " | reactions played=" + C.ReactionsPlayed + " held=" + C.ReactionsHeld
+                     + " | nods deferred=" + C.NodsDeferred + " released=" + C.NodsReleased + " expired=" + C.NodsExpired;
             });
+    }
+
+    static string _stampNote = "";
+    static string KitShown() { var k = One<NearUserKit>(); return k != null ? k.DecisionItemsShown.ToString() : "no kit"; }
+
+    /// <summary>Item 4 check, call after a run while the plan is on the board: clears the wall's picture the way a stream resync does and
+    /// reads it back from the backend (the offline demo board answers the same status shape). Reports the board before and after.</summary>
+    public static string ResyncCheck()
+    {
+        if (!Application.isPlaying) return "not playing";
+        var c = C;
+        if (c == null) return "no WallHabitatController";
+        string before = "cards=" + c.Board.Count + " committedPlan=" + c.Manager.CommittedPlanId;
+        int restores0 = c.PlanRestores;
+        c.SimulateSessionReset();
+        return "before: " + before + " | after reset (async read in flight): cards=" + c.Board.Count + " restores=" + c.PlanRestores + " (was " + restores0 + "). Call ResyncStatus.";
+    }
+
+    public static string ResyncStatus()
+    {
+        var c = C;
+        if (c == null) return "no WallHabitatController";
+        return "restores=" + c.PlanRestores + " | " + c.DescribeLivingOffice();
     }
 
     static string Trim(string s, int n) { if (string.IsNullOrEmpty(s)) return ""; s = s.Replace("\n", " / "); return s.Length <= n ? s : s.Substring(0, n) + "..."; }
