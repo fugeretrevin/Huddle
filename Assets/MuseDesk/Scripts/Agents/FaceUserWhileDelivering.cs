@@ -27,6 +27,7 @@ namespace MuseDesk.Agents
         {
             if (movement == null) return;
             if (movement.AtHome || movement.IsMoving) return;   // only once arrived at the delivery spot
+            if (movement.IsFacingPoint) return;                 // a handoff has it facing a colleague (one writer)
             // Standing next to a colleague in an agent-to-agent handoff: keep facing them (the walk
             // left the body pointing that way) instead of turning to the user mid-exchange.
             if (AgentHandoffController.AnyBusy && _gaze != null && _gaze.HasNearbyAgent) return;

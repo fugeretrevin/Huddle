@@ -46,6 +46,41 @@ namespace MuseDesk.Tests.AgentInteraction
             Assert.AreEqual(1.5f, r.atX, 0.06f);
         }
 
+        static ClearMesh Square(string name, float x0, float z0, float x1, float z1)
+        {
+            var m = new ClearMesh(name, 2);
+            m.Add(x0, z0, x1, z0, x1, z1); m.Add(x0, z0, x1, z1, x0, z1);
+            return m;
+        }
+
+        [Test]
+        public void OwnStation_IsExemptOnlyNearItsOwnEnd()
+        {
+            // The walker's own nameplate: 8 mm from the disc at home (too far to count as touching, too near to pass).
+            var plate = Square("own nameplate", -0.05f, 0.058f, 0.05f, 0.10f);
+            var p = new[] { new Vector3(0f, 0f, 0f), new Vector3(0f, 0f, -0.30f) };
+            var obs = new[] { plate };
+            var strict = WalkClearance.Evaluate(p, 2, obs, 1, 0.05f);
+            Assert.AreEqual(0.008f, strict.minClearance, 1e-3f, "without the flag the home sample counts");
+            var own = WalkClearance.Evaluate(p, 2, obs, 1, 0.05f, new[] { true }, null);
+            Assert.Greater(own.minClearance, 0.10f, "own station: only samples beyond the first 10 cm count");
+            Assert.Less(own.minClearance, 0.125f);
+            Assert.AreEqual(0.008f, own.minClearanceAll, 1e-3f, "the unexempted minimum still reports it");
+            // The same flag at the wrong end exempts nothing.
+            var wrongEnd = WalkClearance.Evaluate(p, 2, obs, 1, 0.05f, null, new[] { true });
+            Assert.AreEqual(0.008f, wrongEnd.minClearance, 1e-3f);
+        }
+
+        [Test]
+        public void OwnStation_DoesNotHideAClipLaterOnTheRoute()
+        {
+            // Leaves its desk, then walks back THROUGH it further along: the own-station flag must not excuse that.
+            var desk = Square("own desk", -0.30f, 0.058f, 0.30f, 0.20f);
+            var p = new[] { new Vector3(0f, 0f, 0f), new Vector3(-0.5f, 0f, 0f), new Vector3(-0.5f, 0f, 0.13f), new Vector3(0.4f, 0f, 0.13f) };
+            var r = WalkClearance.Evaluate(p, 4, new[] { desk }, 1, 0.05f, new[] { true }, null);
+            Assert.Less(r.minClearance, 0f);
+        }
+
         [Test]
         public void CornerVertex_IsSampled_EvenWhenStepSkipsIt()
         {
