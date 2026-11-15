@@ -98,7 +98,9 @@ namespace MuseDesk.Agents
         const float LenTaskCompleted = 1.67f, LenSuccess = 1.5f, LenFailure = 1.67f, LenError = 1.33f,
                     LenGive = 1.5f, LenReceive = 1.17f, LenOffer = 1.67f, LenNodding = 1.17f;
 
-        float _lastNodAt = -100f;   // Polish S9b: per-agent rate limit for the confirmed-completion nod
+        bool _listening;         // addressed by the user with the mic open (VoiceAddressing), gated by ListeningGate
+        MuseDesk.Voice.VoiceAgentTarget _listenTarget;
+        float _lastNodAt = -100f;  // Polish S9b: per-agent rate limit for the confirmed-completion nod
 
         enum Mode { Unresolved, None, Direct, Params }
 
@@ -152,10 +154,21 @@ namespace MuseDesk.Agents
                 IsWorkingState = IsWorking(_lastState);
             }
             if (movement != null) movement.TurnInPlaceChanged += OnTurnInPlaceChanged;
+
+            // Truthful Listening: only from VoiceAddressing (mic open and THIS agent addressed).
+            _listenTarget = view != null ? MuseDesk.Voice.VoiceIntentClassifier.FromId(view.agentId) : MuseDesk.Voice.VoiceAgentTarget.None;
+            var va = MuseDesk.Voice.VoiceAddressing.Shared;
+            va.ListeningStarted += OnListenStart;
+            va.ListeningEnded += OnListenEnd;
+            _listening = va.MicOpen && _listenTarget != MuseDesk.Voice.VoiceAgentTarget.None && va.AddressedAgent == _listenTarget;
         }
 
         void OnDisable()
         {
+            var va = MuseDesk.Voice.VoiceAddressing.Shared;
+            va.ListeningStarted -= OnListenStart;
+            va.ListeningEnded -= OnListenEnd;
+            _listening = false;
             if (view != null) view.StateChanged -= OnStateChanged;
             if (movement != null) movement.TurnInPlaceChanged -= OnTurnInPlaceChanged;
             // Never leave the Animator running at a walk-matched rate.
@@ -301,7 +314,29 @@ namespace MuseDesk.Agents
                 return turn != 0 ? turn : S_Walk;
             }
             if (_offerHold) return S_Offer;
+            if (ListeningGate.Show(_listening, false, false, _oneShot, _lastState == AgentStates.Error)) return S_Listening;
             return BaseFor(_lastState);
+        }
+
+        // Called by VoiceAddressing on the main thread. Only the addressed agent reacts.
+        void OnListenStart(MuseDesk.Voice.VoiceAgentTarget t)
+        {
+            if (t != _listenTarget || _listenTarget == MuseDesk.Voice.VoiceAgentTarget.None) return;
+            _listening = true;
+            RefreshBase();
+        }
+
+        void OnListenEnd(MuseDesk.Voice.VoiceAgentTarget t)
+        {
+            if (t != _listenTarget) return;
+            _listening = false;
+            RefreshBase();
+        }
+
+        void RefreshBase()
+        {
+            if (animator == null || _mode != Mode.Direct || _oneShot) return;   // Update() re-picks after a one-shot
+            GoBase(baseBlend);
         }
 
         // DIRECT: the looping clip that represents a standing state. States the backend does not

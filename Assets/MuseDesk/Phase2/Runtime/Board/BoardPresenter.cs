@@ -358,6 +358,15 @@ namespace MuseDesk.Phase2.Board
         public string StableKey(string taskId, string action, string param, string prefix)
             => _ledger.KeyFor(taskId + "|" + action + "|" + param, () => NextIdemKey(prefix));
 
+        /// <summary>Take the one-in-flight lock for a card command that does not go through
+        /// RequestAssignAsync (a card with no view). Pair with <see cref="ReleaseCommand"/>.</summary>
+        public bool TryBeginCommand(string lockId) => _ledger.TryLock(lockId);
+
+        /// <summary>Give the lock back; a definitive answer (ok or refused) forgets the key, a transport
+        /// failure or cancel keeps it so a retry reuses it.</summary>
+        public void ReleaseCommand(string lockId, string key, Phase2CommandResult<TaskCardV2> result)
+            => _ledger.Unlock(lockId, key, IsDefinitive(result));
+
         static bool IsDefinitive(Phase2CommandResult<TaskCardV2> r)
         {
             if (r == null) return false;
@@ -436,10 +445,21 @@ namespace MuseDesk.Phase2.Board
                 Priority = Mathf.Clamp(priority, 0, 3),
                 IdempotencyKey = idempotencyKey,
             };
-            try { return await Gateway.CreateTaskAsync(cmd, _cts.Token); }
+            // One create per title in flight (a double poke / repeated phrase must not add two cards).
+            string lockId = "create|" + cmd.Title;
+            if (!_ledger.TryLock(lockId)) return null;
+            TaskCardV2 created = null;
+            bool answered = false;
+            try { created = await Gateway.CreateTaskAsync(cmd, _cts.Token); answered = created != null; return created; }
             catch (OperationCanceledException) { return null; }
             catch (Exception ex) { Debug.LogWarning($"[MuseDesk.P2] create task failed: {ex.Message}"); return null; }
+            finally { _ledger.Unlock(lockId, idempotencyKey, answered); }
         }
+
+        /// <summary>The stable key for creating a task with this title: a retry of the same create reuses it
+        /// until the server has answered.</summary>
+        public string StableCreateKey(string title, string prefix = "create")
+            => StableKey("board", "create", string.IsNullOrEmpty(title) ? "New task" : title, prefix);
 
         // Short, plain-language outcome lines for the card (never a claim the backend didn't make).
         static string Confirmation(string label, TaskCardV2 c) => label switch

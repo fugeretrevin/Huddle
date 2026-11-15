@@ -788,7 +788,7 @@ namespace MuseDesk.Voice
             if (presenter == null) { Result("New task", "The task board is not available.", VoiceTone.Bad, understoodSeconds); return; }
             try
             {
-                var card = await presenter.RequestCreateTaskAsync(title, null, 1, presenter.NextIdemKey("voice-create"));
+                var card = await presenter.RequestCreateTaskAsync(title, null, 1, presenter.StableCreateKey(title, "voice-create"));
                 if (this == null) return;
                 if (card != null) Result("New task", "Added to the board: " + VoiceAnswers.Clip(string.IsNullOrEmpty(card.Title) ? title : card.Title, 60), VoiceTone.Good, answerSeconds);
                 else Result("New task", "The server did not take the task. Nothing was added.", VoiceTone.Bad, answerSeconds);
