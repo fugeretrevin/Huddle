@@ -391,7 +391,10 @@ namespace MuseDesk.Wall
             Transform h = ResolveHead();
             Vector3 eye = h != null ? h.position : (nearUserRig != null ? nearUserRig.TransformPoint(new Vector3(0, 0.30f, 0.62f)) : Vector3.zero);
             if (_visitCard != null && nearUserRig != null) _visitCard.Place(nearUserRig.TransformPoint(visitCardLocal), eye, 12f);
-            if (_planCard != null && nearUserRig != null) _planCard.Place(nearUserRig.TransformPoint(planCardLocal), eye, 12f);
+            // The plan paper is taller than the old plan card: it grows UP from the old card's bottom edge, so it stays clear of
+            // the stamps and the desk things the old card was placed above.
+            if (_planCard != null && nearUserRig != null)
+                _planCard.Place(nearUserRig.TransformPoint(planCardLocal + Vector3.up * Mathf.Max(0f, (planPaperSize.y - 0.15f) * 0.5f)), eye, 12f);
         }
 
         static readonly string[] Questions = { "What are you working on?", "Is anything blocking you?", "What happens next?" };

@@ -582,7 +582,8 @@ namespace MuseDesk.Spatial.Wall
                 else if (steps[i].state == "cancelled") cancelled++;
             }
             var sb = new StringBuilder();
-            sb.Append("Plan: ").Append(planTitle).Append('\n').Append("Objective: ").Append(objective).Append('\n');
+            if (planTitle == null || !planTitle.StartsWith("Plan: ")) sb.Append("Plan: ");
+            sb.Append(planTitle).Append('\n').Append("Objective: ").Append(objective).Append('\n');
             sb.Append("Result: ").Append(done).Append(" of ").Append(steps.Count).Append(" steps completed, ").Append(failed).Append(" failed, ")
               .Append(blocked).Append(" blocked, ").Append(cancelled).Append(" cancelled.\n\nSteps:");
             for (int i = 0; i < steps.Count; i++)
