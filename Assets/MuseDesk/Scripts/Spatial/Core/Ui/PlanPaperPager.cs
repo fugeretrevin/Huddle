@@ -72,6 +72,28 @@ namespace MuseDesk.Spatial.Ui
             return pages;
         }
 
+        /// <summary>
+        /// One row sized by the same rules as the plan layout (type scale, legibility floor for the distance, truncation
+        /// with an ellipsis instead of shrinking). For pages that are not a plan, such as the plan status page.
+        /// </summary>
+        public static PlanRow Row(PlanRowKind kind, string text, float widthMm, float preferredMm, FontWeightKind weight,
+                                  PlanTone tone, int maxLines, float viewingDistanceM)
+        {
+            text = text ?? "";
+            float floor = TypeScale.MinMmAt(viewingDistanceM);
+            float boxH = maxLines * System.Math.Max(preferredMm, floor) * TextFit.LineHeightEm + 0.01f;
+            TextFitResult fit = TextFit.Fit(widthMm, boxH, text.Length, weight, preferredMm, viewingDistanceM, maxLines);
+            var row = new PlanRow
+            {
+                Kind = kind, FullText = text, SizeMm = fit.SizeMm, Bold = weight == FontWeightKind.Bold, Tone = tone,
+                Text = TextFit.Apply(text, fit), ShowMore = fit.ShowMore,
+            };
+            int lines = fit.Truncated ? fit.Lines : System.Math.Max(1, fit.Lines);
+            row.Lines = System.Math.Min(lines, maxLines);
+            row.HeightMm = row.Lines * row.SizeMm * TextFit.LineHeightEm + PlanReviewLayout.RowGapMm;
+            return row;
+        }
+
         static float Height(List<PlanRow> rows)
         {
             float h = 0f;

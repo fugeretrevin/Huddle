@@ -76,7 +76,12 @@ namespace MuseDesk.Wall
 
             bool selectMode = WallActive && flags.agentSelectEnabled && (_visit.IsArmed || _visit.State == VisitState.Carrying);
             bool aimMode = WallPreviewing;
-            if (!selectMode && !aimMode && _carryHand < 0 && _aimHand < 0)
+            // Asking the Manager by hand: point a free hand at the Manager in the habitat and pinch (same arbiter as Select
+            // Agents, so a held paper, a grab or a poke always wins). It only opens the Manager paper.
+            bool managerMode = managerRayPoke && WallActive && !aimMode && !selectMode && flags.wallManagerEnabled && !_planCardOpen
+                               && !_visit.Busy && _portal.State == PortalState.Hidden && _view != null;
+            if (!managerMode && _view != null) _view.SetManagerHint(false);
+            if (!selectMode && !aimMode && !managerMode && _carryHand < 0 && _aimHand < 0)
             {
                 _hoverRole = -1;
                 TickProxy(dt);
@@ -100,6 +105,24 @@ namespace MuseDesk.Wall
             if (selectMode && _visit.IsArmed && _view != null)
                 for (int i = 0; i < 2 && _hoverRole < 0; i++)
                     if (_samples[i].tracked) { _hoverRole = RayPickAgent(_samples[i].origin, _samples[i].direction); if (_hoverRole >= 0) hoverHand = i; }
+
+            if (managerMode)
+            {
+                bool hint = false;
+                for (int i = 0; i < 2; i++)
+                {
+                    if (!_samples[i].tracked || !RayHitsRole(_samples[i].origin, _samples[i].direction, HabitatRole.Manager)) continue;
+                    hint = true;
+                    if (_arb.Signal(i) == HandGateSignal.Ready && Time.unscaledTime >= _managerPokeAt)
+                    {
+                        _managerPokeAt = Time.unscaledTime + 1.0f;
+                        PressManager();
+                        Note("Manager");
+                        break;
+                    }
+                }
+                _view.SetManagerHint(hint && !_planCardOpen);
+            }
 
             for (int i = 0; i < 2; i++)
             {
@@ -136,6 +159,29 @@ namespace MuseDesk.Wall
             TickProxy(dt);
             TickPortalVisual(dt);
             RefreshVisitCard();
+        }
+
+        float _managerPokeAt;
+
+        /// <summary>Does this ray point at one habitat character (same forgiving target as Select Agents)?</summary>
+        bool RayHitsRole(Vector3 origin, Vector3 dir, HabitatRole role)
+        {
+            Transform a = _view != null ? _view.Avatar(role) : null;
+            if (a == null || _habitatRoot == null) return false;
+            float scale = _habitatRoot.lossyScale.y;
+            float r = Mathf.Max(0.045f, _view.AvatarHeight * 0.45f) * scale + 0.02f;
+            Vector3 oc = a.position + _habitatRoot.up * (_view.AvatarHeight * 0.5f * scale) - origin;
+            float t = Vector3.Dot(oc, dir);
+            return t >= 0.2f && (oc - dir * t).sqrMagnitude <= r * r;
+        }
+
+        /// <summary>Play Mode driver: the same path a pinch on the Manager takes.</summary>
+        public bool PokeManagerByRay(Vector3 origin, Vector3 direction)
+        {
+            if (!managerRayPoke || !WallActive || !flags.wallManagerEnabled || _planCardOpen) return false;
+            if (!RayHitsRole(origin, direction.normalized, HabitatRole.Manager)) return false;
+            PressManager();
+            return _planCardOpen;
         }
 
         int RayPickAgent(Vector3 origin, Vector3 dir)

@@ -53,6 +53,8 @@ namespace MuseDesk.Wall
         [Header("Placement")]
         public WallPlacementSettings placement = new WallPlacementSettings();
         public WalkerSettings walker = new WalkerSettings();
+        [Tooltip("Living Office: the A7 ElevatorDispatcher runs the cabin (wait spot, face the door, first come first served). Off = the original one-rider machine.")]
+        public bool useElevatorDispatcher = true;
 
         [Header("Near-user layout (NearUserRig space: +Z toward the user, user's right is -X, desk top y = 0)")]
         public Vector3 dockLocal = new Vector3(-0.19f, 0.045f, 0.50f);
@@ -109,6 +111,7 @@ namespace MuseDesk.Wall
             _visit = new AgentVisitFlow(_registry);
             _portal = new PortalFlow(_registry);
             _manager = new ManagerPlanFlow();
+            _manager.Committed += OnPlanCommitted;
             _backend = backendBehaviour as IWallBackend;
             _events = eventsBehaviour as IWallEventSource;
             _tasks = eventsBehaviour as IWallTaskContext;
@@ -122,8 +125,15 @@ namespace MuseDesk.Wall
                 _events.HabitatEventRaised += OnHabitatEvent;
                 _events.BoardTaskCreated += OnBoardTask;
                 _events.SessionReset += OnSessionReset;
+                _events.PlanCardReported += OnPlanCardReported;
+                _events.CompletionArtifactCreated += OnCompletionArtifact;
+                _events.PlanCommittedAnnounced += OnPlanCommittedAnnounced;
+                _events.SystemWarning += OnSystemWarning;
                 _subscribed = true;
             }
+            MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted += OnVoiceListeningStarted;
+            MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded += OnVoiceListeningEnded;
+            MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = RequestPlanByVoice;
         }
 
         void OnDisable()
@@ -133,8 +143,15 @@ namespace MuseDesk.Wall
                 _events.HabitatEventRaised -= OnHabitatEvent;
                 _events.BoardTaskCreated -= OnBoardTask;
                 _events.SessionReset -= OnSessionReset;
+                _events.PlanCardReported -= OnPlanCardReported;
+                _events.CompletionArtifactCreated -= OnCompletionArtifact;
+                _events.PlanCommittedAnnounced -= OnPlanCommittedAnnounced;
+                _events.SystemWarning -= OnSystemWarning;
             }
             _subscribed = false;
+            MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted -= OnVoiceListeningStarted;
+            MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded -= OnVoiceListeningEnded;
+            if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
             Unhook();
             if (WallActive || WallPreviewing) ExitWall("disabled");
         }
@@ -188,6 +205,7 @@ namespace MuseDesk.Wall
             if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.ModeChanged);
             if (_portal != null) _portal.Interrupt("Mode changed");
             ReleaseHands();
+            if (_planCardOpen && _planCard != null) { _planCardOpen = false; _planCard.Show(false); }   // the Manager lives in the wall
             if (_stage != null) _stage.ResetAll();
             _flow.Exit();
             HideGhost();
@@ -279,6 +297,8 @@ namespace MuseDesk.Wall
             if (_stage != null && WallActive)
             {
                 _stage.Tick(dt, Time.unscaledTime);
+                TickLiftAudio();
+                TickReactions(Time.unscaledTime);
                 if (Time.unscaledTime >= _statusRefresh) { _statusRefresh = Time.unscaledTime + 0.5f; RefreshStatusColors(); }
                 for (int r = 0; r < 4; r++) _away[r] = _registry.Of(AgentId((HabitatRole)r)) != AgentPresentation.Home;
                 Color beacon; bool pulse;
@@ -338,7 +358,7 @@ namespace MuseDesk.Wall
             if (_manager == null) return DeskActivity.Idle;
             switch (_manager.State)
             {
-                case ManagerFlowState.Proposing: case ManagerFlowState.Committing: case ManagerFlowState.Delegating: return DeskActivity.Working;
+                case ManagerFlowState.Proposing: case ManagerFlowState.Committing: case ManagerFlowState.Delegating: case ManagerFlowState.Revising: return DeskActivity.Working;
                 case ManagerFlowState.AwaitingApproval: return DeskActivity.Waiting;
                 case ManagerFlowState.Failed: return DeskActivity.Problem;
                 default: return DeskActivity.Idle;
@@ -374,20 +394,99 @@ namespace MuseDesk.Wall
                 _habitatRoot.SetParent(transform, false);
             }
             HabitatLayout L = HabitatLayoutBuilder.Build(kind);
-            _stage = new HabitatStage(L);
+            _stage = new HabitatStage(L, useElevatorDispatcher);
+            _stage.ActStarted += OnActStarted;
+            _stage.ActArrived += OnActArrived;
+            _stage.ActEnded += OnActEnded;
+            _stage.ActDropped += OnActDropped;
+            _doorsWereMoving = _cabinWasMoving = false;
             for (int r = 0; r < 4; r++) _stage.Walker((HabitatRole)r).settings = walker;
             _view = new WallHabitatView(_habitatRoot, L, ResolveMaterial(), agentSources, artManifest);
             _viewKind = kind;
             if (_audio == null) _audio = new WallAudio(_habitatRoot, nearUserRig != null ? nearUserRig : transform);
-            // Sounds follow the elevator machine's REAL transitions (doors slide, a small ding on arrival).
-            _stage.elevator.StateChanged += s =>
-            {
-                if (_audio == null || !WallActive) return;
-                if (s == ElevatorState.DoorsOpening || s == ElevatorState.DoorsClosing) _audio.Play(WallCue.DoorSlide);
-                else if (s == ElevatorState.Arrived) _audio.Play(WallCue.Ding);
-            };
+            // (Elevator sounds follow the cabin's REAL transitions: see TickLiftAudio.)
             var issues = HabitatLayoutValidator.Validate(L);
             if (issues.Count > 0) Debug.LogError("[MuseDesk.Wall] Layout " + kind + " failed validation: " + issues[0].what);
+        }
+
+        bool _doorsWereMoving, _cabinWasMoving;
+
+        /// <summary>Doors slide and a small ding on arrival, from whichever authority runs the cabin (edges of its real state).</summary>
+        void TickLiftAudio()
+        {
+            IHabitatElevator lift = _stage.lift;
+            bool doors = lift.DoorsMoving, moving = lift.CabinMoving;
+            if (_audio != null && WallActive)
+            {
+                if (doors && !_doorsWereMoving) _audio.Play(WallCue.DoorSlide);
+                if (!moving && _cabinWasMoving) _audio.Play(WallCue.Ding);
+            }
+            _doorsWereMoving = doors; _cabinWasMoving = moving;
+        }
+
+        // ── reactions (sprint A3 arbiter) and truthful Listening (sprint A12) ──
+
+        // One arbiter for the four habitat characters: a walking or riding character's body is taken (Critical), so a
+        // completion nod or a worried beat never plays over a walk; it waits (briefly) or is dropped as stale. Requests
+        // are made only for confirmed events (task.completed / task.failed from the reducers).
+        readonly MuseDesk.Agents.ReactionArbiter _reactions = new MuseDesk.Agents.ReactionArbiter(new MuseDesk.Agents.ReactionArbiterConfig { AgentCount = 4 });
+        readonly bool[] _bodyBusy = new bool[4];
+        public int ReactionsPlayed { get; private set; }
+        public int ReactionsHeld { get; private set; }
+
+        void TickReactions(float now)
+        {
+            for (int r = 0; r < 4; r++)
+            {
+                bool busy = !_stage.Walker((HabitatRole)r).AtHome;
+                if (busy == _bodyBusy[r]) continue;
+                _bodyBusy[r] = busy;
+                if (busy) _reactions.Request(now, new MuseDesk.Agents.ReactionRequest(r, MuseDesk.Agents.ReactionKind.Walking, now, true));
+                else _reactions.End(r, MuseDesk.Agents.ReactionKind.Walking);
+            }
+            MuseDesk.Agents.ReactionRequest played;
+            while (_reactions.Poll(now, out played)) PlayReaction(played.Agent, played.Kind);
+        }
+
+        void RequestReaction(HabitatRole role, MuseDesk.Agents.ReactionKind kind)
+        {
+            float now = Time.unscaledTime;
+            var v = _reactions.Request(now, new MuseDesk.Agents.ReactionRequest((int)role, kind, now, true));
+            if (v == MuseDesk.Agents.ReactionVerdict.Play) PlayReaction((int)role, kind);
+            else ReactionsHeld++;
+        }
+
+        void PlayReaction(int role, MuseDesk.Agents.ReactionKind kind)
+        {
+            if (_view == null) return;
+            ReactionsPlayed++;
+            if (kind == MuseDesk.Agents.ReactionKind.CompletionNod) _view.Acknowledge((HabitatRole)role);
+            else if (kind == MuseDesk.Agents.ReactionKind.ErrorWorry) _view.Worry((HabitatRole)role);
+        }
+
+        static bool TryVoiceRole(MuseDesk.Voice.VoiceAgentTarget t, out HabitatRole role)
+        {
+            switch (t)
+            {
+                case MuseDesk.Voice.VoiceAgentTarget.Researcher: role = HabitatRole.Researcher; return true;
+                case MuseDesk.Voice.VoiceAgentTarget.Developer: role = HabitatRole.Developer; return true;
+                case MuseDesk.Voice.VoiceAgentTarget.Tester: role = HabitatRole.Tester; return true;
+                case MuseDesk.Voice.VoiceAgentTarget.Manager: role = HabitatRole.Manager; return true;
+                default: role = HabitatRole.Researcher; return false;
+            }
+        }
+
+        // Only the agent the voice layer says is being addressed shows Listening, and only while the mic is open.
+        void OnVoiceListeningStarted(MuseDesk.Voice.VoiceAgentTarget t)
+        {
+            HabitatRole role;
+            if (_view != null && WallActive && TryVoiceRole(t, out role)) _view.SetListening(role, true);
+        }
+
+        void OnVoiceListeningEnded(MuseDesk.Voice.VoiceAgentTarget t)
+        {
+            HabitatRole role;
+            if (_view != null && TryVoiceRole(t, out role)) _view.SetListening(role, false);
         }
 
         // Appear: the habitat grows OUT of the wall (depth scale 0.02 -> 1, eased) instead of popping in; leave: folds
@@ -600,8 +699,10 @@ namespace MuseDesk.Wall
         {
             if (_stage == null || !WallActive) return;
             _stage.Accept(e, Time.unscaledTime);
-            // One restrained acknowledgement for a CONFIRMED completion (the event came from the reducer).
-            if (e.kind == HabitatEventKind.TaskCompleted && _view != null) _view.Acknowledge(e.agent);
+            // One restrained reaction for a CONFIRMED completion or failure (the event came from the reducer), through the
+            // arbiter: never over a walk or a ride, never repeated inside its cooldown.
+            if (e.kind == HabitatEventKind.TaskCompleted) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.CompletionNod);
+            else if (e.kind == HabitatEventKind.TaskFailed) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.ErrorWorry);
         }
 
         void OnSessionReset()
@@ -610,6 +711,7 @@ namespace MuseDesk.Wall
             if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.Cancelled);
             if (_portal != null) _portal.Interrupt("Session reset");
             if (_manager != null) _manager.Reset();
+            ResetLivingOffice();
         }
 
         // ───────────────────────── recenter, room changes, pause ─────────────────────────
@@ -692,7 +794,7 @@ namespace MuseDesk.Wall
             if (_flow != null && _flow.HasShown) s += " shown=" + (_flow.Shown.valid ? "valid" : "invalid:" + _flow.Shown.problem) + " wall=" + _flow.Shown.wallId + " layout=" + _flow.Shown.layout + " review=" + _flow.Shown.needsReview;
             if (_flow != null && _flow.HasPlaced) s += " placed=" + _flow.Placed.wallId + "@" + _flow.Placed.position.ToString("F2") + " suspended=" + _flow.Suspended;
             s += " | hidden=" + _suppressor.HiddenCount;
-            if (_stage != null) s += " | stage completed=" + _stage.Completed + " dropped=" + _stage.Dropped + " elevator=" + _stage.elevator.State;
+            if (_stage != null) s += " | stage completed=" + _stage.Completed + " dropped=" + _stage.Dropped + " elevator=" + (_stage.elevator != null ? _stage.elevator.State.ToString() : _stage.dispatch.ToString());
             s += " | visit=" + _visit.State + (_visit.Agent != null ? ":" + _visit.Agent : "") + " portal=" + _portal.State + " manager=" + _manager.State;
             s += " | status='" + StatusLine + "'";
             return s;

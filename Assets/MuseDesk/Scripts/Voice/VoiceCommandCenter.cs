@@ -326,6 +326,10 @@ namespace MuseDesk.Voice
             OnPartial(transcript);
         }
 
+        /// <summary>Set by the Manager's owner (the Wall habitat). Given the words after "Manager, "; returns the line to show, or
+        /// null when the Manager is not available (the request then falls through to "Not understood").</summary>
+        public static Func<string, string> ManagerRequestHandler;
+
         void HandleFinal(string transcript)
         {
             string heard = VoiceAnswers.Ascii(transcript ?? "").Trim();
@@ -350,7 +354,28 @@ namespace MuseDesk.Voice
             // While a decision counts down, only words about it matter; chatter does not stop the clock.
             if (_pending == Pending.Decision && intent.Kind == VoiceIntentKind.None) { ShowPrompt(); ScheduleRelisten(); return; }
 
-            VoiceTone tone; float seconds; bool understood;
+            // "Manager, <goal>": the local grammar has no such command; the A12 classifier recognises it. It is handed to whoever
+            // registered as the Manager (the Wall habitat, when it is active and its flag is on). It only ASKS for a plan:
+            // nothing is created until the user approves the plan paper.
+            if (intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
+            {
+                VoiceClassification c = VoiceIntentClassifier.Classify(heard);
+                if (c.Kind == VoiceAction.ManagerRequest && !string.IsNullOrEmpty(c.Question) && c.Question.Trim().Length >= 3)
+                {
+                    string reply = ManagerRequestHandler(c.Question.Trim());
+                    if (reply != null)
+                    {
+                        LastIntent = "ManagerRequest";
+                        LastMessage = reply;
+                        if (policy != null) policy.NotifyHeard(LastMessage);
+                        Result("Heard: " + VoiceAnswers.Clip(heard, 60), reply, VoiceTone.Agent, 4f);
+                        RefreshMic();
+                        return;
+                    }
+                }
+            }
+
+                        VoiceTone tone; float seconds; bool understood;
             string message = Execute(intent, out tone, out seconds, out understood);
             LastMessage = message ?? "";
             if (policy != null) policy.NotifyHeard(LastMessage);

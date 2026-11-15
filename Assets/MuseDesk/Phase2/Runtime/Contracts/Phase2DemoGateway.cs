@@ -468,6 +468,96 @@ namespace MuseDesk.Phase2.Contracts
             return true;
         }
 
+        /// <summary>A copy of a card as the demo board holds it (state, revision, dependencies), or null. Read-only.</summary>
+        public TaskCardV2 PlanCardSnapshot(string taskId) =>
+            taskId != null && _tasks.TryGetValue(taskId, out var c) && c != null ? c.Clone() : null;
+
+        /// <summary>Fail a running plan card with a labelled scripted reason (task.failed), then tell the stream which
+        /// cards are now blocked behind it and why (task.progress with blocked_reason / blocked_by), exactly as the
+        /// backend plan runner does. <paramref name="blockedReason"/> builds the words for one dependent from the failed
+        /// card's title. False (nothing changes) if the card is not running.</summary>
+        public bool TryFailPlanCard(string taskId, string reason, Func<string, string> blockedReason)
+        {
+            if (taskId == null || !_tasks.TryGetValue(taskId, out var card) || card == null) return false;
+            if (card.TaskState != TaskStates.Running || card.TaskId == _activeRunTaskId) return false;
+            card.TaskState = TaskStates.Failed;
+            card.Revision += 1;
+            var p = TaskPayload(card);
+            p["result_summary"] = Str(string.IsNullOrEmpty(reason) ? "SCRIPTED DEMO: scripted failure" : reason);
+            p["code"] = "SCRIPTED_FAILURE";
+            p["work_mode"] = "scripted";
+            EmitTask(Phase2EventTypes.TaskFailed, card, p, agentId: card.AgentId);
+
+            // Every card that can no longer run because of this one (direct or through other unfinished cards).
+            var blocked = new List<TaskCardV2>();
+            var frontier = new List<string> { card.TaskId };
+            var seen = new HashSet<string> { card.TaskId };
+            while (frontier.Count > 0)
+            {
+                string cur = frontier[0]; frontier.RemoveAt(0);
+                foreach (var other in _tasks.Values)
+                {
+                    if (other == null || other.Dependencies == null || !other.Dependencies.Contains(cur) || !seen.Add(other.TaskId)) continue;
+                    if (other.TaskState != TaskStates.Blocked) continue;
+                    blocked.Add(other);
+                    frontier.Add(other.TaskId);
+                }
+            }
+            foreach (var other in blocked)
+            {
+                var bp = TaskPayload(other);
+                bp["blocked_reason"] = Str(blockedReason != null ? blockedReason(card.Title) : "Blocked: a step it depends on failed.");
+                bp["blocked_by"] = new JArray(card.TaskId);
+                bp["depends_on"] = new JArray(other.Dependencies.ToArray());
+                EmitTask(Phase2EventTypes.TaskProgress, other, bp, agentId: other.AgentId);
+            }
+            return true;
+        }
+
+        /// <summary>Retry a failed plan card: it becomes queued (or blocked while a dependency is not done) and
+        /// task.resumed reason=retry_requested is emitted. False (nothing changes) if the card is not failed.</summary>
+        public bool TryRetryPlanCard(string taskId, out string state, out int revision)
+        {
+            state = null; revision = -1;
+            if (taskId == null || !_tasks.TryGetValue(taskId, out var card) || card == null) return false;
+            state = card.TaskState; revision = card.Revision;
+            if (card.TaskState != TaskStates.Failed || card.Executable) return false;
+            card.TaskState = PlanCardDependenciesDone(taskId) ? TaskStates.Queued : TaskStates.Blocked;
+            card.Revision += 1;
+            var p = TaskPayload(card);
+            p["reason"] = "retry_requested";
+            EmitTask(Phase2EventTypes.TaskResumed, card, p, agentId: card.AgentId);
+            state = card.TaskState; revision = card.Revision;
+            return true;
+        }
+
+        /// <summary>Publish a plan's summary as a completion artifact anchored on <paramref name="anchorTaskId"/>
+        /// (artifact.created), labelled SCRIPTED DEMO. False if the anchor card is unknown or the id is taken.</summary>
+        public bool TryPublishPlanSummary(string anchorTaskId, string artifactId, string summary, string pageTitle, string body)
+        {
+            if (anchorTaskId == null || !_tasks.TryGetValue(anchorTaskId, out var card) || card == null) return false;
+            if (string.IsNullOrEmpty(artifactId) || _artifacts.ContainsKey(artifactId)) return false;
+            var art = new ArtifactV2
+            {
+                ArtifactId = artifactId, TaskId = card.TaskId, Kind = ArtifactKinds.Completion, Summary = summary ?? "",
+                SourceMode = SourceModes.Demo, ContentHash = "scripted-plan-summary-" + artifactId, CreatedAt = UtcNow(),
+                Pages = new List<ArtifactPage> { new ArtifactPage { Page = 0, Title = pageTitle ?? "Plan summary", Content = body ?? "", LineRefs = new List<string>() } },
+            };
+            _artifacts[artifactId] = art;
+            _seq++;
+            Raise(new EventEnvelopeV2
+            {
+                EventId = $"evt2-demo-{_seq:D4}", Seq = _seq, SessionId = _sessionId, OccurredAt = UtcNow(),
+                Type = Phase2EventTypes.ArtifactCreated, TaskId = card.TaskId, AgentId = card.AgentId, ArtifactId = artifactId,
+                Payload = new JObject
+                {
+                    ["artifact_id"] = artifactId, ["task_id"] = card.TaskId, ["kind"] = ArtifactKinds.Completion, ["summary"] = Str(art.Summary),
+                    ["total_pages"] = 1, ["source_mode"] = SourceModes.Demo,
+                },
+            });
+            return true;
+        }
+
         ArtifactV2 PublishRunArtifact(TaskCardV2 card, string kind, string agentId)
         {
             if (_samples == null) _samples = Phase2DemoArtifactSamples.Load();
