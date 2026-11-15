@@ -27,6 +27,8 @@ namespace MuseDesk.Workspace
 
         void Update()
         {
+            // Inert in a release build (no per-0.5 s string work or logcat spam); runs in the Editor and development builds.
+            if (!Debug.isDebugBuild) return;
             _fps = Mathf.Lerp(_fps, 1f / Mathf.Max(Time.unscaledDeltaTime, 1e-4f), 0.1f);
             _t += Time.unscaledDeltaTime;
             if (_t < interval || target == null) return;

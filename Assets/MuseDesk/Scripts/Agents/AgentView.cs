@@ -49,6 +49,7 @@ namespace MuseDesk.Agents
         public event System.Action<string> StateChanged;
 
         string _state = AgentStates.Idle;
+        string _labelState, _labelName, _labelText;   // last label content, to skip rebuilding an unchanged string
         float _bobAmp;
         float _bobSpeed;
         Motion _motion = Motion.Calm;
@@ -180,8 +181,14 @@ namespace MuseDesk.Agents
             var newMotion = MotionFor(_state);
             if (newMotion == Motion.Hop && _motion != Motion.Hop) _hopT = 0f;
             _motion = newMotion;
-            if (label != null)
-                label.text = $"{displayName}\n<size=60%>{Pretty(_state)}</size>";
+            // Rebuild the label string only when what it shows changed (SetState is called on every progress event).
+            if (label != null && (_labelText == null || _labelState != _state || _labelName != displayName))
+            {
+                _labelState = _state;
+                _labelName = displayName;
+                _labelText = $"{displayName}\n<size=60%>{Pretty(_state)}</size>";
+                label.text = _labelText;
+            }
             StateChanged?.Invoke(_state);
         }
 
