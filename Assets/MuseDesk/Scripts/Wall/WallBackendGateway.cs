@@ -27,10 +27,23 @@ namespace MuseDesk.Wall
         public Phase2Bootstrap phase2;
 
         [Header("Timeouts (s)")]
-        [Range(5, 60)] public int sideTimeoutSeconds = 15;
-        [Range(5, 90)] public int planTimeoutSeconds = 25;
+        [Tooltip("Must exceed the backend's MUSEDESK_P3_SIDE_TIMEOUT_SECONDS (30) so a slow model answer is not cut off.")]
+        [Range(5, 90)] public int sideTimeoutSeconds = 40;
+        [Tooltip("Must exceed the backend's MUSEDESK_P3_PLAN_TIMEOUT_SECONDS (60).")]
+        [Range(5, 120)] public int planTimeoutSeconds = 75;
+
+        [Header("Offline plan runner (scripted demo)")]
+        [Tooltip("Seconds each offline Manager plan card is 'worked' before its labelled scripted deliverable lands.")]
+        [Range(1f, 30f)] public float offlineWorkSeconds = 8f;
 
         const string Tag = "[MuseDesk.Wall] ";
+        // Older scenes serialized shorter timeouts; never wait less than the backend does.
+        const int MinSideTimeout = 35, MinPlanTimeout = 70;
+
+        sealed class OfflineCard { public string taskId, agentId, title, objective; }
+        readonly List<OfflineCard> _offlineCards = new List<OfflineCard>();
+        OfflineCard _working;
+        float _workingUntil;
 
         sealed class OfflinePlan
         {
@@ -50,7 +63,50 @@ namespace MuseDesk.Wall
         void Awake()
         {
             _cts = new CancellationTokenSource();
+            sideTimeoutSeconds = Math.Max(sideTimeoutSeconds, MinSideTimeout);
+            planTimeoutSeconds = Math.Max(planTimeoutSeconds, MinPlanTimeout);
             FindRefsOnce();
+        }
+
+        // ------------------------------------------------------------------ offline plan runner
+
+        /// <summary>
+        /// Offline counterpart of the backend plan runner: works the cards a committed OFFLINE plan created, one at a
+        /// time, in dependency order, with a labelled scripted deliverable. Live sessions are worked by the backend,
+        /// so this does nothing once live. A card the user pauses while it is worked keeps its paused state.
+        /// </summary>
+        void Update()
+        {
+            if (_offlineCards.Count == 0) return;
+            if (IsLive) { _offlineCards.Clear(); _working = null; return; }
+            Phase2DemoGateway demo = phase2 != null ? phase2.DemoGateway : null;
+            if (demo == null) return;
+
+            if (_working != null)
+            {
+                if (demo.PlanCardState(_working.taskId) != TaskStates.Running) { _working = null; return; }   // paused or reset
+                if (Time.unscaledTime < _workingUntil) return;
+                string kind, summary, pageTitle, body;
+                WallOfflineLogic.ScriptedDeliverable(_working.agentId, _working.title, _working.objective,
+                                                     out kind, out summary, out pageTitle, out body);
+                if (demo.TryCompletePlanCard(_working.taskId, kind, summary, pageTitle, body))
+                    Debug.Log(Tag + "offline plan card " + _working.taskId + " completed (SCRIPTED DEMO)");
+                _working = null;
+                return;
+            }
+
+            for (int i = 0; i < _offlineCards.Count; i++)
+            {
+                var c = _offlineCards[i];
+                string st = demo.PlanCardState(c.taskId);
+                if (st == null) { _offlineCards.RemoveAt(i); i--; continue; }      // the board was reset
+                if (st != TaskStates.Queued || !demo.PlanCardDependenciesDone(c.taskId)) continue;
+                if (!demo.TryStartPlanCard(c.taskId)) continue;
+                _working = c;
+                _workingUntil = Time.unscaledTime + offlineWorkSeconds;
+                Debug.Log(Tag + "offline plan card " + c.taskId + " started by " + c.agentId);
+                return;
+            }
         }
 
         void OnDestroy()
@@ -355,6 +411,9 @@ namespace MuseDesk.Wall
             op.status = "committed";
             op.commitKey = key;
             op.lastResult = result;
+            for (int i = 0; i < result.tasks.Count; i++)
+                _offlineCards.Add(new OfflineCard { taskId = result.tasks[i].taskId, agentId = result.tasks[i].agentId,
+                                                    title = result.tasks[i].title, objective = plan.objective });
             Debug.Log(Tag + "offline plan " + plan.planId + " committed: " + result.tasks.Count + " task(s) on the demo board");
             return result;
         }

@@ -4,6 +4,7 @@ Run: python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --reload
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
@@ -45,7 +46,9 @@ from .phase2.board_bridge import BoardRunBridge
 from .phase2.events import Phase2EventBus
 from .phase2.routes import install_phase2_exception_handlers, register_phase2_routes
 from .phase2.store import Phase2Store
+from .phase3.provider import build_provider, get_provider
 from .phase3.routes import register_phase3_routes
+from .phase3.runner import PlanRunner
 from .phase3.store import Phase3Store
 from .run_launcher import RunLauncher
 from .run_recovery import reconcile_interrupted_runs
@@ -95,10 +98,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.p3_side = None  # side-conversation service (ephemeral memory), lazily built
         # Optional model provider (phase3.provider.ModelProvider). None = no model:
         # side answers are TASK_SNAPSHOT and Manager plans are TEMPLATE_PLAN.
-        app.state.p3_provider = None
+        # Built from MUSEDESK_MODEL_PROVIDER + key (env only); None when not configured.
+        app.state.p3_provider = build_provider(settings)
         # One launcher for both entry points (v1 task create, v2 card assign), so both
         # start the same run through the same producer.
         app.state.run_launcher = RunLauncher(storage, orchestrator)
+        # Plan runner (flag-gated): works the cards a committed Manager plan created.
+        # Independent of the auth_demo pipeline: a pending pipeline decision can wait for the
+        # human indefinitely and must not hold the plan's text-only work.
+        app.state.p3_runner = PlanRunner(
+            phase2_store, phase3_store, phase2_bus, settings, lambda: get_provider(app))
+        runner_task = None
+        if settings.p3_plan_runner_enabled and settings.p3_manager_enabled:
+            runner_task = asyncio.create_task(app.state.p3_runner.run_forever())
         # Runs are driven by in-memory asyncio tasks + decision waiters. Anything the
         # database still shows as in flight was cut off by the previous process; report
         # it as failed (and expire its pending decision) instead of leaving agents
@@ -108,6 +120,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if runner_task is not None:
+                app.state.p3_runner.stop()
+                runner_task.cancel()
+                try:
+                    await runner_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             await orchestrator.shutdown()
             storage.close()
 

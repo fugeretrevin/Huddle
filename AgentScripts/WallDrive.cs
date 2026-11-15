@@ -161,4 +161,25 @@ public static class WallDrive
         }
         return sb.ToString();
     }
+
+    /// <summary>Static-structure merge: merged renderers, source boxes, and active renderers under the habitat.</summary>
+    public static string Batch()
+    {
+        var v = C.View;
+        if (v == null) return "no habitat view";
+        int active = 0;
+        foreach (var r in v.root.GetComponentsInChildren<Renderer>(false)) if (r.enabled) active++;
+        return "batched renderers=" + v.BatchedRenderers + " from boxes=" + v.BatchedSourceBoxes + " | active renderers under habitat=" + active;
+    }
+
+    /// <summary>Every v2 board card: id, owner, state, revision.</summary>
+    public static string Board()
+    {
+        var p2 = UnityEngine.Object.FindAnyObjectByType<MuseDesk.Phase2.Phase2Bootstrap>();
+        if (p2 == null || p2.Reducer == null) return "no board";
+        var sb = new StringBuilder("board(" + (p2.Gateway != null ? p2.Gateway.ModeLabel : "?") + "): ");
+        foreach (var kv in p2.Reducer.Tasks)
+            sb.Append(kv.Key + "[" + (kv.Value.AgentId ?? "-") + "]=" + kv.Value.TaskState + "/r" + kv.Value.Revision + "; ");
+        return sb.ToString();
+    }
 }

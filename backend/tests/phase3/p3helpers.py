@@ -20,8 +20,8 @@ class FakeProvider:
         self.reply, self.delay, self.fail = reply, delay, fail
         self.calls: list[dict] = []
 
-    async def complete(self, *, system, messages, max_tokens=600):
-        self.calls.append({"system": system, "messages": messages})
+    async def complete(self, *, system, messages, max_tokens=600, purpose="side"):
+        self.calls.append({"system": system, "messages": messages, "purpose": purpose})
         if self.delay:
             await asyncio.sleep(self.delay)
         if self.fail:

@@ -71,6 +71,9 @@ namespace MuseDesk.Phase2
         /// demo → live switch (check <c>Gateway.IsLive</c> / <c>Gateway.SourceMode</c> for the mode).</summary>
         public IPhase2Gateway Gateway { get; private set; }
         public bool Ready { get; private set; }
+        /// <summary>The offline demo gateway while the board runs on it; null once live. Additive (Wall Habitat
+        /// plan runner): lets the offline Manager plan cards be worked the way the backend plan runner works them.</summary>
+        public Phase2DemoGateway DemoGateway => Gateway != null && !Gateway.IsLive ? _demo : null;
 
         Phase2GatewayRelay _relay;
         Phase2DemoGateway _demo;

@@ -72,11 +72,26 @@ class Settings(BaseSettings):
     p3_side_conversation_enabled: bool = False
     p3_manager_enabled: bool = False
     # Read-only /btw side conversation limits.
-    p3_side_timeout_seconds: float = 12.0
+    p3_side_timeout_seconds: float = 30.0
     p3_side_max_concurrency: int = 4
     p3_side_history_exchanges: int = 8
     # Manager planner model call deadline.
-    p3_plan_timeout_seconds: float = 20.0
+    p3_plan_timeout_seconds: float = 60.0
+    # Plan runner: works through cards a committed Manager plan created (text-only model
+    # work, or scripted in demo mode). OFF by default; MUSEDESK_P3_PLAN_RUNNER_ENABLED=true.
+    p3_plan_runner_enabled: bool = False
+    p3_work_timeout_seconds: float = 180.0
+    p3_runner_poll_seconds: float = 2.0
+    # Scripted (demo-mode) runner pacing per card. Tests set 0.
+    p3_runner_demo_step_seconds: float = 4.0
+    # Model used when MUSEDESK_MODEL_PROVIDER=anthropic (key: MUSEDESK_PROVIDER_API_KEY or
+    # ANTHROPIC_API_KEY). Effort per purpose: low | medium | high | xhigh | max.
+    p3_model: str = "claude-opus-5-5"
+    p3_side_effort: str = "low"
+    p3_plan_effort: str = "medium"
+    p3_work_effort: str = "medium"
+    p3_provider_timeout_seconds: float = 170.0
+    p3_refusal_fallbacks: bool = True
 
 
 _settings: Settings | None = None

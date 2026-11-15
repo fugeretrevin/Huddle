@@ -235,7 +235,8 @@ class SideConversationService:
                              f"Context:\n{self._model_context(ctx)}\n\nQuestion: {question}"})
             try:
                 text = await asyncio.wait_for(
-                    provider.complete(system=SYSTEM_PROMPT, messages=messages, max_tokens=400),
+                    provider.complete(system=SYSTEM_PROMPT, messages=messages, max_tokens=400,
+                                      purpose="side"),
                     timeout=float(self._settings.p3_side_timeout_seconds))
             except asyncio.TimeoutError:
                 return self._reply(req, reply="The model did not answer in time. Recorded state: "

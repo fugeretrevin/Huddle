@@ -154,6 +154,108 @@ namespace MuseDesk.Wall
             }
 
             if (manifest != null) manifest.ApplyTo(this);
+            // After the manifest: a proxy it hid stays out of the merged mesh.
+            if (BatchStaticStructure) BatchStructure(structure);
+            _recordColors = false;
+            _boxColor.Clear();
+        }
+
+        // ── static batching of the structure ──
+
+        /// <summary>Merge the static proxy boxes into one mesh per colour. Rollback switch: set false before building.</summary>
+        public static bool BatchStaticStructure = true;
+
+        readonly Dictionary<Renderer, Color> _boxColor = new Dictionary<Renderer, Color>();
+        readonly List<Object> _owned = new List<Object>();
+        public int BatchedRenderers { get; private set; }
+        public int BatchedSourceBoxes { get; private set; }
+
+        /// <summary>
+        /// Combine every ACTIVE box directly under <paramref name="structure"/> into one mesh per colour, each with its
+        /// own material instance (no property block), so the static treehouse costs a handful of SRP-batched draws
+        /// instead of one per box. The source GameObjects stay (empty, same names and transforms) so lookups by name
+        /// still work; only their renderer and filter are removed. Moving parts (cabin, doors, lights, avatars) are not
+        /// under the structure and are untouched. Collision truth is the layout data, so this changes nothing there.
+        /// </summary>
+        void BatchStructure(Transform structure)
+        {
+            var groups = new Dictionary<int, List<CombineInstance>>();
+            var colors = new Dictionary<int, Color>();
+            var merged = new List<Renderer>();
+            Matrix4x4 toLocal = structure.worldToLocalMatrix;
+            for (int i = 0; i < structure.childCount; i++)
+            {
+                Transform t = structure.GetChild(i);
+                if (!t.gameObject.activeSelf) continue;
+                var mr = t.GetComponent<MeshRenderer>();
+                Color c;
+                if (mr == null || !_boxColor.TryGetValue(mr, out c)) continue;
+                Color32 c32 = c;
+                int key = (c32.r << 16) | (c32.g << 8) | c32.b;
+                List<CombineInstance> list;
+                if (!groups.TryGetValue(key, out list)) { list = new List<CombineInstance>(); groups[key] = list; colors[key] = c; }
+                list.Add(new CombineInstance { mesh = _cube, transform = toLocal * t.localToWorldMatrix });
+                merged.Add(mr);
+            }
+            if (merged.Count < 2) return;
+
+            // CombineMeshes needs CPU-readable sources; the built-in cube is not guaranteed readable in a player.
+            Mesh unit = ReadableUnitCube();
+            foreach (var list in groups.Values)
+                for (int i = 0; i < list.Count; i++) { var ci = list[i]; ci.mesh = unit; list[i] = ci; }
+            _owned.Add(unit);
+
+            foreach (var kv in groups)
+            {
+                var mesh = new Mesh { name = "WallHabitat_Structure_" + kv.Key.ToString("X6") };
+                if (kv.Value.Count * 24 > 65000) mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                mesh.CombineMeshes(kv.Value.ToArray(), true, true);
+                mesh.RecalculateBounds();
+                mesh.UploadMeshData(true);
+                var mat = new Material(_mat) { name = "WallHabitat_Proxy_" + kv.Key.ToString("X6") };
+                if (mat.HasProperty(BaseColor)) mat.SetColor(BaseColor, colors[kv.Key]);
+                if (mat.HasProperty(ColorId)) mat.SetColor(ColorId, colors[kv.Key]);
+                var g = new GameObject("Batched_" + kv.Key.ToString("X6") + " (" + kv.Value.Count + " boxes)");
+                g.transform.SetParent(structure, false);
+                g.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var r = g.AddComponent<MeshRenderer>();
+                r.sharedMaterial = mat;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+                _owned.Add(mesh);
+                _owned.Add(mat);
+            }
+            for (int i = 0; i < merged.Count; i++)
+            {
+                _boxColor.Remove(merged[i]);
+                var mf = merged[i].GetComponent<MeshFilter>();
+                Object.Destroy(merged[i]);
+                if (mf != null) Object.Destroy(mf);
+            }
+            BatchedSourceBoxes = merged.Count;
+            BatchedRenderers = groups.Count;
+        }
+
+        /// <summary>A 1 m cube centred on the origin (24 vertices, flat normals), same shape as the built-in cube.</summary>
+        static Mesh ReadableUnitCube()
+        {
+            var v = new List<Vector3>(24); var n = new List<Vector3>(24); var uv = new List<Vector2>(24); var tri = new List<int>(36);
+            Vector3[] dirs = { Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back };
+            foreach (Vector3 d in dirs)
+            {
+                Vector3 a = Mathf.Abs(d.y) > 0.5f ? Vector3.forward : Vector3.up;
+                Vector3 u = Vector3.Cross(a, d) * 0.5f, w = a * 0.5f, c = d * 0.5f;
+                int s = v.Count;
+                v.Add(c - u - w); v.Add(c + u - w); v.Add(c + u + w); v.Add(c - u + w);
+                for (int k = 0; k < 4; k++) n.Add(d);
+                uv.Add(new Vector2(0, 0)); uv.Add(new Vector2(1, 0)); uv.Add(new Vector2(1, 1)); uv.Add(new Vector2(0, 1));
+                // (u, w, d) is right-handed for every face, so this order is clockwise seen from outside (Unity front).
+                tri.Add(s); tri.Add(s + 1); tri.Add(s + 2); tri.Add(s); tri.Add(s + 2); tri.Add(s + 3);
+            }
+            var m = new Mesh { name = "WallHabitat_UnitCube" };
+            m.SetVertices(v); m.SetNormals(n); m.SetUVs(0, uv); m.SetTriangles(tri, 0);
+            m.RecalculateBounds();
+            return m;
         }
 
         public Renderer Box(Transform parent, string name, Vector3 localCenter, Vector3 size, Color c)
@@ -168,8 +270,11 @@ namespace MuseDesk.Wall
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
             Tint(mr, c);
+            if (_recordColors) _boxColor[mr] = c;
             return mr;
         }
+
+        bool _recordColors = true;   // only the constructor's structure boxes are batch candidates
 
         public void Tint(Renderer r, Color c)
         {
@@ -391,6 +496,8 @@ namespace MuseDesk.Wall
         public void Destroy()
         {
             if (root != null) Object.Destroy(root.gameObject);
+            for (int i = 0; i < _owned.Count; i++) if (_owned[i] != null) Object.Destroy(_owned[i]);
+            _owned.Clear();
         }
     }
 }

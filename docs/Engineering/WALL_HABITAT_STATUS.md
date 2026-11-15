@@ -1,4 +1,4 @@
-# Wall Habitat: status (2026-11-14)
+# Wall Habitat: status (2026-11-15)
 
 Branch `feature/wall-habitat`, from `e14df8e` (rc6-2). Restore tag: `pre-wall-habitat`. Baseline APK: `Builds/MuseDesk_pre_wall_baseline.apk` (byte-identical to rc6-2). `Builds/MuseDesk.apk` is still rc6-2.
 
@@ -19,13 +19,14 @@ Branch `feature/wall-habitat`, from `e14df8e` (rc6-2). Restore tag: `pre-wall-ha
 - **Nothing has been worn.** All W1-W14 checks in `WALL_HABITAT_INTERACTION_QA.md` are open.
 - **No real MRUK wall data has been read.** The MRUK wall reader is compiled but has never run on a device. Wall orientation (anchor +Z into the room) follows MRUK's own code, unverified on device.
 - **Real ISDK hands have not been used with Select Agents.** PLAY used simulated rays.
-- **The live backend has not been exercised from Unity.** PLAY ran the offline/scripted path. Backend routes are pytest-covered, flags default off. No AI model adapter ships, so answers are `TASK_SNAPSHOT` and plans are `TEMPLATE_PLAN` until a provider is wired.
-- **Committed plan cards are tracked, not executed.** This backend's workers execute only `auth_demo` templates.
-- **There are no device performance numbers.**
+- **Claude is wired but has never been called.** `AnthropicProvider` (official SDK, `claude-opus-5-5`, effort per purpose, server-side refusal fallback) is built at startup when `MUSEDESK_MODEL_PROVIDER=anthropic` and a key are set. Verified with fake clients (pytest) and the real SDK against a local stub server; no real API call has been made (no key yet).
+- **The live backend was exercised from Unity in the Editor (2026-11-15), in scripted mode.** PLAY: Unity went live against a local backend, placed the habitat, proposed a plan (`mp-…`), committed 3 cards, the backend plan runner worked them in order, the habitat animated the handoffs, and a `/btw` answer came back from the backend. Not on a headset.
+- **Plan cards are worked as text only.** The plan runner (flag `MUSEDESK_P3_PLAN_RUNNER_ENABLED`) has the model write each step's deliverable with no tools: nothing is executed, applied or tested. Offline, the demo board works them with labelled scripted deliverables.
+- **There are no device performance numbers.** The static structure is now merged (49 boxes into 7 renderers, PLAY).
 - **The art is proxy art.** Antigravity's modules are not delivered. The Manager is a Developer clone with a cap and badge.
 - **APKs were built, not installed.** I did not replace the competition build on the headset.
 
-## APKs (2026-11-14 12:44)
+## APKs (2026-11-15 00:59, include the model provider, plan runner and merged structure)
 
 | File | Flags | Use |
 |---|---|---|

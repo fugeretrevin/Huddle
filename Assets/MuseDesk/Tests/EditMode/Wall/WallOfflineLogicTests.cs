@@ -260,6 +260,24 @@ namespace MuseDesk.Tests.EditMode.Wall
             StringAssert.Contains("502", WallOfflineLogic.FriendlyMessage(e));
             Assert.AreEqual("UNAUTHORIZED", WallOfflineLogic.ParseError(401, null).code);
         }
+
+        [Test]
+        public void ScriptedDeliverable_IsLabelledAndNeverClaimsExecution()
+        {
+            string kind, summary, title, body;
+            WallOfflineLogic.ScriptedDeliverable("researcher", "Research: login", "Build the login flow", out kind, out summary, out title, out body);
+            Assert.AreEqual("research_report", kind);
+            StringAssert.StartsWith("[SCRIPTED DEMO]", body);
+
+            WallOfflineLogic.ScriptedDeliverable("tester", "Test: login", "Build the login flow", out kind, out summary, out title, out body);
+            Assert.AreEqual("implementation_plan", kind, "a test plan is never a test_report: no tests ran");
+            StringAssert.Contains("No tests were run", body);
+
+            WallOfflineLogic.ScriptedDeliverable("developer", "Implement: login", "Build the login flow", out kind, out summary, out title, out body);
+            Assert.AreEqual("implementation_plan", kind);
+            StringAssert.Contains("Nothing was applied", body);
+            StringAssert.StartsWith("Proposed change", summary);
+        }
     }
 }
 #endif

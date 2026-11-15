@@ -9,7 +9,8 @@ Branch `feature/wall-habitat`. Restore point: tag `pre-wall-habitat` (`e14df8e`)
 | `e814a74` | Runtime: controller, view, UI kit, gateway, event bridge, MRUK walls, `WorkspaceMode.Wall`, director host hook, release flags (off) |
 | `589faa6` | Scene builder `BuildWallHabitatV1`, Play Mode driver and walkthrough, first PLAY fixes |
 | `f5f1217` | Isolation-guard fix, manager placeholder, validation switch, docs |
-| (next) | ReleaseConfig asset gains the six fields (all 0), status, tests, performance and log docs |
+| `6bb050d` | ReleaseConfig asset gains the six fields (all 0), status, tests, performance and log docs |
+| (this) | Claude provider (`AnthropicProvider`), plan runner (backend + offline demo board), static-structure merge, Unity timeouts above backend model deadlines, `scripts/start_wall_backend.ps1`; 207 pytest, 98 Wall EditMode |
 
 ## Decisions
 
@@ -31,3 +32,5 @@ Branch `feature/wall-habitat`. Restore point: tag `pre-wall-habitat` (`e14df8e`)
 5. **Desk monitors hid the characters (PLAY capture).** They are now low laptops. Railings and doors were recoloured.
 6. **The Manager's colour tint rendered translucent (PLAY capture).** Removed; the Manager now has a cap and badge only.
 7. **`SpatialIsolationTests` tripped on a comment (AUTO).** The comment was reworded.
+8. **Plan cards never started offline (PLAY).** The runner waited for the scripted login pipeline, which sat at its decision. Plan work is now independent of the pipeline (one plan card at a time).
+9. **`start_wall_backend.ps1` died on uvicorn's first log line (manual run).** PowerShell 5.1 treats native stderr as fatal under `Stop`; the launch now runs under `Continue`.

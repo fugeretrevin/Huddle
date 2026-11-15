@@ -256,6 +256,36 @@ namespace MuseDesk.Spatial.Wall
             return plan;
         }
 
+        // ---------------------------------------------------------------- scripted plan-card work (offline)
+
+        /// <summary>
+        /// The labelled deliverable the offline plan runner attaches when a plan card is worked, mirroring the backend
+        /// runner's scripted mode. Never claims a test ran or code was applied. kind is a v2 artifact kind string.
+        /// </summary>
+        public static void ScriptedDeliverable(string agentId, string cardTitle, string objective,
+                                               out string kind, out string summary, out string pageTitle, out string body)
+        {
+            string obj = Clip(objective, 80);
+            string what;
+            switch (agentId)
+            {
+                case "researcher":
+                    kind = "research_report"; pageTitle = "Research write-up";
+                    what = "Findings for \"" + obj + "\": the existing structure is reused and the options are compared on effort and risk. Recommendation: the simplest option that meets the criteria.";
+                    break;
+                case "tester":
+                    kind = "implementation_plan"; pageTitle = "Test plan";
+                    what = "Test plan for \"" + obj + "\": one happy-path case, one failure case and one edge case per acceptance criterion. No tests were run.";
+                    break;
+                default:
+                    kind = "implementation_plan"; pageTitle = "Proposed change";
+                    what = "Proposed change for \"" + obj + "\": the relevant module gains the new behaviour behind its existing interface. Nothing was applied.";
+                    break;
+            }
+            summary = pageTitle + ": scripted for \"" + Clip(cardTitle, 60) + "\"";
+            body = "[SCRIPTED DEMO] No model was used.\n\n" + what;
+        }
+
         // ---------------------------------------------------------------- commit validation (offline)
 
         static ManagerPlanItemView FindItem(IList<ManagerPlanItemView> items, string id)

@@ -364,6 +364,110 @@ namespace MuseDesk.Phase2.Contracts
             });
         }
 
+        // ─────────────────────────── Manager plan cards (Wall Habitat, additive) ───────────────────────────
+        // Mirrors the backend plan runner for the offline demo. Only the Wall gateway calls these, and only for
+        // cards a committed offline Manager plan created; no other card and no existing command changes.
+
+        /// <summary>The card's current state, or null if unknown.</summary>
+        public string PlanCardState(string taskId) =>
+            taskId != null && _tasks.TryGetValue(taskId, out var c) && c != null ? c.TaskState : null;
+
+        /// <summary>True when every dependency of the card has completed.</summary>
+        public bool PlanCardDependenciesDone(string taskId)
+        {
+            if (taskId == null || !_tasks.TryGetValue(taskId, out var c) || c == null) return false;
+            foreach (var d in c.Dependencies ?? new List<string>())
+                if (!_tasks.TryGetValue(d, out var dep) || dep == null || dep.TaskState != TaskStates.Completed) return false;
+            return true;
+        }
+
+        /// <summary>A queued, non-executable card whose dependencies are done starts (task.started). Independent of
+        /// the scripted pipeline run: a pending pipeline decision can wait indefinitely and must not hold plan work.</summary>
+        public bool TryStartPlanCard(string taskId)
+        {
+            if (taskId == null || !_tasks.TryGetValue(taskId, out var card) || card == null) return false;
+            if (card.Executable || card.TaskState != TaskStates.Queued || !PlanCardDependenciesDone(taskId)) return false;
+            if (card.TaskId == _activeRunTaskId) return false;
+            card.TaskState = TaskStates.Running;
+            card.Revision += 1;
+            var p = TaskPayload(card);
+            p["work_mode"] = "scripted";
+            EmitTask(Phase2EventTypes.TaskStarted, card, p, agentId: card.AgentId);
+            return true;
+        }
+
+        /// <summary>Complete a running plan card with a labelled scripted deliverable: artifact.created, task.completed,
+        /// dependents released (task.resumed reason=dependencies_completed) and one handoff per dependent owned by
+        /// another agent. False (nothing changes) if the card is no longer running, e.g. the user paused it.</summary>
+        public bool TryCompletePlanCard(string taskId, string kind, string summary, string pageTitle, string body)
+        {
+            if (taskId == null || !_tasks.TryGetValue(taskId, out var card) || card == null) return false;
+            if (card.TaskState != TaskStates.Running || card.TaskId == _activeRunTaskId) return false;
+
+            string label = "SCRIPTED DEMO: no model was used.";
+            string id = "art-demo-plan-" + card.TaskId;
+            var art = new ArtifactV2
+            {
+                ArtifactId = id, TaskId = card.TaskId, Kind = string.IsNullOrEmpty(kind) ? ArtifactKinds.Completion : kind,
+                Summary = summary ?? "", SourceMode = SourceModes.Demo, ContentHash = "scripted-plan-" + card.TaskId,
+                CreatedAt = UtcNow(),
+                Pages = new List<ArtifactPage> { new ArtifactPage { Page = 0, Title = (pageTitle ?? "Deliverable") + " (" + label + ")",
+                    Content = label + "\n\n" + (body ?? ""), LineRefs = new List<string>() } },
+            };
+            _artifacts[id] = art;
+            _seq++;
+            Raise(new EventEnvelopeV2
+            {
+                EventId = $"evt2-demo-{_seq:D4}", Seq = _seq, SessionId = _sessionId, OccurredAt = UtcNow(),
+                Type = Phase2EventTypes.ArtifactCreated, TaskId = card.TaskId, AgentId = card.AgentId, ArtifactId = id,
+                Payload = new JObject
+                {
+                    ["artifact_id"] = id, ["task_id"] = card.TaskId, ["kind"] = Str(art.Kind), ["summary"] = Str(art.Summary),
+                    ["total_pages"] = 1, ["source_mode"] = SourceModes.Demo,
+                },
+            });
+
+            card.TaskState = TaskStates.Completed;
+            card.Revision += 1;
+            var done = TaskPayload(card);
+            done["artifact_id"] = id;
+            done["result_summary"] = Str(summary);
+            done["work_mode"] = "scripted";
+            EmitTask(Phase2EventTypes.TaskCompleted, card, done, agentId: card.AgentId);
+
+            foreach (var other in _tasks.Values)
+            {
+                if (other == null || other.Dependencies == null || !other.Dependencies.Contains(card.TaskId)) continue;
+                if (other.TaskState == TaskStates.Blocked && PlanCardDependenciesDone(other.TaskId))
+                {
+                    other.TaskState = TaskStates.Queued;
+                    other.Revision += 1;
+                    var r = TaskPayload(other);
+                    r["reason"] = "dependencies_completed";
+                    r["unblocked_by"] = card.TaskId;
+                    EmitTask(Phase2EventTypes.TaskResumed, other, r, agentId: other.AgentId);
+                }
+                if (!string.IsNullOrEmpty(other.AgentId) && !string.IsNullOrEmpty(card.AgentId) && other.AgentId != card.AgentId)
+                {
+                    string hid = "h2-demo-plan-" + card.TaskId + "-" + other.TaskId;
+                    _seq++;
+                    Raise(new EventEnvelopeV2
+                    {
+                        EventId = "evt2-handoff-" + hid, Seq = _seq, SessionId = _sessionId, OccurredAt = UtcNow(),
+                        Type = Phase2EventTypes.HandoffCreated, TaskId = other.TaskId, AgentId = card.AgentId,
+                        ArtifactId = id, HandoffId = hid,
+                        Payload = new JObject
+                        {
+                            ["from_agent_id"] = card.AgentId, ["to_agent_id"] = other.AgentId,
+                            ["kind"] = other.AgentId == Phase2AgentIds.Tester ? "test_request" : "blueprint",
+                            ["source_mode"] = SourceModes.Demo,
+                        },
+                    });
+                }
+            }
+            return true;
+        }
+
         ArtifactV2 PublishRunArtifact(TaskCardV2 card, string kind, string agentId)
         {
             if (_samples == null) _samples = Phase2DemoArtifactSamples.Load();

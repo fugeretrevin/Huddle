@@ -136,7 +136,7 @@ class ManagerPlanService:
             text = await asyncio.wait_for(
                 self._provider.complete(system=PLANNER_SYSTEM,
                                         messages=build_model_messages(objective, board),
-                                        max_tokens=1500),
+                                        max_tokens=1500, purpose="plan"),
                 timeout=self._timeout)
         except asyncio.TimeoutError:
             raise PlanCommandError("PLANNER_TIMEOUT", "The planning model did not answer in time.",
