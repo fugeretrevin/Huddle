@@ -14,6 +14,7 @@ import uuid
 
 from .events import EventBus, utcnow_iso
 from .models import AgentId, AgentState, DecisionAction, EventType, TaskState
+from .decision_wait import wait_for_decision
 from .run_recovery import fail_run
 from .settings import Settings
 from .storage import Storage
@@ -252,9 +253,17 @@ class LiveOrchestrator:
                     "decision_revision": revision,
                     "revises_decision_id": previous_id})
 
-            action = await fut
+            action = await wait_for_decision(self._storage, fut, proposal.decision_id,
+                                             self._settings.decision_timeout_seconds)
             self._waiters.pop(proposal.decision_id, None)
-            if action != DecisionAction.request_changes.value or revision >= max_revisions:
+            if action is None:
+                await fail_run(self._storage, self._bus, session_id, parent_task_id,
+                               code="DECISION_TIMEOUT",
+                               reason="no decision was made in time",
+                               agent_message="Run stopped: decision timed out", mode="live",
+                               board=self._board)
+                return
+            if action !=DecisionAction.request_changes.value or revision >= max_revisions:
                 break
             revision += 1
             previous_id = proposal.decision_id
@@ -360,6 +369,7 @@ class LiveOrchestrator:
             msg = ("Rejected: no OAuth files written" if rejected
                    else CHANGES_LIMIT_MESSAGE if revision > 0 else CHANGES_REQUESTED_MESSAGE)
             card_final, card_summary = TaskState.cancelled, msg
+            parent_final = TaskState.cancelled  # not "completed": the gated work was not done
             await self._set_agent(session_id, AgentId.developer, AgentState.waiting,
                                   TaskState.cancelled, msg, "live")
             # No "task.cancelled" event type exists in the frozen contract, so the end of

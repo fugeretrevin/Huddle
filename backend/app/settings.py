@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # new code did not pass (total attempts = 1 + this).
     max_dev_revision_attempts: int = 1
 
+    # A gated decision nobody answers must not hold a run forever: after this many
+    # seconds the decision expires and the run fails (DECISION_TIMEOUT). 0 = no bound.
+    decision_timeout_seconds: float = 3600.0
+
     @property
     def state_source_mode(self) -> str:
         """Mode stamped on backend-AUTHORITATIVE state the API itself records: the

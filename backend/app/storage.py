@@ -166,7 +166,8 @@ class Storage:
                 "INSERT INTO tasks(id, session_id, agent_id, parent_task_id, status, template,"
                 " dependency_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET status=excluded.status,"
-                " updated_at=excluded.updated_at",
+                " updated_at=excluded.updated_at"
+                " WHERE tasks.status NOT IN ('completed','failed','cancelled')",
                 (task_id, session_id, agent_id, parent_task_id, status, template,
                  json.dumps(dependencies), created_at, updated_at),
             )
@@ -175,7 +176,10 @@ class Storage:
     def set_task_status(self, task_id: str, status: str, updated_at: str) -> None:
         with self._lock:
             self._conn.execute(
-                "UPDATE tasks SET status=?, updated_at=? WHERE id=?",
+                # Terminal states are final: a late/duplicate write must not reopen or
+                # flip a failed/cancelled/completed task.
+                "UPDATE tasks SET status=?, updated_at=? WHERE id=?"
+                " AND status NOT IN ('completed','failed','cancelled')",
                 (status, updated_at, task_id),
             )
             self._conn.commit()

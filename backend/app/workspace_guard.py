@@ -43,7 +43,10 @@ class WorkspaceGuard:
     def create_workspace(self, session_id: str) -> Path:
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:64]
         ws = (self.root / safe).resolve()
-        if os.path.commonpath([str(ws), str(self.root)]) != str(self.root):
+        if (os.path.commonpath([str(ws), str(self.root)]) != str(self.root)
+                or ws == self.root):
+            # ws == root happens for ids like "." / "": rmtree below would wipe every
+            # session's workspace.
             raise WorkspaceError("workspace path escapes root")
         if ws.exists():
             shutil.rmtree(ws)
