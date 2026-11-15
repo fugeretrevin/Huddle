@@ -139,6 +139,10 @@ class PlanOps:
                 card["blocked_by"] = info["blocked_by"]
                 blocked.append({"task_id": row["id"], "reason": info["reason"],
                                 "blocked_by": info["blocked_by"]})
+            if st == DONE:
+                # The recorded result of a finished card (its artifact's summary), so a client that
+                # only reads status (e.g. after a reconnect) shows the same words the stream carried.
+                card["result"] = self._result_text(plan["session_id"], row)
             if st == FAILED:
                 card["failure"] = self._failure_text(plan["session_id"], row["id"])
                 failed.append({"task_id": row["id"], "title": row["title"],

@@ -133,7 +133,7 @@ namespace MuseDesk.Wall
             }
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted += OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded += OnVoiceListeningEnded;
-            MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = RequestPlanByVoice;
+            SyncVoiceManagerHook();
         }
 
         void OnDisable()
@@ -173,7 +173,17 @@ namespace MuseDesk.Wall
             if (!flags.agentSelectEnabled && _visit != null && _visit.Busy) _visit.Return(VisitEndReason.ModeChanged);
             if (!flags.largeAgentPortalEnabled && _portal != null) _portal.Interrupt("Portal switched off");
             _flagsApplied = true;
+            SyncVoiceManagerHook();
             RefreshDock();
+        }
+
+        /// <summary>The voice layer hands "Manager, ..." to this controller ONLY while the Manager flag is on. With the flag off
+        /// nothing is registered, so the voice path is exactly what it was before this feature existed.</summary>
+        void SyncVoiceManagerHook()
+        {
+            bool want = isActiveAndEnabled && flags.wallManagerEnabled && flags.wallHabitatEnabled;
+            if (want) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = RequestPlanByVoice;
+            else if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
         }
 
         // ───────────────────────── mode host ─────────────────────────
