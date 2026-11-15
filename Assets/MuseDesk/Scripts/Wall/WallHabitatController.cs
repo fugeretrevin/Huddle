@@ -316,10 +316,28 @@ namespace MuseDesk.Wall
         {
             for (int r = 0; r < 4; r++)
             {
-                string taskId, title, state; int rev;
+                string taskId, title, state = null; int rev;
                 Color c = WallHabitatView.Grey;
-                if (_tasks != null && _tasks.TryGetAgentTask(AgentId((HabitatRole)r), out taskId, out title, out state, out rev)) c = StateColor(state);
+                bool have = _tasks != null && _tasks.TryGetAgentTask(AgentId((HabitatRole)r), out taskId, out title, out state, out rev);
+                if (have) c = StateColor(state);
                 _statusColors[r] = c;
+                if (_view != null && (HabitatRole)r != HabitatRole.Manager)
+                    _view.SetActivity((HabitatRole)r, HabitatPresence.FromTaskState(have ? state : null));
+            }
+            if (_view != null) _view.SetActivity(HabitatRole.Manager, ManagerActivity());
+        }
+
+        /// <summary>The Manager has no task of its own: it works while a plan is being drafted or committed, waits while one
+        /// awaits the user, and is otherwise calm.</summary>
+        DeskActivity ManagerActivity()
+        {
+            if (_manager == null) return DeskActivity.Idle;
+            switch (_manager.State)
+            {
+                case ManagerFlowState.Proposing: case ManagerFlowState.Committing: case ManagerFlowState.Delegating: return DeskActivity.Working;
+                case ManagerFlowState.AwaitingApproval: return DeskActivity.Waiting;
+                case ManagerFlowState.Failed: return DeskActivity.Problem;
+                default: return DeskActivity.Idle;
             }
         }
 
@@ -545,6 +563,8 @@ namespace MuseDesk.Wall
         {
             if (_stage == null || !WallActive) return;
             _stage.Accept(e, Time.unscaledTime);
+            // One restrained acknowledgement for a CONFIRMED completion (the event came from the reducer).
+            if (e.kind == HabitatEventKind.TaskCompleted && _view != null) _view.Acknowledge(e.agent);
         }
 
         void OnSessionReset()

@@ -75,8 +75,10 @@ namespace MuseDesk.Spatial.Wall
     [Serializable]
     public sealed class ElevatorSettings
     {
-        public float doorSeconds = 0.55f;
-        public float speed = 0.22f;                 // m/s, habitat scale
+        public float doorSeconds = 0.45f;           // polish spec: 0.30-0.55 s
+        public float speed = 0.22f;                 // cruise m/s, habitat scale
+        public float accelSeconds = 0.6f;           // rest -> cruise
+        public float brakeSeconds = 0.7f;           // cruise -> rest at the landing
         [Tooltip("The rider walks from its cubicle to the cabin while the doors wait; longer than that walk.")]
         public float boardTimeout = 15f;
         public float exitTimeout = 8f;
@@ -297,12 +299,23 @@ namespace MuseDesk.Spatial.Wall
         bool Move(float dt)
         {
             float target = _floorY[TargetFloor];
-            CabinY = Mathf.MoveTowards(CabinY, target, settings.speed * dt);
-            if (Mathf.Abs(CabinY - target) > 1e-5f) return false;
-            CabinY = target;
+            // Accelerate, cruise, brake and land exactly on the landing height (polish spec 5.4: align before doors open).
+            var m = new MuseDesk.Motion.ProfiledMover { position = CabinY, velocity = _cabinVel };
+            bool there = m.Step(target, settings.speed,
+                                settings.speed / Mathf.Max(0.05f, settings.accelSeconds),
+                                settings.speed / Mathf.Max(0.05f, settings.brakeSeconds), dt);
+            CabinY = m.position; _cabinVel = m.velocity;
+            if (!there) return false;
+            CabinY = target; _cabinVel = 0f;
             CabinFloor = TargetFloor;
             return true;
         }
+
+        float _cabinVel;
+        /// <summary>Cabin vertical speed (habitat m/s, signed).</summary>
+        public float CabinVelocity => _cabinVel;
+        /// <summary>Door opening with ease-in-out applied: what the view should draw (the machine logic uses the linear value).</summary>
+        public float DoorOpenEased => MuseDesk.Motion.Ease.Evaluate(MuseDesk.Motion.EaseKind.InOutCubic, DoorOpen01);
 
         int NearestFloor(float y)
         {

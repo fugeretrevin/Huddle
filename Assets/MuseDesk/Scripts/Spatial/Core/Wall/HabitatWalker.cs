@@ -13,7 +13,12 @@ namespace MuseDesk.Spatial.Wall
     public sealed class WalkerSettings
     {
         public float walkSpeed = 0.14f;            // m/s at habitat scale
-        public float turnSpeed = 420f;             // deg/s
+        [Obsolete("Turns are critically damped now; see turnSmoothTime.")]
+        public float turnSpeed = 420f;             // deg/s (unused, kept for serialized data)
+        public float startSeconds = 0.30f;         // rest -> walking speed (polish spec: 0.20-0.40 s)
+        public float stopSeconds = 0.28f;          // walking speed -> rest
+        public float turnSmoothTime = 0.16f;       // critically damped body turn
+        public float walkTurnLimit = 50f;          // sharper heading changes stop and turn in place first
         public float leaseTimeout = 6f;            // waiting for a clear corridor longer than this -> soft transfer
         public float elevatorWaitTimeout = 20f;    // waiting for the cabin longer than this -> soft transfer
         public float softTransferSeconds = 0.6f;   // fade out, re-home, fade in
@@ -49,6 +54,14 @@ namespace MuseDesk.Spatial.Wall
         string _pendingTarget;
         float _pendingDwell;
         bool _pendingReturn;
+        float _speed, _yawVel;
+
+        /// <summary>Current ground speed (habitat m/s). The view matches the walk cycle to it (no foot skating).</summary>
+        public float Speed => _speed;
+        /// <summary>Body turn rate (deg/s, positive = clockwise seen from above). The view plays turn-in-place steps from it.</summary>
+        public float TurnRate => _yawVel;
+        float Accel => settings.walkSpeed / Mathf.Max(0.02f, settings.startSeconds);
+        float Decel => settings.walkSpeed / Mathf.Max(0.02f, settings.stopSeconds);
 
         public readonly string agent;
         public readonly HabitatRole role;
@@ -149,6 +162,7 @@ namespace MuseDesk.Spatial.Wall
             _res.TryReserve(_home, agent);
             Position = _L.nav.nodes[_home].position;
             Yaw = 0f;
+            _speed = 0f; _yawVel = 0f;
             Visibility = 1f;
             TripHasRide = false;
             State = WalkerState.Home;
@@ -161,9 +175,12 @@ namespace MuseDesk.Spatial.Wall
             SoftTransfers++;
             if (_elev != null && !_elev.IsRiding(agent)) _elev.Cancel(agent);
             _fade = 0f;
+            _speed = 0f;
             State = WalkerState.SoftTransfer;
             Anim = WalkerAnim.Idle;
         }
+
+        void FaceDesk(float dt) { Yaw = MuseDesk.Motion.Damped.FollowAngle(Yaw, 0f, ref _yawVel, settings.turnSmoothTime, dt); }
 
         public void Tick(float dt)
         {
@@ -177,7 +194,7 @@ namespace MuseDesk.Spatial.Wall
             {
                 case WalkerState.Home:
                     Anim = WalkerAnim.Work;
-                    Yaw = Mathf.MoveTowardsAngle(Yaw, 0f, settings.turnSpeed * dt);
+                    FaceDesk(dt);
                     return;
 
                 case WalkerState.AtRest:
@@ -200,8 +217,9 @@ namespace MuseDesk.Spatial.Wall
                 case WalkerState.Riding:
                 {
                     Anim = WalkerAnim.Ride;
+                    _speed = 0f;
                     Vector3 p = Position; p.y = _elev.CabinY; Position = p;
-                    Yaw = Mathf.MoveTowardsAngle(Yaw, 0f, settings.turnSpeed * dt);
+                    FaceDesk(dt);   // face out of the cabin door, toward the user
                     if (!_elev.MustExit(agent)) return;
                     // Skip the cabin nodes of the ride: we are now at the destination floor's cabin node.
                     while (_step < _route.Count && _L.nav.nodes[_route[_step]].kind == HabitatNodeKind.Cabin) { _at = _route[_step]; _step++; }
@@ -234,7 +252,7 @@ namespace MuseDesk.Spatial.Wall
                         _at = _home;
                         _res.TryReserve(_home, agent);
                         Position = _L.nav.nodes[_home].position;
-                        Yaw = 0f;
+                        Yaw = 0f; _yawVel = 0f; _speed = 0f;
                     }
                     Visibility = Mathf.Clamp01((_fade - half) / half);
                     if (_fade < settings.softTransferSeconds) return;
@@ -299,6 +317,7 @@ namespace MuseDesk.Spatial.Wall
             if (nn.kind == HabitatNodeKind.Cabin && !_elev.MayBoard(agent) && !_elev.IsRiding(agent))
             { BeginSoftTransfer("cabin left without us"); return; }
             Anim = WalkerAnim.Walk;
+            TryExtendLease();
             if (!MoveToward(nn.position, dt)) return;
 
             int left = _at;
@@ -327,24 +346,74 @@ namespace MuseDesk.Spatial.Wall
             }
         }
 
+        /// <summary>
+        /// Move along the CURRENT validated segment toward <paramref name="target"/> with a velocity profile: accelerate from
+        /// rest, cruise, and decelerate so the character is stopped at the next stop point (segment end or a corner sharper
+        /// than <see cref="WalkerSettings.walkTurnLimit"/>). Heading is critically damped, and the speed allowed scales with
+        /// how well the body faces the direction of travel, so a sharp turn happens in place before walking. The path is
+        /// unchanged (same straight segments the validator proves clear), only the timing along it.
+        /// </summary>
         bool MoveToward(Vector3 target, float dt)
         {
             Vector3 d = target - Position;
             d.y = 0f;
             float dist = d.magnitude;
-            if (dist > 1e-4f)
-            {
-                float yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
-                Yaw = Mathf.MoveTowardsAngle(Yaw, yaw, settings.turnSpeed * dt);
-            }
-            float stepLen = settings.walkSpeed * dt;
+            if (dist <= 1e-5f) { Position = target; return true; }
+            float heading = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+            Yaw = MuseDesk.Motion.Damped.FollowAngle(Yaw, heading, ref _yawVel, settings.turnSmoothTime, dt);
+            float err = Mathf.Abs(Mathf.DeltaAngle(Yaw, heading));
+            float align = Mathf.Clamp01(1f - err / Mathf.Max(1f, settings.walkTurnLimit));
+            float stop = DistanceToStop();
+            float want = Mathf.Min(settings.walkSpeed * align, Mathf.Sqrt(2f * Decel * stop));
+            _speed = Mathf.MoveTowards(_speed, want, (want > _speed ? Accel : Decel) * dt);
+            float stepLen = _speed * dt;
             if (stepLen >= dist) { Position = target; return true; }
             Position += d / dist * stepLen;
             return false;
         }
 
+        /// <summary>Path distance from here to the next point where the character must be standing still.</summary>
+        float DistanceToStop()
+        {
+            Vector3 p = Position;
+            float sum = 0f;
+            for (int k = _step; k < _route.Count; k++)
+            {
+                Vector3 q = _L.nav.nodes[_route[k]].position;
+                Vector3 seg = q - p; seg.y = 0f;
+                sum += seg.magnitude;
+                if (k >= _segEnd || k == _route.Count - 1) return sum;
+                Vector3 next = _L.nav.nodes[_route[k + 1]].position - q; next.y = 0f;
+                if (seg.sqrMagnitude > 1e-10f && next.sqrMagnitude > 1e-10f && Vector3.Angle(seg, next) > settings.walkTurnLimit) return sum;
+                p = q;
+            }
+            return sum;
+        }
+
+        /// <summary>
+        /// While walking, lease the NEXT segment early when it is free, so a multi-segment trip flows through doorways
+        /// instead of stopping at each one. Never into the cabin (boarding needs a stop and the elevator's handshake),
+        /// never while a new trip is pending, and never by waiting: if any node is taken, nothing extra is held.
+        /// </summary>
+        void TryExtendLease()
+        {
+            if (_pendingTarget != null) return;
+            int start = _segEnd + 1;
+            if (start >= _route.Count || start <= _step) return;
+            if (_L.nav.nodes[_route[_segEnd]].kind == HabitatNodeKind.Cabin) return;
+            int end = SegmentEnd(start);
+            for (int k = start; k <= end; k++)
+            {
+                if (_L.nav.nodes[_route[k]].kind == HabitatNodeKind.Cabin) return;
+                if (!_res.CanReserve(_route[k], agent)) return;
+            }
+            for (int k = start; k <= end; k++) _res.TryReserve(_route[k], agent);
+            _segEnd = end;
+        }
+
         void Arrive()
         {
+            _speed = 0f;
             if (_at == _home)
             {
                 State = WalkerState.Home;

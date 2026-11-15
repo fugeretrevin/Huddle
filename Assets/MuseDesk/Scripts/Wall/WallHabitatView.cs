@@ -395,7 +395,7 @@ namespace MuseDesk.Wall
             for (int f = 0; f < layout.floors.Count; f++)
             {
                 bool here = e.CabinFloor == f && Mathf.Abs(e.CabinY - layout.floors[f].floorY) < 1e-3f;
-                float open = here ? e.DoorOpen01 : 0f;
+                float open = here ? e.DoorOpenEased : 0f;
                 float y = layout.floors[f].floorY + layout.cabinHalf.y;
                 float zd = _doorL[f].localPosition.z;
                 _doorL[f].localPosition = new Vector3(layout.elevatorX - _doorHalf - open * _doorHalf * 1.9f, y, zd);
@@ -412,7 +412,8 @@ namespace MuseDesk.Wall
                 float vis = w.Visibility;
                 Vector3 s = _avatarScale[r] * Mathf.Max(0.001f, vis);
                 if (a.localScale != s) a.localScale = s;
-                SetAnim(r, w.Anim, (HabitatRole)r);
+                SetAnim(r, w.Anim, (HabitatRole)r, w);
+                MatchStride(r, w);
 
                 HabitatAct act = stage.Running((HabitatRole)r);
                 bool carry = act != null && !w.AtHome && w.State != WalkerState.SoftTransfer;
@@ -446,17 +447,69 @@ namespace MuseDesk.Wall
             for (int i = _cards.Count - 1; i >= 0; i--) StepCard(_cards[i], dt);
         }
 
-        void SetAnim(int r, WalkerAnim anim, HabitatRole role)
+        /// <summary>
+        /// Foot-skate guard: while walking, the walk cycle plays at the walker's actual speed relative to its cruise speed
+        /// (accelerating from rest plays a slow cycle, never a full stride on the spot). A turn in place keeps a slow
+        /// stepping cycle. Every other state plays at normal speed.
+        /// </summary>
+        void MatchStride(int r, HabitatWalker w)
+        {
+            Animator an = _anim[r];
+            if (an == null) return;
+            float want = 1f;
+            if (w.Anim == WalkerAnim.Walk)
+                want = Mathf.Clamp(w.Speed / Mathf.Max(1e-4f, w.settings.walkSpeed), 0.35f, 1.15f);
+            if (Mathf.Abs(an.speed - want) > 0.01f) an.speed = want;
+        }
+
+        // ── presentation driven by authoritative state ──
+
+        static readonly int S_Thinking = Animator.StringToHash("Thinking"), S_Worried = Animator.StringToHash("Worried"),
+            S_Writing = Animator.StringToHash("Writing"), S_Nodding = Animator.StringToHash("Nodding"),
+            S_TurnL = Animator.StringToHash("Turn_Left"), S_TurnR = Animator.StringToHash("Turn_Right");
+        readonly DeskActivity[] _activity = new DeskActivity[4];
+        readonly float[] _oneShotUntil = new float[4];
+
+        /// <summary>What the character's real task state says it is doing (see HabitatPresence). Desk pose only.</summary>
+        public void SetActivity(HabitatRole r, DeskActivity a) { _activity[(int)r] = a; }
+
+        /// <summary>One restrained acknowledgement (a nod) for a confirmed event, e.g. task.completed. Non-blocking:
+        /// it plays only while the character is at its desk and never moves it.</summary>
+        public void Acknowledge(HabitatRole r, float seconds = 1.2f)
+        {
+            _oneShotUntil[(int)r] = Time.unscaledTime + seconds;
+            _animState[(int)r] = 0;   // force the cross-fade even if the desk clip did not change
+        }
+
+        int DeskClip(int r, HabitatRole role)
+        {
+            if (Time.unscaledTime < _oneShotUntil[r]) return S_Nodding;
+            switch (_activity[r])
+            {
+                case DeskActivity.Working:
+                    return role == HabitatRole.Researcher ? S_Reading : role == HabitatRole.Tester ? S_Inspecting
+                         : role == HabitatRole.Manager ? S_Writing : S_Typing;
+                case DeskActivity.Waiting: return S_Wait;
+                case DeskActivity.Blocked: return S_Thinking;
+                case DeskActivity.Problem: return S_Worried;
+                default: return S_Idle;
+            }
+        }
+
+        void SetAnim(int r, WalkerAnim anim, HabitatRole role, HabitatWalker w)
         {
             Animator an = _anim[r];
             if (an == null || !an.isActiveAndEnabled || an.runtimeAnimatorController == null) return;
             int want;
             switch (anim)
             {
-                case WalkerAnim.Walk: want = S_Walk; break;
+                case WalkerAnim.Walk:
+                    // Standing still and turning: a turn-in-place step instead of walking on the spot.
+                    want = w.Speed < 0.01f && Mathf.Abs(w.TurnRate) > 25f ? (w.TurnRate > 0f ? S_TurnR : S_TurnL) : S_Walk;
+                    break;
                 case WalkerAnim.Wait: case WalkerAnim.Ride: case WalkerAnim.Idle: want = S_Idle; break;
                 case WalkerAnim.Present: want = S_Offer; break;
-                default: want = role == HabitatRole.Researcher ? S_Reading : role == HabitatRole.Tester ? S_Inspecting : role == HabitatRole.Manager ? S_Talking : S_Typing; break;
+                default: want = DeskClip(r, role); break;
             }
             if (_animState[r] == want) return;
             if (!an.HasState(0, want)) want = an.HasState(0, S_Idle) ? S_Idle : 0;
