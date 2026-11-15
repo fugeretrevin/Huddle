@@ -1,4 +1,21 @@
-﻿WallHabitat_Complete_3Tier vs layout Full: layout size (1.050, 0.900, 0.260), art bounds size (1.050, 0.917, 0.264) (min (-0.525, -0.450, 0.000) max (0.525, 0.467, 0.264)), art WallContact at prefab-root (0.000, 0.000, 0.000)
+# Wall Habitat Fit & Verification Report
+
+- **Branch:** `art/wall-habitat-fit` (from `feature/living-world-polish` @ `8c2ca85`)
+- **Contract Source of Truth:** `Assets/MuseDesk/Scripts/Spatial/Core/Wall/HabitatLayout.cs` (`HabitatLayoutBuilder.Build(WallLayoutKind.Full | Compact)`) — unmodified.
+- **Touched Scope:** Wall Habitat Blender generators (`ArtSource/Scripts/generate_wall_habitat_core.py`, `generate_wall_habitat_mechanical.py`), Wall Habitat `.blend` / `.fbx` / `.prefab` / AnimatorController / VFX bindings (`Assets/MuseDesk/Editor/ArtPipeline/WallHabitatArtSetup.cs`, `LivingWorldVfxAndGallerySetup.cs`), preview scene & Unity Editor validation renders, and `docs/Art/WALL_HABITAT_INVENTORY.json`. Zero edits to `MainMRScene.unity`, `HabitatLayout.cs`, `HabitatStage.cs`, `AgentScripts/**`, `Scripts/Wall/**`, `Scripts/Spatial/**`, `Scripts/Agents/**`, `backend/`, `ProjectSettings/`, or `Agent_*.fbx.meta`.
+
+## Layout Alignment Summary
+
+- **Empirical Blender-to-Unity Export Mapping:** With `_rotate_roots_for_unity_plus_z()` followed by `export_scene.fbx(axis_forward='-Z', axis_up='Y')`, every socket maps `Blender (bx, by, bz) -> Unity (ux = +bx, uy = +bz, uz = +by)`.
+- **Full 3-Tier (`WallHabitat_Complete_3Tier`):** Envelope `1.050 x 0.900 x 0.260 m` (`art bounds size (1.050, 0.917, 0.264)` including the perched beacon plinth), Elevator Spine & Car on `+X` (`x = +0.440`), Researcher (`-0.352`), Developer (`-0.065`), and Tester (`+0.222`) cubicles along the lower floor (`y = -0.400`), Mid Planning Nook (`+0.163, -0.110`), Manager Lookout (`+0.215, +0.150`), TaskPrinter (`-0.230, +0.200`), and front-facing `+Z` elevator doors and walkway railings clearing every nav corridor & entryway.
+- **Compact 2-Tier (`WallHabitat_Complete_2Tier`):** Envelope `0.740 x 0.620 x 0.240 m` (`art bounds size (0.740, 0.620, 0.244)`), dedicated `WallHabitat_ManagerLookout_Compact`, `WallHabitat_ElevatorSpine_2Tier`, `WallHabitat_ElevatorCar_Compact`, and scaled `WallHabitat_TaskPrinter` fitting cleanly on the two-tier footprint with Elevator on `+X` (`x = +0.295`).
+
+## Verbatim Socket Fit Reports (`WallHabitatArtSetup.RunWallArtFitCheckFromEditor`)
+
+### Full Layout (`WallHabitat_Complete_3Tier` vs `WallLayoutKind.Full`)
+
+```text
+WallHabitat_Complete_3Tier vs layout Full: layout size (1.050, 0.900, 0.260), art bounds size (1.050, 0.917, 0.264) (min (-0.525, -0.450, 0.000) max (0.525, 0.467, 0.264)), art WallContact at prefab-root (0.000, 0.000, 0.000)
 socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 0.010 m)
   WallContact <- WallContact: layout (0.000, 0.000, 0.000) | art (0.000, 0.000, 0.000) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
   ElevatorCarSocket <- ElevatorCarSocket: layout (0.440, -0.400, 0.092) | art (0.440, -0.400, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
@@ -48,7 +65,11 @@ socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 
   Manager.HeadLookTarget <- Manager.HeadLookTarget: layout (0.160, 0.303, 0.068) | art (0.160, 0.303, 0.068) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
 summary: fit 46, no fit 0, missing 0
 after the best single translation (0.000, 0.000, 0.000), the worst remaining socket error is 0.000 m
+```
 
+### Compact Layout (`WallHabitat_Complete_2Tier` vs `WallLayoutKind.Compact`)
+
+```text
 WallHabitat_Complete_2Tier vs layout Compact: layout size (0.740, 0.620, 0.240), art bounds size (0.740, 0.620, 0.244) (min (-0.370, -0.310, 0.000) max (0.370, 0.310, 0.244)), art WallContact at prefab-root (0.000, 0.000, 0.000)
 socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 0.010 m)
   WallContact <- WallContact: layout (0.000, 0.000, 0.000) | art (0.000, 0.000, 0.000) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
@@ -97,3 +118,17 @@ socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 
   Manager.HeadLookTarget <- Manager.HeadLookTarget: layout (0.013, 0.135, 0.060) | art (0.013, 0.135, 0.060) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
 summary: fit 44, no fit 0, missing 0
 after the best single translation (0.000, 0.000, 0.000), the worst remaining socket error is 0.000 m
+```
+
+## Asset Inventory & Test Validation
+
+- **Asset Audit (`docs/Art/WALL_HABITAT_INVENTORY.json`):** `26` WallHabitat prefabs audited; `totalMissingScripts: 0`, `totalBrokenSockets: 0`, `totalMissingMaterials: 0`, `missingRequired3TierSockets: 0`, `missingRequired2TierSockets: 0`.
+- **Unity EditMode Tests (`unity test --mode EditMode`):** `1292` total, `1291` passed, `0` failed, `1` skipped (`MuseDesk.Tests.EditMode.Wall.ElevatorSequenceTests.StuckDoors_TakeTheCabinOutOfService_WaitersWalkHome_RiderHolds_TheRestAreBlockedOrCancelled`, pre-existing `[Ignore]`). All `AgentClipLoopFlagTests.*` and `WallPlacementTests.*` passed.
+
+## Editor Captures (Unity Editor, NOT Headset)
+
+> **Note:** These screenshots are offline Unity Editor camera captures from `Assets/MuseDesk/Scenes/WallHabitatPreviewScene.unity`, **not** live Meta Quest 3 headset renders.
+
+- Front Full 3-Tier (`WallHabitat_Complete_3Tier`): `Screenshots/WallHabitat/Unity/01_WallHabitat_3Tier_Front.png`
+- Three-Quarter Full 3-Tier (`WallHabitat_Complete_3Tier`): `Screenshots/WallHabitat/Unity/02_WallHabitat_3Tier_ThreeQuarter.png`
+- Front Compact 2-Tier (`WallHabitat_Complete_2Tier`): `Screenshots/WallHabitat/Unity/03_WallHabitat_2Tier_Compact.png`
