@@ -54,6 +54,9 @@ namespace MuseDesk.Agents
 
         void Awake()
         {
+            // All displacement is script-driven; an Animator that applies root motion would fight it.
+            foreach (var an in GetComponentsInChildren<Animator>(true))
+                if (an != null && an.applyRootMotion) an.applyRootMotion = false;
             _parent = transform.parent;
             _homeLocal = transform.localPosition;
             _homeLocalRot = transform.localRotation;

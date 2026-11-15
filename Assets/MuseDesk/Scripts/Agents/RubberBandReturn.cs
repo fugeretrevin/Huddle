@@ -113,7 +113,7 @@ namespace MuseDesk.Agents
                 if (pushLocal.sqrMagnitude > 1e-8f)
                     _offset = Vector3.Lerp(_offset, pushLocal, Time.deltaTime * pushStrength * 12f);
                 else
-                    _offset = Vector3.Lerp(_offset, Vector3.zero, Time.deltaTime * springback);
+                    _offset = SpringBack(_offset);
                 transform.localPosition = _home + _offset;
                 return;
             }
@@ -121,8 +121,16 @@ namespace MuseDesk.Agents
             // Fallback path: spring back once the hand trigger has left.
             _contact -= Time.deltaTime;
             if (_contact <= 0f)
-                _offset = Vector3.Lerp(_offset, Vector3.zero, Time.deltaTime * springback);
+                _offset = SpringBack(_offset);
             transform.localPosition = _home + _offset;
+        }
+
+        // Spring back to zero, landing exactly home: below 0.1 mm the remainder snaps to zero instead of
+        // decaying forever (a Lerp by dt*k never reaches its end).
+        Vector3 SpringBack(Vector3 offset)
+        {
+            offset = Vector3.Lerp(offset, Vector3.zero, Mathf.Clamp01(Time.deltaTime * springback));
+            return offset.sqrMagnitude < 1e-8f ? Vector3.zero : offset;
         }
     }
 }

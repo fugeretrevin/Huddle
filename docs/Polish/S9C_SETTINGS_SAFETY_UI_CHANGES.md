@@ -39,7 +39,9 @@ Screenshots (Play Mode, temporary camera in the driver, flag forced on): `docs/r
 
 How much is the 0.08 collider: with radius 0.06 the minima are -0.047 (R1, R2), -0.018 (R3, R5), -0.004 (R6, R7); with 0.05, -0.037, -0.009, -0.003; with 0.04, -0.027 and **R3, R5, R6, R7 pass** (0.000 to +0.007). **R1 and R2 fail at every radius down to 0.04.** (The rendered bodies are 0.14 to 0.17 m wide, so the true footprint is about 0.05 to 0.08.)
 
-Findings, with numbers. Nothing was moved.
+**Update (2026-11-15): the table above is the S9c finding and is history.** Superseded by the V2 layout (`DESK_CHOREOGRAPHY_LAYOUT.md`, V2): all 7 routes pass in Desk, Floor and Ceiling, minimum 0.017 m at r 0.080 (target 0.015). Editor/PLAY evidence only, not worn; outer-desk deck overhang in Floor/Ceiling is still open.
+
+Findings, with numbers. Nothing was moved in S9c.
 
 1. **R1/R2 (structural).** The lane `WalkExit_2 (-0.47, 0.181)` to the anchor `(-0.20, 0.170)` runs between the Researcher desk front (z = 0.160) and the Inbox tray walls (z from 0.202, x -0.359 to -0.281): a lane 42 mm wide for a 160 mm footprint. The agent's body passes through the desk's front lip (63 to 65 mm up) and alongside the tray wall at 21 to 28 mm. Also, the corner stop at `WalkExit_1 (-0.47, 0.00)` is 29 mm from `Phase6/Decor_BookStack/Book_3` (-0.051 at r = 0.08; -0.021 at 0.05).
 2. **R3/R5 and R6/R7 (marginal).** The stop in front of the receiver (`stopDistance` 0.18 m) puts the courier within 4 to 10 mm of a station prop or the nameplate rim at 76 to 77 mm up.
