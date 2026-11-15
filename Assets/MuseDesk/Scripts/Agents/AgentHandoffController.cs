@@ -34,6 +34,67 @@ namespace MuseDesk.Agents
                  "waits for that reaction, at most this many seconds, so the reaction is not cut to a walk.")]
         public float approvalReactionWait = 0.9f;
 
+        /// <summary>
+        /// An authored handoff between two agents (desk choreography layout): where the courier stands, and the
+        /// waypoints that take it there without crossing a desk. All points are scene transforms under the office
+        /// root, set by a builder; nothing here is a position in code. A pair with no lane uses the old rule (a
+        /// straight walk to <see cref="stopDistance"/> in front of the receiver).
+        /// </summary>
+        [System.Serializable]
+        public class Lane
+        {
+            public string sourceId;
+            public string targetId;
+            [Tooltip("Where the courier stands for the give / receive beat.")]
+            public Transform stand;
+            [Tooltip("Waypoints from the courier's home slot to the stand, in order. The walk home reverses them.")]
+            public Transform[] fromHome;
+            [Tooltip("Waypoints from the delivery spot (AgentRegistry.deliveryAnchor) to the stand, in order. " +
+                     "Used when the courier is standing at the delivery spot when the handoff starts.")]
+            public Transform[] fromDelivery;
+            [Tooltip("Seconds for the walk from the delivery spot to the stand; 0 keeps the agent's usual walk time.")]
+            public float fromDeliverySeconds;
+        }
+
+        [Header("Authored lanes (optional; set by AgentScripts/DeskChoreographyLayoutV1)")]
+        public Lane[] lanes;
+        [Tooltip("With a lane: the courier and the receiver turn to face each other for the exchange.")]
+        public bool faceEachOther = true;
+        [Tooltip("With a lane: a courier that is neither at home nor at the delivery spot walks home first. " +
+                 "This is the longest that is waited for, in seconds; after it the handoff is shown no more.")]
+        public float homeFirstMaxSeconds = 10f;
+        [Tooltip("How close (m, planar) the courier must be to the delivery spot to count as standing on it.")]
+        public float deliverySpotTolerance = 0.03f;
+
+        AgentMovement _facedReceiver;
+
+        Lane LaneFor(string sourceId, string targetId)
+        {
+            if (lanes == null) return null;
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                var l = lanes[i];
+                if (l != null && l.stand != null && l.sourceId == sourceId && l.targetId == targetId) return l;
+            }
+            return null;
+        }
+
+        static Transform[] Reversed(Transform[] a)
+        {
+            if (a == null || a.Length == 0) return null;
+            var r = new Transform[a.Length];
+            for (int i = 0; i < a.Length; i++) r[i] = a[a.Length - 1 - i];
+            return r;
+        }
+
+        // The receiver (and a courier still standing at the stand) stop facing each other. Safe to call any time.
+        void EndFacing()
+        {
+            if (_facedReceiver != null) _facedReceiver.StopFacing();
+            _facedReceiver = null;
+            if (_courier != null) _courier.StopFacing();
+        }
+
         readonly Dictionary<string, AgentView> _byId = new Dictionary<string, AgentView>();
         readonly Queue<(string src, string dst, float settle)> _queue = new Queue<(string, string, float)>();
         bool _bound;
@@ -69,6 +130,7 @@ namespace MuseDesk.Agents
             if (_stage == Stage.Settling || _stage == Stage.Approaching)
             {
                 StopAllCoroutines();
+                EndFacing();
                 if (artifactProp != null) artifactProp.gameObject.SetActive(false);
                 if (_courier != null && !_courier.AtHome) _courier.ReturnHome();
                 if (_destGo != null) { Destroy(_destGo); _destGo = null; }
@@ -109,6 +171,7 @@ namespace MuseDesk.Agents
             }
             _bound = false;
             // A disabled component's coroutines stop; don't stay latched busy or leak the marker.
+            EndFacing();
             _queue.Clear();
             if (_busy) { AnyBusy = false; ExchangePending = false; }
             _busy = false;
@@ -121,6 +184,7 @@ namespace MuseDesk.Agents
         void OnSessionReset()
         {
             StopAllCoroutines();
+            EndFacing();
             _queue.Clear();
             if (_busy) { AnyBusy = false; ExchangePending = false; }
             _busy = false;
@@ -199,6 +263,37 @@ namespace MuseDesk.Agents
                 while (waited < settle && srcBridge.ReactionPlaying) { waited += Time.deltaTime; yield return null; }
             }
 
+            // An authored lane for this pair (desk choreography layout): the courier keeps to its waypoints.
+            Lane lane = LaneFor(source.agentId, target.agentId);
+            Transform[] laneVia = null;
+            float laneSeconds = 0f;
+            if (lane != null)
+            {
+                // Where is the courier? At home: the lane from home. Standing on the delivery spot: the lane from there.
+                // Anywhere else (walking, or stopped part-way): it walks home first along the lane it is on, so it never
+                // cuts across a desk; the handoff then starts from home. Bounded: past the limit the visual is skipped.
+                bool onSpot = !srcMove.AtHome && !srcMove.IsMoving && registry != null && registry.deliveryAnchor != null
+                              && PlanarDistance(source.transform.position, registry.deliveryAnchor.position) <= deliverySpotTolerance * LaneScale(source.transform);
+                if (onSpot) { laneVia = lane.fromDelivery; laneSeconds = lane.fromDeliverySeconds; }
+                else
+                {
+                    if (!srcMove.AtHome || srcMove.IsMoving)
+                    {
+                        if (!srcMove.IsReturning) srcMove.ReturnHome();
+                        float waitHome = 0f;
+                        yield return null;
+                        while ((srcMove.IsMoving || !srcMove.AtHome) && waitHome < homeFirstMaxSeconds)
+                        {
+                            // Something else sent it out again (a new decision): this handoff is no longer shown.
+                            if (srcMove.IsMoving && !srcMove.IsReturning) yield break;
+                            waitHome += Time.deltaTime; yield return null;
+                        }
+                        if (!srcMove.AtHome || srcMove.IsMoving) yield break;
+                    }
+                    laneVia = lane.fromHome;
+                }
+            }
+
             // The courier carries the token for the whole walk (not just at the give beat).
             if (artifactProp != null)
             {
@@ -206,20 +301,28 @@ namespace MuseDesk.Agents
                 AttachProp(srcHand != null ? srcHand : source.transform, true);
             }
 
-            // Destination a short stop-distance in front of the receiver (kept alive for the whole move).
-            if (_destGo != null) Destroy(_destGo);
-            var destGo = _destGo = new GameObject("HandoffDest");
-            var dest = destGo.transform;
-            Vector3 toward = source.transform.position - target.transform.position;
-            toward.y = 0f;
-            if (toward.sqrMagnitude < 1e-4f) toward = Vector3.back;
-            dest.position = target.transform.position + toward.normalized * stopDistance;
-            var frame = source.transform.parent != null ? source.transform.parent : source.transform;
-            dest.position += frame.TransformVector(Vector3.back * backOffset);
-            dest.position = new Vector3(dest.position.x, source.transform.position.y, dest.position.z);
-
+            GameObject destGo = null;
             _stage = Stage.Approaching;
-            srcMove.DeliverTo(dest, null);
+            if (lane != null)
+            {
+                // The way home from the stand is always the home lane, backwards.
+                srcMove.WalkRoute(lane.stand, laneVia, Reversed(lane.fromHome), null, laneSeconds);
+            }
+            else
+            {
+                // Destination a short stop-distance in front of the receiver (kept alive for the whole move).
+                if (_destGo != null) Destroy(_destGo);
+                destGo = _destGo = new GameObject("HandoffDest");
+                var dest = destGo.transform;
+                Vector3 toward = source.transform.position - target.transform.position;
+                toward.y = 0f;
+                if (toward.sqrMagnitude < 1e-4f) toward = Vector3.back;
+                dest.position = target.transform.position + toward.normalized * stopDistance;
+                var frame = source.transform.parent != null ? source.transform.parent : source.transform;
+                dest.position += frame.TransformVector(Vector3.back * backOffset);
+                dest.position = new Vector3(dest.position.x, source.transform.position.y, dest.position.z);
+                srcMove.DeliverTo(dest, null);
+            }
 
             // Wait for arrival (IsMoving falls to false), with a safety guard.
             float guard = 0f;
@@ -228,6 +331,17 @@ namespace MuseDesk.Agents
 
             // Give / receive beat.
             _stage = Stage.Exchanging;
+            if (lane != null && faceEachOther)
+            {
+                // Both turn on the spot to face each other (heading only; the receiver turns back when the beat is over).
+                srcMove.FacePoint(target.transform.position);
+                var dstMove = target.GetComponent<AgentMovement>();
+                if (dstMove != null && dstMove.AtHome && !dstMove.IsMoving)
+                {
+                    dstMove.FacePoint(source.transform.position);
+                    _facedReceiver = dstMove;
+                }
+            }
             if (srcBridge != null) srcBridge.PlayHandoffGive();
             if (dstBridge != null) dstBridge.PlayHandoffReceive();
 
@@ -251,6 +365,7 @@ namespace MuseDesk.Agents
             if (_queue.Count == 0) ExchangePending = false;
 
             _stage = Stage.Returning;
+            if (_facedReceiver != null) { _facedReceiver.StopFacing(); _facedReceiver = null; }
             srcMove.ReturnHome();
             guard = 0f;
             yield return null;
@@ -346,6 +461,19 @@ namespace MuseDesk.Agents
             if (_tokenAnim != null) { StopCoroutine(_tokenAnim); _tokenAnim = null; }
             Vector3 cur = artifactProp.localScale;
             _tokenAnim = StartCoroutine(ScaleToken(cur, cur * 0.001f, MuseMotionProfile.Active.panelHide, true));
+        }
+
+        static float PlanarDistance(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
+        }
+
+        // Lane distances are authored at office scale 1; the office may be scaled (Floor mode options).
+        static float LaneScale(Transform agent)
+        {
+            var p = agent.parent;
+            return p != null ? Mathf.Max(1e-4f, Mathf.Abs(p.lossyScale.x)) : 1f;
         }
 
         static Transform FindChild(Transform root, string childName)

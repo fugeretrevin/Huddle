@@ -154,6 +154,22 @@ namespace MuseDesk.Agents
 
         public static Result Evaluate(Vector3[] p, int n, int count, GapFn gap, float radius, float step, float endGrace)
         {
+            return Evaluate(p, n, count, gap, radius, step, endGrace, null, null);
+        }
+
+        /// <summary>Mesh plan triangles, with obstacles the caller KNOWS belong to the place the route starts or ends at
+        /// (the walker's own desk and nameplate at its home slot). <paramref name="ownAtStart"/>[o] exempts obstacle o for
+        /// the first <paramref name="endGrace"/> metres, <paramref name="ownAtEnd"/>[o] for the last, whether or not the
+        /// disc touches it there. Either array may be null.</summary>
+        public static Result Evaluate(Vector3[] p, int n, ClearMesh[] obstacles, int count, float radius,
+                                      bool[] ownAtStart, bool[] ownAtEnd, float step = SampleStep, float endGrace = 0.10f)
+        {
+            return Evaluate(p, n, count, (o, x, z) => Gap(x, z, radius, obstacles[o]), radius, step, endGrace, ownAtStart, ownAtEnd);
+        }
+
+        public static Result Evaluate(Vector3[] p, int n, int count, GapFn gap, float radius, float step, float endGrace,
+                                      bool[] ownAtStart, bool[] ownAtEnd)
+        {
             var res = new Result
             {
                 minClearance = float.PositiveInfinity, obstacle = -1, minClearanceAll = float.PositiveInfinity, obstacleAll = -1,
@@ -169,8 +185,8 @@ namespace MuseDesk.Agents
             var nearEnd = new bool[count];
             for (int o = 0; o < count; o++)
             {
-                nearStart[o] = gap(o, p[0].x, p[0].z) <= 0.005f;
-                nearEnd[o] = gap(o, p[n - 1].x, p[n - 1].z) <= 0.005f;
+                nearStart[o] = gap(o, p[0].x, p[0].z) <= 0.005f || (ownAtStart != null && o < ownAtStart.Length && ownAtStart[o]);
+                nearEnd[o] = gap(o, p[n - 1].x, p[n - 1].z) <= 0.005f || (ownAtEnd != null && o < ownAtEnd.Length && ownAtEnd[o]);
             }
 
             float walked = 0f;

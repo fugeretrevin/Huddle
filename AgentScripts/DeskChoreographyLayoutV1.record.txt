@@ -1,0 +1,13 @@
+# Old values recorded by DeskChoreographyLayoutV1.Apply; Revert restores them. Local positions, metres.
+pos|ResearchStation|-0.3|0|0
+pos|Nameplate_Researcher|-0.3|0.09099996|0.10799998
+pos|DevStation|0|0|0.05
+pos|Nameplate_Developer|0|0.103000045|0.149999976
+pos|QAStation|0.3|0|0
+pos|Nameplate_Tester|0.3|0.0959999561|0.10799998
+pos|DeliveryZone|-0.2|0|0.17
+pos|Decor_BookStack|-0.49|0|-0.05
+pos|Decor_MiniPlant|-0.485|0|-0.120000005
+pos|Decor_DeskLamp|0.465|0|0.07
+exit|WalkExit_1,WalkExit_2
+speed|0.25

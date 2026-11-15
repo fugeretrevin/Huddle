@@ -62,15 +62,50 @@ namespace MuseDesk.Agents
         /// <summary>World position of this agent's home slot.</summary>
         public Vector3 HomeWorld => _parent != null ? _parent.TransformPoint(_homeLocal) : transform.position;
 
+        // ---- Routes as data (desk choreography layout) ----
+        // Every walk follows a list of authored waypoints (scene transforms, set by a builder): the delivery walk uses
+        // exitWaypoints, a handoff uses the lane the AgentHandoffController was given. The way home is remembered when
+        // the walk out starts, so ReturnHome needs no arguments. A walk that starts ON its route (re-targeted part-way)
+        // continues from where it stands instead of going back to the first corner (AgentWalkPath.WaypointsBehind).
+        Transform[] _via;            // waypoints of the walk out, in travel order
+        Transform[] _homeVia;        // waypoints of the walk home from where the walk out ends
+        bool _homeViaReversed;       // true: _homeVia is listed in the walk-out order and is walked backwards
+        float _durOverride;          // seconds for this walk; 0 = the usual rule
+
         public void DeliverTo(Transform destination, Action onArrived = null, bool viaExit = false)
         {
             if (destination == null) return;
             _dest = destination; _useDestPos = false; _returning = false; _onArrived = onArrived;
             _viaExit = viaExit;
+            _via = viaExit ? exitWaypoints : null;
+            _homeVia = _via; _homeViaReversed = true;
+            _durOverride = 0f;
             BeginProfile();
             _startWorld = transform.position; _moving = true; AtHome = false;
             _dur = ComputeDuration();
         }
+
+        /// <summary>
+        /// Walk to <paramref name="destination"/> through <paramref name="via"/> (in order; may be null or empty), and
+        /// remember <paramref name="homeVia"/> (in order from the destination back to the home slot; may be null) as the
+        /// way home, so a later <see cref="ReturnHome"/> keeps to an authored lane too.
+        /// <paramref name="seconds"/> above zero sets how long the walk takes; zero keeps the usual rule.
+        /// </summary>
+        public void WalkRoute(Transform destination, Transform[] via, Transform[] homeVia, Action onArrived = null, float seconds = 0f)
+        {
+            if (destination == null) return;
+            _dest = destination; _useDestPos = false; _returning = false; _onArrived = onArrived;
+            _viaExit = via != null && via.Length > 0;
+            _via = via;
+            _homeVia = homeVia; _homeViaReversed = false;
+            _durOverride = Mathf.Max(0f, seconds);
+            BeginProfile();
+            _startWorld = transform.position; _moving = true; AtHome = false;
+            _dur = ComputeDuration();
+        }
+
+        /// <summary>True while the agent is walking back to its home slot.</summary>
+        public bool IsReturning => _moving && _returning;
 
         /// <summary>Walk to a reachable point in front of the user (stays at the agent's height).</summary>
         public void DeliverInFrontOfUser(float distance = 0.4f, float dropBelowEye = 0.28f)
@@ -84,6 +119,7 @@ namespace MuseDesk.Agents
             Vector3 pos = head.position + fwd * distance + Vector3.down * dropBelowEye;
             pos.y = transform.position.y;   // keep the walk on the desk plane
             _destPos = pos; _useDestPos = true; _returning = false; _onArrived = null; _viaExit = true;
+            _via = exitWaypoints; _homeVia = _via; _homeViaReversed = true; _durOverride = 0f;
             BeginProfile();
             _startWorld = transform.position; _moving = true; AtHome = false;
             _dur = ComputeDuration();
@@ -94,7 +130,10 @@ namespace MuseDesk.Agents
             // Already standing at the home slot: nothing to walk. (Without this the agent "walked"
             // on the spot for a full travel time whenever a caller sent it home twice.)
             if (AtHome && !_moving) return;
+            // Already on the way home: keep walking. Starting the walk again from here would only reset its speed.
+            if (_moving && _returning) return;
             _returning = true; _onArrived = null;
+            _durOverride = 0f;
             BeginProfile();
             _startWorld = transform.position; _moving = true;
             _dur = ComputeDuration();
@@ -107,20 +146,39 @@ namespace MuseDesk.Agents
                 : (_useDestPos ? _destPos : (_dest != null ? _dest.position : transform.position));
         }
 
-        /// <summary>Builds the current walk polyline into buf (start, waypoints, target); returns the point count.</summary>
+        /// <summary>Builds the delivery walk polyline into buf (start, the exit waypoints, target); returns the point
+        /// count. Kept for the Play Mode drivers; the walk itself uses <see cref="BuildRoute"/>.</summary>
         public int BuildPath(Vector3 start, Vector3 target, bool returning, bool viaExit, Vector3[] buf)
         {
+            return BuildRoute(start, target, viaExit ? exitWaypoints : null, returning, buf);
+        }
+
+        /// <summary>Builds a walk polyline into buf: start, the waypoints still ahead (in order, or reversed), target.
+        /// Waypoints the start has already passed (it stands on the route) are left out. Returns the point count.</summary>
+        public int BuildRoute(Vector3 start, Vector3 target, Transform[] via, bool reverse, Vector3[] buf)
+        {
             int wc = 0;
-            if (viaExit && exitWaypoints != null)
-                for (int i = 0; i < exitWaypoints.Length && wc < _wp.Length; i++)
-                    if (exitWaypoints[i] != null) _wp[wc++] = exitWaypoints[i].position;
-            return AgentWalkPath.Build(start, target, _wp, wc, returning, buf);
+            if (via != null)
+                for (int i = 0; i < via.Length && wc < _wp.Length; i++)
+                    if (via[i] != null) _wp[wc++] = via[i].position;
+            int skip = AgentWalkPath.WaypointsBehind(start, _wp, wc, reverse, target);
+            return AgentWalkPath.BuildFrom(start, target, _wp, wc, reverse, skip, buf);
+        }
+
+        // The polyline of the walk in progress.
+        int BuildActive(Vector3[] buf)
+        {
+            return _returning
+                ? BuildRoute(_startWorld, TargetWorld(), _homeVia, _homeViaReversed, buf)
+                : BuildRoute(_startWorld, TargetWorld(), _via, false, buf);
         }
 
         float ComputeDuration()
         {
-            if (!_viaExit || exitWaypoints == null || exitWaypoints.Length == 0) return travelSeconds;
-            int n = BuildPath(_startWorld, TargetWorld(), _returning, _viaExit, _pts);
+            if (_durOverride > 0f) return _durOverride;
+            var via = _returning ? _homeVia : _via;
+            if (via == null || via.Length == 0) return travelSeconds;
+            int n = BuildActive(_pts);
             if (n <= 2) return travelSeconds;
             return AgentWalkPath.Duration(travelSeconds, AgentWalkPath.Length(_pts, n), maxRoutedSpeed);
         }
@@ -147,8 +205,43 @@ namespace MuseDesk.Agents
             _startTurn = !_moving;
             _walkTime = 0f; _turnWait = 0f;
             _settling = false;
+            _facing = false;
             _cornerTurn = false;
             SetTurnDir(0);
+        }
+
+        // ---- Facing a colleague while standing (handoffs) ----
+        // Heading only, on the spot, with the same damped follower as the walk. Never while walking: a new walk ends it.
+        bool _facing;
+        Vector3 _facePoint;
+
+        /// <summary>While standing, turn on the spot to face a world point and keep facing it until
+        /// <see cref="StopFacing"/> or the next walk. Ignored while walking.</summary>
+        public void FacePoint(Vector3 worldPoint)
+        {
+            if (_moving) return;
+            _facing = true; _facePoint = worldPoint;
+            _settling = false;
+        }
+
+        /// <summary>Ends <see cref="FacePoint"/>. At the home slot the agent turns back to its station pose (damped,
+        /// then exact); anywhere else it simply stops turning.</summary>
+        public void StopFacing()
+        {
+            if (!_facing) return;
+            _facing = false;
+            if (AtHome && !_moving) { _settling = true; _turnWait = 0f; }
+        }
+
+        /// <summary>True while <see cref="FacePoint"/> is in force.</summary>
+        public bool IsFacingPoint => _facing;
+
+        void FaceStep()
+        {
+            Vector3 to = _facePoint - transform.position; to.y = 0f;
+            if (to.sqrMagnitude < 1e-6f) return;
+            float y = Damped.FollowAngle(transform.eulerAngles.y, YawOf(to), ref _yawVel, MuseMotionProfile.Active.turnSmoothTime, Time.deltaTime);
+            transform.rotation = Quaternion.Euler(0f, y, 0f);
         }
 
         // ---- Polish S9a: sharp routed corners brake, turn on the spot, then continue (same rule as HabitatWalker) ----
@@ -187,7 +280,8 @@ namespace MuseDesk.Agents
             if (!_moving)
             {
                 if (TurnInPlaceDirection != 0) { _cornerTurn = false; SetTurnDir(0); }
-                if (_settling) SettleHome();
+                if (_facing) FaceStep();
+                else if (_settling) SettleHome();
                 return;
             }
             float dt = Time.deltaTime;
@@ -197,7 +291,7 @@ namespace MuseDesk.Agents
 
             Vector3 before = transform.position;
             Vector3 targetWorld = TargetWorld();
-            int n = BuildPath(_startWorld, targetWorld, _returning, _viaExit, _pts);
+            int n = BuildActive(_pts);
             float total = AgentWalkPath.Length(_pts, n);
 
             // Heading wanted along the first part of the path, for the start turn.
