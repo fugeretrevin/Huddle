@@ -160,6 +160,11 @@ namespace MuseDesk.Wall
 
         // ───────────────────────── the carried projection ─────────────────────────
 
+        Vector3 _proxyVel, _landFromPos;
+        float _landFromScale;
+        bool _landStarted;
+        readonly MuseDesk.Motion.MotionClock _landClock = new MuseDesk.Motion.MotionClock();
+
         void BeginCarry(HabitatRole role)
         {
             DestroyProxy();
@@ -174,6 +179,8 @@ namespace MuseDesk.Wall
             _proxyScaleCarry = _proxy.localScale.x;
             _proxyFrom = _proxy.position;
             _proxyT = 0f;
+            _proxyVel = Vector3.zero;
+            _landStarted = false;
             // A soft ring marks the projection as a projection.
             ArtHelper().Box(_proxy, "ProjectionRing", Vector3.zero, Vector3.one, WallHabitatView.Teal).transform.localScale =
                 new Vector3(0.09f, 0.002f, 0.09f) / Mathf.Max(1e-5f, _proxy.lossyScale.y / Mathf.Max(1e-5f, transform.lossyScale.y));
@@ -228,8 +235,23 @@ namespace MuseDesk.Wall
                     if (!s.pinching) return;                                  // opening the fingers: hold still while the release debounces
                     _proxyT = Mathf.Min(1f, _proxyT + dt / 0.45f);
                     Vector3 target = s.origin + s.direction * 0.14f + Vector3.down * 0.02f;
-                    float e = _proxyT * _proxyT * (3f - 2f * _proxyT);
-                    _proxy.position = Vector3.Lerp(_proxyFrom, target, e);
+                    if (_proxyT < 1f)
+                    {
+                        // Fly from the habitat to the hand on a fixed-endpoint ease (starts where the agent stands).
+                        float e = MuseDesk.Motion.Ease.Evaluate(MuseDesk.Motion.EaseKind.InOutCubic, _proxyT);
+                        _proxy.position = Vector3.Lerp(_proxyFrom, target, e);
+                        _proxyVel = Vector3.zero;
+                    }
+                    else
+                    {
+                        // Then follow the hand with a short critically damped lag: hand-tracking jitter is absorbed,
+                        // deliberate motion is not delayed noticeably (60 ms).
+                        Vector3 p = _proxy.position;
+                        p.x = MuseDesk.Motion.Damped.Follow(p.x, target.x, ref _proxyVel.x, 0.06f, dt, 1e-4f);
+                        p.y = MuseDesk.Motion.Damped.Follow(p.y, target.y, ref _proxyVel.y, 0.06f, dt, 1e-4f);
+                        p.z = MuseDesk.Motion.Damped.Follow(p.z, target.z, ref _proxyVel.z, 0.06f, dt, 1e-4f);
+                        _proxy.position = p;
+                    }
                     Vector3 eye = ResolveHead() != null ? ResolveHead().position : _proxy.position + Vector3.back;
                     _proxy.rotation = WallUi.FacingEye(eye, _proxy.position) ;   // +Z toward the user
                     bool over = (_proxy.position - PerchWorld).magnitude <= perchRadius;
@@ -239,10 +261,20 @@ namespace MuseDesk.Wall
                 case VisitState.Perched:
                 {
                     Vector3 eye = ResolveHead() != null ? ResolveHead().position : PerchWorld + Vector3.back;
-                    _proxy.position = Vector3.Lerp(_proxy.position, PerchWorld, Mathf.Min(1f, dt * 10f));
-                    _proxy.rotation = WallUi.FacingEye(eye, PerchWorld);
                     float s = _proxyScaleCarry * 1.35f;
-                    _proxy.localScale = Vector3.Lerp(_proxy.localScale, Vector3.one * s, Mathf.Min(1f, dt * 6f));
+                    if (!_landStarted)
+                    {
+                        // Land: a timed ease from where it was let go onto the pad (visitLand), ending EXACTLY on it.
+                        _landStarted = true;
+                        _landFromPos = _proxy.position;
+                        _landFromScale = _proxy.localScale.x;
+                        _landClock.Start(MuseDesk.Motion.MuseMotionProfile.Active.visitLand);
+                    }
+                    _landClock.Step(dt);
+                    float u = _landClock.Value;
+                    _proxy.position = Vector3.LerpUnclamped(_landFromPos, PerchWorld, u);
+                    _proxy.localScale = Vector3.one * Mathf.LerpUnclamped(_landFromScale, s, u);
+                    _proxy.rotation = WallUi.FacingEye(eye, PerchWorld);
                     return;
                 }
                 case VisitState.Returning:
@@ -489,7 +521,8 @@ namespace MuseDesk.Wall
                     _portalAvatar.localPosition = Vector3.zero;
                     _portalAvatar.localRotation = Quaternion.identity;       // the root already faces the user
                     var an = _portalAvatar.GetComponentInChildren<Animator>();
-                    if (an != null) { an.applyRootMotion = false; if (an.HasState(0, Animator.StringToHash("Talking"))) an.CrossFadeInFixedTime("Talking", 0.3f, 0); }
+                    // Attentive listening, not talking: nothing is spoken aloud, and speech must not be simulated (spec 6).
+                    if (an != null) { an.applyRootMotion = false; an.speed = 1f; if (an.HasState(0, Animator.StringToHash("Listening"))) an.CrossFadeInFixedTime("Listening", 0.3f, 0); }
                 }
             }
             if (_portalAvatar == null) return;
@@ -498,9 +531,9 @@ namespace MuseDesk.Wall
             switch (st)
             {
                 case PortalState.Opening: grow = 0.001f; break;
-                case PortalState.Emerging: grow = Mathf.SmoothStep(0.05f, 1f, k); break;
+                case PortalState.Emerging: grow = Mathf.Lerp(0.05f, 1f, MuseDesk.Motion.Ease.Evaluate(MuseDesk.Motion.EaseKind.InOutSine, k)); break;
                 case PortalState.Conversing: grow = 1f; break;
-                case PortalState.Returning: grow = Mathf.SmoothStep(1f, 0.05f, k); break;
+                case PortalState.Returning: grow = Mathf.Lerp(1f, 0.05f, MuseDesk.Motion.Ease.Evaluate(MuseDesk.Motion.EaseKind.InOutSine, k)); break;
                 default: grow = 0.001f; break;
             }
             // Grows in place inside the cleared column (scale only; it never walks).

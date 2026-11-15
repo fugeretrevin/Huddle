@@ -263,8 +263,10 @@ namespace MuseDesk.Wall
 
         void Update()
         {
-            if (!flags.wallHabitatEnabled && !WallActive && !WallPreviewing) { HideDockIfAny(); return; }
             float dt = Time.unscaledDeltaTime;
+            WallUi.Tick(dt);           // transitions finish even after the flags go off
+            TickReveal(dt);
+            if (!flags.wallHabitatEnabled && !WallActive && !WallPreviewing) { HideDockIfAny(); return; }
             if (!_hooks) Hook();
             EnsureDock();
 
@@ -384,9 +386,40 @@ namespace MuseDesk.Wall
             if (issues.Count > 0) Debug.LogError("[MuseDesk.Wall] Layout " + kind + " failed validation: " + issues[0].what);
         }
 
+        // Appear: the habitat grows OUT of the wall (depth scale 0.02 -> 1, eased) instead of popping in; leave: folds
+        // back into the wall, then deactivates. Purely visual: the stage/placement state changes at once.
+        readonly MuseDesk.Motion.MotionClock _revealClock = new MuseDesk.Motion.MotionClock();
+        float _revealFrom, _revealTo, _reveal = 1f;
+        const float RevealSeconds = 0.45f, FoldedDepth = 0.02f;
+
         void ShowHabitat(bool on)
         {
-            if (_habitatRoot != null && _habitatRoot.gameObject.activeSelf != on) _habitatRoot.gameObject.SetActive(on);
+            if (_habitatRoot == null) return;
+            bool active = _habitatRoot.gameObject.activeSelf;
+            if (on && !active) { _habitatRoot.gameObject.SetActive(true); _reveal = FoldedDepth; }
+            float goal = on ? 1f : FoldedDepth;
+            if (!on && !active) return;
+            if (Mathf.Approximately(_revealTo, goal) && (_revealClock.Running || Mathf.Approximately(_reveal, goal))) return;
+            _revealFrom = _reveal; _revealTo = goal;
+            _revealClock.Start(new MuseDesk.Motion.MotionToken(on ? RevealSeconds : RevealSeconds * 0.7f,
+                                                                on ? MuseDesk.Motion.EaseKind.OutCubic : MuseDesk.Motion.EaseKind.InOutCubic));
+            ApplyReveal();
+        }
+
+        void TickReveal(float dt)
+        {
+            if (_habitatRoot == null || !_revealClock.Running) return;
+            bool done = _revealClock.Step(dt);
+            _reveal = Mathf.Lerp(_revealFrom, _revealTo, _revealClock.Value);
+            ApplyReveal();
+            if (done && _revealTo < 0.5f) _habitatRoot.gameObject.SetActive(false);
+        }
+
+        void ApplyReveal()
+        {
+            Vector3 s = _habitatRoot.localScale;
+            s.z = s.x * Mathf.Max(FoldedDepth, _reveal);   // root scale is uniform otherwise; only depth animates
+            _habitatRoot.localScale = s;
         }
 
         Material _fallbackMat;
