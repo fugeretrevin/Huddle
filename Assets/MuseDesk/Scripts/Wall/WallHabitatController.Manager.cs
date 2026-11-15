@@ -233,6 +233,7 @@ namespace MuseDesk.Wall
         {
             if (_paper != null) _paper.Tick(dt);
             float now = Time.unscaledTime;
+            TickPlanStamp(dt, now);
 
             // Printer: one card per canonical task id that is both committed and on the board. It prints into the
             // Manager's tray; its owner is told (a real committed card) and comes up for it when the ride lane is free.
@@ -465,6 +466,44 @@ namespace MuseDesk.Wall
             if (_receiptFlyer != null) { Destroy(_receiptFlyer.gameObject); _receiptFlyer = null; }
             if (_receiptCard != null) _receiptCard.Show(false);
             _managerWarning = ""; _statusFails = 0; _statusBusy = false; _askMode = false; _showCommittedPlan = false;
+        }
+
+        // ───────────────────────── rebuild after a resync or reset ─────────────────────────
+
+        /// <summary>Driver/test hook: do what the stream's session reset does (clear, then rebuild from the backend's status).</summary>
+        public void SimulateSessionReset() { OnSessionReset(); }
+
+        int _restoreToken;
+        public int PlanRestores { get; private set; }
+
+        /// <summary>After a stream resync or a session reset the wall's plan picture was cleared. The backend (or, offline, the demo
+        /// board) still knows the committed plans: read them (GET .../manager/status) and rebuild the picture. Only into an idle
+        /// Manager (a plan being drafted or reviewed is never replaced). Nothing is printed or carried again, and a summary the
+        /// user may already have seen is not delivered a second time.</summary>
+        void RestorePlanPicture()
+        {
+            if (_backend == null || !flags.wallManagerEnabled || !flags.wallHabitatEnabled) return;
+            int token = ++_restoreToken;
+            _backend.GetManagerStatus(plans =>
+            {
+                if (token != _restoreToken || plans == null || plans.Count == 0) return;
+                if (_manager.State != ManagerFlowState.Idle) return;
+                for (int p = 0; p < plans.Count; p++)
+                {
+                    WallParsedPlanStatus s = plans[p];
+                    var jobs = new List<ManagerPrintJob>();
+                    for (int i = 0; i < s.cards.Count; i++)
+                        jobs.Add(new ManagerPrintJob { taskId = s.cards[i].taskId, clientItemId = s.cards[i].taskId, agentId = s.cards[i].agentId, title = s.cards[i].title });
+                    if (jobs.Count == 0) continue;
+                    _board.AddCommitted(s.planId, jobs);
+                    for (int i = 0; i < s.cards.Count; i++) _board.Apply(s.cards[i]);
+                    if (!string.IsNullOrEmpty(s.synthesisArtifactId) && _board.OnSynthesis(s.synthesisArtifactId, s.synthesisTaskId, "")) _board.DismissReceipt();
+                    if (p == plans.Count - 1) _manager.RestoreCommitted(s.planId, s.title, s.provenance, jobs);
+                }
+                _statusPollAt = 0f; _statusFails = 0; _showCommittedPlan = false;
+                PlanRestores++;
+                Debug.Log("[MuseDesk.Wall] Plan picture rebuilt from the backend: " + _board.Count + " card(s) in " + plans.Count + " plan(s).");
+            });
         }
 
         // ───────────────────────── the paper ─────────────────────────

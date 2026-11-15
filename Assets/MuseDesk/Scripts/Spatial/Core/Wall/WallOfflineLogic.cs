@@ -61,6 +61,9 @@ namespace MuseDesk.Spatial.Wall
     [Serializable]
     public sealed class WallRetryDto { public string task_id; public bool retried; public string state; public int revision; }
 
+    [Serializable]
+    public sealed class WallManagerStatusDto { public string session_id; public WallPlanStatusDto[] plans; }
+
     public sealed class WallParsedPlanStatus
     {
         public string planId, title, planStatus, provenance, sourceMode;
@@ -494,14 +497,42 @@ namespace MuseDesk.Spatial.Wall
 
         // ---------------------------------------------------------------- plan status, retry, offline reasons and roll-up
 
+        /// <summary>GET .../manager/status: every COMMITTED plan of the session with its cards. Plans that do not parse are skipped.
+        /// True when the reply was a status object (even with no plans).</summary>
+        public static bool TryParseManagerStatus(string json, out List<WallParsedPlanStatus> plans)
+        {
+            plans = new List<WallParsedPlanStatus>();
+            if (string.IsNullOrEmpty(json)) return false;
+            try
+            {
+                var d = JsonUtility.FromJson<WallManagerStatusDto>(json);
+                if (d == null || d.plans == null) return false;
+                for (int i = 0; i < d.plans.Length; i++)
+                {
+                    WallParsedPlanStatus s = ConvertPlanStatus(d.plans[i]);
+                    if (s != null && s.planStatus == "committed") plans.Add(s);
+                }
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
         public static bool TryParsePlanStatus(string json, out WallParsedPlanStatus status)
         {
             status = null;
             if (string.IsNullOrEmpty(json)) return false;
             try
             {
-                var d = JsonUtility.FromJson<WallPlanStatusDto>(json);
-                if (d == null || string.IsNullOrEmpty(d.plan_id) || d.cards == null) return false;
+                status = ConvertPlanStatus(JsonUtility.FromJson<WallPlanStatusDto>(json));
+                return status != null;
+            }
+            catch (Exception) { return false; }
+        }
+
+        static WallParsedPlanStatus ConvertPlanStatus(WallPlanStatusDto d)
+        {
+            {
+                if (d == null || string.IsNullOrEmpty(d.plan_id) || d.cards == null) return null;
                 var s = new WallParsedPlanStatus
                 {
                     planId = d.plan_id, title = d.title, planStatus = d.plan_status, provenance = d.provenance,
@@ -525,10 +556,8 @@ namespace MuseDesk.Spatial.Wall
                         resultSummary = string.IsNullOrEmpty(c.result) ? null : c.result,
                     });
                 }
-                status = s;
-                return true;
+                return s;
             }
-            catch (Exception) { return false; }
         }
 
         /// <summary>Retry reply: true when it parsed. <paramref name="retried"/> false means the backend treated it as a repeat (no-op).</summary>

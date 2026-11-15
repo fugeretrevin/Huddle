@@ -311,6 +311,27 @@ namespace MuseDesk.Spatial.Wall
             return true;
         }
 
+        /// <summary>
+        /// After a stream resync or session reset: the backend says a plan is committed (GET manager/status). Rebuild the Manager's
+        /// picture of it so the status page and Retry work again. Only from Idle (a plan being drafted or reviewed is never
+        /// replaced) and only a plan the backend reports as committed. The cards already exist, so nothing is queued to print.
+        /// </summary>
+        public bool RestoreCommitted(string planId, string title, string provenance, IList<ManagerPrintJob> tasks)
+        {
+            if (State != ManagerFlowState.Idle || string.IsNullOrEmpty(planId) || tasks == null || tasks.Count == 0) return false;
+            PlanId = planId; CommittedPlanId = planId; Title = title; Provenance = provenance;
+            for (int i = 0; i < tasks.Count; i++)
+            {
+                if (string.IsNullOrEmpty(tasks[i].taskId)) continue;
+                _committed[tasks[i].taskId] = tasks[i];
+                _seenOnBoard.Add(tasks[i].taskId);
+                _printed.Add(tasks[i].taskId);
+            }
+            Message = "Plan restored from the backend: " + _committed.Count + " card" + (_committed.Count == 1 ? "" : "s");
+            Go(ManagerFlowState.Monitoring);
+            return true;
+        }
+
         public void Reset()
         {
             _items.Clear(); _committed.Clear(); _seenOnBoard.Clear(); _printed.Clear(); _print.Clear();

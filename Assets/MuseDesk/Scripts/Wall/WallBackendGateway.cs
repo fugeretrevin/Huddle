@@ -544,6 +544,31 @@ namespace MuseDesk.Wall
                 });
         }
 
+        public void GetManagerStatus(Action<List<WallParsedPlanStatus>> done)
+        {
+            if (done == null) return;
+            FindRefsOnce();
+            if (!IsLive)
+            {
+                var list = new List<WallParsedPlanStatus>();
+                foreach (var kv in _offline)
+                {
+                    if (kv.Value.status != "committed") continue;
+                    WallParsedPlanStatus s = OfflineStatus(kv.Key, kv.Value);
+                    if (s != null && s.cards.Count > 0) list.Add(s);
+                }
+                done(list);
+                return;
+            }
+            Send(UnityWebRequest.kHttpVerbGET, "/v2/sessions/" + Sid + "/manager/status", null, sideTimeoutSeconds,
+                (status, resp, net) =>
+                {
+                    List<WallParsedPlanStatus> plans;
+                    if (net == null && status >= 200 && status < 300 && WallOfflineLogic.TryParseManagerStatus(resp, out plans)) done(plans);
+                    else done(null);
+                });
+        }
+
         /// <summary>The offline demo board's own picture of an offline plan, in the backend's status shape and words.</summary>
         WallParsedPlanStatus OfflineStatus(string planId, OfflinePlan op)
         {

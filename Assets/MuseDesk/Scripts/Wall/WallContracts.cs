@@ -71,6 +71,9 @@ namespace MuseDesk.Wall
         void RetryPlanCard(string planId, string taskId, string idempotencyKey, Action<PlanRetryResult> done);
         /// <summary>Read a committed plan's cards (state, blocked reason, failure) and its summary. done(null) when unavailable.</summary>
         void GetPlanStatus(string planId, Action<WallParsedPlanStatus> done);
+        /// <summary>Read every committed plan of the session (GET .../manager/status; offline: the demo board's committed plans).
+        /// Used to rebuild the wall's plan picture after a stream resync or session reset. done(null) when unavailable.</summary>
+        void GetManagerStatus(Action<List<WallParsedPlanStatus>> done);
     }
 
     /// <summary>Read-only view of what an agent is currently doing, from the reducers (never from the habitat).</summary>
