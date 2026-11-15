@@ -153,6 +153,7 @@ namespace MuseDesk.Wall
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded -= OnVoiceListeningEnded;
             if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
             Unhook();
+            ResetPlanStamp();
             if (WallActive || WallPreviewing) ExitWall("disabled");
         }
 
@@ -173,6 +174,7 @@ namespace MuseDesk.Wall
             if (!flags.agentSelectEnabled && _visit != null && _visit.Busy) _visit.Return(VisitEndReason.ModeChanged);
             if (!flags.largeAgentPortalEnabled && _portal != null) _portal.Interrupt("Portal switched off");
             _flagsApplied = true;
+            if (!flags.wallManagerEnabled) ResetPlanStamp();
             SyncVoiceManagerHook();
             RefreshDock();
         }
@@ -444,8 +446,17 @@ namespace MuseDesk.Wall
         public int ReactionsPlayed { get; private set; }
         public int ReactionsHeld { get; private set; }
 
+        // A confirmed completion nod whose agent is away (a pick-up trip, the lift) waits here, up to DeferredNods.MaxWaitSeconds,
+        // until the agent is home and free, instead of being dropped as stale. Only task.completed ever gets in.
+        readonly DeferredNods _nods = new DeferredNods(4);
+        public int NodsDeferred => _nods.Deferred;
+        public int NodsReleased => _nods.Released;
+        public int NodsExpired => _nods.Expired;
+
         void TickReactions(float now)
         {
+            // Focus mode, the same rule as the desk: a completion nod is silenced; status-backed worry (a confirmed failure) stays.
+            _reactions.SetFocus(MuseDesk.Workspace.FocusModeController.Active);
             for (int r = 0; r < 4; r++)
             {
                 bool busy = !_stage.Walker((HabitatRole)r).AtHome;
@@ -456,11 +467,26 @@ namespace MuseDesk.Wall
             }
             MuseDesk.Agents.ReactionRequest played;
             while (_reactions.Poll(now, out played)) PlayReaction(played.Agent, played.Kind);
+
+            for (int r = 0; r < 4; r++)
+            {
+                if (!_nods.IsPending(r)) continue;
+                if (MuseDesk.Workspace.FocusModeController.Active) { _nods.Drop(r); continue; }   // Focus: dropped, not replayed later
+                bool home = _stage.Walker((HabitatRole)r).AtHome && !_reactions.IsBusy(r, now);
+                if (_nods.TryRelease(r, now, home)) RequestReaction((HabitatRole)r, MuseDesk.Agents.ReactionKind.CompletionNod, true);
+            }
         }
 
-        void RequestReaction(HabitatRole role, MuseDesk.Agents.ReactionKind kind)
+        void RequestReaction(HabitatRole role, MuseDesk.Agents.ReactionKind kind, bool fromQueue = false)
         {
             float now = Time.unscaledTime;
+            if (kind == MuseDesk.Agents.ReactionKind.CompletionNod && !fromQueue && !MuseDesk.Workspace.FocusModeController.Active
+                && (!_stage.Walker(role).AtHome || _reactions.IsBusy((int)role, now)))
+            {
+                _nods.Enqueue((int)role, now);          // away on a trip: the nod waits for the agent to be home (bounded)
+                ReactionsHeld++;
+                return;
+            }
             var v = _reactions.Request(now, new MuseDesk.Agents.ReactionRequest((int)role, kind, now, true));
             if (v == MuseDesk.Agents.ReactionVerdict.Play) PlayReaction((int)role, kind);
             else ReactionsHeld++;
@@ -722,6 +748,8 @@ namespace MuseDesk.Wall
             if (_portal != null) _portal.Interrupt("Session reset");
             if (_manager != null) _manager.Reset();
             ResetLivingOffice();
+            _nods.Clear();
+            RestorePlanPicture();       // the backend still knows the committed plans: rebuild the wall's picture from it
         }
 
         // ───────────────────────── recenter, room changes, pause ─────────────────────────
