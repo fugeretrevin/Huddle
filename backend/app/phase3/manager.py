@@ -268,7 +268,8 @@ class ManagerPlanService:
         except Exception as exc:  # noqa: BLE001 - any failure rolls everything back
             self._s3.delete_tasks_v2([c.task_id for _, c in cards])
             code = getattr(exc, "code", "COMMIT_FAILED")
-            plan["failure"] = {"code": code, "message": str(exc)[:200]}
+            # Never persist or broadcast raw exception text (paths, SQL, internals).
+            plan["failure"] = {"code": code, "message": "Creating the plan's tasks failed."}
             self._bump(plan, revision, "failed")
             await self._emit(session_id, EventTypeV2.manager_plan_failed, plan,
                              {"reason": plan["failure"]})

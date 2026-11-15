@@ -23,7 +23,7 @@ _SETTLED_AGENT = {AgentState.idle.value, AgentState.complete.value, AgentState.e
 
 async def fail_run(storage: Storage, bus: EventBus, session_id: str, parent_task_id: str, *,
                    code: str, reason: str, agent_message: str, mode: str,
-                   board=None) -> None:
+                   board=None, expired_decision_id: str | None = None) -> None:
     """``board`` is the optional ``BoardRunBridge``: when the run was launched from a
     task card, the card is failed too (with a v2 event) instead of staying
     ``running`` / ``awaiting_approval`` with nothing driving it."""
@@ -50,9 +50,17 @@ async def fail_run(storage: Storage, bus: EventBus, session_id: str, parent_task
                           agent_id=a["agent_id"])
 
     for d in storage.list_decisions(session_id):
-        if d["resolved_at"] is not None or d["task_id"] not in run_task_ids:
+        if d["task_id"] not in run_task_ids:
             continue
-        if storage.expire_decision(d["id"], now):
+        # ``expired_decision_id``: the decision timeout already expired this row
+        # atomically (see decision_wait); only the event is still owed.
+        if d["id"] == expired_decision_id and d["status"] == "expired":
+            won = True
+        elif d["resolved_at"] is not None:
+            continue
+        else:
+            won = storage.expire_decision(d["id"], now)
+        if won:
             await bus.publish(session_id, EventType.decision_resolved,
                               {"state": DecisionState.expired.value, "action": None,
                                "resolved_at": now, "comment": agent_message,
