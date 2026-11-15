@@ -35,7 +35,7 @@ namespace MuseDesk.Wall
         readonly PlanBoard _board = new PlanBoard();
         bool _planCardOpen, _riskStep, _askMode, _showCommittedPlan, _rejectBusy;
         int _page, _stepWindow, _statusFails, _boardVersionDrawn = -1;
-        float _stampHoldUntil, _statusPollAt, _traySweepAt, _lastPrintAt;
+        float _stampHoldUntil, _statusPollAt, _traySweepAt, _lastPrintAt, _paperRefreshAt;
         bool _statusBusy;
         string _managerWarning = "";
 
@@ -69,7 +69,7 @@ namespace MuseDesk.Wall
             EnsurePlanCard();
             if (_paper == null) return;
             _planCardOpen = !_planCardOpen;
-            if (_planCardOpen) { _page = 0; PlaceCards(); }
+            if (_planCardOpen) { _page = 0; _paperRefreshAt = 0f; PlaceCards(); }
             _planCard.Show(_planCardOpen);
         }
 
@@ -272,6 +272,9 @@ namespace MuseDesk.Wall
             TickReceipt(dt);
 
             if (_planCard == null || !_planCard.Visible) return;
+            // The paper is re-laid out ten times a second, not every frame (the layout allocates); a key press shows within 0.1 s.
+            if (now < _paperRefreshAt) return;
+            _paperRefreshAt = now + 0.1f;
             RefreshPlanPaper();
         }
 

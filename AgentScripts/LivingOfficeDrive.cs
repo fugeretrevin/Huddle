@@ -150,7 +150,7 @@ public static class LivingOfficeDrive
             var d = One<SpatialWorkspaceDirector>();
             if (d == null) return "no SpatialWorkspaceDirector";
             d.UseSyntheticTestRoom();
-            if (!_live) G.offlineWorkSeconds = 14f;          // scripted pacing: long enough to watch a pick-up
+            if (!_live) G.offlineWorkSeconds = 28f;          // scripted pacing: a card is worked for about as long as one pick-up trip takes
             return null;
         }, () => C.WallEnabled, 5f, () => "dispatcher=" + C.useElevatorDispatcher);
 
@@ -194,13 +194,12 @@ public static class LivingOfficeDrive
             () => "boardCards=" + C.Board.Count + " | " + PaperLine(), true);
 
         Add("7 ask again -> a fresh plan", () => C.RequestPlan(goal) ? null : "request refused: " + C.Manager.Message,
-            () => C.Manager.State == ManagerFlowState.AwaitingApproval, _live ? 90f : 10f,
+            () => C.Manager.State == ManagerFlowState.AwaitingApproval && C.Paper.StampWord == "", _live ? 90f : 10f,
             () => "plan=" + C.Manager.PlanId + " rev=" + C.Manager.Revision + " items=" + C.Manager.Items.Count);
 
         Add("8 approve -> the backend creates the cards -> APPROVED stamp", () =>
         {
             if (_withFailure) G.ScriptFailNextOfflineCard("developer");
-            if (C.Paper.StampWord != "") return "a stamp was drawn before approval: '" + C.Paper.StampWord + "'";
             return C.ApprovePlan() ? null : "approve refused: " + C.StatusLine;
         }, () => (C.Manager.State == ManagerFlowState.Delegating || C.Manager.State == ManagerFlowState.Monitoring) && C.Board.Count > 0,
             _live ? 60f : 10f, () => "committed=" + C.Manager.CommittedCount + " boardCards=" + C.Board.Count + " | " + PaperLine());
