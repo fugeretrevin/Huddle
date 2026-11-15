@@ -21,6 +21,7 @@ from .models import (
     EventType,
     TaskState,
 )
+from .decision_wait import wait_for_decision
 from .run_recovery import fail_run
 from .settings import Settings
 from .storage import Storage
@@ -222,9 +223,17 @@ class Orchestrator:
                     "revises_decision_id": previous_id})
 
             # Block here until the backend records a real resolution.
-            action = await fut
+            action = await wait_for_decision(self._storage, fut, decision_id,
+                                             self._settings.decision_timeout_seconds)
             self._waiters.pop(decision_id, None)
-            if action != DecisionAction.request_changes.value or revision >= max_revisions:
+            if action is None:
+                await fail_run(self._storage, self._bus, session_id, parent_task_id,
+                               code="DECISION_TIMEOUT",
+                               reason="no decision was made in time",
+                               agent_message="Run stopped: decision timed out", mode=mode,
+                               board=self._board)
+                return
+            if action !=DecisionAction.request_changes.value or revision >= max_revisions:
                 break
             # Changes requested and a revision is still available: back to research.
             revision += 1
@@ -245,7 +254,11 @@ class Orchestrator:
         # already shows this one's outcome.
         if board is not None:
             await board.run_finished(parent_task_id, *outcome)
-        self._storage.set_task_status(parent_task_id, TaskState.completed.value, utcnow_iso())
+        # The developer's scaffold task ends with the run (it used to stay "running"
+        # forever), and the parent mirrors the real outcome: it is only "completed" when
+        # the gated work actually completed (not when the user rejected it).
+        self._storage.set_task_status(dev_task, outcome[0], utcnow_iso())
+        self._storage.set_task_status(parent_task_id, outcome[0], utcnow_iso())
 
     async def _apply_branch(self, session_id: str, parent_task_id: str, research_task: str,
                             dev_task: str, oauth_task: str, decision_id: str,

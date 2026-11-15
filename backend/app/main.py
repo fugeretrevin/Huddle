@@ -219,6 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                      for d in storage.list_decisions(session_id)]
         return Snapshot(session_id=session_id, mode=session["mode"],
                        last_seq=storage.session_last_seq(session_id),
+                       source_mode=_mode(request),
                        agents=agents, tasks=tasks, decisions=decisions)
 
     # ─────────────────────── tasks ───────────────────────
@@ -258,7 +259,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/sessions/{session_id}/tasks")
     async def list_tasks(session_id: str, request: Request,
                         session=Depends(require_session)) -> dict[str, Any]:
-        return {"schema_version": 1, "tasks": _task_views(request, session_id)}
+        return {"schema_version": 1, "source_mode": _mode(request),
+                "tasks": _task_views(request, session_id)}
 
     # ─────────────────────── decisions ───────────────────────
     @app.post("/v1/sessions/{session_id}/decisions/{decision_id}/respond",
@@ -362,6 +364,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                               lambda env: env.model_dump(mode="json"))
         finally:
             bus.unsubscribe(session_id, q)
+
+    @app.exception_handler(Exception)
+    async def unhandled_exc_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Never leak a stack trace, exception text or host path to a client.
+        import logging
+        logging.getLogger("musedesk").error("unhandled %s on %s", type(exc).__name__,
+                                            request.url.path)
+        return JSONResponse(status_code=500, content={
+            "error_code": "INTERNAL_ERROR",
+            "user_message": "Something went wrong on the backend. Please try again."})
 
     @app.exception_handler(HTTPException)
     async def http_exc_handler(request: Request, exc: HTTPException) -> JSONResponse:
