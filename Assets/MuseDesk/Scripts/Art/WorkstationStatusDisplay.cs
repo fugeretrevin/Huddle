@@ -45,6 +45,25 @@ namespace MuseDesk.Art
         static readonly Color Working = MuseDesk.Workspace.OfficeTokens.Teal;
         static readonly Color Done    = MuseDesk.Workspace.OfficeTokens.Success;
         static readonly Color Alert   = MuseDesk.Workspace.OfficeTokens.Coral;
+        static readonly Color NeedsYou = MuseDesk.Workspace.OfficeTokens.Amber;
+
+        /// <summary>The palette colour for an activity (Polish S9b): working teal, needs-you amber (waiting for the user,
+        /// bringing a paper), done success, error coral, plain waiting / idle neutral.</summary>
+        public static Color ColorFor(Activity activity)
+        {
+            switch (activity)
+            {
+                case Activity.Researching:
+                case Activity.Coding:
+                case Activity.Testing:
+                case Activity.Reporting: return Working;
+                case Activity.Approaching:
+                case Activity.WaitingForUser: return NeedsYou;
+                case Activity.Error: return Alert;
+                case Activity.Complete: return Done;
+                default: return Idle;   // Idle, plain Waiting
+            }
+        }
 
         AgentView _bound;
         MaterialPropertyBlock _mpb;
@@ -128,20 +147,7 @@ namespace MuseDesk.Art
         {
             Activity activity = Classify(state);
             string line = Words(activity);
-            Color c;
-            switch (activity)
-            {
-                case Activity.Researching:
-                case Activity.Coding:
-                case Activity.Testing:
-                case Activity.Reporting: c = Working; break;
-                case Activity.Approaching:
-                case Activity.Waiting:
-                case Activity.WaitingForUser:
-                case Activity.Error: c = Alert; break;
-                case Activity.Complete: c = Done; break;
-                default: c = Idle; break;
-            }
+            Color c = ColorFor(activity);
 
             if (statusText != null)
             {

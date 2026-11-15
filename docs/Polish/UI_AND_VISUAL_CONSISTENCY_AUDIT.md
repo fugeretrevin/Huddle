@@ -23,7 +23,7 @@ Source evidence: [audit/C_UI_VISUAL_AUDIO.md](audit/C_UI_VISUAL_AUDIO.md) (code 
 | 8 | `WallUi.MakeText` falls back to the default font silently | not changed (the scene builder always injects Inter) | OPEN (low) |
 | 9 | Wall keys pop between scale 0 and full; zero scale breaks poke maths | Keys reveal and hide on `panelAppear`/`panelHide` and never go below `ScaleEase.HiddenFactor` | DONE |
 | 10 | Wall cards appear by SetActive | Eased scale reveal (0.94 → 1) and tuck-away | DONE |
-| 11 | Missing sounds: card, page, elevator, portal, chime; Wall keys silent | `WallAudio`: door slide, arrival ding, printer tick, portal open and close, landing tick. Wall keys get the standard key click. Muted in Focus mode | DONE (code; audibility needs the headset) |
+| 11 | Missing sounds: card, page, elevator, portal, chime; Wall keys silent | `WallAudio`: door slide, arrival ding, printer tick, portal open and close, landing tick. Wall keys get the standard key click. Muted in Focus mode. Desk (S9b): `PaperArrived` and `CardLanded` cues added, desk `Delivered` muted in Focus; monitor colours follow the palette (WaitingForUser and Approaching amber, Waiting neutral) | DONE (code; audibility needs the headset). Page-turn cue still open |
 | 12 | No global Reduced Motion setting | `MotionSettings.ReducedMotion` exists and is honoured by every token; **no UI toggle or persistence yet** | PARTIAL |
 | 13 | Provenance gaps: agent bubble, receipts, archive, voice HUD | not changed | OPEN |
 

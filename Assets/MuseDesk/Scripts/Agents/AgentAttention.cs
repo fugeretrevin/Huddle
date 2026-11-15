@@ -603,6 +603,15 @@ namespace MuseDesk.Agents
         void HandReactions(float now, float dt, bool focus)
         {
             Transform user = _cam;
+            // Polish S9b (audit B C8): while the user holds a paper, stamp, card or panel, or a Select Agents carry
+            // owns a hand, the characters stay out of it: no poke, glance, flinch, high five or wave. READ ONLY: the
+            // probe and the claim registry are only read. The edge state (_inside, _near) still tracks, so nothing
+            // fires the instant the hands become free.
+            HandsBusy = MuseDesk.Agents.HandReactionGate.Busy(
+                MuseDesk.Spatial.HandInteractionProbe.AnyHeld,
+                MuseDesk.Spatial.HandClaimRegistry.Shared.Owner(0) == MuseDesk.Spatial.HandClaim.AgentSelect,
+                MuseDesk.Spatial.HandClaimRegistry.Shared.Owner(1) == MuseDesk.Spatial.HandClaim.AgentSelect);
+            bool busy = HandsBusy;
             for (int h = 0; h < Hands; h++)
             {
                 bool valid = _handValid[h];
@@ -624,7 +633,7 @@ namespace MuseDesk.Agents
                     if (vol != null && vol.enabled && vol.gameObject.activeInHierarchy)
                         surface = (vol.ClosestPoint(tip) - tip).magnitude;
                     bool inside = surface < (_inside[k] ? 0.008f : 0.002f);   // a little slack to stay in
-                    if (inside && !_inside[k] && _pokeCd[i].TryFire(now, 0.3f)) OnPoke(i, now);
+                    if (inside && !_inside[k] && !busy && _pokeCd[i].TryFire(now, 0.3f)) OnPoke(i, now);
                     _inside[k] = inside;
 
                     // Awareness: a hand comes near.
@@ -633,14 +642,14 @@ namespace MuseDesk.Agents
                     if (dHead < d) d = dHead;
                     float radius = focus ? handAwareRadiusFocus : handAwareRadius;
                     bool near = d < (_near[k] ? radius * 1.25f : radius);
-                    if (near && !_near[k] && !inside && _glanceCd.Ready(now))
+                    if (near && !_near[k] && !inside && !busy && _glanceCd.Ready(now))
                     {
                         if (p.Glance(_indexT[h] != null ? _indexT[h] : user)) _glanceCd.Start(now, glanceGlobalCooldown);
                     }
                     _near[k] = near;
 
                     // Flinch: a fast hand right over the head.
-                    if (_handSpeed[h] > flinchSpeed && !inside && _duckCd[i].Ready(now))
+                    if (_handSpeed[h] > flinchSpeed && !inside && !busy && _duckCd[i].Ready(now))
                     {
                         Vector3 rel = _centroid[h] - p.HeadPoint;
                         float reach = Mathf.Max(0.08f, p.Height * 0.6f);
@@ -654,7 +663,7 @@ namespace MuseDesk.Agents
                     bool zone = !inside && surface < 0.03f && !p.IsWorking && p.CanReact
                                 && tip.y > p.CenterPoint.y - 0.01f
                                 && Vector3.Dot(tip - p.CenterPoint, _headPos - p.CenterPoint) > 0f;
-                    if (_hold[k].Tick(tip, zone, dt) && _highFiveCd[i].TryFire(now, 3f))
+                    if (_hold[k].Tick(tip, zone && !busy, dt) && _highFiveCd[i].TryFire(now, 3f))
                     {
                         if (p.HighFive(tip)) FeedbackFor(i);
                     }
@@ -663,7 +672,7 @@ namespace MuseDesk.Agents
                 // Wave: an open hand, in view, moving side to side.
                 if (h != SyntheticHand)
                 {
-                    bool ok = valid && _handOpen[h];
+                    bool ok = valid && _handOpen[h] && !busy;
                     float lateral = 0f;
                     if (ok)
                     {
@@ -676,6 +685,10 @@ namespace MuseDesk.Agents
                 }
             }
         }
+
+        /// <summary>True while the user's hands are busy (something held, or a Select Agents carry): the characters do not
+        /// poke-react, glance at a hand, flinch, high-five or wave back. Set every frame in HandReactions.</summary>
+        public bool HandsBusy { get; private set; }
 
         bool OfficeInView()
         {
@@ -784,13 +797,16 @@ namespace MuseDesk.Agents
 
         // ── idle gestures tied to the run state ──
 
+        /// <summary>How many ambient idle gestures were skipped because Focus is on (evidence for a Play Mode driver).</summary>
+        public int AmbientSuppressed { get; private set; }
+
         void IdleGestures(float now, bool focus)
         {
             for (int i = 0; i < _n; i++)
             {
                 AgentPresence p = agents[i];
                 if (now < p.NextIdleAt) continue;
-                float slow = focus ? Mathf.Max(1f, focusIdleSlowdown) : 1f;
+                float slow = IdleGesturePolicy.StatusRepeatMultiplier(focus, focusIdleSlowdown);
                 p.NextIdleAt = now + Random.Range(idleIntervalMin, idleIntervalMax) * slow;
 
                 AgentStatusKind kind = _kinds[i];
@@ -802,6 +818,10 @@ namespace MuseDesk.Agents
                     p.NextIdleAt = now + Random.Range(7f, 12f) * slow;
                     continue;
                 }
+                // Polish S9b (C5): the random ambient gestures below (look over at the worker, stretch, look at a
+                // colleague) are not backed by any state: none of them under Focus. The status-backed paper
+                // presentation above still shows, at the slower focus repeat.
+                if (!IdleGesturePolicy.AmbientAllowed(focus)) { AmbientSuppressed++; continue; }
                 if (!p.CanReact) continue;
                 if (kind != AgentStatusKind.Idle && kind != AgentStatusKind.Complete) continue;
 

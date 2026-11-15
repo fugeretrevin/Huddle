@@ -44,6 +44,7 @@ namespace MuseDesk.Agents
                 _reducer.DecisionResolved -= OnDecisionResolved;
                 _reducer.SnapshotLoaded -= ProjectSnapshot;
                 _reducer.SessionReset -= OnSessionReset;
+                _reducer.TaskCompleted -= OnTaskCompleted;
             }
             _reducer = null;
         }
@@ -71,7 +72,14 @@ namespace MuseDesk.Agents
             float guard = 0f;
             while (_researcherMove != null && _researcherMove.IsMoving && guard < 5f)
             { guard += Time.deltaTime; yield return null; }
-            if (_researcherBridge != null) _researcherBridge.PlayOffer();
+            if (_researcherBridge != null)
+            {
+                _researcherBridge.PlayOffer();
+                // Polish S9b: the paper has really arrived (the agent stands at the user holding it out) and the
+                // decision is still waiting on them. Quiet; muted under Focus; rate-limited in FeedbackController.
+                if (_researcherBridge.IsOffering && _reducer != null && _reducer.FirstPendingDecision() != null)
+                    MuseDesk.Feedback.FeedbackController.PlayCue(MuseDesk.Feedback.FeedbackCue.PaperArrived);
+            }
         }
 
         void OnDecisionResolved(string decisionId, string state)
@@ -114,8 +122,26 @@ namespace MuseDesk.Agents
             _reducer.DecisionResolved += OnDecisionResolved;
             _reducer.SnapshotLoaded += ProjectSnapshot;
             _reducer.SessionReset += OnSessionReset;
+            _reducer.TaskCompleted += OnTaskCompleted;
             ProjectSnapshot();
         }
+
+        // Polish S9b: a confirmed task.completed (reducer event, never a local button) earns the agent one Nodding
+        // one-shot. A completion that DELIVERED work (artifact_id) is celebrated by CompletionSequence (the Tester's
+        // Success, the colleagues' Task_Completed nod), so it is left to that sequence and gets no second nod here;
+        // a cancelled branch is not a completion. Rate limit, Focus and body-busy gating live in the bridge.
+        void OnTaskCompleted(MuseDesk.Models.EventEnvelope e)
+        {
+            if (e == null || string.IsNullOrEmpty(e.AgentId)) return;
+            if (!string.IsNullOrEmpty(e.PayloadString("artifact_id"))) return;
+            if (e.PayloadString("task_state", "completed") != "completed") return;
+            if (!_byId.TryGetValue(e.AgentId, out var v) || v == null) return;
+            var bridge = v.GetComponent<AgentAnimatorBridge>();
+            if (bridge != null && bridge.PlayConfirmedNod()) NodsPlayed++;
+        }
+
+        /// <summary>Confirmed-completion nods that actually started (evidence for a Play Mode driver).</summary>
+        public int NodsPlayed { get; private set; }
 
         // Project the authoritative snapshot onto the views. Runs at bind time and again whenever a
         // snapshot is (re)loaded, so a restart or resume shows what the agents are really doing and

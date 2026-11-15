@@ -102,6 +102,15 @@ namespace MuseDesk.Phase2.Board
                 case DragState.Held:
                 case DragState.Candidate:
                     ReadHandsTracked(out bool t0, out bool t1);
+                    // Polish S9b: the task left the board while the user holds its card (the hide waits for the release).
+                    // No hover, no candidate; on release nothing is sent, exactly like a lost hand.
+                    if (_card.TaskGone)
+                    {
+                        ClearHighlights();
+                        if (held) { State = DragState.Held; break; }
+                        CancelHeldGrab();
+                        break;
+                    }
                     if (held) { _watch.Sample(t0, t1, Time.unscaledTime); UpdateHover(); break; }
                     // The grab ended. ISDK also ends a grab when its hand is lost, which looks exactly
                     // like a release from here: only a grab that ended with its hand still tracked is a

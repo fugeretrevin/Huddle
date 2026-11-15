@@ -197,6 +197,8 @@ namespace MuseDesk.Phase2.Board
         {
             float now = Time.unscaledTime;
             bool held = IsHeld;
+            // Polish S9b: a hide that waited for the user to let go starts on the first frame the card is free.
+            if (_deferredHide.Tick(held)) StartHide();
             UpdateEdge(held, now);
             StepPresence();
             UpdateMotion(held);
@@ -215,7 +217,10 @@ namespace MuseDesk.Phase2.Board
             // Pooled cards must not come back showing another task's notice, edge or pose.
             _noticeActive = false;
             if (stateLabel != null && _stateColorCaptured) stateLabel.color = _stateBaseColor;
+            bool hideWasWaiting = _deferredHide.Pending;
             ResetPresentation();
+            // A card switched off while its hide still waited for a release would never finish leaving: finish it now.
+            if (hideWasWaiting && Application.isPlaying) HideFinishedNow();
         }
 
         // ─── edge: the card's visible physical border and its states ───
@@ -309,7 +314,7 @@ namespace MuseDesk.Phase2.Board
                 if (_settleT >= 1f)
                 {
                     _settling = false;
-                    if (_settleToHome) _displaced = false;             // back in its slot
+                    if (_settleToHome) { _displaced = false; NoteLanded(); }   // back in its slot
                 }
             }
             else if (_hasHome && !_displaced)
@@ -345,6 +350,26 @@ namespace MuseDesk.Phase2.Board
         {
             CaptureBaseScale();
             if (_hide.IsLeaving) return;
+            // Polish S9b: switching the colliders off drops a card the user is holding. Wait for the release, then hide.
+            // The drag controller sees HidePending and cancels the drag (no assign for a task that is gone).
+            if (Application.isPlaying && isActiveAndEnabled && IsHeld)
+            {
+                _deferredHide.Request();
+                return;
+            }
+            StartHide();
+        }
+
+        MuseDesk.Agents.DeferredHide _deferredHide;
+
+        /// <summary>True while the card's task is gone but a hand still holds the card, so the hide waits for the release.</summary>
+        public bool HidePending => _deferredHide.Pending;
+
+        /// <summary>True when the task behind this card has left (hiding or about to): nothing may be sent for it.</summary>
+        public bool TaskGone => _deferredHide.Pending || _hide.IsLeaving;
+
+        void StartHide()
+        {
             SetCollidersOff(_hideOff, transform);
             bool animate = Application.isPlaying && isActiveAndEnabled;
             _hide.Hide(MuseDesk.Motion.MuseMotionProfile.Active.panelHide, animate);
@@ -356,6 +381,8 @@ namespace MuseDesk.Phase2.Board
         /// no jump) and take colliders back. A card that already finished hiding cannot be revived (it is pooled).</summary>
         public bool CancelHide()
         {
+            // The hide was only waiting for the user to let go: the task is back, so it simply does not happen.
+            if (_deferredHide.Pending) { _deferredHide.Cancel(); return true; }
             if (_hide.State != MuseDesk.Motion.PresenceFader.Phase.Hiding) return false;
             _hide.Show(MuseDesk.Motion.MuseMotionProfile.Active.panelAppear, true);
             RestoreColliders(_hideOff);
@@ -449,6 +476,8 @@ namespace MuseDesk.Phase2.Board
             _lift = 0f;
             // A pooled card comes back whole: full size, its colliders back, the details sheet hidden (by scale).
             _hide.Snap(true);
+            _deferredHide.Cancel();
+            _laneChanged = false;
             _presenceDirty = false;
             RestoreColliders(_hideOff);
             if (_detailsInit && detailsRoot != null && detailsRoot.activeSelf)
@@ -614,6 +643,18 @@ namespace MuseDesk.Phase2.Board
             _placed = true;
             transform.localPosition = HomeWithLift();
             transform.localRotation = _homeLocalRot;
+            NoteLanded();
+        }
+
+        bool _laneChanged;
+
+        // The card reached its slot in a different lane than it rested in: one quiet tick (FeedbackController gates it
+        // under Focus and rate-limits it, so a burst of cards landing together is one tick).
+        void NoteLanded()
+        {
+            if (!_laneChanged) return;
+            _laneChanged = false;
+            if (Application.isPlaying) MuseDesk.Feedback.FeedbackController.PlayCue(MuseDesk.Feedback.FeedbackCue.CardLanded);
         }
 
         // True once the card has been put in a lane slot since it was shown (only then can a slot change glide).
@@ -651,6 +692,9 @@ namespace MuseDesk.Phase2.Board
         {
             if (region == null || transform.parent == region) return;
             bool held = IsHeld;
+            // Polish S9b: a card that was resting on the board and now belongs to another lane (the board changed it:
+            // a confirmed move or a reducer update) sounds one quiet tick when it settles. Never for a new card, never on a drag.
+            if (_placed) _laneChanged = true;
             // A card already resting on the board keeps its place in the world too, so it glides to the new
             // lane's slot (cardRelease) rather than teleporting. A held card is never touched: the hand owns it.
             bool keepWorld = (_displaced || _settling || held || _placed) && CanAnimate;

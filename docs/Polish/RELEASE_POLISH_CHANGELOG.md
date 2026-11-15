@@ -24,7 +24,9 @@ Both built with 0 errors. **Neither was installed:** nobody was wearing the head
 | `34c911e` | S8 | `WallAudio` (door, ding, print tick, portal open and close, landing); Wall key click; Wall colours = tokens; Reduced Motion setting (ReleaseConfig + per-device pref) |
 | `2b07752` | S8 | One state palette (`OfficeTokens.StateColor`) for board, agent glows, workstation displays and the Wall |
 
-Detail per change: `S2_INTERACTION_CHANGES.md`, `S3S4_DESK_MOTION_CHANGES.md`, `IMPLEMENTATION_AUDIT.md`.
+| S9b commit | S9b | Desk Turn_Left/Right from `TurnInPlaceChanged`; confirmed-completion `Nodding`; ambient idle gestures off under Focus; hand reactions quiet while holding or carrying; held card defers its recycle hide and its drag is cancelled; `PaperArrived` / `CardLanded` cues, Focus-muted; monitor colours on the palette (`S9B_CHARACTER_AUDIO_CHANGES.md`) |
+
+Detail per change: `S9B_CHARACTER_AUDIO_CHANGES.md`, `S2_INTERACTION_CHANGES.md`, `S3S4_DESK_MOTION_CHANGES.md`, `IMPLEMENTATION_AUDIT.md`.
 
 ## Tests
 
@@ -52,5 +54,7 @@ Detail per change: `S2_INTERACTION_CHANGES.md`, `S3S4_DESK_MOTION_CHANGES.md`, `
 | Low | No in-app toggle for Reduced Motion (config and PlayerPrefs only) |
 | Low | ~~Card recycle and details-sheet `SetActive` pops; RebuildAll re-reveals every card on a resync~~ FIXED in S9a (see `S9A_POPIN_CHANGES.md`) |
 | Low | ~~Desk routed-walk corners above the turn limit turn while walking (Wall stops and turns)~~ FIXED in S9a (brake, turn in place, continue; `AgentMovement.TurnInPlaceDirection`) |
+| Med | `Listening` clip not wired on the desk: no voice signal says the mic is open AND addressed to one agent (needs agent-targeted voice routing) |
+| Low | Desk page-turn sound still missing; `Delivered` chime now silent under Focus |
 | Low | Two key visual systems not merged; off-palette hover cyan; provenance gaps on agent bubble and receipts |
 | Info | Claude provider wired but no real API call has been made (no key yet) |

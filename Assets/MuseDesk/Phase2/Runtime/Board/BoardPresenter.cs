@@ -494,6 +494,10 @@ namespace MuseDesk.Phase2.Board
             };
         }
 
+        static Phase2CommandResult<TaskCardV2> TaskGone() =>
+            Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
+            { Code = "TASK_GONE", Message = "the task left the board" });
+
         static Phase2CommandResult<TaskCardV2> NotReady() =>
             Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
             { Code = "CLIENT_NOT_READY", Message = "board not initialized" });
@@ -505,6 +509,7 @@ namespace MuseDesk.Phase2.Board
             TaskCardView card, Func<CancellationToken, Task<Phase2CommandResult<TaskCardV2>>> invoke, string label,
             string idempotencyKey)
         {
+            if (card.TaskGone) return TaskGone();   // Polish S9b: nothing is sent for a task that left the board
             // One in flight per card (S2): a second command on the same card is ignored with a note.
             string lockId = card.Data.TaskId;
             if (!_ledger.TryLock(lockId)) { card.ShowPending("Already sending"); return Busy(); }
@@ -585,6 +590,7 @@ namespace MuseDesk.Phase2.Board
                 return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody
                 { Code = "CLIENT_NOT_READY", Message = "board not initialized" });
 
+            if (card.TaskGone) return TaskGone();   // Polish S9b: nothing is sent for a task that left the board
             // One in flight per card (S2), shared with the pad / chip pokes, the drag and the dock Start key.
             string lockId = card.Data.TaskId;
             if (!_ledger.TryLock(lockId)) { card.ShowPending("Already sending"); return Busy(); }

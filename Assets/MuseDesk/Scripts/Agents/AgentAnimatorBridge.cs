@@ -90,10 +90,15 @@ namespace MuseDesk.Agents
         static readonly int S_Error = Animator.StringToHash("Error");
         static readonly int S_Give = Animator.StringToHash("Exchange_Package");
         static readonly int S_Receive = Animator.StringToHash("Receive_Document");
+        static readonly int S_TurnL = Animator.StringToHash("Turn_Left");
+        static readonly int S_TurnR = Animator.StringToHash("Turn_Right");
+        static readonly int S_Nodding = Animator.StringToHash("Nodding");
 
         // Clip lengths in seconds (docs/Art/ANIMATION_MANIFEST.md).
         const float LenTaskCompleted = 1.67f, LenSuccess = 1.5f, LenFailure = 1.67f, LenError = 1.33f,
-                    LenGive = 1.5f, LenReceive = 1.17f, LenOffer = 1.67f;
+                    LenGive = 1.5f, LenReceive = 1.17f, LenOffer = 1.67f, LenNodding = 1.17f;
+
+        float _lastNodAt = -100f;   // Polish S9b: per-agent rate limit for the confirmed-completion nod
 
         enum Mode { Unresolved, None, Direct, Params }
 
@@ -146,11 +151,13 @@ namespace MuseDesk.Agents
                 _lastState = view.State;
                 IsWorkingState = IsWorking(_lastState);
             }
+            if (movement != null) movement.TurnInPlaceChanged += OnTurnInPlaceChanged;
         }
 
         void OnDisable()
         {
             if (view != null) view.StateChanged -= OnStateChanged;
+            if (movement != null) movement.TurnInPlaceChanged -= OnTurnInPlaceChanged;
             // Never leave the Animator running at a walk-matched rate.
             if (_rate != 1f && animator != null) animator.speed = 1f;
             _rate = 1f;
@@ -182,7 +189,7 @@ namespace MuseDesk.Agents
         void UpdateWalkRate()
         {
             float want = 1f;
-            if (_moving && matchWalkToSpeed && movement != null && walkCycleMeters > 1e-4f)
+            if (_moving && matchWalkToSpeed && movement != null && walkCycleMeters > 1e-4f && !movement.IsTurningInPlace)
             {
                 float authored = walkCycleMeters / WalkClipSeconds;
                 // The lower bound is walkRateFloor (not walkRateMin): AgentMovement now accelerates from rest and
@@ -267,9 +274,32 @@ namespace MuseDesk.Agents
             animator.SetFloat(P_MoveSpeed, v);
         }
 
+        // Polish S9b: while AgentMovement turns the agent on the spot (before the first step, or at a sharp routed corner)
+        // the turn clip plays instead of the walk cycle going on the spot. Mirrors WallHabitatView.SetAnim.
+        int TurnState()
+        {
+            if (movement == null) return 0;
+            switch (DeskTurnRule.Select(movement.TurnInPlaceDirection))
+            {
+                case TurnClip.Left: return animator.HasState(0, S_TurnL) ? S_TurnL : 0;
+                case TurnClip.Right: return animator.HasState(0, S_TurnR) ? S_TurnR : 0;
+                default: return 0;
+            }
+        }
+
+        void OnTurnInPlaceChanged(int dir)   // see also TurnState
+        {
+            if (animator == null || _mode != Mode.Direct) return;
+            if (_moving && !_oneShot) GoBase(walkInBlend);
+        }
+
         int DesiredBase()
         {
-            if (_moving) return S_Walk;
+            if (_moving)
+            {
+                int turn = TurnState();
+                return turn != 0 ? turn : S_Walk;
+            }
             if (_offerHold) return S_Offer;
             return BaseFor(_lastState);
         }
@@ -307,7 +337,7 @@ namespace MuseDesk.Agents
             if (target == S_Idle && !_moving) SetMoveSpeed(0f);
             if (target == _playing) return;
             // A per-agent start offset keeps the three agents' loops out of step.
-            float offset = target == S_Walk ? 0f : _phase * 2f;
+            float offset = (target == S_Walk || target == S_TurnL || target == S_TurnR) ? 0f : _phase * 2f;
             animator.CrossFadeInFixedTime(target, Mathf.Max(MinBlend, blend), 0, offset);
             _playing = target;
         }
@@ -442,6 +472,26 @@ namespace MuseDesk.Agents
             PlayOneShot(S_TaskCompleted, LenTaskCompleted);
             return true;
         }
+
+        /// <summary>One Nodding one-shot for a confirmed task.completed on THIS agent (Polish S9b). It never stacks: it
+        /// is refused while the agent walks, holds the paper out, or is already in a one-shot (the Complete state's
+        /// Task_Completed nod, Success, Error, or a colleague acknowledgement), under Focus, and within
+        /// <see cref="NodGate.DefaultGapSeconds"/> of its previous nod. Returns true if the nod started.</summary>
+        public bool PlayConfirmedNod()
+        {
+            if (!Ready() || _mode != Mode.Direct) return false;
+            SyncMoving();
+            bool busy = _moving || _offerHold || _oneShot;
+            if (!NodGate.Allow(Time.time, _lastNodAt, NodGate.DefaultGapSeconds,
+                               MuseDesk.Workspace.FocusModeController.Active, busy)) return false;
+            if (!animator.HasState(0, S_Nodding)) return false;
+            _lastNodAt = Time.time;
+            PlayOneShot(S_Nodding, LenNodding);
+            return true;
+        }
+
+        /// <summary>The clip state last cross-faded to (DIRECT controller), for a driver's evidence.</summary>
+        public int PlayingStateHash => _playing;
 
         /// <summary>True while the agent is translating (the walk clip owns the body).</summary>
         public bool IsWalking => _moving;

@@ -58,8 +58,8 @@ Status: **DONE** (code + test evidence named), **IN PROGRESS**, **PLANNED**, **B
 | C1 | Wall avatars "work" whenever home, whatever the task | view mapped Home→work clip | `HabitatPresence.FromTaskState` → work / waiting / thinking / worried / idle; Manager from plan flow | DONE (`MotionTests.Presence_MapsOnlyRealStates`) |
 | C2 | Wall Manager plays Talking permanently | placeholder mapping | Manager works only while drafting/committing | DONE |
 | C3 | No reaction to confirmed completion in Wall | none | one `Nodding` on a reducer `task.completed` | DONE (Editor-unseen) |
-| C4 | Turn_Left/Right, Nodding, Listening and ~18 more clips unused | not wired | Wall turn-in-place uses Turn_*; Desk adoption PLANNED | PARTIAL |
-| C5 | Desk idle gestures on random timers | `AgentAttention` | Keep (ambient, not task claims); throttle under Focus | PLANNED |
+| C4 | Turn_Left/Right, Nodding, Listening and ~18 more clips unused | not wired | Wall turn-in-place uses Turn_*; Desk: Turn_Left/Right on `TurnInPlaceChanged`, confirmed-completion `Nodding` (S9b). Listening NOT wired: no "mic open and addressed to this agent" signal exists | PARTIAL (Editor-seen) |
+| C5 | Desk idle gestures on random timers | `AgentAttention` | Ambient gestures off under Focus; status-backed paper offer at the slower focus repeat; hand reactions quiet while the user holds something or a Select Agents carry is on (S9b, `S9B_CHARACTER_AUDIO_CHANGES.md`) | DONE (Editor-seen; hand gating unverified without hands) |
 | C6 | Desk agent walks have no clearance check | straight lines | Document the authored waypoints; add bounds assertions in a Play Mode driver | PLANNED |
 | C7 | No Manager model in production | Antigravity art not delivered | Placeholder stays labelled; manifest swap ready | BLOCKED (art) |
 
@@ -70,7 +70,7 @@ Status: **DONE** (code + test evidence named), **IN PROGRESS**, **PLANNED**, **B
 | U1 | State colours drift (green has ≥7 values; amber/coral drift; Tester role = amber) | `OfficeTokens.StateColor` used by board, agent glow, workstation display, Wall | DONE (role colours open) |
 | U2 | Wall key disabled state invisible | dimmed label | DONE |
 | U3 | Provenance footer on Wall cards is the smallest text | 4.2 mm InkSoft | DONE |
-| U4 | No elevator, portal, page, card sounds | `WallAudio` cues; Wall key click (page/card cues on desk still open) | PARTIAL |
+| U4 | No elevator, portal, page, card sounds | `WallAudio` cues; Wall key click Desk (S9b): `PaperArrived`, `CardLanded` added to `FeedbackController`; paper taken, delivered chime, outcomes already existed; ambient cues muted under Focus. Page-turn cue still open | PARTIAL (unheard) |
 | U5 | No global Reduced Motion / quiet setting | ReleaseConfig + PlayerPrefs; Focus mutes Wall cues; no in-app toggle | PARTIAL |
 
 ## Not possible in this pass without a person

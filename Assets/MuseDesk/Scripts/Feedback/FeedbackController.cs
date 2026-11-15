@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using MuseDesk.Agents;
 using MuseDesk.Documents;
 using MuseDesk.Models;
 using MuseDesk.Networking;
@@ -25,6 +26,11 @@ namespace MuseDesk.Feedback
         Delivered = 6,
         /// <summary>Something was refused or failed (a failed run, a response that was not saved, a refused drop).</summary>
         Error = 7,
+        /// <summary>The agent has walked up with the decision paper and holds it out (Polish S9b). Quiet; muted under Focus.</summary>
+        PaperArrived = 8,
+        /// <summary>A task card settled into a different lane after the board changed it (a confirmed move or a reducer
+        /// update; never on a drag). Polish S9b. Quiet; muted under Focus.</summary>
+        CardLanded = 9,
     }
 
     /// <summary>
@@ -54,6 +60,10 @@ namespace MuseDesk.Feedback
         [Tooltip("The same cue is not played twice within this many seconds.")]
         public float minRepeatSeconds = 0.12f;
 
+        /// <summary>The last cue actually played and how many have played (evidence for Play Mode drivers).</summary>
+        public FeedbackCue LastPlayedCue { get; private set; }
+        public int PlayedCount { get; private set; }
+
         /// <summary>The scene's feedback controller, or null before it has awoken.</summary>
         public static FeedbackController Instance { get; private set; }
 
@@ -63,7 +73,7 @@ namespace MuseDesk.Feedback
             if (Instance != null) Instance.Play(cue);
         }
 
-        const int CueCount = 8;
+        const int CueCount = 10;
 
         AudioSource _voice;
         SessionReducer _reducer;
@@ -104,6 +114,19 @@ namespace MuseDesk.Feedback
             Make(FeedbackCue.Changes,    "cue_changes",   new[] { 494f, 494f },            0.11f,  14f, 0.16f, 0.9f);   // one note, twice
             Make(FeedbackCue.Delivered,  "cue_delivered", new[] { 523f, 784f, 1047f, 1568f }, 0.10f, 5f, 0.50f, 1f);    // rising fifths and octave
             Make(FeedbackCue.Error,      "cue_error",     new[] { 233f, 220f },            0.14f,   9f, 0.26f, 1f);     // low, down a semitone
+            Make(FeedbackCue.PaperArrived, "cue_arrived", new[] { 698f, 880f },            0.07f,  18f, 0.16f, 0.55f);  // a soft "here you are"
+            Make(FeedbackCue.CardLanded, "cue_landed",    new[] { 988f },                  0f,     40f, 0.07f, 0.4f);   // a small tick, quieter than a key
+        }
+
+        static DeskCueKind KindOf(FeedbackCue cue)
+        {
+            switch (cue)
+            {
+                case FeedbackCue.CardLanded: return DeskCueKind.CardLanded;
+                case FeedbackCue.PaperArrived: return DeskCueKind.PaperArrived;
+                case FeedbackCue.Delivered: return DeskCueKind.Delivered;
+                default: return DeskCueKind.Other;
+            }
         }
 
         void Make(FeedbackCue cue, string clipName, float[] notes, float step, float decay, float tail, float gain)
@@ -207,7 +230,13 @@ namespace MuseDesk.Feedback
             if (clip == null) return;
             float now = Time.unscaledTime;
             if (now - _lastPlayed[i] < minRepeatSeconds) return;
+            // Polish S9b: ambient cues (card landed, paper arrived, delivery chime) are silent under Focus and have
+            // their own, longer, repeat limits. Outcome cues the user caused or that report a failure are untouched.
+            DeskCueKind kind = KindOf(cue);
+            if (kind != DeskCueKind.Other
+                && !DeskCuePolicy.Allow(kind, now, _lastPlayed[i], MuseDesk.Workspace.FocusModeController.Active)) return;
             _lastPlayed[i] = now;
+            LastPlayedCue = cue; PlayedCount++;
             if (soundAnchor != null) _voice.transform.position = soundAnchor.position;
             _voice.PlayOneShot(clip, volume * _gain[i]);
         }
