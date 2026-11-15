@@ -148,12 +148,25 @@ namespace MuseDesk.Phase2.Board
         void RebuildAll()
         {
             if (!Ready || Reducer == null) return;
-            // Recycle everything, then upsert from the reducer's current projection.
-            foreach (var kv in _views) Recycle(kv.Value);
-            _views.Clear();
+            // Polish S9a: diff by task id. Only tasks that really left are hidden, only tasks that were not on the board get
+            // the entrance reveal (Upsert), and cards already on it keep their transform and glide to any new slot.
+            _curIds.Clear();
+            foreach (var kv in _views) _curIds.Add(kv.Key);
+            MuseDesk.Motion.PresenceDiff.Compute(_curIds, Reducer.Tasks.Keys, _diffAdded, _diffRemoved, _diffKept);
+            for (int i = 0; i < _diffRemoved.Count; i++)
+            {
+                string id = _diffRemoved[i];
+                if (_views.TryGetValue(id, out var gone)) { _views.Remove(id); Recycle(id, gone); }
+            }
             foreach (var kv in Reducer.Tasks) Upsert(kv.Value);
             LayoutAllRegions();
         }
+
+        // Reused by RebuildAll (a resync is rare, but it should not allocate lists every time).
+        readonly List<string> _curIds = new List<string>();
+        readonly List<string> _diffAdded = new List<string>(), _diffRemoved = new List<string>(), _diffKept = new List<string>();
+        // Cards easing out (panelHide) after their task left. Not in _views, not in _pool until the hide finishes.
+        readonly Dictionary<string, TaskCardView> _leaving = new Dictionary<string, TaskCardView>();
 
         void OnTaskChanged(TaskCardV2 card)
         {
@@ -167,9 +180,17 @@ namespace MuseDesk.Phase2.Board
             if (card?.TaskId == null) return;
             if (!_views.TryGetValue(card.TaskId, out var view))
             {
-                view = Rent();
+                bool revived = false;
+                if (_leaving.TryGetValue(card.TaskId, out view) && view != null && view.CancelHide())
+                {
+                    // The task came back while its card was still leaving: grow it back from where it is.
+                    _leaving.Remove(card.TaskId);
+                    view.HideFinished -= OnHideFinished;
+                    revived = true;
+                }
+                else view = Rent();
                 _views[card.TaskId] = view;
-                view.BeginReveal();   // grows in with panelAppear; its slot and data are final (no full-size pop)
+                if (!revived) view.BeginReveal();   // grows in with panelAppear; its slot and data are final (no full-size pop)
                 var drag = view.GetComponent<TaskDragController>();
                 if (drag != null) drag.Bind(this, view);
                 view.AssignRequested -= OnPokeAssign;   // avoid double subscription on reuse
@@ -195,14 +216,37 @@ namespace MuseDesk.Phase2.Board
             return v;
         }
 
-        void Recycle(TaskCardView v)
+        /// <summary>Send a card away: it eases out on panelHide (colliders off), then OnHideFinished deactivates and pools it.</summary>
+        void Recycle(string taskId, TaskCardView v)
         {
             if (v == null) return;
             v.AssignRequested -= OnPokeAssign;
             v.PauseResumeRequested -= OnPokePauseResume;
             v.PriorityCycleRequested -= OnPokeCyclePriority;
             v.SetExpanded(false);
-            v.gameObject.SetActive(false);
+            if (_leaving.TryGetValue(taskId, out var stale) && stale != null && stale != v)
+                FinishLeaving(taskId, stale);   // two cards for one id cannot both leave: pool the older one now
+            _leaving[taskId] = v;
+            v.HideFinished -= OnHideFinished;
+            v.HideFinished += OnHideFinished;
+            v.BeginHide();                       // may finish at once (inactive card); the handler copes
+        }
+
+        void OnHideFinished(TaskCardView v)
+        {
+            if (v == null) return;
+            v.HideFinished -= OnHideFinished;
+            string key = null;
+            foreach (var kv in _leaving) if (kv.Value == v) { key = kv.Key; break; }
+            if (key == null) return;             // revived or already pooled: a stale completion does nothing
+            FinishLeaving(key, v);
+        }
+
+        void FinishLeaving(string key, TaskCardView v)
+        {
+            _leaving.Remove(key);
+            v.HideFinished -= OnHideFinished;
+            v.gameObject.SetActive(false);       // OnDisable resets scale, colliders, edge
             _pool.Push(v);
         }
 
@@ -275,6 +319,8 @@ namespace MuseDesk.Phase2.Board
             {
                 var child = region.GetChild(c);
                 if (!child.gameObject.activeSelf) continue;
+                var leaver = child.GetComponent<TaskCardView>();
+                if (leaver != null && leaver.IsLeaving) continue;   // easing out: no slot, no moving
                 int row = i / cols, col = i % cols;
                 var card = child.GetComponent<TaskCardView>();
                 var pos = new Vector3(col * cardSpacing.x, -row * cardSpacing.y, 0f);

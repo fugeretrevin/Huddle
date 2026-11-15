@@ -253,6 +253,7 @@ namespace MuseDesk.Agents
             _anchorSet = new bool[_n];
             _anchor = new Vector3[_n];
             _bubbleY = new float[_n];
+            _liftSm = new float[_n * 2]; _liftVel = new float[_n * 2]; _liftInit = new bool[_n * 2];
             _inside = new bool[Hands * _n];
             _near = new bool[Hands * _n];
             _hold = new HoldStillDetector[Hands * _n];
@@ -855,11 +856,17 @@ namespace MuseDesk.Agents
                     chip.Tick(dt);
                 }
                 bool chipUp = chip != null && chip.Visible;
-                if (!bubbleUp && !chipUp) { _anchorSet[i] = false; continue; }
+                if (!bubbleUp && !chipUp) { _anchorSet[i] = false; _liftInit[i * 2] = false; _liftInit[i * 2 + 1] = false; continue; }
+                if (!chipUp) _liftInit[i * 2] = false;
+                if (!bubbleUp) _liftInit[i * 2 + 1] = false;
 
                 // Above the head, eased a little so the sign does not shake with the animation.
                 Vector3 top = p.TopPoint;
-                if (!_anchorSet[i] || (top - _anchor[i]).sqrMagnitude > 0.05f * 0.05f) { _anchor[i] = top; _anchorSet[i] = true; }
+                if (!_anchorSet[i] || (top - _anchor[i]).sqrMagnitude > 0.05f * 0.05f)
+                {
+                    _anchor[i] = top; _anchorSet[i] = true;
+                    _liftInit[i * 2] = false; _liftInit[i * 2 + 1] = false;   // the anchor jumped: re-seed the lift too
+                }
                 else _anchor[i] = Vector3.Lerp(_anchor[i], top, 1f - Mathf.Exp(-dt / 0.08f));
 
                 float dist = _hasHead ? (_anchor[i] - _headPos).magnitude : referenceDistance;
@@ -870,7 +877,7 @@ namespace MuseDesk.Agents
                 if (chipUp)
                 {
                     Vector3 pos = basePos;
-                    pos.y = AvoidLift(pos, chip.Width * 0.5f * s, chip.Height * s);
+                    pos.y = SmoothLift(i * 2, basePos.y, AvoidLift(pos, chip.Width * 0.5f * s, chip.Height * s), dt);
                     Place(chip.transform, pos, s * Mathf.Max(0.001f, chip.Ease), parentScale);
                 }
                 if (bubbleUp)
@@ -891,10 +898,34 @@ namespace MuseDesk.Agents
                         if (pos.y > oTop || pos.y + h < _bubbleY[j]) continue;
                         pos.y = oTop + 0.004f * s;
                     }
+                    pos.y = SmoothLift(i * 2 + 1, basePos.y, pos.y, dt);
                     _bubbleY[i] = pos.y;
                     Place(bubble.transform, pos, s * Mathf.Max(0.001f, bubble.Ease), parentScale);
                 }
             }
+        }
+
+        // Polish S9a: the avoid-lift (and the clear-of-neighbour step) used to move a sign's y by up to a few
+        // centimetres in one frame. Only that OFFSET above the head-following base is smoothed (critically damped),
+        // so the sign still tracks the head at once. Slot = agent*2 (chip) or agent*2+1 (bubble). SafeStep inside Follow
+        // bounds a hitch; Reduced Motion halves the smoothing time (shorter, never hidden).
+        const float LiftSmoothSeconds = 0.12f;
+        float[] _liftSm = new float[0], _liftVel = new float[0];
+        bool[] _liftInit = new bool[0];
+
+        float SmoothLift(int slot, float baseY, float targetY, float dt)
+        {
+            if (_liftInit.Length <= slot)
+            {
+                System.Array.Resize(ref _liftSm, slot + 1);
+                System.Array.Resize(ref _liftVel, slot + 1);
+                System.Array.Resize(ref _liftInit, slot + 1);
+            }
+            float want = targetY - baseY;
+            if (!_liftInit[slot]) { _liftInit[slot] = true; _liftSm[slot] = want; _liftVel[slot] = 0f; return targetY; }
+            float st = LiftSmoothSeconds * (MuseDesk.Motion.MotionSettings.ReducedMotion ? MuseDesk.Motion.MotionSettings.ReducedScale : 1f);
+            _liftSm[slot] = MuseDesk.Motion.Damped.Follow(_liftSm[slot], want, ref _liftVel[slot], st, dt, 1e-4f);
+            return baseY + _liftSm[slot];
         }
 
         // Raise a sign whose box (centre x/z at pos, from pos.y up by height) would sit on one of

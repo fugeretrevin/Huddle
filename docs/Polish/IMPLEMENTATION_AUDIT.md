@@ -38,6 +38,7 @@ Status: **DONE** (code + test evidence named), **IN PROGRESS**, **PLANNED**, **B
 | M8 | Handoff token pops and jumps hand to hand | `AgentHandoffController` | Desk (A #7) | Timed flight between sockets with pickup/settle tokens | see S3S4_DESK_MOTION_CHANGES.md | DONE (code + PLAY smoke) |
 | M9 | Decision paper blinks via SetActive | `DocumentDeliveryController` | Documents (A #8) | Fade/scale with `panelHide`, never while held | see S3S4_DESK_MOTION_CHANGES.md | DONE (code + PLAY smoke) |
 | M10 | Two writers on one transform: RefaceUser vs transition; RubberBand vs AgentMovement; PushableProp vs PropCarrier | No ownership rule | Workspace, agents (A #10) | Mode/owner guards; explicit order | see S3S4_DESK_MOTION_CHANGES.md | DONE (code + PLAY smoke) |
+| M11 | Card recycle / details-sheet SetActive pops; RebuildAll re-reveals every card; desk routed corners taken while walking; attention sign y step | `BoardPresenter.Recycle`, `TaskCardView.SetExpanded`, `RebuildAll`, `AgentMovement` corners, `AgentAttention.AvoidLift` | Board, desk agents, signs (A rows 13, 14, 35) | Hide on `panelHide` with cancel, scale details sheet, id-diff resync, brake + turn in place at sharp corners (`TurnInPlaceDirection`), damped sign lift | see S9A_POPIN_CHANGES.md; `PresenceTests` 8, `AgentWalkCornersTests` 6 | DONE (code + AUTO + PLAY smoke; unverified on device) |
 
 ### Interaction
 

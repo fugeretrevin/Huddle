@@ -198,6 +198,7 @@ namespace MuseDesk.Phase2.Board
             float now = Time.unscaledTime;
             bool held = IsHeld;
             UpdateEdge(held, now);
+            StepPresence();
             UpdateMotion(held);
 
             if (!_noticeActive || now < _noticeUntil) return;
@@ -274,12 +275,15 @@ namespace MuseDesk.Phase2.Board
                 // The hand owns the transform. Remember that the card has left its slot.
                 _displaced = true;
                 _settling = false;
-                if (_revealing) { _revealing = false; _revealScale = 1f; if (_baseScaleCaptured) transform.localScale = _baseScale; }
+                if (_revealing) { _revealing = false; _revealScale = 1f; }
+                if (_baseScaleCaptured) transform.localScale = _baseScale * _hide.Factor;
+                _presenceDirty = false;
                 return;
             }
             float goal = IsSelected ? 1f : 0f;
             bool liftMoving = _lift != goal;
-            if (!_settling && !liftMoving && !_revealing) return;
+            if (!_settling && !liftMoving && !_revealing && !_presenceDirty) return;
+            _presenceDirty = false;
             float dt = MuseDesk.Motion.MotionSettings.SafeStep(Time.unscaledDeltaTime);
             if (liftMoving) _lift = Mathf.MoveTowards(_lift, goal, dt / 0.12f);
             if (_revealing)
@@ -313,7 +317,97 @@ namespace MuseDesk.Phase2.Board
                 transform.localPosition = HomeWithLift();
                 transform.localRotation = _homeLocalRot;
             }
-            if (_baseScaleCaptured) transform.localScale = _baseScale * ((1f + (selectedScale - 1f) * _lift) * _revealScale);
+            if (_baseScaleCaptured) transform.localScale = _baseScale * ((1f + (selectedScale - 1f) * _lift) * _revealScale * _hide.Factor);
+        }
+
+        // ─── Polish S9a: leaving (recycle) and the details sheet ease on panelHide / panelAppear, never pop ───
+
+        readonly MuseDesk.Motion.PresenceFader _hide = new MuseDesk.Motion.PresenceFader(true);
+        readonly MuseDesk.Motion.PresenceFader _details = new MuseDesk.Motion.PresenceFader(false);
+        readonly System.Collections.Generic.List<Collider> _hideOff = new System.Collections.Generic.List<Collider>();
+        readonly System.Collections.Generic.List<Collider> _detailsOff = new System.Collections.Generic.List<Collider>();
+        Vector3 _detailsBase = Vector3.one;
+        bool _detailsInit;
+        bool _presenceDirty;
+
+        /// <summary>True from BeginHide until the card is revived (CancelHide) or recycled. Layout gives a leaving card
+        /// no slot, and its colliders are off.</summary>
+        public bool IsLeaving => _hide.IsLeaving;
+
+        /// <summary>Raised once, on the step that finishes a hide that was not cancelled. The presenter then deactivates
+        /// the card and pools it. Never raised for a hide that was cancelled.</summary>
+        public event Action<TaskCardView> HideFinished;
+
+        /// <summary>Ease the card out on panelHide (minimum scale ScaleEase.HiddenFactor) instead of deactivating it at
+        /// once. Colliders (pokes, grab) are off while it leaves. Safe to call repeatedly. If the card cannot animate
+        /// (inactive, edit time) it finishes at once and HideFinished is raised before this returns.</summary>
+        public void BeginHide()
+        {
+            CaptureBaseScale();
+            if (_hide.IsLeaving) return;
+            SetCollidersOff(_hideOff, transform);
+            bool animate = Application.isPlaying && isActiveAndEnabled;
+            _hide.Hide(MuseDesk.Motion.MuseMotionProfile.Active.panelHide, animate);
+            _presenceDirty = true;
+            if (!animate) HideFinishedNow();
+        }
+
+        /// <summary>The task came back while the card was leaving: grow back from the CURRENT scale (no half-scaled card,
+        /// no jump) and take colliders back. A card that already finished hiding cannot be revived (it is pooled).</summary>
+        public bool CancelHide()
+        {
+            if (_hide.State != MuseDesk.Motion.PresenceFader.Phase.Hiding) return false;
+            _hide.Show(MuseDesk.Motion.MuseMotionProfile.Active.panelAppear, true);
+            RestoreColliders(_hideOff);
+            _presenceDirty = true;
+            return true;
+        }
+
+        void HideFinishedNow() { var h = HideFinished; if (h != null) h(this); }
+
+        void StepPresence()
+        {
+            if (!_hide.Moving && !_details.Moving) return;
+            float dt = Time.unscaledDeltaTime;
+            if (_hide.Moving)
+            {
+                _presenceDirty = true;
+                if (_hide.Step(dt)) { HideFinishedNow(); return; }
+            }
+            if (_details.Moving)
+            {
+                _details.Step(dt);
+                ApplyDetailsScale();
+                if (_details.Interactable && !_hide.IsLeaving) RestoreColliders(_detailsOff);
+            }
+        }
+
+        void ApplyDetailsScale()
+        {
+            if (detailsRoot != null) detailsRoot.transform.localScale = _detailsBase * _details.Factor;
+        }
+
+        void EnsureDetails()
+        {
+            if (_detailsInit || detailsRoot == null) return;
+            _detailsInit = true;
+            _detailsBase = detailsRoot.transform.localScale;
+            // Authored shown (active) stays shown until told otherwise; authored inactive is hidden.
+            _details.Snap(detailsRoot.activeSelf);
+        }
+
+        static void SetCollidersOff(System.Collections.Generic.List<Collider> remembered, Transform root)
+        {
+            remembered.Clear();
+            var all = root.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < all.Length; i++)
+                if (all[i] != null && all[i].enabled) { remembered.Add(all[i]); all[i].enabled = false; }
+        }
+
+        static void RestoreColliders(System.Collections.Generic.List<Collider> remembered)
+        {
+            for (int i = 0; i < remembered.Count; i++) if (remembered[i] != null) remembered[i].enabled = true;
+            remembered.Clear();
         }
 
         /// <summary>The resting slot, moved toward the reader (the region's -Z) by the selection lift.</summary>
@@ -353,6 +447,17 @@ namespace MuseDesk.Phase2.Board
             _refusedUntil = 0f;
             IsSelected = false;
             _lift = 0f;
+            // A pooled card comes back whole: full size, its colliders back, the details sheet hidden (by scale).
+            _hide.Snap(true);
+            _presenceDirty = false;
+            RestoreColliders(_hideOff);
+            if (_detailsInit && detailsRoot != null && detailsRoot.activeSelf)
+            {
+                IsExpanded = false;
+                _details.Snap(false);
+                ApplyDetailsScale();
+                SetCollidersOff(_detailsOff, detailsRoot.transform);
+            }
             if (_baseScaleCaptured) transform.localScale = _baseScale;
             ApplyEdge(EdgeState.Idle);
         }
@@ -442,7 +547,32 @@ namespace MuseDesk.Phase2.Board
         public void SetExpanded(bool expanded)
         {
             IsExpanded = expanded;
-            if (detailsRoot) detailsRoot.SetActive(expanded);
+            if (!detailsRoot) return;
+            EnsureDetails();
+            var prof = MuseDesk.Motion.MuseMotionProfile.Active;
+            bool animate = Application.isPlaying && isActiveAndEnabled;
+            if (expanded)
+            {
+                // Kept active once shown (hiding is by scale, never SetActive: poke keys under it stay registered).
+                // The first time, it is activated while still at the hidden scale, then grows.
+                if (!detailsRoot.activeSelf)
+                {
+                    _details.Snap(false);
+                    ApplyDetailsScale();
+                    detailsRoot.SetActive(true);
+                    SetCollidersOff(_detailsOff, detailsRoot.transform);
+                }
+                _details.Show(prof.panelAppear, animate);
+                ApplyDetailsScale();
+                if (_details.Interactable && !_hide.IsLeaving) RestoreColliders(_detailsOff);
+            }
+            else
+            {
+                if (!detailsRoot.activeSelf) return;                 // never shown: nothing to hide
+                if (_detailsOff.Count == 0) SetCollidersOff(_detailsOff, detailsRoot.transform);   // pokes off at once
+                _details.Hide(prof.panelHide, animate);
+                ApplyDetailsScale();
+            }
         }
 
         public void ToggleExpanded() => SetExpanded(!IsExpanded);

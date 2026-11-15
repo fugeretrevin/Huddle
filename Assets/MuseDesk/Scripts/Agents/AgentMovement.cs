@@ -147,12 +147,46 @@ namespace MuseDesk.Agents
             _startTurn = !_moving;
             _walkTime = 0f; _turnWait = 0f;
             _settling = false;
+            _cornerTurn = false;
+            SetTurnDir(0);
+        }
+
+        // ---- Polish S9a: sharp routed corners brake, turn on the spot, then continue (same rule as HabitatWalker) ----
+        bool _cornerTurn;         // standing at a sharp corner, turning toward the next segment
+        float _cornerYaw;         // heading wanted after the corner
+        float _cornerElapsed;
+        const float CornerTurnDone = 2f;   // degrees: close enough to resume walking (facing then follows damped)
+
+        /// <summary>-1 while turning in place to the left, +1 to the right, 0 when not turning on the spot. Covers both
+        /// the turn before the first step and the turn at a sharp routed corner. A later task can play Turn_Left /
+        /// Turn_Right from this; nothing here drives an animator.</summary>
+        public int TurnInPlaceDirection { get; private set; }
+
+        /// <summary>True while the agent is standing and turning (see <see cref="TurnInPlaceDirection"/>).</summary>
+        public bool IsTurningInPlace => TurnInPlaceDirection != 0;
+
+        /// <summary>Raised when the turn-in-place direction changes: argument is the new direction (-1 left, +1 right,
+        /// 0 = turn finished or abandoned). Fires on the main thread inside Update.</summary>
+        public event Action<int> TurnInPlaceChanged;
+
+        void SetTurnDir(int dir)
+        {
+            if (TurnInPlaceDirection == dir) return;
+            TurnInPlaceDirection = dir;
+            TurnInPlaceChanged?.Invoke(dir);
+        }
+
+        void OnDisable()
+        {
+            _cornerTurn = false;
+            SetTurnDir(0);
         }
 
         void Update()
         {
             if (!_moving)
             {
+                if (TurnInPlaceDirection != 0) { _cornerTurn = false; SetTurnDir(0); }
                 if (_settling) SettleHome();
                 return;
             }
@@ -177,6 +211,7 @@ namespace MuseDesk.Agents
                     _turnWait += dt;
                     if (err > prof.walkTurnLimit && _turnWait < MaxTurnWait)
                     {
+                        SetTurnDir(AgentWalkCorners.TurnSign(cur, YawOf(d0), 0f));
                         float y = Damped.FollowAngle(cur, YawOf(d0), ref _yawVel, prof.turnSmoothTime, dt);
                         transform.rotation = Quaternion.Euler(0f, y, 0f);
                         PlanarSpeed = 0f;
@@ -184,6 +219,23 @@ namespace MuseDesk.Agents
                     }
                 }
                 _startTurn = false;
+                SetTurnDir(0);
+            }
+
+            // Turning on the spot at a sharp corner: position is held exactly on the corner, only heading changes.
+            if (_cornerTurn)
+            {
+                float cur = transform.eulerAngles.y;
+                _cornerElapsed += dt;
+                float y = Damped.FollowAngle(cur, _cornerYaw, ref _yawVel, prof.turnSmoothTime, dt);
+                transform.rotation = Quaternion.Euler(0f, y, 0f);
+                PlanarSpeed = 0f;
+                if (Mathf.Abs(Mathf.DeltaAngle(y, _cornerYaw)) <= CornerTurnDone || _cornerElapsed >= MaxTurnWait)
+                {
+                    _cornerTurn = false;
+                    SetTurnDir(0);
+                }
+                return;
             }
 
             // Cruise speed so the walk still takes about _dur including the ramps.
@@ -192,8 +244,19 @@ namespace MuseDesk.Agents
             float vMax = total / cruiseTime;
             float accel = MuseMotionProfile.AccelFor(vMax, prof.startSeconds);
             float decel = MuseMotionProfile.AccelFor(vMax, prof.stopSeconds);
-            bool arrived = total < 1e-5f || _mover.Step(total, vMax, accel, decel, dt);
-            float s = arrived ? total : _mover.position;
+            // The mover's target is the next SHARP corner (sharper than walkTurnLimit) or the end. Reaching a corner
+            // means braking to rest exactly on that waypoint; then the agent turns on the spot and walks on.
+            float stop = AgentWalkCorners.NextStopDistance(_pts, n, _mover.position, prof.walkTurnLimit, out int cornerIdx);
+            bool atCorner = false;
+            bool arrived;
+            if (total < 1e-5f) arrived = true;
+            else
+            {
+                bool reached = _mover.Step(stop, vMax, accel, decel, dt);
+                arrived = reached && cornerIdx < 0;
+                atCorner = reached && cornerIdx >= 0;
+            }
+            float s = arrived ? total : (atCorner ? stop : _mover.position);
             float k = total > 1e-5f ? Mathf.Clamp01(s / total) : 1f;
 
             Vector3 flat = AgentWalkPath.Sample(_pts, n, k, out int seg, out float segFrac, out Vector3 segDir);
@@ -221,6 +284,13 @@ namespace MuseDesk.Agents
             {
                 float y = Damped.FollowAngle(curYaw, YawOf(segDir), ref _yawVel, prof.turnSmoothTime, dt);
                 transform.rotation = Quaternion.Euler(0f, y, 0f);
+            }
+
+            if (atCorner)
+            {
+                _cornerYaw = AgentWalkCorners.OutYaw(_pts, n, cornerIdx, transform.eulerAngles.y);
+                int sign = AgentWalkCorners.TurnSign(transform.eulerAngles.y, _cornerYaw, CornerTurnDone);
+                if (sign != 0) { _cornerTurn = true; _cornerElapsed = 0f; SetTurnDir(sign); }
             }
 
             if (arrived)

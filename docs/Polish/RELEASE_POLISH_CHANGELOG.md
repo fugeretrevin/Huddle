@@ -50,7 +50,7 @@ Detail per change: `S2_INTERACTION_CHANGES.md`, `S3S4_DESK_MOTION_CHANGES.md`, `
 | Med | Antigravity Wall art and the Manager model are uncommitted work in their worktree; production still uses proxy boxes and the Developer-clone Manager |
 | Med | Card role colours (Tester amber, Developer green) still overlap state colours: a prefab and identity decision for the owner (`UI_AND_VISUAL_CONSISTENCY_AUDIT.md` #2) |
 | Low | No in-app toggle for Reduced Motion (config and PlayerPrefs only) |
-| Low | Card recycle and details-sheet `SetActive` pops; RebuildAll re-reveals every card on a resync |
-| Low | Desk routed-walk corners above the turn limit turn while walking (Wall stops and turns) |
+| Low | ~~Card recycle and details-sheet `SetActive` pops; RebuildAll re-reveals every card on a resync~~ FIXED in S9a (see `S9A_POPIN_CHANGES.md`) |
+| Low | ~~Desk routed-walk corners above the turn limit turn while walking (Wall stops and turns)~~ FIXED in S9a (brake, turn in place, continue; `AgentMovement.TurnInPlaceDirection`) |
 | Low | Two key visual systems not merged; off-palette hover cyan; provenance gaps on agent bubble and receipts |
 | Info | Claude provider wired but no real API call has been made (no key yet) |
