@@ -1,0 +1,127 @@
+﻿{
+    "generated":  "2026-11-15T10:36:59",
+    "note":  "rules: first match on file path regex OR class name regex wins; unmatched = core. fixtures lists are a generated snapshot; tests_batch.ps1 re-discovers from source at run time.",
+    "rules":  [
+                  {
+                      "group":  "real",
+                      "fileRegex":  "^Real/",
+                      "nameRegex":  "RealTests$"
+                  },
+                  {
+                      "group":  "voice",
+                      "fileRegex":  "Voice",
+                      "nameRegex":  "Voice"
+                  },
+                  {
+                      "group":  "board",
+                      "fileRegex":  "Phase2",
+                      "nameRegex":  "Board|Phase2|DemoGateway|DemoAgentGateway|SessionReducer"
+                  },
+                  {
+                      "group":  "wall",
+                      "fileRegex":  "^Wall/",
+                      "nameRegex":  "Wall|Habitat"
+                  },
+                  {
+                      "group":  "motion",
+                      "fileRegex":  "^Motion/",
+                      "nameRegex":  "Motion|Presence"
+                  },
+                  {
+                      "group":  "interaction",
+                      "fileRegex":  "^AgentInteraction/|HandOwnership",
+                      "nameRegex":  "Wave|Gaze|Stamp|Walk|Bubble|DeskPolish|AgentStatus|Ownership|CommandLedger"
+                  },
+                  {
+                      "group":  "spatial",
+                      "fileRegex":  "Spatial|Ceiling|Floor|Panel|Placement|WornPass",
+                      "nameRegex":  "Spatial|Ceiling|Floor|Panel|Placement|Pod"
+                  }
+              ],
+    "fixtures":  {
+                     "board":  [
+                                   "BoardPresenterLogicSpecTests",
+                                   "DemoGatewayDecisionSpecTests",
+                                   "Phase2WireContractSpecTests"
+                               ],
+                     "dormant":  [
+                                     "DemoAgentGatewayRuntimeTests",
+                                     "Phase2ReducerRuntimeTests",
+                                     "SessionReducerRuntimeTests"
+                                 ],
+                     "interaction":  [
+                                         "AgentStatusSentenceTests",
+                                         "AgentWalkCornersTests",
+                                         "AgentWalkPathTests",
+                                         "BubbleProvenanceTests",
+                                         "CeilingPullOwnershipTests",
+                                         "CommandLedgerTests",
+                                         "DeskPolishLogicTests",
+                                         "FloorAimOwnershipTests",
+                                         "GazeDwellTimerTests",
+                                         "GrabTrackingWatchTests",
+                                         "HandOwnershipTests",
+                                         "PlaceHereKeyTests",
+                                         "SmallLogicTests",
+                                         "StampPoofTests",
+                                         "WalkClearanceTests",
+                                         "WaveDetectorTests"
+                                     ],
+                     "motion":  [
+                                    "MotionTests",
+                                    "PresenceTests",
+                                    "ReducedMotionPreferenceTests"
+                                ],
+                     "real":  [
+                                  "BoardPresenterRealTests",
+                                  "DemoGatewayRealTests",
+                                  "Phase2ConstantsRealTests"
+                              ],
+                     "spatial":  [
+                                     "CeilingDockRouteTests",
+                                     "CeilingPodAudioCueTests",
+                                     "CeilingPodAudioSynthTests",
+                                     "CeilingPolishAttentionTests",
+                                     "CeilingPullTests",
+                                     "CeilingScanRevealTests",
+                                     "CeilingScreenTests",
+                                     "CeilingSeatFrameTests",
+                                     "CeilingShallowDescentTests",
+                                     "CeilingVfxMapTests",
+                                     "FloorAimDirectorTests",
+                                     "FloorAimMathTests",
+                                     "FloorAimSessionTests",
+                                     "FloorLowClutterTests",
+                                     "FloorPlaceHereTests",
+                                     "ModeConsoleLogicTests",
+                                     "PanelCodecTests",
+                                     "PanelHeightTests",
+                                     "PanelOverlapTests",
+                                     "PanelReachTests",
+                                     "PlacementGuideLogicTests",
+                                     "SpatialCeilingEvaluatorTests",
+                                     "SpatialCeilingPodTests",
+                                     "SpatialCeilingSweptPathTests",
+                                     "SpatialDirectorTests",
+                                     "SpatialFloorEvaluatorTests",
+                                     "SpatialIsolationTests",
+                                     "SpatialPersistenceTests",
+                                     "SpatialReachAttentionTests",
+                                     "SpatialReachDeliveryTests",
+                                     "SpatialReachHoldTests",
+                                     "SpatialSweptMovesTests",
+                                     "SpatialTransitionMachineTests"
+                                 ],
+                     "voice":  [
+                                   "SpatialReachVoicePhraseTests",
+                                   "VoiceAnswersTests",
+                                   "VoiceIntentParserTests"
+                               ],
+                     "wall":  [
+                                  "AgentVisitPortalManagerTests",
+                                  "HabitatMotionTests",
+                                  "WallOfflineLogicTests",
+                                  "WallPlacementTests"
+                              ]
+                 }
+}
