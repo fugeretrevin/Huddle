@@ -627,6 +627,7 @@ namespace MuseDesk.Editor.ArtPipeline
             if (vfxPrefabs.TryGetValue("VFX_Elevator_Arrival", out GameObject elevatorVfx))
             {
                 WireElevatorCarPrefab($"{WallPrefabsDir}/WallHabitat_ElevatorCar.prefab", elevatorVfx);
+                WireElevatorCarPrefab($"{WallPrefabsDir}/WallHabitat_ElevatorCar_Compact.prefab", elevatorVfx);
             }
         }
 
