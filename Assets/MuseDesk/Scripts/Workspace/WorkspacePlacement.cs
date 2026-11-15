@@ -274,6 +274,11 @@ namespace MuseDesk.Workspace
             while (t < 2.5f)
             {
                 t += Time.deltaTime;
+                // One writer per mode: once the office is on the floor / ceiling, or a mode transition is moving
+                // it, the spatial director owns the root and this loop must stop (same guard as the other
+                // placement writers above).
+                if (MuseDesk.Spatial.SpatialWorkspaceState.Mode != MuseDesk.Spatial.WorkspaceMode.Desk
+                    || MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning) yield break;
                 if (workspaceRoot != null)
                 {
                     var target = FacingUserYaw(workspaceRoot.position);

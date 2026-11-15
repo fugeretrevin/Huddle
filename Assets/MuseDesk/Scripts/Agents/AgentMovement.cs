@@ -1,4 +1,5 @@
 ﻿using System;
+using MuseDesk.Motion;
 using UnityEngine;
 
 namespace MuseDesk.Agents
@@ -34,7 +35,7 @@ namespace MuseDesk.Agents
         bool _useDestPos;
         bool _moving, _returning;
         bool _viaExit;
-        float _t, _dur = 1.6f;
+        float _dur = 1.6f;
         Action _onArrived;
         Vector3 _startWorld;
 
@@ -66,7 +67,8 @@ namespace MuseDesk.Agents
             if (destination == null) return;
             _dest = destination; _useDestPos = false; _returning = false; _onArrived = onArrived;
             _viaExit = viaExit;
-            _startWorld = transform.position; _t = 0f; _moving = true; AtHome = false;
+            BeginProfile();
+            _startWorld = transform.position; _moving = true; AtHome = false;
             _dur = ComputeDuration();
         }
 
@@ -82,7 +84,8 @@ namespace MuseDesk.Agents
             Vector3 pos = head.position + fwd * distance + Vector3.down * dropBelowEye;
             pos.y = transform.position.y;   // keep the walk on the desk plane
             _destPos = pos; _useDestPos = true; _returning = false; _onArrived = null; _viaExit = true;
-            _startWorld = transform.position; _t = 0f; _moving = true; AtHome = false;
+            BeginProfile();
+            _startWorld = transform.position; _moving = true; AtHome = false;
             _dur = ComputeDuration();
         }
 
@@ -92,7 +95,8 @@ namespace MuseDesk.Agents
             // on the spot for a full travel time whenever a caller sent it home twice.)
             if (AtHome && !_moving) return;
             _returning = true; _onArrived = null;
-            _startWorld = transform.position; _t = 0f; _moving = true;
+            BeginProfile();
+            _startWorld = transform.position; _moving = true;
             _dur = ComputeDuration();
         }
 
@@ -121,52 +125,137 @@ namespace MuseDesk.Agents
             return AgentWalkPath.Duration(travelSeconds, AgentWalkPath.Length(_pts, n), maxRoutedSpeed);
         }
 
+        // ---- Polish: speed profile, turn-in-place, damped facing (waypoints and paths are unchanged) ----
+        // Position advances along the path DISTANCE with a ProfiledMover (accelerate over startSeconds, brake to rest
+        // exactly on the destination over stopSeconds), so there is no end snap. Facing is a critically damped yaw
+        // (Damped.FollowAngle). A walk that starts facing more than walkTurnLimit away turns on the spot first.
+        ProfiledMover _mover;
+        float _yawVel;
+        float _walkTime, _turnWait;
+        bool _startTurn;          // from rest: turn in place before the first step if the heading error is large
+        bool _settling;           // returned home: the final turn to the station pose is still finishing
+        const float MaxTurnWait = 1.0f;   // never hold a walk longer than this for the start turn
+
+        static float YawOf(Vector3 dir) { return Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg; }
+
+        /// <summary>Resets the profile for a new walk. A walk re-targeted mid-stride keeps its current speed
+        /// (no instant stop) and skips the start turn.</summary>
+        void BeginProfile()
+        {
+            _mover.position = 0f;
+            if (!_moving) _mover.velocity = 0f;
+            _startTurn = !_moving;
+            _walkTime = 0f; _turnWait = 0f;
+            _settling = false;
+        }
+
         void Update()
         {
-            if (!_moving) return;
+            if (!_moving)
+            {
+                if (_settling) SettleHome();
+                return;
+            }
             float dt = Time.deltaTime;
-            Vector3 before = transform.position;
-            _t += dt / Mathf.Max(0.1f, _dur);
-            float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_t));
+            if (dt <= 1e-6f) return;
+            var prof = MuseMotionProfile.Active;
+            _walkTime += dt;
 
+            Vector3 before = transform.position;
             Vector3 targetWorld = TargetWorld();
             int n = BuildPath(_startWorld, targetWorld, _returning, _viaExit, _pts);
+            float total = AgentWalkPath.Length(_pts, n);
+
+            // Heading wanted along the first part of the path, for the start turn.
+            if (_startTurn)
+            {
+                AgentWalkPath.Sample(_pts, n, 0f, out _, out _, out Vector3 d0);
+                if (d0.sqrMagnitude > 1e-5f)
+                {
+                    float cur = transform.eulerAngles.y;
+                    float err = Mathf.Abs(Mathf.DeltaAngle(cur, YawOf(d0)));
+                    _turnWait += dt;
+                    if (err > prof.walkTurnLimit && _turnWait < MaxTurnWait)
+                    {
+                        float y = Damped.FollowAngle(cur, YawOf(d0), ref _yawVel, prof.turnSmoothTime, dt);
+                        transform.rotation = Quaternion.Euler(0f, y, 0f);
+                        PlanarSpeed = 0f;
+                        return;   // still on the spot: the walk clip steps, the body does not travel
+                    }
+                }
+                _startTurn = false;
+            }
+
+            // Cruise speed so the walk still takes about _dur including the ramps.
+            float ramps = 0.5f * (prof.startSeconds + prof.stopSeconds);
+            float cruiseTime = Mathf.Max(0.3f * _dur, _dur - ramps);
+            float vMax = total / cruiseTime;
+            float accel = MuseMotionProfile.AccelFor(vMax, prof.startSeconds);
+            float decel = MuseMotionProfile.AccelFor(vMax, prof.stopSeconds);
+            bool arrived = total < 1e-5f || _mover.Step(total, vMax, accel, decel, dt);
+            float s = arrived ? total : _mover.position;
+            float k = total > 1e-5f ? Mathf.Clamp01(s / total) : 1f;
+
             Vector3 flat = AgentWalkPath.Sample(_pts, n, k, out int seg, out float segFrac, out Vector3 segDir);
             flat.y = Mathf.Lerp(_startWorld.y, targetWorld.y, k);
-            flat.y += Mathf.Abs(Mathf.Sin(_t * Mathf.PI * walkBobSpeed)) * walkBobHeight;
-            transform.position = flat;
+            float speed01 = vMax > 1e-5f ? Mathf.Clamp01(Mathf.Abs(_mover.velocity) / vMax) : 0f;
+            if (!arrived) flat.y += Mathf.Abs(Mathf.Sin(k * Mathf.PI * walkBobSpeed)) * walkBobHeight * speed01;
+            transform.position = arrived ? targetWorld : flat;
 
-            if (dt > 1e-5f)
             {
-                float dx = flat.x - before.x, dz = flat.z - before.z;
+                float dx = transform.position.x - before.x, dz = transform.position.z - before.z;
                 PlanarSpeed = Mathf.Sqrt(dx * dx + dz * dz) / dt;
             }
 
             bool routed = n > 2;
             bool lastStretch = routed ? (seg == n - 2 && segFrac > 0.5f) : k > 0.75f;
+            float curYaw = transform.eulerAngles.y;
             if (_returning && lastStretch)
             {
                 // Last stretch of the walk home: turn back to the station pose (toward the desk).
                 Quaternion homeRot = _parent != null ? _parent.rotation * _homeLocalRot : _homeLocalRot;
-                transform.rotation = Quaternion.Slerp(transform.rotation, homeRot, Time.deltaTime * 10f);
+                float y = Damped.FollowAngle(curYaw, homeRot.eulerAngles.y, ref _yawVel, prof.turnSmoothTime, dt);
+                transform.rotation = Quaternion.Euler(0f, y, 0f);
             }
             else if (segDir.sqrMagnitude > 1e-5f)
-                transform.rotation = Quaternion.Slerp(transform.rotation,
-                    Quaternion.LookRotation(segDir, Vector3.up), Time.deltaTime * (routed ? 9f : 6f));
-
-            if (_t >= 1f)
             {
-                transform.position = targetWorld;
+                float y = Damped.FollowAngle(curYaw, YawOf(segDir), ref _yawVel, prof.turnSmoothTime, dt);
+                transform.rotation = Quaternion.Euler(0f, y, 0f);
+            }
+
+            if (arrived)
+            {
                 _moving = false;
                 PlanarSpeed = 0f;
                 if (_returning)
                 {
                     if (_parent != null) transform.localPosition = _homeLocal;
-                    transform.localRotation = _homeLocalRot;
                     AtHome = true;
+                    _settling = true;      // the station pose is reached by a damped turn, not a snap
+                    _turnWait = 0f;
+                    SettleHome();
                 }
                 var cb = _onArrived; _onArrived = null; cb?.Invoke();
             }
+        }
+
+        /// <summary>After a walk home: finish the turn to the station pose with the same damped follower, then land
+        /// exactly on it (the remaining error is below a twentieth of a degree by then).</summary>
+        void SettleHome()
+        {
+            float dt = Time.deltaTime;
+            Quaternion homeRot = _parent != null ? _parent.rotation * _homeLocalRot : _homeLocalRot;
+            float target = homeRot.eulerAngles.y;
+            float cur = transform.eulerAngles.y;
+            _turnWait += dt;
+            float y = Damped.FollowAngle(cur, target, ref _yawVel, MuseMotionProfile.Active.turnSmoothTime, dt);
+            if (Mathf.Abs(Mathf.DeltaAngle(y, target)) < 0.05f || _turnWait > MaxTurnWait)
+            {
+                transform.localRotation = _homeLocalRot;
+                _settling = false;
+                _yawVel = 0f;
+            }
+            else transform.rotation = Quaternion.Euler(0f, y, 0f);
         }
     }
 }

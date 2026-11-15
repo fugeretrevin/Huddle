@@ -274,19 +274,30 @@ namespace MuseDesk.Phase2.Board
                 // The hand owns the transform. Remember that the card has left its slot.
                 _displaced = true;
                 _settling = false;
+                if (_revealing) { _revealing = false; _revealScale = 1f; if (_baseScaleCaptured) transform.localScale = _baseScale; }
                 return;
             }
             float goal = IsSelected ? 1f : 0f;
             bool liftMoving = _lift != goal;
-            if (!_settling && !liftMoving) return;
-            float dt = Time.unscaledDeltaTime;
+            if (!_settling && !liftMoving && !_revealing) return;
+            float dt = MuseDesk.Motion.MotionSettings.SafeStep(Time.unscaledDeltaTime);
             if (liftMoving) _lift = Mathf.MoveTowards(_lift, goal, dt / 0.12f);
+            if (_revealing)
+            {
+                var appear = MuseDesk.Motion.MuseMotionProfile.Active.panelAppear;
+                float rd = Mathf.Max(0.01f, appear.Duration);
+                _revealT = Mathf.MoveTowards(_revealT, 1f, dt / rd);
+                _revealScale = Mathf.Max(0.001f, appear.Evaluate(_revealT));
+                if (_revealT >= 1f) { _revealing = false; _revealScale = 1f; }
+            }
 
             if (_settling)
             {
-                _settleT = settleSeconds > 0f ? Mathf.MoveTowards(_settleT, 1f, dt / settleSeconds) : 1f;
-                float inv = 1f - _settleT;
-                float eased = 1f - inv * inv * inv;                    // ease-out cubic
+                // Glide with the cardRelease token (InOutCubic, exact at both ends) for drops, lane changes and reflow.
+                var release = MuseDesk.Motion.MuseMotionProfile.Active.cardRelease;
+                float sd = Mathf.Max(0.01f, release.Duration);
+                _settleT = settleSeconds > 0f ? Mathf.MoveTowards(_settleT, 1f, dt / sd) : 1f;
+                float eased = release.Evaluate(_settleT);
                 Vector3 to = _settleToHome ? HomeWithLift() : _settleToPos;
                 Quaternion toRot = _settleToHome ? _homeLocalRot : _settleToRot;
                 transform.localPosition = Vector3.LerpUnclamped(_settleFromPos, to, eased);
@@ -302,7 +313,7 @@ namespace MuseDesk.Phase2.Board
                 transform.localPosition = HomeWithLift();
                 transform.localRotation = _homeLocalRot;
             }
-            if (_baseScaleCaptured) transform.localScale = _baseScale * (1f + (selectedScale - 1f) * _lift);
+            if (_baseScaleCaptured) transform.localScale = _baseScale * ((1f + (selectedScale - 1f) * _lift) * _revealScale);
         }
 
         /// <summary>The resting slot, moved toward the reader (the region's -Z) by the selection lift.</summary>
@@ -333,6 +344,9 @@ namespace MuseDesk.Phase2.Board
         {
             _settling = false;
             _displaced = false;
+            _placed = false;
+            _revealing = false;
+            _revealScale = 1f;
             _parked = false;
             _simulatedHold = false;
             _pending = false;
@@ -457,18 +471,47 @@ namespace MuseDesk.Phase2.Board
         {
             _parked = false;
             if (!_hasHome) return;
-            bool glide = _displaced && CanAnimate;
+            // Polish: a card that already rests on the board and whose SLOT changed (a lane neighbour left or
+            // arrived, or the card moved lane) glides there with the cardRelease token instead of teleporting.
+            bool slotMoved = _placed && CanAnimate && _homeParent != null && transform.parent == _homeParent
+                             && (transform.localPosition - HomeWithLift()).sqrMagnitude > 1e-8f;
+            // Already gliding to this very slot (layout runs on every task event): leave the running glide alone.
+            if (_settling && _settleToHome && transform.parent == _homeParent
+                && (_settleToPos - _homeLocalPos).sqrMagnitude < 1e-10f) return;
+            bool glide = (_displaced || slotMoved) && CanAnimate;
             if (_homeParent != null && transform.parent != _homeParent)
                 transform.SetParent(_homeParent, worldPositionStays: glide);
             if (glide)
             {
                 BeginSettle(_homeLocalPos, _homeLocalRot, toHome: true);
+                _placed = true;
                 return;
             }
             _settling = false;
             _displaced = false;
+            _placed = true;
             transform.localPosition = HomeWithLift();
             transform.localRotation = _homeLocalRot;
+        }
+
+        // True once the card has been put in a lane slot since it was shown (only then can a slot change glide).
+        bool _placed;
+
+        // Reveal of a newly created card: grows from nothing with the panelAppear token (never a full-size pop).
+        bool _revealing;
+        float _revealT;
+        float _revealScale = 1f;
+
+        /// <summary>A newly created card grows into its slot (panelAppear) instead of popping in at full size.
+        /// Presentation only; the card's data and slot are already final.</summary>
+        public void BeginReveal()
+        {
+            CaptureBaseScale();
+            if (!CanAnimate || IsHeld) { _revealing = false; _revealScale = 1f; return; }
+            _revealing = true;
+            _revealT = 0f;
+            _revealScale = 0.001f;
+            transform.localScale = _baseScale * _revealScale;   // before the first rendered frame
         }
 
         /// <summary>Layout hook for BoardPresenter: put a card that is not in a hand at its recorded
@@ -485,7 +528,11 @@ namespace MuseDesk.Phase2.Board
         public void MoveToRegion(Transform region)
         {
             if (region == null || transform.parent == region) return;
-            bool keepWorld = (_displaced || _settling || IsHeld) && CanAnimate;
+            bool held = IsHeld;
+            // A card already resting on the board keeps its place in the world too, so it glides to the new
+            // lane's slot (cardRelease) rather than teleporting. A held card is never touched: the hand owns it.
+            bool keepWorld = (_displaced || _settling || held || _placed) && CanAnimate;
+            if (keepWorld && !held && !_settling) _displaced = true;   // so the layout eases it into the new slot
             Transform old = transform.parent;
             // A glide to a pad is expressed in the old lane's frame: carry its target across.
             Vector3 targetWorld = old != null ? old.TransformPoint(_settleToPos) : _settleToPos;

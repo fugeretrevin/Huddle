@@ -40,6 +40,7 @@ namespace MuseDesk.Workspace
         Quaternion _fromRot;
         System.Func<int> _sel;
         bool _selResolved;
+        bool _wasTransitioning;
 
         bool IsHeld()
         {
@@ -87,6 +88,18 @@ namespace MuseDesk.Workspace
         {
             // The whole workspace is moved into place in front of the user (and again on recenter).
             // A dynamic body must not be simulated through that jump: go home and settle again.
+            // One writer at a time: while a workspace mode transition moves the office, WorkspacePropCarrier owns the
+            // props' local pose (it pins them every frame). This component only freezes its body and tracks the parent,
+            // then settles at home once the transition is over, instead of seeing the travel as a "jump" each frame.
+            if (MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning)
+            {
+                if (_mode == Mode.Dynamic || _mode == Mode.Returning) _rb.isKinematic = true;
+                _wasTransitioning = true;
+                if (_parent != null) _lastParentPos = _parent.position;
+                return;
+            }
+            if (_wasTransitioning) { _wasTransitioning = false; EnterSettling(); return; }
+
             if (_parent != null)
             {
                 float moved = (_parent.position - _lastParentPos).sqrMagnitude;

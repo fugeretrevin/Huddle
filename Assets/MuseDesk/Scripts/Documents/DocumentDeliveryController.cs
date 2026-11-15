@@ -72,7 +72,93 @@ namespace MuseDesk.Documents
                 SourceMode = controller.IsLive ? SourceModes.Live : SourceModes.Demo,
             };
             if (panel) panel.Bind(content, content.SourceMode);
-            if (paperRoot) { paperRoot.SetActive(false); paperRoot.SetActive(true); }
+            ShowPaper();
+        }
+
+        // ---- Presentation: the paper grows in / shrinks away instead of blinking (never while a hand holds it) ----
+        Coroutine _anim;
+
+        HeldPaperController HeldOf() { return paperRoot != null ? paperRoot.GetComponent<HeldPaperController>() : null; }
+
+        // Re-trigger OnEnable placement exactly as before (SetActive off/on), then reveal with panelAppear.
+        void ShowPaper()
+        {
+            if (paperRoot == null) return;
+            var held = HeldOf();
+            bool userHolds = held != null && paperRoot.activeSelf && held.IsHeld;
+            if (_anim != null) { StopCoroutine(_anim); _anim = null; }
+            paperRoot.SetActive(false);   // re-trigger OnEnable placement
+            paperRoot.SetActive(true);
+            if (!userHolds) _anim = StartCoroutine(RevealPaper(held));
+        }
+
+        // True while the user's hand has the paper (a reveal / hide must never touch it then).
+        static bool UserHolds(HeldPaperController held, bool lockedAtStart)
+        {
+            return held != null && (held.IsHeld || (!lockedAtStart && held.IsTaken));
+        }
+
+        IEnumerator RevealPaper(HeldPaperController held)
+        {
+            if (paperRoot == null) yield break;
+            var t = paperRoot.transform;
+            bool locked = held != null && held.ScaleLocked;
+            Vector3 full = t.localScale;               // after OnEnable: the size the paper must reach
+            if (locked) held.RevealFactor = 0.001f; else t.localScale = full * 0.001f;   // before the first rendered frame
+            var clock = new MuseDesk.Motion.MotionClock();
+            clock.Start(MuseDesk.Motion.MuseMotionProfile.Active.panelAppear);
+            while (clock.Running)
+            {
+                if (paperRoot == null || !paperRoot.activeInHierarchy) { _anim = null; yield break; }
+                if (UserHolds(held, locked))
+                {
+                    // The user took it mid-reveal: the hand and HeldPaperController own the scale from here.
+                    if (locked && held != null) held.RevealFactor = 1f;
+                    _anim = null; yield break;
+                }
+                clock.Step(Time.deltaTime);
+                float k = clock.Value;
+                if (locked) held.RevealFactor = Mathf.Lerp(0.001f, 1f, k);
+                else t.localScale = Vector3.Lerp(full * 0.001f, full, k);
+                yield return null;
+            }
+            if (locked && held != null) held.RevealFactor = 1f; else if (!UserHolds(held, false)) t.localScale = full;
+            _anim = null;
+        }
+
+        // Shrink away with panelHide, then deactivate. Waits while the user holds the paper.
+        IEnumerator HidePaper(HeldPaperController held)
+        {
+            if (paperRoot == null || !paperRoot.activeInHierarchy) yield break;
+            while (held != null && held.IsHeld) yield return null;
+            if (paperRoot == null || !paperRoot.activeInHierarchy) yield break;
+            // A new decision or an in-flight answer arrived while we waited: this paper is not ours to hide.
+            if (PaperStillNeeded()) yield break;
+            var t = paperRoot.transform;
+            bool locked = held != null && held.ScaleLocked;
+            Vector3 from = t.localScale;
+            var clock = new MuseDesk.Motion.MotionClock();
+            clock.Start(MuseDesk.Motion.MuseMotionProfile.Active.panelHide);
+            while (clock.Running)
+            {
+                if (held != null && held.IsHeld) { if (locked) held.RevealFactor = 1f; else t.localScale = from; yield break; }
+                if (PaperStillNeeded()) { if (locked && held != null) held.RevealFactor = 1f; else t.localScale = from; yield break; }
+                clock.Step(Time.deltaTime);
+                float s = Mathf.Lerp(1f, 0.001f, clock.Value);
+                if (locked && held != null) held.RevealFactor = s; else t.localScale = from * s;
+                yield return null;
+            }
+            paperRoot.SetActive(false);
+            if (locked && held != null) held.RevealFactor = 1f; else t.localScale = from;
+        }
+
+        // The paper of the CURRENT decision must stay while its answer is pending: a response is in flight, or the
+        // server still lists it as awaiting a human.
+        bool PaperStillNeeded()
+        {
+            if (_responding) return true;
+            if (controller == null || string.IsNullOrEmpty(_currentDecisionId)) return false;
+            return controller.IsRespondingTo(_currentDecisionId) || controller.PendingDecisionId == _currentDecisionId;
         }
 
         // The response never reached the backend: say so on the paper and give the buttons back.
@@ -103,11 +189,7 @@ namespace MuseDesk.Documents
             int revision = e.PayloadValue<int>("decision_revision", e.PayloadValue<int>("revision", 0));
             // The header names the agent that asked, from the event's own agent_id.
             if (panel) panel.Bind(content, content.SourceMode, e.PayloadString("research_provenance_label", null), revision, e.AgentId);
-            if (paperRoot)
-            {
-                paperRoot.SetActive(false);   // re-trigger OnEnable placement
-                paperRoot.SetActive(true);
-            }
+            ShowPaper();
         }
 
         void OnDecisionResolved(string decisionId, string state)
@@ -126,6 +208,7 @@ namespace MuseDesk.Documents
             // File the paper away instead of blinking it out: it shrinks and glides to the filing
             // spot (the out-tray), so the user sees where a decided document goes.
             var held = paperRoot != null ? paperRoot.GetComponent<HeldPaperController>() : null;
+            bool filed = false;
             if (paperRoot != null && fileTarget != null && held != null && paperRoot.activeInHierarchy && held.IsTaken)
             {
                 // Don't pull it out of the user's hand: wait (bounded) until they let go.
@@ -148,9 +231,18 @@ namespace MuseDesk.Documents
                     yield return null;
                 }
                 t.localScale = held.FullScale;      // restored for the next decision
+                filed = true;
+                paperRoot.SetActive(false);         // it already shrank to a speck at the out-tray
             }
 
-            if (paperRoot) paperRoot.SetActive(false);
+            // Not filed (never taken, or no filing spot): shrink away instead of blinking out.
+            if (!filed && paperRoot != null && paperRoot.activeSelf)
+            {
+                if (_anim != null) { StopCoroutine(_anim); _anim = null; }
+                // Runs inside this coroutine, so a new decision (which stops _dismiss) cancels the hide cleanly.
+                yield return HidePaper(HeldOf());
+                if (PaperStillNeeded() || (paperRoot != null && paperRoot.activeSelf)) { _dismiss = null; yield break; }
+            }
             _currentDecisionId = null;
             _dismiss = null;
         }
@@ -159,7 +251,14 @@ namespace MuseDesk.Documents
         void OnSessionReset()
         {
             if (_dismiss != null) { StopCoroutine(_dismiss); _dismiss = null; }
-            if (paperRoot) paperRoot.SetActive(false);
+            if (_anim != null) { StopCoroutine(_anim); _anim = null; }
+            // Replay: the whole session is being cleared, so the paper goes at once (the reset is not a decision).
+            if (paperRoot)
+            {
+                var held = HeldOf();
+                if (held != null) held.RevealFactor = 1f;
+                paperRoot.SetActive(false);
+            }
             _currentDecisionId = null;
             _responding = false;
             if (panel) panel.Clear();

@@ -169,6 +169,7 @@ namespace MuseDesk.Phase2.Board
             {
                 view = Rent();
                 _views[card.TaskId] = view;
+                view.BeginReveal();   // grows in with panelAppear; its slot and data are final (no full-size pop)
                 var drag = view.GetComponent<TaskDragController>();
                 if (drag != null) drag.Bind(this, view);
                 view.AssignRequested -= OnPokeAssign;   // avoid double subscription on reuse

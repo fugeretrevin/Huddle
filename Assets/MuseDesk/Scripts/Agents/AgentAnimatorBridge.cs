@@ -52,6 +52,8 @@ namespace MuseDesk.Agents
         [Tooltip("Slowest and fastest playback while walking, as a multiple of the authored speed.")]
         public float walkRateMin = 0.7f;
         public float walkRateMax = 1.4f;
+        [Tooltip("Slowest playback during the start and stop ramps of a walk (the body is almost still).")]
+        public float walkRateFloor = 0.2f;
 
         // No cross-fade is ever shorter than this, whatever is serialized on the component: shorter
         // blends read as a pop on the headset.
@@ -183,11 +185,14 @@ namespace MuseDesk.Agents
             if (_moving && matchWalkToSpeed && movement != null && walkCycleMeters > 1e-4f)
             {
                 float authored = walkCycleMeters / WalkClipSeconds;
+                // The lower bound is walkRateFloor (not walkRateMin): AgentMovement now accelerates from rest and
+                // brakes to rest, so the feet must slow with the body or they skate at the start and the stop.
                 want = Mathf.Clamp(movement.PlanarSpeed / authored,
-                                   Mathf.Min(walkRateMin, walkRateMax), Mathf.Max(walkRateMin, walkRateMax));
+                                   Mathf.Min(walkRateFloor, walkRateMax), Mathf.Max(walkRateMin, walkRateMax));
             }
             if (want == _rate) return;
-            _rate = Mathf.MoveTowards(_rate, want, Time.deltaTime * 4f);
+            // Slowing follows the body at once (a full stride under a slow start is the skate); speeding up eases.
+            _rate = want < _rate ? want : Mathf.MoveTowards(_rate, want, Time.deltaTime * 4f);
             animator.speed = _rate;
         }
 

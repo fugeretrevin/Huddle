@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using MuseDesk.Motion;
 using MuseDesk.Models;
 using MuseDesk.Networking;
 
@@ -202,7 +203,7 @@ namespace MuseDesk.Agents
             if (artifactProp != null)
             {
                 var srcHand = FindChild(source.transform, "RightHand_Attach");
-                AttachProp(srcHand != null ? srcHand : source.transform);
+                AttachProp(srcHand != null ? srcHand : source.transform, true);
             }
 
             // Destination a short stop-distance in front of the receiver (kept alive for the whole move).
@@ -230,16 +231,21 @@ namespace MuseDesk.Agents
             if (srcBridge != null) srcBridge.PlayHandoffGive();
             if (dstBridge != null) dstBridge.PlayHandoffReceive();
 
+            float held = 0f;
             if (artifactProp != null)
             {
                 var targetHand = FindChild(target.transform, "RightHand_Attach");
-                AttachProp(targetHand != null ? targetHand : target.transform);
+                var flightFrame = source.transform.parent != null ? source.transform.parent : source.transform;
+                float t0 = Time.time;
+                yield return FlyToken(targetHand != null ? targetHand : target.transform, flightFrame);
+                held = Time.time - t0;
             }
 
-            yield return new WaitForSeconds(exchangeHold);
+            // Same total hold as before: the flight counts toward it.
+            yield return new WaitForSeconds(Mathf.Max(0f, exchangeHold - held));
 
             // The receiver has the work now; put the token away so it doesn't hang in its hand forever.
-            if (artifactProp != null) artifactProp.gameObject.SetActive(false);
+            HideToken();
 
             // The exchange itself is over; only the walk home remains.
             if (_queue.Count == 0) ExchangePending = false;
@@ -255,7 +261,8 @@ namespace MuseDesk.Agents
         }
 
         // Parent the token to a hand while keeping its authored WORLD size (rig bones are not unit scale).
-        void AttachProp(Transform hand)
+        // reveal: start collapsed and grow with panelAppear (the first visible frame is never full size).
+        void AttachProp(Transform hand, bool reveal = false)
         {
             if (!_propScaleCaptured)
             {
@@ -264,15 +271,81 @@ namespace MuseDesk.Agents
                 if (_propWorldScale.magnitude > 3f) _propWorldScale = Vector3.one;
                 _propScaleCaptured = true;
             }
-            artifactProp.gameObject.SetActive(true);
+            if (_tokenAnim != null) { StopCoroutine(_tokenAnim); _tokenAnim = null; }
             artifactProp.SetParent(hand, false);
             artifactProp.localPosition = Vector3.zero;
             artifactProp.localRotation = Quaternion.identity;
-            Vector3 p = hand.lossyScale;
-            artifactProp.localScale = new Vector3(
+            Vector3 full = FullLocalScale(hand);
+            // Scale is set BEFORE activation so a hidden token never shows one frame at full size.
+            artifactProp.localScale = reveal ? full * 0.001f : full;
+            artifactProp.gameObject.SetActive(true);
+            if (reveal) _tokenAnim = StartCoroutine(ScaleToken(full * 0.001f, full, MuseMotionProfile.Active.panelAppear, false));
+        }
+
+        Vector3 FullLocalScale(Transform parent)
+        {
+            Vector3 p = parent.lossyScale;
+            return new Vector3(
                 _propWorldScale.x / Mathf.Max(1e-5f, Mathf.Abs(p.x)),
                 _propWorldScale.y / Mathf.Max(1e-5f, Mathf.Abs(p.y)),
                 _propWorldScale.z / Mathf.Max(1e-5f, Mathf.Abs(p.z)));
+        }
+
+        // ---- Token presentation (visual only; the exchange timing and fallbacks are unchanged) ----
+        const float FlightSeconds = 0.42f;
+        Coroutine _tokenAnim;
+
+        IEnumerator ScaleToken(Vector3 from, Vector3 to, MotionToken token, bool deactivateAtEnd)
+        {
+            var clock = new MotionClock();
+            clock.Start(token);
+            Transform t = artifactProp;
+            while (t != null && clock.Running)
+            {
+                clock.Step(Time.deltaTime);
+                t.localScale = Vector3.LerpUnclamped(from, to, clock.Value);
+                yield return null;
+            }
+            if (t != null)
+            {
+                t.localScale = to;
+                if (deactivateAtEnd) t.gameObject.SetActive(false);
+            }
+            _tokenAnim = null;
+        }
+
+        // The token leaves the giver's hand on a short arc and lands in the receiver's hand socket (world-space,
+        // InOutCubic, a fixed time), instead of re-parenting hand to hand in one frame.
+        IEnumerator FlyToken(Transform toHand, Transform frame)
+        {
+            Transform t = artifactProp;
+            if (_tokenAnim != null) { StopCoroutine(_tokenAnim); _tokenAnim = null; }
+            if (t == null || !t.gameObject.activeInHierarchy) { AttachProp(toHand, true); yield break; }
+            Vector3 p0 = t.position; Quaternion r0 = t.rotation;
+            t.SetParent(frame, true);                       // keeps its world pose and world size
+            float arc = 0.03f * (frame != null ? Mathf.Abs(frame.lossyScale.y) : 1f);
+            var token = new MotionToken(FlightSeconds, EaseKind.InOutCubic);
+            var clock = new MotionClock();
+            clock.Start(token);
+            while (clock.Running && toHand != null)
+            {
+                clock.Step(Time.deltaTime);
+                float e = clock.Value;
+                Vector3 pos = Vector3.LerpUnclamped(p0, toHand.position, e) + Vector3.up * (arc * 4f * e * (1f - e));
+                t.SetPositionAndRotation(pos, Quaternion.Slerp(r0, toHand.rotation, e));
+                yield return null;
+            }
+            // Settle exactly in the socket; the pose is already there, so no jump.
+            AttachProp(toHand, false);
+        }
+
+        // Shrink away (panelHide) then deactivate; never a pop-out.
+        void HideToken()
+        {
+            if (artifactProp == null || !artifactProp.gameObject.activeSelf) return;
+            if (_tokenAnim != null) { StopCoroutine(_tokenAnim); _tokenAnim = null; }
+            Vector3 cur = artifactProp.localScale;
+            _tokenAnim = StartCoroutine(ScaleToken(cur, cur * 0.001f, MuseMotionProfile.Active.panelHide, true));
         }
 
         static Transform FindChild(Transform root, string childName)

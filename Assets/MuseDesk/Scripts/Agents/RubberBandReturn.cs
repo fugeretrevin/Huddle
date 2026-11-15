@@ -10,6 +10,10 @@ namespace MuseDesk.Agents
     /// place permanently. Purely cosmetic: we move our own localPosition (kinematic), never real
     /// physics, and never touch task/agent state.
     /// </summary>
+    // Writer ownership of the agent root localPosition: AgentMovement owns it while IsMoving, this component owns it
+    // otherwise (it already yields below). Execution order is pinned AFTER AgentMovement (order 0) so on the frame a
+    // walk ends this component always sees the final arrival pose and re-homes from it, never a stale one.
+    [DefaultExecutionOrder(20)]
     public class RubberBandReturn : MonoBehaviour
     {
         [Tooltip("Max displacement from home, metres.")]

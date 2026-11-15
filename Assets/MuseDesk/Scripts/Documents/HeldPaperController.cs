@@ -71,6 +71,7 @@ namespace MuseDesk.Documents
             _taken = false;
             _scaleLocked = false;
             _filing = false;
+            RevealFactor = 1f;
             _readableSince = float.MaxValue;
             if (agentHoldPoint != null)
             {
@@ -162,13 +163,20 @@ namespace MuseDesk.Documents
             if (placer) placer.enabled = false;
         }
 
+        /// <summary>Presentation multiplier on the locked full scale (reveal / hide). Reset to 1 on enable.</summary>
+        public float RevealFactor { get; set; } = 1f;
+
+        /// <summary>True once the paper is held at its full size by LateUpdate (no agent hand-over, or expanded).</summary>
+        public bool ScaleLocked => _scaleLocked;
+
         /// <summary>Full (expanded) local scale, for restoring after a filing animation.</summary>
         public Vector3 FullScale => _fullScale;
 
         void LateUpdate()
         {
             // Once fully taken, keep it at full size so nothing shrinks it back.
-            if (_scaleLocked && !_filing) transform.localScale = _fullScale;
+            // RevealFactor is 1 except during the delivery controller's reveal / hide (a presentation multiplier only).
+            if (_scaleLocked && !_filing) transform.localScale = _fullScale * RevealFactor;
 
             // While the agent still has it: the sheet sits IN the agent's hand. It follows the hand
             // socket's animated position every frame (so it moves with the offer / walk clips), with
