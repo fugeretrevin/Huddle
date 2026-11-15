@@ -114,3 +114,11 @@ Backend (pytest, includes A11 and the coordinator's untracked phase3 status test
 
 Play Mode (desk, scripted demo): Start -> paper -> TakePaper -> Approve reached Completed; 0 game errors in the console.
 Editor-only perf rows (not Quest): desk-idle 1678 frames avg 3.58 ms p95 4.28 max 53.46, 199 draw calls, 22 SetPass; board-open 1698 frames avg 3.53 ms p95 4.29 max 47.16, 199 draw calls (identical counts to idle: the board may not have been visible; treat as unproven).
+
+## Integration phase 1 (Editor, Play Mode; not on a Quest)
+Step 0 (HEAD Living Office follow-ups, no fixes needed): compile clean; group wall 181 passed, 1 skipped. Play LivingOfficeDrive: RunOffline 13/13 steps, RunOfflineWithFailure 16/16, RunOfflineStamp 13/13, ResyncCheck after RunOffline: cards 3 -> 3, restores 1 (cards back InTray, receipt None, rev 0). 0 console errors in each. Note: each run needs a freshly started Play Mode (a second run in the same Play session fails step 3).
+
+Step 1 merges (see integration map rows 13-17): ListeningGate/DeskCommandKey/CommandLedger/BoardPresenterLogicSpec 32 passed; wall group 196 passed (1 skipped, the known ElevatorSequence Ignore); AgentRootMotionGuardTests 7; interaction group 204; onboarding 50.
+
+Step 2 final regression (EditMode, one group at a time): motion 95, board 80, spatial 277, voice 420, interaction 204, wall 196 (1 skipped), real 50, UI fixtures (TypeScale 12, TextFit 15, PlanReviewLayout 26) plus AgentClipLoopFlag 5, HandoffWaitPolicy 4, WalkClearance 14, OnboardingCoach 36. 0 failed, 0 timeouts.
+Play: desk demo at timeScale 1 (Start, paper, TakePaper, Approve) reached Completed, handoff log shows two Approaching/Exchanging/Returning cycles and Completion Success; also with hints=1 (hints followed the run, nothing broke). Console: no game errors. DeskClearanceDrive Report: 7/7 routes pass (min 0.018 m) in Desk, Floor and Ceiling. LivingOfficeDrive RunOffline after all merges: 13/13, 0 console errors.

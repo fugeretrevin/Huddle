@@ -27,3 +27,12 @@ Earlier backend merges (already on HEAD): A8 /btw routing, A10 manager plan.
 - ElevatorSequenceTests.StuckDoors_...: [Ignore]d. 'out' is requested while the cabin is still open at floor 0, so it probably boards before the jam and legitimately gets HoldInCabin. Not proven; test scenario needs revisiting.
 - Adapter plans not applied: A1, A3, A7, A9, A12 (see their docs under docs/Engineering/sprint).
 - Wall flags remain OFF.
+
+## Integration phase 1 (second wave, base 8c2ca85 branches merged one at a time, all compiled with 0 CS errors)
+| # | Branch | Merge commit | Tests run | Result | Notes / follow-ups |
+|---|---|---|---|---|---|
+| 13 | worktree-agent-af93ce670f1ac8e45 (desk Listening via VoiceAddressing, AgentView label on change, GrabReadout inert, CommandLedger on start/create/assign) | f7b7c69 | ListeningGateTests 6, DeskCommandKeyTests 1, CommandLedgerTests 3, BoardPresenterLogicSpecTests 22, group real 50 | merged, green | Phase2Bootstrap finally-block `ReleaseCommand(..., Success(null))` checked: Success(null) has Ok=true so the key is forgotten as definitive; null result keeps the key for retry. Correct. |
+| 14 | worktree-agent-af0090c1248d1f36f (Wall portal/visit through PresentationLifecycle) | a7eb586 | WallPresentationBridgeTests 15, PortalVisitLifecycleTests 25, group wall 196 (1 Ignore) | merged, green | LivingOfficeDrive RunOffline passes again after all merges |
+| 15 | worktree-agent-ab305aec3ce84ccbc (root-motion guard, RubberBandReturn, StationDropZone tokens, audit docs) | 1929409 | AgentRootMotionGuardTests 7 | merged, green | Prefab test passes (no FBX applyRootMotion failure); AgentMovement.Awake guard also covers runtime |
+| 16 | worktree-agent-a3de476ff109164fe (desk ReactionArbiter adapter, rollback flag useReactionArbiter) | 3f1ba4d | ReactionAdapterTests 16, ReactionArbiterTests 35, DeskPolishLogicTests 22, group interaction 204 | merged, green | Desk demo Play (default flags) reached Completed, 0 game errors |
+| 17 | worktree-agent-affad467e5873b0e6 (onboarding hint presenter, flag onboardingHints default 0) | f2032e5 | OnboardingCoachTests 36, OnboardingAdapterTests 11, SpatialIsolationTests 3 | merged, green; builder BuildOnboardingHintsV1 run twice (create then update), scene saved | Play: hints=0 -> on=False bound=False; hints=1 -> on bound, shows MeetAgents, PaperArrives, InspectPaper, ReceiptDelivered through a desk demo. Not seen on a headset (hint card placement/readability unproven) |
