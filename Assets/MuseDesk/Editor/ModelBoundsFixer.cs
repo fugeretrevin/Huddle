@@ -30,7 +30,21 @@ namespace MuseDesk.EditorTools
             "Beacon_Idle", "Beacon_Working", "Beacon_Suggestion", "Beacon_Blocking_Decision", "Beacon_Error",
             "Station_Idle",
             "Courier_Docked_Idle", "Courier_Fly_Loop", "Courier_Waiting_Idle",
-            "Perch_Folded_Idle", "Perch_Listening_Idle"
+            "Perch_Folded_Idle", "Perch_Listening_Idle",
+            // Wall Habitat Phase 3 & Shared Agent Polish looping clips
+            "Walk_Carry_Paper", "Offer_Document", "Idle_Fidget", "Happy_Idle", "Seated_Idle",
+            "Talking", "Listening", "Thinking", "Excited", "Worried",
+            "Typing", "Reading", "Writing", "Inspecting", "Using_Workstation",
+            "Waiting_For_Input", "Hold_Document", "Carry_Package", "Blocked", "Cheer", "Waving",
+            "ElevatorDoors_Idle_Closed", "ElevatorWinch_Spin",
+            "Cabin_Idle_Closed", "Cabin_Travel_Bob",
+            "Printer_Idle", "Printer_Queue_Pulse",
+            "Perch_Active_Idle", "Perch_Conversing_Idle",
+            "Portal_Hidden_Idle", "Portal_Active_Idle",
+            "Elevator_Queue_Idle", "Elevator_Ride_Idle",
+            "DeskVisit_Perch_Idle", "DeskVisit_Listening", "DeskVisit_Explain",
+            "Portal_Converse_Loop", "Manager_Lookout_Idle", "Manager_Review_Plan",
+            "Carry_Suspended_Idle", "Researcher_Compare_Papers", "Tester_Note_Take"
         };
 
         static bool IsAnimatedSpatialPath(string p)
@@ -44,6 +58,17 @@ namespace MuseDesk.EditorTools
                    p.Contains("AgentConversationPerch");
         }
 
+        static bool IsAnimatedWallHabitatPath(string p)
+        {
+            if (!p.Contains("/WallHabitat/")) return false;
+            return p.Contains("WallHabitat_ElevatorSpine") ||
+                   p.Contains("WallHabitat_ElevatorCar") ||
+                   p.Contains("WallHabitat_TaskPrinter") ||
+                   p.Contains("WallHabitat_DeskVisitPerch") ||
+                   p.Contains("WallHabitat_LargeAgentPortal") ||
+                   p.Contains("Agent_Manager");
+        }
+
         void OnPreprocessModel()
         {
             string p = assetPath.Replace("\\", "/");
@@ -54,10 +79,12 @@ namespace MuseDesk.EditorTools
 
             importer.isReadable = true;
 
-            bool isAnimated = p.Contains("/Characters/") || p.Contains("/Factory/") || IsAnimatedSpatialPath(p);
+            bool isAnimatedSpatial = IsAnimatedSpatialPath(p);
+            bool isAnimatedWall = IsAnimatedWallHabitatPath(p);
+            bool isAnimated = p.Contains("/Characters/") || p.Contains("/Factory/") || isAnimatedSpatial || isAnimatedWall;
             if (isAnimated)
             {
-                if (IsAnimatedSpatialPath(p))
+                if (isAnimatedSpatial || isAnimatedWall)
                 {
                     importer.importAnimation = true;
                     importer.animationType = ModelImporterAnimationType.Generic;

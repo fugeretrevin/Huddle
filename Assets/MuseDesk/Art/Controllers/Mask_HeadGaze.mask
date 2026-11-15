@@ -1,0 +1,97 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!319 &31900000
+AvatarMask:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Mask_HeadGaze
+  m_Mask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+  m_Elements:
+  - m_Path: 
+    m_Weight: 0
+  - m_Path: Armature
+    m_Weight: 0
+  - m_Path: Armature/Root
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/FootGroundReference
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/ElevatorPassengerRoot
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/PortalPresentationRoot
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Thigh_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Thigh_L/Shin_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Thigh_L/Shin_L/Foot_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Thigh_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Thigh_R/Shin_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Thigh_R/Shin_R/Foot_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Back_Attach
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Document_Attach
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/DocumentHold
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/DocumentOffer
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/ArtifactHold
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L/Forearm_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L/Forearm_L/Hand_L
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_L/UpperArm_L/Forearm_L/Hand_L/LeftHand_Attach
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R/Forearm_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R/Forearm_R/Hand_R
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R/Forearm_R/Hand_R/RightHand_Attach
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Shoulder_R/UpperArm_R/Forearm_R/Hand_R/TaskCardHold
+    m_Weight: 0
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Eye_L
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Eye_R
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Brow_L
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Brow_R
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Accessory_Root
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Accessory_Root/Accessory_Tip
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/Head_Attach
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/HeadLookTarget
+    m_Weight: 1
+  - m_Path: Armature/Root/Hips/Spine/Chest/Neck/Head/ConversationFocus
+    m_Weight: 1
+  - m_Path: Agent_Researcher_Body
+    m_Weight: 0

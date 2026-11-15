@@ -13,7 +13,7 @@ import json
 #   3. Agent_Tester     (Inspector Band, Flip-Down Dual Loupe Visor, Radar Dishes, Utility Harness, Analyzer Pack)
 # ==============================================================================
 
-PROJECT_ROOT = r"C:\dev\MuseDesk\MuseDesk"
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 BLEND_DIR = os.path.join(PROJECT_ROOT, "ArtSource", "Blender", "Characters")
 FBX_DIR = os.path.join(PROJECT_ROOT, "Assets", "MuseDesk", "Art", "Models", "Characters")
 PREVIEW_DIR = os.path.join(PROJECT_ROOT, "Screenshots", "ArtPreviews")
@@ -190,13 +190,23 @@ def create_character_armature(char_name):
     for pb in arm_obj.pose.bones:
         pb.rotation_mode = 'XYZ'
 
-    # Create the 5 mandatory attachment Empties parented to bones
+    # Create the 5 mandatory attachment Empties parented to bones + 9 Section 16 sockets
     attachments = [
         ("RightHand_Attach", "Hand_R", (-0.047, -0.016, 0.045)),
         ("LeftHand_Attach",  "Hand_L", ( 0.047, -0.016, 0.045)),
         ("Head_Attach",      "Head",   ( 0.000,  0.000, 0.194)),
         ("Back_Attach",      "Chest",  ( 0.000,  0.040, 0.095)),
         ("Document_Attach",  "Chest",  ( 0.000, -0.072, 0.092)),
+        # Section 16 canonical character sockets
+        ("DocumentHold",           "Chest",  ( 0.000, -0.056, 0.090)),
+        ("DocumentOffer",          "Chest",  ( 0.000, -0.088, 0.104)),
+        ("TaskCardHold",           "Hand_R", (-0.047, -0.020, 0.048)),
+        ("ArtifactHold",           "Chest",  ( 0.000, -0.068, 0.086)),
+        ("HeadLookTarget",         "Head",   ( 0.000, -0.036, 0.156)),
+        ("ConversationFocus",      "Head",   ( 0.000, -0.060, 0.155)),
+        ("FootGroundReference",    "Hips",   ( 0.000,  0.000, 0.000)),
+        ("ElevatorPassengerRoot",  "Hips",   ( 0.000,  0.000, 0.000)),
+        ("PortalPresentationRoot", "Hips",   ( 0.000,  0.000, 0.000)),
     ]
     for att_name, parent_bone, world_pos in attachments:
         emp = bpy.data.objects.new(att_name, None)
@@ -341,10 +351,10 @@ def build_shared_body_parts(role_primary_mat, role_secondary_mat):
     assign_single_bone_weight(visor, "Head")
     parts.append(visor)
 
-    # Cute Ear-Pods on Left/Right of Head
+    # Cute Ear-Pods on Left/Right of Head (seated proud outside HeadShell cheek equator)
     for side, sx in [("L", 1.0), ("R", -1.0)]:
-        bpy.ops.mesh.primitive_cylinder_add(vertices=14, radius=0.011, depth=0.012,
-                                            location=(sx * 0.048, 0.0, 0.155),
+        bpy.ops.mesh.primitive_cylinder_add(vertices=14, radius=0.010, depth=0.011,
+                                            location=(sx * 0.054, 0.0, 0.156),
                                             rotation=(0.0, math.radians(90), 0.0))
         ear = bpy.context.active_object
         ear.name = f"EarPod_{side}"
@@ -681,7 +691,7 @@ def build_developer_accessories():
     # 2. Oversized Studio Headphones + Headband Arch + Mic Boom
     # Headband arch over top of head
     bpy.ops.mesh.primitive_torus_add(major_segments=20, minor_segments=8,
-                                     major_radius=0.049, minor_radius=0.0045,
+                                     major_radius=0.054, minor_radius=0.0045,
                                      location=(0.0, 0.002, 0.156),
                                      rotation=(math.radians(90), 0, 0))
     band = bpy.context.active_object
@@ -702,7 +712,7 @@ def build_developer_accessories():
     for side, sx in [("L", 1.0), ("R", -1.0)]:
         # Cushioned earcup shell
         bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.016, depth=0.014,
-                                            location=(sx * 0.050, 0.002, 0.155),
+                                            location=(sx * 0.055, 0.002, 0.155),
                                             rotation=(0, math.radians(90), 0))
         cup = bpy.context.active_object
         cup.name = f"HeadphoneCup_{side}"
@@ -715,7 +725,7 @@ def build_developer_accessories():
         # Glowing Amber outer ring on earcup
         bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=8,
                                          major_radius=0.013, minor_radius=0.0022,
-                                         location=(sx * 0.056, 0.002, 0.155),
+                                         location=(sx * 0.060, 0.002, 0.155),
                                          rotation=(0, math.radians(90), 0))
         ring = bpy.context.active_object
         ring.name = f"HeadphoneGlowRing_{side}"
@@ -1016,6 +1026,12 @@ def build_shared_animation_library(arm_obj):
             (30, {"Hips": {"loc": (0,0.006,0)}, "Chest": {"rot": (-5,0,-5)}, "Head": {"rot": (6,-8,5)}, "UpperArm_L": {"rot": (-18,0,-18)}, "UpperArm_R": {"rot": (22,0,18)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (14,-8,0)}}),
             (40, {}),
         ]),
+        ("Walk_Start", 12, [
+            (1,  {}),
+            (4,  {"Hips": {"loc": (0,-0.004,0), "rot": (4,4,-4)}, "Chest": {"rot": (4,-4,4)}, "Head": {"rot": (-3,3,0)}, "UpperArm_L": {"rot": (12,0,-10)}, "UpperArm_R": {"rot": (-12,0,10)}, "Thigh_R": {"rot": (10,0,0)}, "Shin_R": {"rot": (12,0,0)}, "Foot_R": {"rot": (-10,0,0)}, "Thigh_L": {"rot": (-18,0,0)}, "Shin_L": {"rot": (38,0,0)}, "Foot_L": {"rot": (12,0,0)}, "Accessory_Root": {"rot": (6,0,0)}}),
+            (8,  {"Hips": {"loc": (0,0.005,0), "rot": (-2,2,2)}, "Chest": {"rot": (-2,-3,-3)}, "Head": {"rot": (2,2,2)}, "UpperArm_L": {"rot": (28,0,-10)}, "Forearm_L": {"rot": (15,0,0)}, "UpperArm_R": {"rot": (-24,0,10)}, "Forearm_R": {"rot": (8,0,0)}, "Thigh_L": {"rot": (-28,0,0)}, "Shin_L": {"rot": (18,0,0)}, "Foot_L": {"rot": (-8,0,0)}, "Thigh_R": {"rot": (22,0,0)}, "Shin_R": {"rot": (26,0,0)}, "Foot_R": {"rot": (14,0,0)}, "Accessory_Root": {"rot": (-8,3,0)}}),
+            (12, {"Hips": {"loc": (0,0.001,0), "rot": (-6,0,5)}, "Chest": {"rot": (-5,0,-6)}, "Head": {"rot": (5,3,4)}, "UpperArm_L": {"rot": (34,0,-10)}, "Forearm_L": {"rot": (18,0,0)}, "UpperArm_R": {"rot": (-30,0,10)}, "Forearm_R": {"rot": (10,0,0)}, "Thigh_L": {"rot": (-32,0,0)}, "Shin_L": {"rot": (12,0,0)}, "Thigh_R": {"rot": (28,0,0)}, "Shin_R": {"rot": (22,0,0)}, "Foot_L": {"rot": (0,0,0)}, "Foot_R": {"rot": (0,0,0)}, "Accessory_Root": {"rot": (12,5,0)}}),
+        ]),
         ("Walk_Loop", 24, [
             (1,  {"Hips": {"loc": (0,0.001,0), "rot": (-6,0,5)}, "Chest": {"rot": (-5,0,-6)}, "Head": {"rot": (5,3,4)}, "UpperArm_L": {"rot": (34,0,-10)}, "Forearm_L": {"rot": (18,0,0)}, "UpperArm_R": {"rot": (-30,0,10)}, "Forearm_R": {"rot": (10,0,0)}, "Thigh_L": {"rot": (-32,0,0)}, "Shin_L": {"rot": (12,0,0)}, "Thigh_R": {"rot": (28,0,0)}, "Shin_R": {"rot": (22,0,0)}, "Accessory_Root": {"rot": (12,5,0)}}),
             (7,  {"Hips": {"loc": (0,0.009,0), "rot": (-4,3,0)}, "Chest": {"rot": (-3,-2,0)}, "Head": {"rot": (2,-3,0)}, "Thigh_L": {"rot": (-5,0,0)}, "Shin_L": {"rot": (5,0,0)}, "Thigh_R": {"rot": (-15,0,0)}, "Shin_R": {"rot": (35,0,0)}, "Accessory_Root": {"rot": (-8,0,0)}}),
@@ -1023,16 +1039,31 @@ def build_shared_animation_library(arm_obj):
             (19, {"Hips": {"loc": (0,0.009,0), "rot": (-4,-3,0)}, "Chest": {"rot": (-3,2,0)}, "Head": {"rot": (2,3,0)}, "Thigh_L": {"rot": (-15,0,0)}, "Shin_L": {"rot": (35,0,0)}, "Thigh_R": {"rot": (-5,0,0)}, "Shin_R": {"rot": (5,0,0)}, "Accessory_Root": {"rot": (-8,0,0)}}),
             (24, {"Hips": {"loc": (0,0.001,0), "rot": (-6,0,5)}, "Chest": {"rot": (-5,0,-6)}, "Head": {"rot": (5,3,4)}, "UpperArm_L": {"rot": (34,0,-10)}, "Forearm_L": {"rot": (18,0,0)}, "UpperArm_R": {"rot": (-30,0,10)}, "Forearm_R": {"rot": (10,0,0)}, "Thigh_L": {"rot": (-32,0,0)}, "Shin_L": {"rot": (12,0,0)}, "Thigh_R": {"rot": (28,0,0)}, "Shin_R": {"rot": (22,0,0)}, "Accessory_Root": {"rot": (12,5,0)}}),
         ]),
+        ("Walk_Stop", 14, [
+            (1,  {"Hips": {"loc": (0,0.001,0), "rot": (-4,0,4)}, "Chest": {"rot": (-4,0,-4)}, "Head": {"rot": (4,2,2)}, "UpperArm_L": {"rot": (26,0,-10)}, "Forearm_L": {"rot": (14,0,0)}, "UpperArm_R": {"rot": (-22,0,10)}, "Forearm_R": {"rot": (8,0,0)}, "Thigh_L": {"rot": (-24,0,0)}, "Shin_L": {"rot": (14,0,0)}, "Foot_L": {"rot": (-8,0,0)}, "Thigh_R": {"rot": (20,0,0)}, "Shin_R": {"rot": (22,0,0)}, "Foot_R": {"rot": (10,0,0)}}),
+            (5,  {"Hips": {"loc": (0,-0.005,0), "rot": (4,0,2)}, "Chest": {"rot": (6,0,-2)}, "Head": {"rot": (-5,0,0)}, "UpperArm_L": {"rot": (8,0,-10)}, "Forearm_L": {"rot": (10,0,0)}, "UpperArm_R": {"rot": (-6,0,10)}, "Thigh_L": {"rot": (-12,0,0)}, "Shin_L": {"rot": (24,0,0)}, "Foot_L": {"rot": (-6,0,0)}, "Thigh_R": {"rot": (-14,0,0)}, "Shin_R": {"rot": (32,0,0)}, "Foot_R": {"rot": (8,0,0)}, "Accessory_Root": {"rot": (8,0,0)}}),
+            (10, {"Hips": {"loc": (0,-0.002,0)}, "Chest": {"rot": (-3,0,0)}, "Head": {"rot": (4,0,0)}, "Thigh_L": {"rot": (-4,0,0)}, "Shin_L": {"rot": (8,0,0)}, "Foot_L": {"rot": (-4,0,0)}, "Thigh_R": {"rot": (-4,0,0)}, "Shin_R": {"rot": (8,0,0)}, "Foot_R": {"rot": (-4,0,0)}, "UpperArm_L": {"rot": (-4,0,-8)}, "UpperArm_R": {"rot": (-4,0,8)}, "Accessory_Root": {"rot": (-5,0,0)}}),
+            (14, {}),
+        ]),
+        ("Walk_Carry_Paper", 24, [
+            (1,  {"Hips": {"loc": (0,0.001,0), "rot": (-4,2,4)}, "Chest": {"rot": (6,-2,-2)}, "Head": {"rot": (-5,2,1)}, "UpperArm_L": {"rot": (54,0,14)}, "Forearm_L": {"rot": (34,0,10)}, "UpperArm_R": {"rot": (54,0,-14)}, "Forearm_R": {"rot": (34,0,-10)}, "Thigh_L": {"rot": (-30,0,0)}, "Shin_L": {"rot": (12,0,0)}, "Foot_L": {"rot": (-6,0,0)}, "Thigh_R": {"rot": (26,0,0)}, "Shin_R": {"rot": (22,0,0)}, "Foot_R": {"rot": (10,0,0)}, "Accessory_Root": {"rot": (10,4,0)}}),
+            (7,  {"Hips": {"loc": (0,0.008,0), "rot": (-2,2,0)}, "Chest": {"rot": (5,0,0)}, "Head": {"rot": (-4,-2,0)}, "UpperArm_L": {"rot": (56,0,14)}, "Forearm_L": {"rot": (36,0,10)}, "UpperArm_R": {"rot": (56,0,-14)}, "Forearm_R": {"rot": (36,0,-10)}, "Thigh_L": {"rot": (-5,0,0)}, "Shin_L": {"rot": (6,0,0)}, "Foot_L": {"rot": (0,0,0)}, "Thigh_R": {"rot": (-16,0,0)}, "Shin_R": {"rot": (36,0,0)}, "Foot_R": {"rot": (8,0,0)}, "Accessory_Root": {"rot": (-6,0,0)}}),
+            (13, {"Hips": {"loc": (0,0.001,0), "rot": (-4,-2,-4)}, "Chest": {"rot": (6,2,2)}, "Head": {"rot": (-5,-2,-1)}, "UpperArm_L": {"rot": (54,0,14)}, "Forearm_L": {"rot": (34,0,10)}, "UpperArm_R": {"rot": (54,0,-14)}, "Forearm_R": {"rot": (34,0,-10)}, "Thigh_L": {"rot": (26,0,0)}, "Shin_L": {"rot": (22,0,0)}, "Foot_L": {"rot": (10,0,0)}, "Thigh_R": {"rot": (-30,0,0)}, "Shin_R": {"rot": (12,0,0)}, "Foot_R": {"rot": (-6,0,0)}, "Accessory_Root": {"rot": (10,-4,0)}}),
+            (19, {"Hips": {"loc": (0,0.008,0), "rot": (-2,-2,0)}, "Chest": {"rot": (5,0,0)}, "Head": {"rot": (-4,2,0)}, "UpperArm_L": {"rot": (56,0,14)}, "Forearm_L": {"rot": (36,0,10)}, "UpperArm_R": {"rot": (56,0,-14)}, "Forearm_R": {"rot": (36,0,-10)}, "Thigh_L": {"rot": (-16,0,0)}, "Shin_L": {"rot": (36,0,0)}, "Foot_L": {"rot": (8,0,0)}, "Thigh_R": {"rot": (-5,0,0)}, "Shin_R": {"rot": (6,0,0)}, "Foot_R": {"rot": (0,0,0)}, "Accessory_Root": {"rot": (-6,0,0)}}),
+            (24, {"Hips": {"loc": (0,0.001,0), "rot": (-4,2,4)}, "Chest": {"rot": (6,-2,-2)}, "Head": {"rot": (-5,2,1)}, "UpperArm_L": {"rot": (54,0,14)}, "Forearm_L": {"rot": (34,0,10)}, "UpperArm_R": {"rot": (54,0,-14)}, "Forearm_R": {"rot": (34,0,-10)}, "Thigh_L": {"rot": (-30,0,0)}, "Shin_L": {"rot": (12,0,0)}, "Foot_L": {"rot": (-6,0,0)}, "Thigh_R": {"rot": (26,0,0)}, "Shin_R": {"rot": (22,0,0)}, "Foot_R": {"rot": (10,0,0)}, "Accessory_Root": {"rot": (10,4,0)}}),
+        ]),
         ("Turn_Left", 20, [
             (1,  {}),
-            (6,  {"Hips": {"loc": (0,-0.003,0), "rot": (0,0,-10)}, "Head": {"rot": (0,6,-24)}, "Thigh_L": {"rot": (-25,0,-10)}}),
-            (13, {"Hips": {"loc": (0,0.006,0), "rot": (0,0,-22)}, "Chest": {"rot": (-4,0,-15)}, "Head": {"rot": (4,-4,-12)}, "Thigh_L": {"rot": (8,0,0)}, "Thigh_R": {"rot": (-22,0,0)}, "UpperArm_L": {"rot": (-20,0,-15)}, "UpperArm_R": {"rot": (22,0,15)}}),
+            (5,  {"Hips": {"loc": (0,-0.004,0), "rot": (2,8,4)}, "Chest": {"rot": (4,12,-2)}, "Head": {"rot": (-2,22,-4)}, "Thigh_L": {"rot": (-26,10,-4)}, "Shin_L": {"rot": (44,0,0)}, "Foot_L": {"rot": (-12,0,0)}, "Thigh_R": {"rot": (4,-6,0)}, "Shin_R": {"rot": (12,0,0)}, "Foot_R": {"rot": (8,0,0)}, "UpperArm_L": {"rot": (-14,0,-14)}, "UpperArm_R": {"rot": (18,0,12)}, "Accessory_Root": {"rot": (0,12,0)}}),
+            (11, {"Hips": {"loc": (0,0.005,0), "rot": (-2,6,-4)}, "Chest": {"rot": (2,-4,2)}, "Head": {"rot": (2,10,0)}, "Thigh_L": {"rot": (-6,-4,0)}, "Shin_L": {"rot": (12,0,0)}, "Foot_L": {"rot": (-6,0,0)}, "Thigh_R": {"rot": (-24,-10,4)}, "Shin_R": {"rot": (42,0,0)}, "Foot_R": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (14,0,-10)}, "UpperArm_R": {"rot": (-12,0,10)}, "Accessory_Root": {"rot": (-6,-8,0)}}),
+            (16, {"Hips": {"loc": (0,-0.002,0)}, "Chest": {"rot": (2,0,0)}, "Head": {"rot": (-2,0,0)}, "Thigh_L": {"rot": (-4,0,0)}, "Shin_L": {"rot": (8,0,0)}, "Foot_L": {"rot": (-4,0,0)}, "Thigh_R": {"rot": (-4,0,0)}, "Shin_R": {"rot": (8,0,0)}, "Foot_R": {"rot": (-4,0,0)}}),
             (20, {}),
         ]),
         ("Turn_Right", 20, [
             (1,  {}),
-            (6,  {"Hips": {"loc": (0,-0.003,0), "rot": (0,0,10)}, "Head": {"rot": (0,-6,24)}, "Thigh_R": {"rot": (-25,0,10)}}),
-            (13, {"Hips": {"loc": (0,0.006,0), "rot": (0,0,22)}, "Chest": {"rot": (-4,0,15)}, "Head": {"rot": (4,4,12)}, "Thigh_R": {"rot": (8,0,0)}, "Thigh_L": {"rot": (-22,0,0)}, "UpperArm_R": {"rot": (-20,0,15)}, "UpperArm_L": {"rot": (22,0,-15)}}),
+            (5,  {"Hips": {"loc": (0,-0.004,0), "rot": (2,-8,-4)}, "Chest": {"rot": (4,-12,2)}, "Head": {"rot": (-2,-22,4)}, "Thigh_R": {"rot": (-26,-10,4)}, "Shin_R": {"rot": (44,0,0)}, "Foot_R": {"rot": (-12,0,0)}, "Thigh_L": {"rot": (4,6,0)}, "Shin_L": {"rot": (12,0,0)}, "Foot_L": {"rot": (8,0,0)}, "UpperArm_R": {"rot": (-14,0,14)}, "UpperArm_L": {"rot": (18,0,-12)}, "Accessory_Root": {"rot": (0,-12,0)}}),
+            (11, {"Hips": {"loc": (0,0.005,0), "rot": (-2,-6,4)}, "Chest": {"rot": (2,4,-2)}, "Head": {"rot": (2,-10,0)}, "Thigh_R": {"rot": (-6,4,0)}, "Shin_R": {"rot": (12,0,0)}, "Foot_R": {"rot": (-6,0,0)}, "Thigh_L": {"rot": (-24,10,-4)}, "Shin_L": {"rot": (42,0,0)}, "Foot_L": {"rot": (10,0,0)}, "UpperArm_R": {"rot": (14,0,10)}, "UpperArm_L": {"rot": (-12,0,-10)}, "Accessory_Root": {"rot": (-6,8,0)}}),
+            (16, {"Hips": {"loc": (0,-0.002,0)}, "Chest": {"rot": (2,0,0)}, "Head": {"rot": (-2,0,0)}, "Thigh_L": {"rot": (-4,0,0)}, "Shin_L": {"rot": (8,0,0)}, "Foot_L": {"rot": (-4,0,0)}, "Thigh_R": {"rot": (-4,0,0)}, "Shin_R": {"rot": (8,0,0)}, "Foot_R": {"rot": (-4,0,0)}}),
             (20, {}),
         ]),
         ("Sit_Down", 24, [
@@ -1120,6 +1151,21 @@ def build_shared_animation_library(arm_obj):
             (21, {"Head": {"rot": (0,4,-18)}, "Accessory_Tip": {"rot": (0,0,15)}}),
             (28, {}),
         ]),
+        ("React_Approve", 30, [
+            (1,  {}),
+            (5,  {"Hips": {"loc": (0,-0.009,0)}, "Thigh_L": {"rot": (-14,0,0)}, "Shin_L": {"rot": (28,0,0)}, "Foot_L": {"rot": (-14,0,0)}, "Thigh_R": {"rot": (-14,0,0)}, "Shin_R": {"rot": (28,0,0)}, "Foot_R": {"rot": (-14,0,0)}, "Chest": {"rot": (10,0,0)}, "Head": {"rot": (12,0,0)}, "UpperArm_R": {"rot": (-10,0,14)}, "Forearm_R": {"rot": (36,0,0)}, "UpperArm_L": {"rot": (-8,0,-12)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}}),
+            (12, {"Hips": {"loc": (0,0.024,0), "rot": (-4,6,0)}, "Thigh_L": {"rot": (8,0,0)}, "Shin_L": {"rot": (6,0,0)}, "Foot_L": {"rot": (16,0,0)}, "Thigh_R": {"rot": (8,0,0)}, "Shin_R": {"rot": (6,0,0)}, "Foot_R": {"rot": (16,0,0)}, "Chest": {"rot": (-10,8,0)}, "Head": {"rot": (-12,8,-5)}, "UpperArm_R": {"rot": (128,0,-28)}, "Forearm_R": {"rot": (16,0,-8)}, "UpperArm_L": {"rot": (38,0,-22)}, "Forearm_L": {"rot": (22,0,-12)}, "Brow_L": {"loc": (0,0.004,0)}, "Brow_R": {"loc": (0,0.004,0)}, "Eye_L": {"scale": (1.08,1,0.72)}, "Eye_R": {"scale": (1.08,1,0.72)}, "Accessory_Root": {"rot": (-16,6,0)}}),
+            (19, {"Hips": {"loc": (0,-0.005,0)}, "Thigh_L": {"rot": (-10,0,0)}, "Shin_L": {"rot": (20,0,0)}, "Foot_L": {"rot": (-10,0,0)}, "Thigh_R": {"rot": (-10,0,0)}, "Shin_R": {"rot": (20,0,0)}, "Foot_R": {"rot": (-10,0,0)}, "Chest": {"rot": (10,0,0)}, "Head": {"rot": (16,0,0)}, "UpperArm_R": {"rot": (92,0,-18)}, "Forearm_R": {"rot": (34,0,-8)}, "UpperArm_L": {"rot": (16,0,-14)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}, "Accessory_Root": {"rot": (14,0,0)}}),
+            (24, {"Hips": {"loc": (0,0.002,0)}, "Chest": {"rot": (-3,0,0)}, "Head": {"rot": (-6,0,0)}, "UpperArm_R": {"rot": (36,0,14)}, "Forearm_R": {"rot": (16,0,0)}, "UpperArm_L": {"rot": (8,0,-8)}}),
+            (30, {}),
+        ]),
+        ("React_Reject", 30, [
+            (1,  {}),
+            (6,  {"Hips": {"loc": (0,-0.007,0)}, "Thigh_L": {"rot": (-8,0,0)}, "Shin_L": {"rot": (16,0,0)}, "Foot_L": {"rot": (-8,0,0)}, "Thigh_R": {"rot": (-8,0,0)}, "Shin_R": {"rot": (16,0,0)}, "Foot_R": {"rot": (-8,0,0)}, "Chest": {"rot": (16,0,0)}, "Head": {"rot": (18,6,-4)}, "UpperArm_L": {"rot": (-8,0,-16)}, "Forearm_L": {"rot": (18,0,-14)}, "UpperArm_R": {"rot": (-8,0,16)}, "Forearm_R": {"rot": (18,0,14)}, "Brow_L": {"loc": (0,-0.002,0), "rot": (0,-14,0)}, "Brow_R": {"loc": (0,-0.002,0), "rot": (0,14,0)}, "Eye_L": {"scale": (1,1,0.78)}, "Eye_R": {"scale": (1,1,0.78)}, "Accessory_Root": {"rot": (16,0,0)}}),
+            (14, {"Hips": {"loc": (0,-0.005,0)}, "Chest": {"rot": (14,0,0)}, "Head": {"rot": (15,-14,4)}, "UpperArm_L": {"rot": (-10,0,-12)}, "Forearm_L": {"rot": (14,0,-8)}, "UpperArm_R": {"rot": (-10,0,12)}, "Forearm_R": {"rot": (14,0,8)}, "Brow_L": {"loc": (0,-0.002,0), "rot": (0,-12,0)}, "Brow_R": {"loc": (0,-0.002,0), "rot": (0,12,0)}, "Accessory_Tip": {"rot": (10,0,-8)}}),
+            (21, {"Hips": {"loc": (0,-0.002,0)}, "Chest": {"rot": (8,0,0)}, "Head": {"rot": (10,12,-4)}, "UpperArm_L": {"rot": (-4,0,-8)}, "Forearm_L": {"rot": (8,0,0)}, "UpperArm_R": {"rot": (-4,0,8)}, "Forearm_R": {"rot": (8,0,0)}, "Accessory_Tip": {"rot": (-6,0,6)}}),
+            (30, {}),
+        ]),
 
         # --- C. WORKING (6) ---
         ("Typing", 24, [
@@ -1168,10 +1214,26 @@ def build_shared_animation_library(arm_obj):
             (20, {"Hips": {"loc": (0,0.003,0)}, "Chest": {"rot": (-2,0,0)}, "Head": {"rot": (-3,4,0)}, "UpperArm_L": {"rot": (50,0,16)}, "Forearm_L": {"rot": (37,0,12)}, "UpperArm_R": {"rot": (50,0,-16)}, "Forearm_R": {"rot": (37,0,-12)}}),
             (40, {"Chest": {"rot": (-4,0,0)}, "Head": {"rot": (-6,0,0)}, "UpperArm_L": {"rot": (48,0,16)}, "Forearm_L": {"rot": (35,0,12)}, "UpperArm_R": {"rot": (48,0,-16)}, "Forearm_R": {"rot": (35,0,-12)}}),
         ]),
-        ("Offer_Document", 40, [
-            (1,  {"Chest": {"rot": (-6,0,0)}, "Head": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (68,0,12)}, "Forearm_L": {"rot": (22,0,8)}, "UpperArm_R": {"rot": (68,0,-12)}, "Forearm_R": {"rot": (22,0,-8)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}}),
-            (20, {"Hips": {"loc": (0,0.004,0)}, "Chest": {"rot": (-8,0,0)}, "Head": {"rot": (12,5,0)}, "UpperArm_L": {"rot": (72,0,12)}, "Forearm_L": {"rot": (24,0,8)}, "UpperArm_R": {"rot": (72,0,-12)}, "Forearm_R": {"rot": (24,0,-8)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}, "Accessory_Root": {"rot": (10,0,0)}}),
-            (40, {"Chest": {"rot": (-6,0,0)}, "Head": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (68,0,12)}, "Forearm_L": {"rot": (22,0,8)}, "UpperArm_R": {"rot": (68,0,-12)}, "Forearm_R": {"rot": (22,0,-8)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}}),
+        ("Offer_Document_Present", 20, [
+            (1,  {"Chest": {"rot": (-3,0,0)}, "Head": {"rot": (0,0,0)}, "UpperArm_L": {"rot": (38,0,14)}, "Forearm_L": {"rot": (32,0,10)}, "UpperArm_R": {"rot": (38,0,-14)}, "Forearm_R": {"rot": (32,0,-10)}, "Brow_L": {"loc": (0,0,0)}, "Brow_R": {"loc": (0,0,0)}}),
+            (5,  {"Hips": {"loc": (0,-0.004,0)}, "Thigh_L": {"rot": (-10,0,0)}, "Shin_L": {"rot": (20,0,0)}, "Thigh_R": {"rot": (-10,0,0)}, "Shin_R": {"rot": (20,0,0)}, "Chest": {"rot": (2,0,0)}, "Head": {"rot": (-4,0,0)}, "UpperArm_L": {"rot": (32,0,14)}, "Forearm_L": {"rot": (42,0,10)}, "UpperArm_R": {"rot": (32,0,-14)}, "Forearm_R": {"rot": (42,0,-10)}, "Accessory_Root": {"rot": (-6,0,0)}}),
+            (13, {"Hips": {"loc": (0,0.005,0)}, "Thigh_L": {"rot": (0,0,0)}, "Shin_L": {"rot": (0,0,0)}, "Thigh_R": {"rot": (0,0,0)}, "Shin_R": {"rot": (0,0,0)}, "Chest": {"rot": (-10,0,0)}, "Head": {"rot": (14,0,-3)}, "UpperArm_L": {"rot": (76,0,10)}, "Forearm_L": {"rot": (16,0,6)}, "UpperArm_R": {"rot": (76,0,-10)}, "Forearm_R": {"rot": (16,0,-6)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}, "Accessory_Root": {"rot": (12,0,0)}}),
+            (20, {"Hips": {"loc": (0,0,0)}, "Chest": {"rot": (-6,0,0)}, "Head": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (68,0,12)}, "Forearm_L": {"rot": (22,0,8)}, "UpperArm_R": {"rot": (68,0,-12)}, "Forearm_R": {"rot": (22,0,-8)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (0,0,0)}, "Eye_L": {"scale": (1,1,1)}, "Eye_R": {"scale": (1,1,1)}}),
+        ]),
+        ("Offer_Document", 48, [
+            (1,  {"Hips": {"loc": (0,0,0)}, "Chest": {"rot": (-6,0,0)}, "Head": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (68,0,12)}, "Forearm_L": {"rot": (22,0,8)}, "UpperArm_R": {"rot": (68,0,-12)}, "Forearm_R": {"rot": (22,0,-8)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (0,0,0)}, "Eye_L": {"scale": (1,1,1)}, "Eye_R": {"scale": (1,1,1)}}),
+            (14, {"Hips": {"loc": (0,0.003,0)}, "Chest": {"rot": (-7,0,2)}, "Head": {"rot": (12,6,-5)}, "UpperArm_L": {"rot": (71,0,12)}, "Forearm_L": {"rot": (24,0,8)}, "UpperArm_R": {"rot": (71,0,-12)}, "Forearm_R": {"rot": (24,0,-8)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}, "Accessory_Root": {"rot": (8,4,0)}}),
+            (24, {"Eye_L": {"scale": (1,1,1)}, "Eye_R": {"scale": (1,1,1)}}),
+            (27, {"Hips": {"loc": (0,0.001,0)}, "Eye_L": {"scale": (1,1,0.12)}, "Eye_R": {"scale": (1,1,0.12)}}),
+            (30, {"Eye_L": {"scale": (1,1,1)}, "Eye_R": {"scale": (1,1,1)}}),
+            (36, {"Hips": {"loc": (0,0.002,0)}, "Chest": {"rot": (-5,0,-2)}, "Head": {"rot": (11,-5,4)}, "UpperArm_L": {"rot": (69,0,12)}, "Forearm_L": {"rot": (23,0,8)}, "UpperArm_R": {"rot": (69,0,-12)}, "Forearm_R": {"rot": (23,0,-8)}, "Accessory_Root": {"rot": (6,-4,0)}}),
+            (48, {"Hips": {"loc": (0,0,0)}, "Chest": {"rot": (-6,0,0)}, "Head": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (68,0,12)}, "Forearm_L": {"rot": (22,0,8)}, "UpperArm_R": {"rot": (68,0,-12)}, "Forearm_R": {"rot": (22,0,-8)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (0,0,0)}, "Eye_L": {"scale": (1,1,1)}, "Eye_R": {"scale": (1,1,1)}}),
+        ]),
+        ("Offer_Document_Release", 20, [
+            (1,  {"Hips": {"loc": (0,0,0)}, "Chest": {"rot": (-6,0,0)}, "Head": {"rot": (10,0,0)}, "UpperArm_L": {"rot": (68,0,12)}, "Forearm_L": {"rot": (22,0,8)}, "UpperArm_R": {"rot": (68,0,-12)}, "Forearm_R": {"rot": (22,0,-8)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (0,0,0)}}),
+            (6,  {"Hips": {"loc": (0,0.004,0)}, "Chest": {"rot": (4,0,0)}, "Head": {"rot": (12,4,0)}, "UpperArm_L": {"rot": (56,0,-6)}, "Forearm_L": {"rot": (18,0,-4)}, "UpperArm_R": {"rot": (56,0,6)}, "Forearm_R": {"rot": (18,0,4)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}, "Accessory_Root": {"rot": (-8,0,0)}}),
+            (13, {"Hips": {"loc": (0,-0.002,0)}, "Chest": {"rot": (-4,0,0)}, "Head": {"rot": (-10,0,0)}, "UpperArm_L": {"rot": (16,0,-10)}, "Forearm_L": {"rot": (12,0,0)}, "UpperArm_R": {"rot": (16,0,10)}, "Forearm_R": {"rot": (12,0,0)}, "Accessory_Root": {"rot": (8,0,0)}}),
+            (20, {}),
         ]),
         ("Receive_Document", 28, [
             (1,  {}),
@@ -1197,6 +1259,22 @@ def build_shared_animation_library(arm_obj):
             (24, {"Chest": {"rot": (-6,0,0)}, "Head": {"rot": (-12,0,0)}, "UpperArm_L": {"rot": (35,0,-15)}, "UpperArm_R": {"rot": (35,0,15)}}),
             (36, {}),
         ]),
+        ("Handoff_Give", 28, [
+            (1,  {}),
+            (5,  {"Hips": {"loc": (0,-0.003,0)}, "Chest": {"rot": (-3,-10,0)}, "Head": {"rot": (0,8,0)}, "UpperArm_R": {"rot": (26,0,6)}, "Forearm_R": {"rot": (46,0,-10)}, "UpperArm_L": {"rot": (16,0,-8)}, "Accessory_Root": {"rot": (-6,0,0)}}),
+            (12, {"Hips": {"loc": (0,0.002,0)}, "Chest": {"rot": (14,10,0)}, "Head": {"rot": (-4,-6,0)}, "UpperArm_R": {"rot": (92,0,-8)}, "Forearm_R": {"rot": (8,0,-2)}, "Hand_R": {"rot": (-8,0,0)}, "UpperArm_L": {"rot": (22,0,-14)}, "Forearm_L": {"rot": (16,0,0)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (10,0,0)}}),
+            (15, {"Hips": {"loc": (0,0.002,0)}, "Chest": {"rot": (14,10,0)}, "Head": {"rot": (-4,-6,0)}, "UpperArm_R": {"rot": (92,0,-8)}, "Forearm_R": {"rot": (8,0,-2)}, "Hand_R": {"rot": (-8,0,0)}, "UpperArm_L": {"rot": (22,0,-14)}, "Forearm_L": {"rot": (16,0,0)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}, "Accessory_Root": {"rot": (10,0,0)}}),
+            (21, {"Hips": {"loc": (0,0.002,0)}, "Chest": {"rot": (8,4,0)}, "Head": {"rot": (12,0,0)}, "UpperArm_R": {"rot": (42,0,4)}, "Forearm_R": {"rot": (16,0,0)}, "UpperArm_L": {"rot": (10,0,-10)}, "Accessory_Root": {"rot": (-8,0,0)}}),
+            (28, {}),
+        ]),
+        ("Handoff_Receive", 28, [
+            (1,  {}),
+            (5,  {"Hips": {"loc": (0,-0.003,0)}, "Chest": {"rot": (8,0,0)}, "Head": {"rot": (-6,0,0)}, "UpperArm_R": {"rot": (36,0,0)}, "Forearm_R": {"rot": (30,0,0)}, "UpperArm_L": {"rot": (32,0,2)}, "Forearm_L": {"rot": (26,0,0)}, "Brow_L": {"loc": (0,0.002,0)}, "Brow_R": {"loc": (0,0.002,0)}}),
+            (12, {"Hips": {"loc": (0,0.001,0)}, "Chest": {"rot": (12,-6,0)}, "Head": {"rot": (2,4,0)}, "UpperArm_R": {"rot": (78,0,-2)}, "Forearm_R": {"rot": (12,0,0)}, "UpperArm_L": {"rot": (74,0,4)}, "Forearm_L": {"rot": (14,0,0)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}}),
+            (15, {"Hips": {"loc": (0,0.001,0)}, "Chest": {"rot": (12,-6,0)}, "Head": {"rot": (2,4,0)}, "UpperArm_R": {"rot": (78,0,-2)}, "Forearm_R": {"rot": (12,0,0)}, "UpperArm_L": {"rot": (74,0,4)}, "Forearm_L": {"rot": (14,0,0)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}}),
+            (22, {"Hips": {"loc": (0,0.003,0)}, "Chest": {"rot": (6,0,0)}, "Head": {"rot": (14,0,0)}, "UpperArm_R": {"rot": (46,0,-10)}, "Forearm_R": {"rot": (40,0,-8)}, "UpperArm_L": {"rot": (46,0,10)}, "Forearm_L": {"rot": (40,0,8)}, "Eye_L": {"scale": (1.05,1,0.78)}, "Eye_R": {"scale": (1.05,1,0.78)}, "Accessory_Root": {"rot": (10,0,0)}}),
+            (28, {}),
+        ]),
         ("Celebrate_Handoff", 36, [
             (1,  {}),
             (8,  {"Hips": {"loc": (0,-0.006,0)}, "Chest": {"rot": (-8,0,0)}}),
@@ -1205,13 +1283,21 @@ def build_shared_animation_library(arm_obj):
             (36, {}),
         ]),
 
-        # --- E. RESULT REACTIONS (6) ---
+        # --- E. RESULT REACTIONS (7) ---
         ("Success", 36, [
             (1,  {}),
             (7,  {"Hips": {"loc": (0,-0.008,0)}, "Chest": {"rot": (-12,0,0)}, "UpperArm_L": {"rot": (-18,0,-15)}, "UpperArm_R": {"rot": (-18,0,15)}}),
             (16, {"Hips": {"loc": (0,0.024,0)}, "Chest": {"rot": (12,0,0)}, "Head": {"rot": (14,0,0)}, "UpperArm_L": {"rot": (118,0,-32)}, "UpperArm_R": {"rot": (118,0,32)}, "Thigh_L": {"rot": (-20,0,-8)}, "Thigh_R": {"rot": (-20,0,8)}, "Brow_L": {"loc": (0,0.003,0)}, "Brow_R": {"loc": (0,0.003,0)}, "Accessory_Root": {"rot": (-22,0,0)}}),
             (26, {"Hips": {"loc": (0,-0.004,0)}, "Chest": {"rot": (-4,0,0)}, "UpperArm_L": {"rot": (65,0,-22)}, "UpperArm_R": {"rot": (65,0,22)}, "Accessory_Root": {"rot": (16,0,0)}}),
             (36, {}),
+        ]),
+        ("React_Completion_Cheer", 34, [
+            (1,  {}),
+            (5,  {"Hips": {"loc": (0,-0.008,0)}, "Thigh_L": {"rot": (-14,0,0)}, "Shin_L": {"rot": (28,0,0)}, "Foot_L": {"rot": (-14,0,0)}, "Thigh_R": {"rot": (-14,0,0)}, "Shin_R": {"rot": (28,0,0)}, "Foot_R": {"rot": (-14,0,0)}, "Chest": {"rot": (10,0,0)}, "Head": {"rot": (12,0,0)}, "UpperArm_L": {"rot": (18,0,-8)}, "Forearm_L": {"rot": (38,0,8)}, "UpperArm_R": {"rot": (18,0,8)}, "Forearm_R": {"rot": (38,0,-8)}}),
+            (12, {"Hips": {"loc": (0,0.024,0), "rot": (-4,0,0)}, "Thigh_L": {"rot": (-8,0,-6)}, "Shin_L": {"rot": (10,0,0)}, "Foot_L": {"rot": (16,0,0)}, "Thigh_R": {"rot": (-8,0,6)}, "Shin_R": {"rot": (10,0,0)}, "Foot_R": {"rot": (16,0,0)}, "Chest": {"rot": (-10,0,0)}, "Head": {"rot": (-12,5,-3)}, "UpperArm_L": {"rot": (132,0,28)}, "Forearm_L": {"rot": (14,0,8)}, "UpperArm_R": {"rot": (132,0,-28)}, "Forearm_R": {"rot": (14,0,-8)}, "Brow_L": {"loc": (0,0.004,0)}, "Brow_R": {"loc": (0,0.004,0)}, "Eye_L": {"scale": (1.08,1,0.72)}, "Eye_R": {"scale": (1.08,1,0.72)}, "Accessory_Root": {"rot": (-16,0,0)}}),
+            (18, {"Hips": {"loc": (0,-0.003,0)}, "Thigh_L": {"rot": (-8,0,0)}, "Shin_L": {"rot": (16,0,0)}, "Foot_L": {"rot": (-8,0,0)}, "Thigh_R": {"rot": (-8,0,0)}, "Shin_R": {"rot": (16,0,0)}, "Foot_R": {"rot": (-8,0,0)}, "Chest": {"rot": (-2,0,0)}, "Head": {"rot": (-4,-5,3)}, "UpperArm_L": {"rot": (104,0,22)}, "Forearm_L": {"rot": (26,0,8)}, "UpperArm_R": {"rot": (104,0,-22)}, "Forearm_R": {"rot": (26,0,-8)}, "Eye_L": {"scale": (1.08,1,0.72)}, "Eye_R": {"scale": (1.08,1,0.72)}, "Accessory_Root": {"rot": (8,0,0)}}),
+            (24, {"Hips": {"loc": (0,0.008,0)}, "Chest": {"rot": (-8,0,0)}, "Head": {"rot": (-10,0,0)}, "UpperArm_L": {"rot": (126,0,26)}, "Forearm_L": {"rot": (14,0,6)}, "UpperArm_R": {"rot": (126,0,-26)}, "Forearm_R": {"rot": (14,0,-6)}, "Accessory_Root": {"rot": (-12,0,0)}}),
+            (34, {}),
         ]),
         ("Failure", 40, [
             (1,  {}),
@@ -1245,6 +1331,187 @@ def build_shared_animation_library(arm_obj):
             (18, {"Hips": {"loc": (0,0.016,0)}, "UpperArm_L": {"rot": (120,0,-32)}, "UpperArm_R": {"rot": (120,0,32)}, "Head": {"rot": (12,-6,0)}}),
             (27, {"Hips": {"loc": (0,-0.003,0)}, "UpperArm_L": {"rot": (75,0,-20)}, "UpperArm_R": {"rot": (75,0,20)}, "Head": {"rot": (2,6,0)}}),
             (36, {"Hips": {"loc": (0,0.015,0)}, "UpperArm_L": {"rot": (115,0,-28)}, "UpperArm_R": {"rot": (115,0,28)}, "Head": {"rot": (10,6,0)}}),
+        ]),
+
+        # --- F. SHARED WALL HABITAT, ELEVATOR, SELECTION, DESK VISIT & PORTAL (16) ---
+        ("Elevator_Queue_Idle", 48, [
+            (1,  {}),
+            (12, {"Chest": {"rot": (2, 4, 0)}, "Head": {"rot": (4, -10, 4)}, "UpperArm_R": {"rot": (12, 0, -6)}}),
+            (24, {"Hips": {"loc": (0, -0.0015, 0)}, "Head": {"rot": (6, 8, -4)}, "Accessory_Root": {"rot": (-4, 0, 0)}}),
+            (36, {"Head": {"rot": (-2, 4, 2)}}),
+            (48, {}),
+        ]),
+        ("Elevator_Step_Board", 24, [
+            (1,  {}),
+            (7,  {"Hips": {"loc": (0, 0.004, 0)}, "Chest": {"rot": (6, 0, 0)}, "Thigh_L": {"rot": (-28, 0, 0)}, "Shin_L": {"rot": (22, 0, 0)}, "Thigh_R": {"rot": (22, 0, 0)}, "UpperArm_R": {"rot": (-14, 0, -10)}}),
+            (15, {"Hips": {"loc": (0, 0.002, 0)}, "Head": {"rot": (-8, 0, 0)}, "Thigh_L": {"rot": (20, 0, 0)}, "Thigh_R": {"rot": (-26, 0, 0)}, "Shin_R": {"rot": (20, 0, 0)}}),
+            (24, {}),
+        ]),
+        ("Elevator_Ride_Idle", 48, [
+            (1,  {"UpperArm_L": {"rot": (22, 0, 12)}, "Forearm_L": {"rot": (24, 0, 0)}}),
+            (14, {"Hips": {"loc": (0, 0.002, 0)}, "Head": {"rot": (6, 12, 4)}, "UpperArm_L": {"rot": (22, 0, 12)}, "Forearm_L": {"rot": (24, 0, 0)}}),
+            (30, {"Hips": {"loc": (0, -0.002, 0)}, "Head": {"rot": (4, -12, -4)}, "UpperArm_L": {"rot": (22, 0, 12)}, "Forearm_L": {"rot": (24, 0, 0)}}),
+            (48, {"UpperArm_L": {"rot": (22, 0, 12)}, "Forearm_L": {"rot": (24, 0, 0)}}),
+        ]),
+        ("Elevator_Step_Exit", 24, [
+            (1,  {"Head": {"rot": (4, 0, 0)}}),
+            (8,  {"Hips": {"loc": (0, 0.005, 0)}, "Chest": {"rot": (8, 0, 0)}, "Thigh_R": {"rot": (-30, 0, 0)}, "Thigh_L": {"rot": (20, 0, 0)}, "UpperArm_L": {"rot": (16, 0, 12)}}),
+            (16, {"Hips": {"loc": (0, 0.002, 0)}, "Thigh_L": {"rot": (-24, 0, 0)}, "Thigh_R": {"rot": (16, 0, 0)}}),
+            (24, {}),
+        ]),
+        ("Select_Highlighted_Wave", 32, [
+            (1,  {}),
+            (8,  {"Hips": {"loc": (0, 0.008, 0)}, "Head": {"rot": (8, -6, -6)}, "UpperArm_R": {"rot": (118, 0, -28)}, "Forearm_R": {"rot": (25, 0, 0)}}),
+            (16, {"Head": {"rot": (10, 4, 4)}, "UpperArm_R": {"rot": (115, 0, -10)}, "Forearm_R": {"rot": (12, 0, 22)}}),
+            (24, {"UpperArm_R": {"rot": (118, 0, -28)}, "Forearm_R": {"rot": (25, 0, 0)}}),
+            (32, {}),
+        ]),
+        ("DeskVisit_Perch_Idle", 48, [
+            (1,  {"Head": {"rot": (4, 0, 4)}}),
+            (16, {"Hips": {"loc": (0, -0.002, 0)}, "Chest": {"rot": (4, 4, 0)}, "Head": {"rot": (6, 8, 6)}, "UpperArm_R": {"rot": (16, 0, -8)}, "Brow_L": {"loc": (0, 0.001, 0)}}),
+            (32, {"Hips": {"loc": (0, 0.001, 0)}, "Chest": {"rot": (2, -4, 0)}, "Head": {"rot": (4, -8, -4)}, "UpperArm_L": {"rot": (14, 0, 8)}}),
+            (48, {"Head": {"rot": (4, 0, 4)}}),
+        ]),
+        ("DeskVisit_Listening", 40, [
+            (1,  {"Chest": {"rot": (8, 0, 0)}, "Head": {"rot": (6, 0, 8)}}),
+            (12, {"Chest": {"rot": (10, 0, 0)}, "Head": {"rot": (10, 6, 10)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (-8, 0, 0)}}),
+            (26, {"Chest": {"rot": (8, 0, 0)}, "Head": {"rot": (-2, 4, 10)}}),
+            (40, {"Chest": {"rot": (8, 0, 0)}, "Head": {"rot": (6, 0, 8)}}),
+        ]),
+        ("DeskVisit_Explain", 48, [
+            (1,  {}),
+            (10, {"Chest": {"rot": (6, 8, 0)}, "Head": {"rot": (6, -6, 4)}, "UpperArm_R": {"rot": (52, 0, -24)}, "Forearm_R": {"rot": (48, 0, 0)}}),
+            (22, {"Chest": {"rot": (8, -6, 0)}, "Head": {"rot": (8, 6, -4)}, "UpperArm_L": {"rot": (48, 0, 22)}, "Forearm_L": {"rot": (45, 0, 0)}, "UpperArm_R": {"rot": (32, 0, -14)}}),
+            (35, {"Chest": {"rot": (6, 0, 0)}, "Head": {"rot": (-4, 0, 0)}, "UpperArm_L": {"rot": (38, 0, 16)}, "UpperArm_R": {"rot": (42, 0, -16)}}),
+            (48, {}),
+        ]),
+        ("Portal_Emerge_Step", 32, [
+            (1,  {"Hips": {"loc": (0, -0.008, 0)}, "Chest": {"rot": (10, 0, 0)}, "UpperArm_L": {"rot": (18, 0, 16)}, "UpperArm_R": {"rot": (18, 0, -16)}}),
+            (12, {"Hips": {"loc": (0, 0.010, 0)}, "Chest": {"rot": (6, 0, 0)}, "Head": {"rot": (8, 0, 0)}, "Thigh_L": {"rot": (-26, 0, 0)}, "Thigh_R": {"rot": (18, 0, 0)}, "UpperArm_L": {"rot": (42, 0, 22)}, "UpperArm_R": {"rot": (65, 0, -24)}}),
+            (22, {"Hips": {"loc": (0, 0.002, 0)}, "Chest": {"rot": (-2, 0, 0)}, "Head": {"rot": (10, 6, 0)}, "Thigh_L": {"rot": (10, 0, 0)}, "Thigh_R": {"rot": (-14, 0, 0)}, "UpperArm_R": {"rot": (92, 0, -22)}}),
+            (32, {}),
+        ]),
+        ("Portal_Converse_Loop", 48, [
+            (1,  {}),
+            (12, {"Chest": {"rot": (4, 5, 0)}, "Head": {"rot": (6, -4, 3)}, "UpperArm_R": {"rot": (36, 0, -14)}, "Forearm_R": {"rot": (42, 0, 0)}}),
+            (24, {"Hips": {"loc": (0, -0.002, 0)}, "Head": {"rot": (4, 6, -3)}, "UpperArm_L": {"rot": (24, 0, 12)}, "Forearm_L": {"rot": (32, 0, 0)}}),
+            (36, {"Chest": {"rot": (2, -4, 0)}, "Head": {"rot": (8, 0, 4)}, "Eye_L": {"scale": (1, 0.15, 1)}, "Eye_R": {"scale": (1, 0.15, 1)}}),
+            (48, {}),
+        ]),
+        ("Portal_Return_Step", 28, [
+            (1,  {}),
+            (8,  {"Hips": {"rot": (0, 15, 0)}, "Chest": {"rot": (6, 12, 0)}, "Head": {"rot": (-6, 18, 0)}, "UpperArm_R": {"rot": (78, 0, -18)}, "Forearm_R": {"rot": (35, 0, 0)}}),
+            (18, {"Hips": {"loc": (0, 0.004, 0), "rot": (0, 145, 0)}, "Chest": {"rot": (2, 10, 0)}, "Thigh_L": {"rot": (-24, 0, 0)}, "Thigh_R": {"rot": (22, 0, 0)}}),
+            (28, {"Hips": {"loc": (0, 0.0, 0), "rot": (0, 180, 0)}}),
+        ]),
+        ("Manager_Lookout_Idle", 48, [
+            (1,  {}),
+            (14, {"Chest": {"rot": (4, -12, 0)}, "Head": {"rot": (-6, -16, 4)}, "UpperArm_L": {"rot": (28, 0, 14)}, "Forearm_L": {"rot": (46, 0, 0)}}),
+            (28, {"Chest": {"rot": (2, 12, 0)}, "Head": {"rot": (-4, 16, -4)}, "UpperArm_R": {"rot": (22, 0, -10)}}),
+            (48, {}),
+        ]),
+        ("Manager_Review_Plan", 48, [
+            (1,  {"UpperArm_L": {"rot": (42, 0, 16)}, "Forearm_L": {"rot": (52, 0, 12)}}),
+            (16, {"Chest": {"rot": (8, 4, 0)}, "Head": {"rot": (-10, 4, 6)}, "UpperArm_L": {"rot": (45, 0, 16)}, "Forearm_L": {"rot": (56, 0, 12)}, "UpperArm_R": {"rot": (58, 0, -12)}, "Forearm_R": {"rot": (78, 0, 18)}}),
+            (32, {"Chest": {"rot": (6, -4, 0)}, "Head": {"rot": (-6, -4, -4)}, "UpperArm_L": {"rot": (42, 0, 16)}, "Forearm_L": {"rot": (52, 0, 12)}}),
+            (48, {"UpperArm_L": {"rot": (42, 0, 16)}, "Forearm_L": {"rot": (52, 0, 12)}}),
+        ]),
+        ("Manager_Operate_Printer", 36, [
+            (1,  {}),
+            (8,  {"Chest": {"rot": (10, -28, 0)}, "Head": {"rot": (-8, -22, 0)}, "UpperArm_R": {"rot": (72, 0, -18)}, "Forearm_R": {"rot": (35, 0, 0)}}),
+            (16, {"Chest": {"rot": (12, -28, 0)}, "Head": {"rot": (-10, -20, 0)}, "UpperArm_R": {"rot": (58, 0, -16)}, "Forearm_R": {"rot": (28, 0, 0)}}),
+            (26, {"Chest": {"rot": (4, -10, 0)}, "Head": {"rot": (4, -8, 0)}, "UpperArm_R": {"rot": (62, 0, 8)}, "UpperArm_L": {"rot": (56, 0, -8)}}),
+            (36, {}),
+        ]),
+        ("Manager_Delegate_Point", 36, [
+            (1,  {}),
+            (10, {"Chest": {"rot": (6, -18, 0)}, "Head": {"rot": (-6, -18, 4)}, "UpperArm_R": {"rot": (88, 0, -24)}, "Forearm_R": {"rot": (12, 0, 0)}}),
+            (22, {"Chest": {"rot": (4, 18, 0)}, "Head": {"rot": (-6, 18, -4)}, "UpperArm_L": {"rot": (88, 0, 24)}, "Forearm_L": {"rot": (12, 0, 0)}}),
+            (36, {}),
+        ]),
+        ("Manager_Receive_Report", 32, [
+            (1,  {}),
+            (10, {"Chest": {"rot": (8, 0, 0)}, "UpperArm_L": {"rot": (54, 0, 14)}, "Forearm_L": {"rot": (35, 0, 10)}, "UpperArm_R": {"rot": (54, 0, -14)}, "Forearm_R": {"rot": (35, 0, -10)}}),
+            (20, {"Head": {"rot": (-12, 0, 0)}, "UpperArm_L": {"rot": (42, 0, 10)}, "UpperArm_R": {"rot": (42, 0, -10)}}),
+            (32, {}),
+        ]),
+
+        # --- G. LIVING WORLD INTERACTION, REACTION & ROLE CLIPS (12) ---
+        ("React_Glance", 22, [
+            (1,  {}),
+            (6,  {"Chest": {"rot": (2, 8, 0)}, "Head": {"rot": (4, 18, -5)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (4, 8, 0)}}),
+            (14, {"Chest": {"rot": (2, 10, 0)}, "Head": {"rot": (5, 20, -4)}, "Eye_L": {"scale": (1.06, 1, 1.06)}, "Eye_R": {"scale": (1.06, 1, 1.06)}, "Accessory_Root": {"rot": (6, 10, 0)}}),
+            (22, {}),
+        ]),
+        ("React_Poke_Surprise", 24, [
+            (1,  {}),
+            (4,  {"Hips": {"loc": (0, -0.005, 0)}, "Chest": {"rot": (12, 0, 0)}, "Head": {"rot": (14, -8, 6)}, "UpperArm_L": {"rot": (32, 0, -28)}, "Forearm_L": {"rot": (38, 0, -14)}, "UpperArm_R": {"rot": (32, 0, 28)}, "Forearm_R": {"rot": (38, 0, 14)}, "Eye_L": {"scale": (1.22, 1, 1.24)}, "Eye_R": {"scale": (1.22, 1, 1.24)}, "Brow_L": {"loc": (0, 0.004, 0)}, "Brow_R": {"loc": (0, 0.004, 0)}, "Accessory_Root": {"rot": (-18, 0, 0)}}),
+            (10, {"Hips": {"loc": (0, 0.011, 0)}, "Chest": {"rot": (8, 6, 0)}, "Head": {"rot": (10, 10, -4)}, "UpperArm_L": {"rot": (48, 0, -24)}, "Forearm_L": {"rot": (42, 0, 0)}, "UpperArm_R": {"rot": (48, 0, 24)}, "Forearm_R": {"rot": (42, 0, 0)}, "Eye_L": {"scale": (1.16, 1, 1.18)}, "Eye_R": {"scale": (1.16, 1, 1.18)}, "Accessory_Root": {"rot": (14, 0, 0)}}),
+            (17, {"Hips": {"loc": (0, -0.002, 0)}, "Chest": {"rot": (-3, 0, 0)}, "Head": {"rot": (-4, 4, 0)}, "UpperArm_L": {"rot": (16, 0, -10)}, "UpperArm_R": {"rot": (16, 0, 10)}}),
+            (24, {}),
+        ]),
+        ("React_Wave_Greet", 32, [
+            (1,  {}),
+            (7,  {"Hips": {"loc": (0, 0.006, 0)}, "Chest": {"rot": (3, -6, 0)}, "Head": {"rot": (6, -8, -6)}, "UpperArm_R": {"rot": (108, 0, 32)}, "Forearm_R": {"rot": (18, 0, 22)}, "UpperArm_L": {"rot": (10, 0, -10)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (10, -6, 0)}}),
+            (14, {"Hips": {"loc": (0, 0.002, 0)}, "Chest": {"rot": (2, -4, 0)}, "Head": {"rot": (7, -6, 4)}, "UpperArm_R": {"rot": (108, 0, 12)}, "Forearm_R": {"rot": (18, 0, -22)}, "UpperArm_L": {"rot": (10, 0, -10)}, "Accessory_Root": {"rot": (8, 6, 0)}}),
+            (21, {"Hips": {"loc": (0, 0.006, 0)}, "Chest": {"rot": (3, -6, 0)}, "Head": {"rot": (6, -8, -4)}, "UpperArm_R": {"rot": (108, 0, 32)}, "Forearm_R": {"rot": (18, 0, 22)}, "UpperArm_L": {"rot": (10, 0, -10)}, "Accessory_Root": {"rot": (10, -4, 0)}}),
+            (32, {}),
+        ]),
+        ("React_Interrupt_Listen", 22, [
+            (1,  {}),
+            (8,  {"Hips": {"loc": (0, 0.003, 0)}, "Chest": {"rot": (4, 8, 0)}, "Head": {"rot": (8, 12, 6)}, "UpperArm_L": {"rot": (24, 0, 10)}, "Forearm_L": {"rot": (28, 0, 8)}, "UpperArm_R": {"rot": (24, 0, -10)}, "Forearm_R": {"rot": (28, 0, -8)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (-8, 6, 0)}}),
+            (16, {"Chest": {"rot": (2, 6, 0)}, "Head": {"rot": (-2, 8, 6)}, "UpperArm_L": {"rot": (20, 0, 10)}, "Forearm_L": {"rot": (24, 0, 6)}, "UpperArm_R": {"rot": (20, 0, -10)}, "Forearm_R": {"rot": (24, 0, -6)}}),
+            (22, {}),
+        ]),
+        ("React_Assign_Ack", 20, [
+            (1,  {}),
+            (6,  {"Hips": {"loc": (0, -0.004, 0)}, "Chest": {"rot": (-8, 0, 0)}, "Head": {"rot": (-14, 0, 0)}, "UpperArm_R": {"rot": (62, 0, -10)}, "Forearm_R": {"rot": (44, 0, -12)}, "UpperArm_L": {"rot": (14, 0, -8)}, "Accessory_Root": {"rot": (-14, 0, 0)}}),
+            (13, {"Hips": {"loc": (0, 0.004, 0)}, "Chest": {"rot": (4, 0, 0)}, "Head": {"rot": (6, 4, 0)}, "UpperArm_R": {"rot": (46, 0, -6)}, "Forearm_R": {"rot": (30, 0, 0)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (8, 0, 0)}}),
+            (20, {}),
+        ]),
+        ("Carry_Suspended_Idle", 40, [
+            (1,  {"Hips": {"loc": (0, 0.002, 0), "rot": (4, 0, 0)}, "Chest": {"rot": (-3, 0, 0)}, "Head": {"rot": (4, 4, 3)}, "UpperArm_L": {"rot": (16, 0, -14)}, "Forearm_L": {"rot": (24, 0, 6)}, "UpperArm_R": {"rot": (16, 0, 14)}, "Forearm_R": {"rot": (24, 0, -6)}, "Thigh_L": {"rot": (-22, 0, -4)}, "Shin_L": {"rot": (28, 0, 0)}, "Foot_L": {"rot": (12, 0, 0)}, "Thigh_R": {"rot": (-16, 0, 4)}, "Shin_R": {"rot": (22, 0, 0)}, "Foot_R": {"rot": (10, 0, 0)}, "Accessory_Root": {"rot": (6, 3, 0)}}),
+            (14, {"Hips": {"loc": (0, 0.005, 0), "rot": (2, 3, 0)}, "Chest": {"rot": (-2, -3, 2)}, "Head": {"rot": (6, 10, -4)}, "UpperArm_L": {"rot": (18, 0, -16)}, "Forearm_L": {"rot": (26, 0, 6)}, "UpperArm_R": {"rot": (14, 0, 14)}, "Forearm_R": {"rot": (22, 0, -6)}, "Thigh_L": {"rot": (-18, 0, -4)}, "Shin_L": {"rot": (24, 0, 0)}, "Foot_L": {"rot": (10, 0, 0)}, "Thigh_R": {"rot": (-22, 0, 4)}, "Shin_R": {"rot": (30, 0, 0)}, "Foot_R": {"rot": (14, 0, 0)}, "Accessory_Root": {"rot": (8, -4, 0)}}),
+            (27, {"Hips": {"loc": (0, 0.000, 0), "rot": (5, -3, 0)}, "Chest": {"rot": (-4, 3, -2)}, "Head": {"rot": (3, -8, 5)}, "UpperArm_L": {"rot": (14, 0, -13)}, "Forearm_L": {"rot": (22, 0, 6)}, "UpperArm_R": {"rot": (18, 0, 16)}, "Forearm_R": {"rot": (26, 0, -6)}, "Thigh_L": {"rot": (-24, 0, -4)}, "Shin_L": {"rot": (30, 0, 0)}, "Foot_L": {"rot": (14, 0, 0)}, "Thigh_R": {"rot": (-14, 0, 4)}, "Shin_R": {"rot": (20, 0, 0)}, "Foot_R": {"rot": (8, 0, 0)}, "Eye_L": {"scale": (1, 1, 0.16)}, "Eye_R": {"scale": (1, 1, 0.16)}, "Accessory_Root": {"rot": (4, 5, 0)}}),
+            (40, {"Hips": {"loc": (0, 0.002, 0), "rot": (4, 0, 0)}, "Chest": {"rot": (-3, 0, 0)}, "Head": {"rot": (4, 4, 3)}, "UpperArm_L": {"rot": (16, 0, -14)}, "Forearm_L": {"rot": (24, 0, 6)}, "UpperArm_R": {"rot": (16, 0, 14)}, "Forearm_R": {"rot": (24, 0, -6)}, "Thigh_L": {"rot": (-22, 0, -4)}, "Shin_L": {"rot": (28, 0, 0)}, "Foot_L": {"rot": (12, 0, 0)}, "Thigh_R": {"rot": (-16, 0, 4)}, "Shin_R": {"rot": (22, 0, 0)}, "Foot_R": {"rot": (10, 0, 0)}, "Accessory_Root": {"rot": (6, 3, 0)}}),
+        ]),
+        ("Researcher_Compare_Papers", 48, [
+            (1,  {"Chest": {"rot": (-6, 0, 0)}, "Head": {"rot": (-12, 12, 4)}, "UpperArm_L": {"rot": (52, 0, 10)}, "Forearm_L": {"rot": (36, 0, 12)}, "UpperArm_R": {"rot": (46, 0, -16)}, "Forearm_R": {"rot": (30, 0, -10)}, "Accessory_Root": {"rot": (6, 4, 0)}}),
+            (16, {"Hips": {"loc": (0, 0.002, 0)}, "Chest": {"rot": (-6, 6, 0)}, "Head": {"rot": (-12, 16, 6)}, "UpperArm_L": {"rot": (56, 0, 8)}, "Forearm_L": {"rot": (40, 0, 12)}, "UpperArm_R": {"rot": (42, 0, -18)}, "Forearm_R": {"rot": (26, 0, -10)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (8, 6, 0)}}),
+            (32, {"Hips": {"loc": (0, 0.002, 0)}, "Chest": {"rot": (-6, -6, 0)}, "Head": {"rot": (-12, -16, -6)}, "UpperArm_L": {"rot": (42, 0, 18)}, "Forearm_L": {"rot": (26, 0, 10)}, "UpperArm_R": {"rot": (56, 0, -8)}, "Forearm_R": {"rot": (40, 0, -12)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (8, -6, 0)}}),
+            (48, {"Chest": {"rot": (-6, 0, 0)}, "Head": {"rot": (-12, 12, 4)}, "UpperArm_L": {"rot": (52, 0, 10)}, "Forearm_L": {"rot": (36, 0, 12)}, "UpperArm_R": {"rot": (46, 0, -16)}, "Forearm_R": {"rot": (30, 0, -10)}, "Accessory_Root": {"rot": (6, 4, 0)}}),
+        ]),
+        ("Developer_Adjust_Keyboard", 36, [
+            (1,  {}),
+            (9,  {"Hips": {"loc": (0, -0.003, 0)}, "Chest": {"rot": (-10, 0, 0)}, "Head": {"rot": (-12, 0, 0)}, "UpperArm_L": {"rot": (52, 0, 6)}, "Forearm_L": {"rot": (34, 0, 6)}, "Hand_L": {"rot": (-10, 0, 0)}, "UpperArm_R": {"rot": (52, 0, -6)}, "Forearm_R": {"rot": (34, 0, -6)}, "Hand_R": {"rot": (-10, 0, 0)}}),
+            (18, {"Hips": {"loc": (0, -0.003, 0)}, "Chest": {"rot": (-10, 4, 0)}, "Head": {"rot": (-12, 4, 4)}, "UpperArm_L": {"rot": (50, 0, 12)}, "Forearm_L": {"rot": (32, 0, 8)}, "Hand_L": {"rot": (-12, 0, 0)}, "UpperArm_R": {"rot": (54, 0, -2)}, "Forearm_R": {"rot": (36, 0, -4)}, "Hand_R": {"rot": (-14, 0, 0)}}),
+            (27, {"Chest": {"rot": (-8, 0, 0)}, "Head": {"rot": (-8, -2, 0)}, "UpperArm_L": {"rot": (46, 0, 10)}, "Forearm_L": {"rot": (30, 0, 8)}, "UpperArm_R": {"rot": (46, 0, -10)}, "Forearm_R": {"rot": (30, 0, -8)}}),
+            (36, {}),
+        ]),
+        ("Tester_Note_Take", 44, [
+            (1,  {"Chest": {"rot": (-8, 4, 0)}, "Head": {"rot": (-12, 6, -4)}, "UpperArm_L": {"rot": (46, 0, 14)}, "Forearm_L": {"rot": (38, 0, 14)}, "UpperArm_R": {"rot": (50, 0, -8)}, "Forearm_R": {"rot": (38, 0, -16)}, "Hand_R": {"rot": (-12, 0, 0)}}),
+            (11, {"Chest": {"rot": (-8, 4, 0)}, "Head": {"rot": (-14, 4, -4)}, "UpperArm_L": {"rot": (46, 0, 14)}, "Forearm_L": {"rot": (38, 0, 14)}, "UpperArm_R": {"rot": (54, 0, -18)}, "Forearm_R": {"rot": (42, 0, 4)}, "Hand_R": {"rot": (-16, 0, 0)}}),
+            (22, {"Hips": {"loc": (0, 0.002, 0)}, "Chest": {"rot": (-4, 2, 0)}, "Head": {"rot": (4, -4, 3)}, "UpperArm_L": {"rot": (44, 0, 14)}, "Forearm_L": {"rot": (36, 0, 14)}, "UpperArm_R": {"rot": (48, 0, -10)}, "Forearm_R": {"rot": (34, 0, -14)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}}),
+            (33, {"Chest": {"rot": (-8, 4, 0)}, "Head": {"rot": (-13, 5, -4)}, "UpperArm_L": {"rot": (46, 0, 14)}, "Forearm_L": {"rot": (38, 0, 14)}, "UpperArm_R": {"rot": (52, 0, -14)}, "Forearm_R": {"rot": (40, 0, -6)}, "Hand_R": {"rot": (-14, 0, 0)}}),
+            (44, {"Chest": {"rot": (-8, 4, 0)}, "Head": {"rot": (-12, 6, -4)}, "UpperArm_L": {"rot": (46, 0, 14)}, "Forearm_L": {"rot": (38, 0, 14)}, "UpperArm_R": {"rot": (50, 0, -8)}, "Forearm_R": {"rot": (38, 0, -16)}, "Hand_R": {"rot": (-12, 0, 0)}}),
+        ]),
+        ("Manager_Welcome_User", 36, [
+            (1,  {}),
+            (10, {"Hips": {"loc": (0, 0.004, 0)}, "Chest": {"rot": (6, 0, 0)}, "Head": {"rot": (8, 0, -4)}, "UpperArm_L": {"rot": (62, 0, -24)}, "Forearm_L": {"rot": (22, 0, -10)}, "UpperArm_R": {"rot": (78, 0, 26)}, "Forearm_R": {"rot": (18, 0, 10)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (10, 0, 0)}}),
+            (22, {"Hips": {"loc": (0, -0.002, 0)}, "Chest": {"rot": (-8, 0, 0)}, "Head": {"rot": (-10, 0, 0)}, "UpperArm_L": {"rot": (48, 0, -18)}, "Forearm_L": {"rot": (24, 0, -6)}, "UpperArm_R": {"rot": (52, 0, 18)}, "Forearm_R": {"rot": (24, 0, 6)}}),
+            (36, {}),
+        ]),
+        ("Manager_Acknowledge_Worker", 28, [
+            (1,  {}),
+            (9,  {"Chest": {"rot": (4, -10, 0)}, "Head": {"rot": (-10, -12, 3)}, "UpperArm_R": {"rot": (64, 0, -12)}, "Forearm_R": {"rot": (20, 0, 0)}, "UpperArm_L": {"rot": (16, 0, -8)}, "Brow_L": {"loc": (0, 0.002, 0)}, "Brow_R": {"loc": (0, 0.002, 0)}, "Accessory_Root": {"rot": (-8, -4, 0)}}),
+            (18, {"Chest": {"rot": (2, -6, 0)}, "Head": {"rot": (4, -8, 0)}, "UpperArm_R": {"rot": (48, 0, -8)}, "Forearm_R": {"rot": (18, 0, 0)}}),
+            (28, {}),
+        ]),
+        ("Return_To_Work", 22, [
+            (1,  {}),
+            (7,  {"Hips": {"loc": (0, -0.004, 0)}, "Chest": {"rot": (-8, 0, 0)}, "Head": {"rot": (-12, 0, 0)}, "UpperArm_L": {"rot": (38, 0, 8)}, "Forearm_L": {"rot": (32, 0, 8)}, "UpperArm_R": {"rot": (38, 0, -8)}, "Forearm_R": {"rot": (32, 0, -8)}, "Accessory_Root": {"rot": (-10, 0, 0)}}),
+            (14, {"Hips": {"loc": (0, 0.003, 0)}, "Chest": {"rot": (-6, 0, 0)}, "Head": {"rot": (-6, 0, 0)}, "UpperArm_L": {"rot": (44, 0, 10)}, "Forearm_L": {"rot": (28, 0, 6)}, "UpperArm_R": {"rot": (44, 0, -10)}, "Forearm_R": {"rot": (28, 0, -6)}}),
+            (22, {}),
         ]),
     ]
 
@@ -1353,10 +1620,24 @@ def render_character_views(char_name, arm_obj):
         ("front",        ( 0.00, -0.46, 0.145), "Idle_Breathing", 14),
         ("threequarter", ( 0.30, -0.36, 0.165), "Happy_Idle",     10),
         ("side",         ( 0.46,  0.00, 0.140), "Walk_Loop",       1),
-        ("offer",        ( 0.24, -0.40, 0.160), "Offer_Document", 20),
+        ("offer",        ( 0.24, -0.40, 0.160), "Offer_Document", 14),
     ]
+    if char_name == "Agent_Researcher":
+        views.extend([
+            ("turn_left",  ( 0.30, -0.36, 0.155), "Turn_Left",        5),
+            ("walk_carry", ( 0.42, -0.18, 0.150), "Walk_Carry_Paper", 1),
+            ("earpod",     ( 0.24, -0.14, 0.165), "Idle_Breathing",   1),
+        ])
+    elif char_name == "Agent_Developer":
+        views.append(("portal_ret", ( 0.32,  0.34, 0.155), "Portal_Return_Step", 28))
+    elif char_name == "Agent_Tester":
+        views.extend([
+            ("walk_start", ( 0.46,  0.00, 0.145), "Walk_Start", 8),
+            ("walk_stop",  ( 0.46,  0.00, 0.145), "Walk_Stop",  5),
+        ])
     rendered_paths = []
     for vname, cam_pos, act_name, frame in views:
+        reset_pose(arm_obj)
         if act_name in bpy.data.actions:
             arm_obj.animation_data.action = bpy.data.actions[act_name]
             scene.frame_set(frame)

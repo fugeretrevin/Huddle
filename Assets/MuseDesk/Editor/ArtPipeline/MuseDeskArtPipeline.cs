@@ -31,11 +31,14 @@ namespace MuseDesk.Editor.ArtPipeline
 
         private static readonly HashSet<string> LoopingCharacterClips = new HashSet<string>
         {
-            "Idle_Breathing", "Idle_Fidget", "Happy_Idle", "Walk_Loop", "Seated_Idle",
-            "Talking", "Listening", "Thinking", "Confused", "Excited", "Worried",
+            "Idle_Breathing", "Idle_Fidget", "Happy_Idle", "Walk_Loop", "Walk_Carry_Paper", "Seated_Idle",
+            "Talking", "Listening", "Thinking", "Excited", "Worried",
             "Typing", "Reading", "Writing", "Inspecting", "Using_Workstation",
             "Waiting_For_Input", "Hold_Document", "Offer_Document", "Carry_Package",
-            "Blocked", "Cheer"
+            "Blocked", "Cheer", "Waving",
+            "Elevator_Queue_Idle", "Elevator_Ride_Idle", "DeskVisit_Perch_Idle",
+            "DeskVisit_Listening", "Portal_Converse_Loop", "Manager_Lookout_Idle", "Manager_Review_Plan",
+            "Carry_Suspended_Idle", "Researcher_Compare_Papers", "Tester_Note_Take"
         };
 
         private struct MatSpec
@@ -93,7 +96,258 @@ namespace MuseDesk.Editor.ArtPipeline
             new MatSpec("Mat_ChamberGlass",        0.680f, 0.900f, 0.880f, 0.12f, 0.00f, true, 0.20f, 0.45f, 0.42f),
             new MatSpec("Mat_ScreenCode",          0.120f, 0.260f, 0.400f, 0.14f, 0.00f, true, 0.16f, 0.52f, 0.82f),
             new MatSpec("Mat_LampGlow",            1.000f, 0.950f, 0.800f, 0.15f, 0.00f, true, 1.10f, 1.00f, 0.80f),
+            new MatSpec("Mat_StampInk_Approve",    0.102f, 0.420f, 0.239f, 0.72f, 0.00f),
+            new MatSpec("Mat_StampInk_Reject",     0.620f, 0.161f, 0.129f, 0.72f, 0.00f),
         };
+
+        [MenuItem("MuseDesk/Art Pipeline/Rebuild Characters & Agent Controller")]
+        public static void RebuildCharactersAndAgentController()
+        {
+            EnsureDirectories();
+            AssetDatabase.Refresh();
+
+            Dictionary<string, Material> matMap = LoadExistingMaterialsOrCreate();
+            ConfigureAllModelImporters(ModelsRoot + "/Characters");
+            AnimatorController agentController = BuildAgentAnimatorController();
+
+            string[] names = { "Agent_Researcher", "Agent_Developer", "Agent_Tester" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                string fbxPath = $"{ModelsRoot}/Characters/{names[i]}.fbx";
+                GameObject modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
+                if (modelAsset == null) continue;
+
+                GameObject fbxInst = (GameObject)PrefabUtility.InstantiatePrefab(modelAsset);
+                GameObject instance;
+                if (fbxInst.transform.localScale.x > 10f || Quaternion.Angle(fbxInst.transform.localRotation, Quaternion.identity) > 1f)
+                {
+                    instance = new GameObject(names[i]);
+                    fbxInst.name = names[i] + "_Model";
+                    fbxInst.transform.SetParent(instance.transform, false);
+                }
+                else
+                {
+                    instance = fbxInst;
+                    instance.name = names[i];
+                }
+                NormalizeFbxHierarchyScales(instance, true);
+                ApplySharedMaterialsToHierarchy(instance, matMap);
+
+                Animator anim = instance.GetComponentInChildren<Animator>();
+                if (anim == null) anim = instance.AddComponent<Animator>();
+                anim.runtimeAnimatorController = agentController;
+
+                AgentAnimatorBridge bridge = instance.AddComponent<AgentAnimatorBridge>();
+                bridge.ResolveSockets();
+
+                CapsuleCollider col = instance.AddComponent<CapsuleCollider>();
+                col.center = new Vector3(0f, 0.115f, 0f);
+                col.radius = 0.052f;
+                col.height = 0.23f;
+
+                string prefabPath = $"{PrefabsRoot}/Characters/{names[i]}.prefab";
+                PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("[MuseDeskArtPipeline] Rebuilt character prefabs & updated MuseDesk_Agent.controller in-place.");
+        }
+
+        [MenuItem("MuseDesk/Art Pipeline/Build Stamp Juice (P3)")]
+        public static void BuildStampJuice()
+        {
+            EnsureDirectories();
+            string visualPolishDir = PrefabsRoot + "/VisualPolish";
+            if (!Directory.Exists(visualPolishDir)) Directory.CreateDirectory(visualPolishDir);
+            AssetDatabase.Refresh();
+
+            Dictionary<string, Material> matMap = LoadExistingMaterialsOrCreate();
+
+            string docsModels = ModelsRoot + "/Documents";
+            string[] fbxNames = {
+                "Doc_Stamp_Approve", "Doc_Stamp_Reject",
+                "Doc_StampInkMark_Approve", "Doc_StampInkMark_Reject"
+            };
+            for (int i = 0; i < fbxNames.Length; i++)
+            {
+                string fbxPath = $"{docsModels}/{fbxNames[i]}.fbx";
+                ModelImporter importer = AssetImporter.GetAtPath(fbxPath) as ModelImporter;
+                if (importer == null) continue;
+                bool isAnim = fbxNames[i].StartsWith("Doc_Stamp_");
+                importer.animationType = ModelImporterAnimationType.Generic;
+                importer.importAnimation = isAnim;
+                if (isAnim)
+                {
+                    ModelImporterClipAnimation[] defaults = importer.defaultClipAnimations;
+                    if (defaults != null && defaults.Length > 0)
+                    {
+                        ModelImporterClipAnimation[] custom = new ModelImporterClipAnimation[defaults.Length];
+                        for (int c = 0; c < defaults.Length; c++)
+                        {
+                            ModelImporterClipAnimation clip = defaults[c];
+                            string cleanName = clip.takeName;
+                            int pipeIdx = cleanName.LastIndexOf('|');
+                            if (pipeIdx >= 0 && pipeIdx < cleanName.Length - 1)
+                            {
+                                cleanName = cleanName.Substring(pipeIdx + 1);
+                            }
+                            if (cleanName.Contains("Stamp_Impact_Squash")) cleanName = "Stamp_Impact_Squash";
+                            clip.name = cleanName;
+                            clip.loopTime = false;
+                            custom[c] = clip;
+                        }
+                        importer.clipAnimations = custom;
+                    }
+                }
+                importer.SaveAndReimport();
+            }
+
+            // Build or update MuseDesk_Stamp.controller in-place
+            string stampCtrlPath = $"{ControllersDir}/MuseDesk_Stamp.controller";
+            AnimatorController stampCtrl = AssetDatabase.LoadAssetAtPath<AnimatorController>(stampCtrlPath);
+            if (stampCtrl == null)
+            {
+                stampCtrl = AnimatorController.CreateAnimatorControllerAtPath(stampCtrlPath);
+            }
+            for (int p = stampCtrl.parameters.Length - 1; p >= 0; p--) stampCtrl.RemoveParameter(p);
+            AnimatorStateMachine sm = stampCtrl.layers[0].stateMachine;
+            foreach (ChildAnimatorState child in sm.states) sm.RemoveState(child.state);
+            for (int t = sm.anyStateTransitions.Length - 1; t >= 0; t--) sm.RemoveAnyStateTransition(sm.anyStateTransitions[t]);
+
+            stampCtrl.AddParameter("Impact", AnimatorControllerParameterType.Trigger);
+            AnimatorState idleState = sm.AddState("Stamp_Idle");
+            sm.defaultState = idleState;
+
+            AnimationClip squashClip = null;
+            UnityEngine.Object[] stampSubAssets = AssetDatabase.LoadAllAssetsAtPath($"{docsModels}/Doc_Stamp_Approve.fbx");
+            for (int i = 0; i < stampSubAssets.Length; i++)
+            {
+                AnimationClip c = stampSubAssets[i] as AnimationClip;
+                if (c != null && !c.name.StartsWith("__preview__"))
+                {
+                    squashClip = c;
+                    break;
+                }
+            }
+
+            if (squashClip != null)
+            {
+                AnimatorState squashState = sm.AddState("Stamp_Impact_Squash");
+                squashState.motion = squashClip;
+
+                AnimatorStateTransition anyToSquash = sm.AddAnyStateTransition(squashState);
+                anyToSquash.hasExitTime = false;
+                anyToSquash.duration = 0.02f;
+                anyToSquash.canTransitionToSelf = true;
+                anyToSquash.AddCondition(AnimatorConditionMode.If, 0f, "Impact");
+
+                AnimatorStateTransition squashToIdle = squashState.AddTransition(idleState);
+                squashToIdle.hasExitTime = true;
+                squashToIdle.exitTime = 0.95f;
+                squashToIdle.duration = 0.05f;
+            }
+            EditorUtility.SetDirty(stampCtrl);
+
+            string[] stampAssets = { "Doc_Stamp_Approve", "Doc_Stamp_Reject" };
+            for (int i = 0; i < stampAssets.Length; i++)
+            {
+                GameObject modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>($"{docsModels}/{stampAssets[i]}.fbx");
+                if (modelAsset == null) continue;
+
+                GameObject fbxInst = (GameObject)PrefabUtility.InstantiatePrefab(modelAsset);
+                GameObject instance;
+                if (fbxInst.transform.localScale.x > 10f || Quaternion.Angle(fbxInst.transform.localRotation, Quaternion.identity) > 1f)
+                {
+                    instance = new GameObject(stampAssets[i] + "_Polished");
+                    fbxInst.name = stampAssets[i] + "_Model";
+                    fbxInst.transform.SetParent(instance.transform, false);
+                }
+                else
+                {
+                    instance = fbxInst;
+                    instance.name = stampAssets[i] + "_Polished";
+                    NormalizeFbxHierarchyScales(instance, false);
+                }
+                ApplySharedMaterialsToHierarchy(instance, matMap);
+
+                Animator anim = fbxInst.GetComponent<Animator>();
+                if (anim == null) anim = fbxInst.AddComponent<Animator>();
+                anim.runtimeAnimatorController = stampCtrl;
+                anim.applyRootMotion = false;
+
+                string prefabPath = $"{visualPolishDir}/{stampAssets[i]}_Polished.prefab";
+                PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
+
+            string[] markAssets = { "Doc_StampInkMark_Approve", "Doc_StampInkMark_Reject" };
+            for (int i = 0; i < markAssets.Length; i++)
+            {
+                GameObject modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>($"{docsModels}/{markAssets[i]}.fbx");
+                if (modelAsset == null) continue;
+
+                GameObject fbxInst = (GameObject)PrefabUtility.InstantiatePrefab(modelAsset);
+                GameObject instance;
+                if (fbxInst.transform.localScale.x > 10f || Quaternion.Angle(fbxInst.transform.localRotation, Quaternion.identity) > 1f)
+                {
+                    instance = new GameObject(markAssets[i]);
+                    fbxInst.name = markAssets[i] + "_Model";
+                    fbxInst.transform.SetParent(instance.transform, false);
+                }
+                else
+                {
+                    instance = fbxInst;
+                    instance.name = markAssets[i];
+                    NormalizeFbxHierarchyScales(instance, false);
+                }
+                ApplySharedMaterialsToHierarchy(instance, matMap);
+
+                string prefabPath = $"{PrefabsRoot}/Documents/{markAssets[i]}.prefab";
+                PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("[MuseDeskArtPipeline] Priority 3 Stamp Juice built & verified.");
+        }
+
+        private static Dictionary<string, Material> LoadExistingMaterialsOrCreate()
+        {
+            Dictionary<string, Material> map = new Dictionary<string, Material>();
+            bool createdAny = false;
+            Shader urpLit = Shader.Find("Universal Render Pipeline/Lit");
+            if (urpLit == null) urpLit = Shader.Find("Standard");
+
+            for (int i = 0; i < PaletteSpecs.Length; i++)
+            {
+                MatSpec spec = PaletteSpecs[i];
+                string matPath = $"{MaterialsDir}/{spec.Name}.mat";
+                Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+                if (mat == null)
+                {
+                    mat = new Material(urpLit);
+                    float smoothness = Mathf.Clamp01(1f - spec.Roughness);
+                    if (mat.HasProperty("_BaseColor"))  mat.SetColor("_BaseColor", spec.Color);
+                    if (mat.HasProperty("_Color"))      mat.SetColor("_Color", spec.Color);
+                    if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
+                    if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", smoothness);
+                    if (mat.HasProperty("_Metallic"))   mat.SetFloat("_Metallic", spec.Metallic);
+                    if (spec.Emissive)
+                    {
+                        mat.EnableKeyword("_EMISSION");
+                        if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", spec.EmissionColor);
+                    }
+                    AssetDatabase.CreateAsset(mat, matPath);
+                    createdAny = true;
+                }
+                map[spec.Name] = mat;
+            }
+            if (createdAny) AssetDatabase.SaveAssets();
+            return map;
+        }
 
         [MenuItem("MuseDesk/Art Pipeline/Build Complete Phase 2 Art Library & Scenes")]
         public static void BuildAll()
@@ -187,9 +441,9 @@ namespace MuseDesk.Editor.ArtPipeline
             return map;
         }
 
-        private static void ConfigureAllModelImporters()
+        private static void ConfigureAllModelImporters(string searchRoot = null)
         {
-            string[] guids = AssetDatabase.FindAssets("t:Model", new[] { ModelsRoot });
+            string[] guids = AssetDatabase.FindAssets("t:Model", new[] { string.IsNullOrEmpty(searchRoot) ? ModelsRoot : searchRoot });
             for (int i = 0; i < guids.Length; i++)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guids[i]);
@@ -198,7 +452,7 @@ namespace MuseDesk.Editor.ArtPipeline
                 ModelImporter importer = AssetImporter.GetAtPath(path) as ModelImporter;
                 if (importer == null) continue;
 
-                bool isAnimated = path.Contains("/Characters/") || path.Contains("/Factory/");
+                bool isAnimated = path.Contains("/Characters/") || path.Contains("/Factory/") || path.Contains("Doc_Stamp_");
                 bool changed = false;
 
                 if (importer.animationType != ModelImporterAnimationType.Generic)
@@ -246,20 +500,26 @@ namespace MuseDesk.Editor.ArtPipeline
         private static AnimatorController BuildAgentAnimatorController()
         {
             string controllerPath = $"{ControllersDir}/MuseDesk_Agent.controller";
-            if (File.Exists(controllerPath))
+            AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            if (controller == null)
             {
-                AssetDatabase.DeleteAsset(controllerPath);
+                controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
             }
-            AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+
+            // Preserve existing controller asset & GUID by resetting layers/parameters in-place
+            for (int p = controller.parameters.Length - 1; p >= 0; p--) controller.RemoveParameter(p);
+            AnimatorStateMachine sm = controller.layers[0].stateMachine;
+            foreach (ChildAnimatorState child in sm.states) sm.RemoveState(child.state);
+            for (int t = sm.anyStateTransitions.Length - 1; t >= 0; t--) sm.RemoveAnyStateTransition(sm.anyStateTransitions[t]);
+
             controller.AddParameter("MoveSpeed", AnimatorControllerParameterType.Float);
+            controller.AddParameter("IsCarryingPaper", AnimatorControllerParameterType.Bool);
 
             string fbxPath = $"{ModelsRoot}/Characters/Agent_Researcher.fbx";
             UnityEngine.Object[] subAssets = AssetDatabase.LoadAllAssetsAtPath(fbxPath);
-            AnimatorStateMachine sm = controller.layers[0].stateMachine;
 
-            AnimatorState idleState = null;
-            AnimatorState walkState = null;
-
+            var clipsByName = new Dictionary<string, AnimationClip>(StringComparer.Ordinal);
+            var states = new Dictionary<string, AnimatorState>();
             for (int i = 0; i < subAssets.Length; i++)
             {
                 AnimationClip clip = subAssets[i] as AnimationClip;
@@ -272,19 +532,16 @@ namespace MuseDesk.Editor.ArtPipeline
                     stateName = stateName.Substring(pipeIdx + 1);
                 }
 
+                clipsByName[stateName] = clip;
                 AnimatorState st = sm.AddState(stateName);
                 st.motion = clip;
+                states[stateName] = st;
 
-                if (stateName == "Idle_Breathing")
-                {
-                    sm.defaultState = st;
-                    idleState = st;
-                }
-                else if (stateName == "Walk_Loop")
-                {
-                    walkState = st;
-                }
+                if (stateName == "Idle_Breathing") sm.defaultState = st;
             }
+
+            states.TryGetValue("Idle_Breathing", out AnimatorState idleState);
+            states.TryGetValue("Walk_Loop", out AnimatorState walkState);
 
             if (idleState != null && walkState != null)
             {
@@ -298,6 +555,65 @@ namespace MuseDesk.Editor.ArtPipeline
                 toIdle.duration = 0.15f;
                 toIdle.AddCondition(AnimatorConditionMode.Less, 0.015f, "MoveSpeed");
             }
+
+            if (states.TryGetValue("Offer_Document_Present", out var offerPresent) &&
+                states.TryGetValue("Offer_Document", out var offerLoop))
+            {
+                var toHold = offerPresent.AddTransition(offerLoop);
+                toHold.hasExitTime = true;
+                toHold.exitTime = 0.95f;
+                toHold.duration = 0.12f;
+            }
+            if (states.TryGetValue("Offer_Document_Release", out var offerRelease) && idleState != null)
+            {
+                var releaseToIdle = offerRelease.AddTransition(idleState);
+                releaseToIdle.hasExitTime = true;
+                releaseToIdle.exitTime = 0.95f;
+                releaseToIdle.duration = 0.15f;
+            }
+
+            string[] autoReturnReactions = CharacterMaskAndSocketSetup.AutoReturnOneShotClips;
+            for (int r = 0; r < autoReturnReactions.Length; r++)
+            {
+                if (states.TryGetValue(autoReturnReactions[r], out var reactState) && idleState != null)
+                {
+                    var toIdle = reactState.AddTransition(idleState);
+                    toIdle.hasExitTime = true;
+                    toIdle.exitTime = 0.95f;
+                    toIdle.duration = 0.15f;
+                }
+            }
+
+            if (states.TryGetValue("Walk_Start", out var walkStartState) && walkState != null)
+            {
+                var startToWalk = walkStartState.AddTransition(walkState);
+                startToWalk.hasExitTime = true;
+                startToWalk.exitTime = 0.90f;
+                startToWalk.duration = 0.12f;
+            }
+            if (walkState != null && states.TryGetValue("Walk_Carry_Paper", out var carryWalkState))
+            {
+                var toCarry = walkState.AddTransition(carryWalkState);
+                toCarry.hasExitTime = false;
+                toCarry.duration = 0.15f;
+                toCarry.AddCondition(AnimatorConditionMode.If, 0f, "IsCarryingPaper");
+
+                var fromCarry = carryWalkState.AddTransition(walkState);
+                fromCarry.hasExitTime = false;
+                fromCarry.duration = 0.15f;
+                fromCarry.AddCondition(AnimatorConditionMode.IfNot, 0f, "IsCarryingPaper");
+
+                if (idleState != null)
+                {
+                    var carryToIdle = carryWalkState.AddTransition(idleState);
+                    carryToIdle.hasExitTime = false;
+                    carryToIdle.duration = 0.15f;
+                    carryToIdle.AddCondition(AnimatorConditionMode.Less, 0.015f, "MoveSpeed");
+                }
+            }
+
+            CharacterMaskAndSocketSetup.EnsureMasksExist(out AvatarMask upperBodyMask, out AvatarMask headGazeMask);
+            CharacterMaskAndSocketSetup.ConfigureControllerLayersAndClips(controller, clipsByName, upperBodyMask, headGazeMask);
 
             EditorUtility.SetDirty(controller);
             return controller;
@@ -360,19 +676,23 @@ namespace MuseDesk.Editor.ArtPipeline
             root.transform.localScale = Vector3.one;
             if (isRigged)
             {
-                // For rigged armatures, only normalize the 5 attachment Empty sockets
+                // For rigged armatures, normalize all attachment Empty sockets (_Attach, _Socket, and Section 16 sockets)
                 Transform[] all = root.GetComponentsInChildren<Transform>(true);
                 for (int i = 0; i < all.Length; i++)
                 {
                     Transform t = all[i];
-                    if (t.name.EndsWith("_Attach") || t.name.EndsWith("_Socket"))
+                    if (t.name.EndsWith("_Attach") || t.name.EndsWith("_Socket") || CharacterMaskAndSocketSetup.IsCanonicalCharacterSocket(t.name))
                     {
-                        t.localRotation = t.localRotation * Quaternion.Euler(90f, 0f, 0f);
-                        Vector3 pLossy = t.parent != null ? t.parent.lossyScale : Vector3.one;
-                        t.localScale = new Vector3(
-                            Mathf.Abs(pLossy.x) > 1e-5f ? 1f / pLossy.x : 1f,
-                            Mathf.Abs(pLossy.y) > 1e-5f ? 1f / pLossy.y : 1f,
-                            Mathf.Abs(pLossy.z) > 1e-5f ? 1f / pLossy.z : 1f);
+                        Vector3 ls = t.lossyScale;
+                        if (Mathf.Abs(ls.x - 1f) > 0.1f || Mathf.Abs(ls.y - 1f) > 0.1f || Mathf.Abs(ls.z - 1f) > 0.1f)
+                        {
+                            t.localRotation = t.localRotation * Quaternion.Euler(90f, 0f, 0f);
+                            Vector3 pLossy = t.parent != null ? t.parent.lossyScale : Vector3.one;
+                            t.localScale = new Vector3(
+                                Mathf.Abs(pLossy.x) > 1e-5f ? 1f / pLossy.x : 1f,
+                                Mathf.Abs(pLossy.y) > 1e-5f ? 1f / pLossy.y : 1f,
+                                Mathf.Abs(pLossy.z) > 1e-5f ? 1f / pLossy.z : 1f);
+                        }
                     }
                 }
                 return;
