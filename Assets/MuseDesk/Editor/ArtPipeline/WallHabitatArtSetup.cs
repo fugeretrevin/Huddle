@@ -370,13 +370,30 @@ namespace MuseDesk.Editor.ArtPipeline
 
         private static AnimatorController BuildWallAgentController(string ctrlPath, string fbxPath)
         {
-            if (File.Exists(ctrlPath)) AssetDatabase.DeleteAsset(ctrlPath);
-            var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ctrlPath);
+            var ctrl = AssetDatabase.LoadAssetAtPath<AnimatorController>(ctrlPath);
+            if (ctrl == null)
+            {
+                ctrl = AnimatorController.CreateAnimatorControllerAtPath(ctrlPath);
+            }
+
+            // Preserve existing controller GUID by resetting layers/parameters in-place
+            for (int p = ctrl.parameters.Length - 1; p >= 0; p--) ctrl.RemoveParameter(p);
+            for (int l = ctrl.layers.Length - 1; l >= 1; l--) ctrl.RemoveLayer(l);
+            var sm = ctrl.layers[0].stateMachine;
+            foreach (ChildAnimatorState child in sm.states) sm.RemoveState(child.state);
+            for (int t = sm.anyStateTransitions.Length - 1; t >= 0; t--) sm.RemoveAnyStateTransition(sm.anyStateTransitions[t]);
+
             ctrl.AddParameter("MoveSpeed", AnimatorControllerParameterType.Float);
             ctrl.AddParameter("IsCarryingPaper", AnimatorControllerParameterType.Bool);
 
-            var sm = ctrl.layers[0].stateMachine;
-            var clipsByName = LoadClipMap(fbxPath);
+            // Load Agent_Manager clips, falling back to Agent_Researcher for any newly added clips if Manager FBX is not yet re-exported
+            var clipsByName = new Dictionary<string, AnimationClip>(StringComparer.Ordinal);
+            const string researcherFbx = "Assets/MuseDesk/Art/Models/Characters/Agent_Researcher.fbx";
+            if (File.Exists(researcherFbx))
+            {
+                foreach (var kv in LoadClipMap(researcherFbx)) clipsByName[kv.Key] = kv.Value;
+            }
+            foreach (var kv in LoadClipMap(fbxPath)) clipsByName[kv.Key] = kv.Value;
 
             var states = new Dictionary<string, AnimatorState>();
             int idx = 0;
@@ -430,19 +447,16 @@ namespace MuseDesk.Editor.ArtPipeline
                     var t3 = wcp.AddTransition(idleState); t3.hasExitTime = false; t3.duration = 0.15f; t3.AddCondition(AnimatorConditionMode.Less, 0.015f, "MoveSpeed");
                 }
             }
-            string[] retStates =
-            {
-                "React_Approve", "React_Reject", "React_Completion_Cheer",
-                "Handoff_Give", "Handoff_Receive", "Walk_Stop", "Turn_Left", "Turn_Right",
-                "Elevator_Step_Board", "Elevator_Step_Exit", "Portal_Emerge_Step", "Portal_Return_Step"
-            };
-            foreach (string rs in retStates)
+            foreach (string rs in CharacterMaskAndSocketSetup.AutoReturnOneShotClips)
             {
                 if (states.TryGetValue(rs, out var st) && idleState != null)
                 {
                     var t = st.AddTransition(idleState); t.hasExitTime = true; t.exitTime = 0.95f; t.duration = 0.15f;
                 }
             }
+
+            CharacterMaskAndSocketSetup.EnsureMasksExist(out AvatarMask upperBodyMask, out AvatarMask headGazeMask);
+            CharacterMaskAndSocketSetup.ConfigureControllerLayersAndClips(ctrl, clipsByName, upperBodyMask, headGazeMask);
 
             EditorUtility.SetDirty(ctrl);
             return ctrl;

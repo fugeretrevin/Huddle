@@ -37,7 +37,8 @@ namespace MuseDesk.Editor.ArtPipeline
             "Waiting_For_Input", "Hold_Document", "Offer_Document", "Carry_Package",
             "Blocked", "Cheer", "Waving",
             "Elevator_Queue_Idle", "Elevator_Ride_Idle", "DeskVisit_Perch_Idle",
-            "DeskVisit_Listening", "Portal_Converse_Loop", "Manager_Lookout_Idle", "Manager_Review_Plan"
+            "DeskVisit_Listening", "Portal_Converse_Loop", "Manager_Lookout_Idle", "Manager_Review_Plan",
+            "Carry_Suspended_Idle", "Researcher_Compare_Papers", "Tester_Note_Take"
         };
 
         private struct MatSpec
@@ -517,6 +518,7 @@ namespace MuseDesk.Editor.ArtPipeline
             string fbxPath = $"{ModelsRoot}/Characters/Agent_Researcher.fbx";
             UnityEngine.Object[] subAssets = AssetDatabase.LoadAllAssetsAtPath(fbxPath);
 
+            var clipsByName = new Dictionary<string, AnimationClip>(StringComparer.Ordinal);
             var states = new Dictionary<string, AnimatorState>();
             for (int i = 0; i < subAssets.Length; i++)
             {
@@ -530,6 +532,7 @@ namespace MuseDesk.Editor.ArtPipeline
                     stateName = stateName.Substring(pipeIdx + 1);
                 }
 
+                clipsByName[stateName] = clip;
                 AnimatorState st = sm.AddState(stateName);
                 st.motion = clip;
                 states[stateName] = st;
@@ -569,12 +572,7 @@ namespace MuseDesk.Editor.ArtPipeline
                 releaseToIdle.duration = 0.15f;
             }
 
-            string[] autoReturnReactions =
-            {
-                "React_Approve", "React_Reject", "React_Completion_Cheer",
-                "Handoff_Give", "Handoff_Receive", "Walk_Stop", "Turn_Left", "Turn_Right",
-                "Elevator_Step_Board", "Elevator_Step_Exit", "Portal_Emerge_Step", "Portal_Return_Step"
-            };
+            string[] autoReturnReactions = CharacterMaskAndSocketSetup.AutoReturnOneShotClips;
             for (int r = 0; r < autoReturnReactions.Length; r++)
             {
                 if (states.TryGetValue(autoReturnReactions[r], out var reactState) && idleState != null)
@@ -613,6 +611,9 @@ namespace MuseDesk.Editor.ArtPipeline
                     carryToIdle.AddCondition(AnimatorConditionMode.Less, 0.015f, "MoveSpeed");
                 }
             }
+
+            CharacterMaskAndSocketSetup.EnsureMasksExist(out AvatarMask upperBodyMask, out AvatarMask headGazeMask);
+            CharacterMaskAndSocketSetup.ConfigureControllerLayersAndClips(controller, clipsByName, upperBodyMask, headGazeMask);
 
             EditorUtility.SetDirty(controller);
             return controller;
@@ -675,19 +676,23 @@ namespace MuseDesk.Editor.ArtPipeline
             root.transform.localScale = Vector3.one;
             if (isRigged)
             {
-                // For rigged armatures, only normalize the 5 attachment Empty sockets
+                // For rigged armatures, normalize all attachment Empty sockets (_Attach, _Socket, and Section 16 sockets)
                 Transform[] all = root.GetComponentsInChildren<Transform>(true);
                 for (int i = 0; i < all.Length; i++)
                 {
                     Transform t = all[i];
-                    if (t.name.EndsWith("_Attach") || t.name.EndsWith("_Socket"))
+                    if (t.name.EndsWith("_Attach") || t.name.EndsWith("_Socket") || CharacterMaskAndSocketSetup.IsCanonicalCharacterSocket(t.name))
                     {
-                        t.localRotation = t.localRotation * Quaternion.Euler(90f, 0f, 0f);
-                        Vector3 pLossy = t.parent != null ? t.parent.lossyScale : Vector3.one;
-                        t.localScale = new Vector3(
-                            Mathf.Abs(pLossy.x) > 1e-5f ? 1f / pLossy.x : 1f,
-                            Mathf.Abs(pLossy.y) > 1e-5f ? 1f / pLossy.y : 1f,
-                            Mathf.Abs(pLossy.z) > 1e-5f ? 1f / pLossy.z : 1f);
+                        Vector3 ls = t.lossyScale;
+                        if (Mathf.Abs(ls.x - 1f) > 0.1f || Mathf.Abs(ls.y - 1f) > 0.1f || Mathf.Abs(ls.z - 1f) > 0.1f)
+                        {
+                            t.localRotation = t.localRotation * Quaternion.Euler(90f, 0f, 0f);
+                            Vector3 pLossy = t.parent != null ? t.parent.lossyScale : Vector3.one;
+                            t.localScale = new Vector3(
+                                Mathf.Abs(pLossy.x) > 1e-5f ? 1f / pLossy.x : 1f,
+                                Mathf.Abs(pLossy.y) > 1e-5f ? 1f / pLossy.y : 1f,
+                                Mathf.Abs(pLossy.z) > 1e-5f ? 1f / pLossy.z : 1f);
+                        }
                     }
                 }
                 return;

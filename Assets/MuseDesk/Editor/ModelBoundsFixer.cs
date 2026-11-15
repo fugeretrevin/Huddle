@@ -43,7 +43,8 @@ namespace MuseDesk.EditorTools
             "Portal_Hidden_Idle", "Portal_Active_Idle",
             "Elevator_Queue_Idle", "Elevator_Ride_Idle",
             "DeskVisit_Perch_Idle", "DeskVisit_Listening", "DeskVisit_Explain",
-            "Portal_Converse_Loop", "Manager_Lookout_Idle", "Manager_Review_Plan"
+            "Portal_Converse_Loop", "Manager_Lookout_Idle", "Manager_Review_Plan",
+            "Carry_Suspended_Idle", "Researcher_Compare_Papers", "Tester_Note_Take"
         };
 
         static bool IsAnimatedSpatialPath(string p)

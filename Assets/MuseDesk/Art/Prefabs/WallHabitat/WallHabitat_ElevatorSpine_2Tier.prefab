@@ -1143,6 +1143,16 @@ MonoBehaviour:
   stopLower: {fileID: 6474145502820476028}
   stopMid: {fileID: 0}
   stopManager: {fileID: 7825981636369243262}
+  lowerFloorIndicator: {fileID: 0}
+  midFloorIndicator: {fileID: 0}
+  managerFloorIndicator: {fileID: 0}
+  arrivalParticles: {fileID: 0}
+  elevatorAudioSource: {fileID: 0}
+  callClip: {fileID: 0}
+  arrivalClip: {fileID: 0}
+  doorsOpenClip: {fileID: 0}
+  doorsCloseClip: {fileID: 0}
+  reducedMotion: 0
   travelSpeedMetersPerSec: 0.24
 --- !u!114 &2614637233893784284
 MonoBehaviour:
