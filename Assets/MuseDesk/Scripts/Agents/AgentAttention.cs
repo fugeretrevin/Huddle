@@ -96,6 +96,14 @@ namespace MuseDesk.Agents
         [Tooltip("In Focus mode idle gestures come this many times less often.")]
         public float focusIdleSlowdown = 2.5f;
 
+        [Header("Reaction arbiter (Sprint A3)")]
+        [Tooltip("Route poke / wave / glance / flinch / high five (Social), idle gestures (Ambient), the waiting paper offer (Task) " +
+                 "and walking / handoff / paper transfer (Critical) through one ReactionArbiter. Off = the previous behaviour, exactly.")]
+        public bool useReactionArbiter = true;
+
+        /// <summary>True while an enabled AgentAttention routes through the arbiter (AgentGaze reads it to pick its look policy).</summary>
+        public static bool ArbiterActive { get; private set; }
+
         // ───────────────────────── singleton ─────────────────────────
 
         static AgentAttention _instance;
@@ -174,6 +182,89 @@ namespace MuseDesk.Agents
 
         readonly StringBuilder _sb = new StringBuilder(512);
 
+        // Sprint A3 reaction arbiter state (see docs/Engineering/sprint/A3_REACTIONS.md, "Applied").
+        ReactionArbiter _arb;
+        CriticalSync _crit;
+        AmbientVariation[] _ambient, _present;
+        int[] _idleTick;
+
+        bool ArbOn { get { return useReactionArbiter && _arb != null; } }
+
+        // True when the reaction may play now. Off / no arbiter = always (the old behaviour). Queued = false: Poll dispatches it later.
+        bool Gate(int i, ReactionKind kind, float now, bool statusBacked)
+        {
+            return !ArbOn || ReactionAdapter.Allow(_arb, now, i, kind, statusBacked);
+        }
+
+        void GateRelease(int i, ReactionKind kind, bool played)
+        {
+            if (!played && ArbOn) ReactionAdapter.Release(_arb, i, kind);
+        }
+
+        // A glance that the arbiter permits. CanReact / Reacting are checked first so a body that would refuse
+        // anyway does not spend the arbiter's budget.
+        bool GlanceGated(int i, Transform target, float now)
+        {
+            AgentPresence p = agents[i];
+            if (ArbOn && (!p.CanReact || p.Reacting || target == null)) return false;
+            if (!Gate(i, ReactionKind.Glance, now, false)) return false;
+            bool ok = p.Glance(target);
+            GateRelease(i, ReactionKind.Glance, ok);
+            return ok;
+        }
+
+        bool WaveGated(int i, float delay, float now)
+        {
+            AgentPresence p = agents[i];
+            if (ArbOn && !p.CanReact) return false;
+            // A wave back answers the user's own wave: user-initiated, so it survives Focus like before.
+            if (!Gate(i, ReactionKind.Wave, now, true)) return false;
+            bool ok = p.WaveBack(delay);
+            GateRelease(i, ReactionKind.Wave, ok);
+            return ok;
+        }
+
+        /// <summary>For code outside this file (the animator bridge, later): ask whether a reaction of this kind may play
+        /// for <paramref name="role"/> right now. Returns true when it may (always true with useReactionArbiter off, or
+        /// when the role is unknown). On true the arbiter's slot is held for the kind's default duration; call
+        /// <see cref="EndReaction"/> for open-ended kinds or if the body then refuses.</summary>
+        public bool TryBeginReaction(string role, ReactionKind kind, bool statusBacked)
+        {
+            TryWire();
+            int i = IndexOf(role);
+            if (i < 0 || !ArbOn) return true;
+            return ReactionAdapter.Allow(_arb, Time.time, i, kind, statusBacked);
+        }
+
+        public void EndReaction(string role, ReactionKind kind)
+        {
+            int i = IndexOf(role);
+            if (i >= 0 && ArbOn) ReactionAdapter.Release(_arb, i, kind);
+        }
+
+        // Plays a reaction the arbiter queued earlier (only Task and body-blocked Social are ever queued).
+        void PollQueued(float now)
+        {
+            for (int guard = 0; guard < 3; guard++)
+            {
+                ReactionRequest r;
+                if (!_arb.Poll(now, out r)) return;
+                if (r.Agent < 0 || r.Agent >= _n) continue;
+                AgentPresence p = agents[r.Agent];
+                bool ok = false;
+                switch (r.Kind)
+                {
+                    case ReactionKind.Poke: ok = p.Poke(0); break;
+                    case ReactionKind.Wave: ok = p.WaveBack(0f); break;
+                    case ReactionKind.Glance: ok = p.Glance(_cam); break;
+                    case ReactionKind.WaitingOffer:
+                        ok = _kinds[r.Agent] == AgentStatusKind.WaitingForUser && p.PresentPaper(p.gaze != null ? p.gaze.paper : null);
+                        break;
+                }
+                if (!ok) _arb.End(r.Agent, r.Kind);
+            }
+        }
+
         // ───────────────────────── lifecycle ─────────────────────────
 
         void Awake()
@@ -191,7 +282,7 @@ namespace MuseDesk.Agents
 
         void OnDestroy()
         {
-            if (_instance == this) _instance = null;
+            if (_instance == this) { _instance = null; ArbiterActive = false; }
             for (int i = 0; i < _ownMaterials.Count; i++)
                 if (_ownMaterials[i] != null) Destroy(_ownMaterials[i]);
             _ownMaterials.Clear();
@@ -258,6 +349,19 @@ namespace MuseDesk.Agents
             _near = new bool[Hands * _n];
             _hold = new HoldStillDetector[Hands * _n];
             for (int i = 0; i < _hold.Length; i++) _hold[i] = new HoldStillDetector();
+
+            // Sprint A3: one arbiter for the desk, per-agent seeded idle variation.
+            _arb = new ReactionArbiter(new ReactionArbiterConfig { AgentCount = _n < 1 ? 1 : _n });
+            _crit = new CriticalSync(_n);
+            _ambient = new AmbientVariation[_n];
+            _present = new AmbientVariation[_n];
+            _idleTick = new int[_n];
+            for (int i = 0; i < _n; i++)
+            {
+                _ambient[i] = new AmbientVariation(ReactionAdapter.SeedFor(i, 1), 3, idleIntervalMin, idleIntervalMax);
+                // The waiting-agent paper offer repeats 7..12 s before; the arbiter's WaitingOffer cooldown is 8 s, so 8.1..12.
+                _present[i] = new AmbientVariation(ReactionAdapter.SeedFor(i, 2), 1, 8.1f, 12f);
+            }
 
             // Signs and poke volumes the builder did not make.
             bool needSigns = false;
@@ -498,10 +602,27 @@ namespace MuseDesk.Agents
             bool globalBlock = MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning
                                || (_completion != null && _completion.IsPlaying);
             bool focus = FocusModeController.Active;
+            ArbiterActive = useReactionArbiter;
+            bool arb = ArbOn;
+            if (arb)
+            {
+                // The existing Focus and busy-hands gates feed the arbiter (HandsBusy is refreshed again in HandReactions).
+                _arb.SetFocus(focus);
+                _arb.SetHandsBusy(HandsBusy);
+            }
+            bool transitioning = MuseDesk.Spatial.SpatialWorkspaceState.IsTransitioning;
+            bool completionPlaying = _completion != null && _completion.IsPlaying;
             for (int i = 0; i < _n; i++)
             {
                 AgentPresence p = agents[i];
                 p.GlobalBlock = globalBlock;
+                if (arb)
+                {
+                    // Critical slot from confirmed state, read-only: walking, handoff, paper transfer / office move.
+                    bool handoff = AgentHandoffController.AnyBusy
+                        && (p.gaze == null || p.gaze.HasNearbyAgent || (p.movement != null && !p.movement.AtHome));
+                    _crit.Sync(_arb, i, now, completionPlaying, transitioning, handoff, p.movement != null && p.movement.IsMoving);
+                }
                 if (_speaking[i] && (now >= _speakUntil[i] || p.PipelineBusy))
                 {
                     if (p.gaze != null) p.gaze.SetSpeaking(false);
@@ -521,7 +642,8 @@ namespace MuseDesk.Agents
                 LeanIn(now, dt, focus);
                 GazeDwell(now, dt, focus, globalBlock);
             }
-            IdleGestures(now, focus);
+            if (arb) IdleGesturesArbited(now, focus); else IdleGestures(now, focus);
+            if (arb) PollQueued(now);
             PlaceSigns(now, dt);
         }
 
@@ -619,6 +741,7 @@ namespace MuseDesk.Agents
                 MuseDesk.Spatial.HandClaimRegistry.Shared.Owner(0) == MuseDesk.Spatial.HandClaim.AgentSelect,
                 MuseDesk.Spatial.HandClaimRegistry.Shared.Owner(1) == MuseDesk.Spatial.HandClaim.AgentSelect);
             bool busy = HandsBusy;
+            if (ArbOn) _arb.SetHandsBusy(busy);
             for (int h = 0; h < Hands; h++)
             {
                 bool valid = _handValid[h];
@@ -651,7 +774,7 @@ namespace MuseDesk.Agents
                     bool near = d < (_near[k] ? radius * 1.25f : radius);
                     if (near && !_near[k] && !inside && !busy && _glanceCd.Ready(now))
                     {
-                        if (p.Glance(_indexT[h] != null ? _indexT[h] : user)) _glanceCd.Start(now, glanceGlobalCooldown);
+                        if (GlanceGated(i, _indexT[h] != null ? _indexT[h] : user, now)) _glanceCd.Start(now, glanceGlobalCooldown);
                     }
                     _near[k] = near;
 
@@ -662,7 +785,11 @@ namespace MuseDesk.Agents
                         float reach = Mathf.Max(0.08f, p.Height * 0.6f);
                         if (rel.y > -0.02f && rel.y < reach + 0.1f && rel.x * rel.x + rel.z * rel.z < reach * reach)
                         {
-                            if (p.Duck(_indexT[h])) _duckCd[i].Start(now, 2f);
+                            // Direct hand motion over the character: user-initiated (survives Focus, as before).
+                            bool allowed = !ArbOn || (p.CanReact && Gate(i, ReactionKind.Selected, now, true));
+                            bool ducked = allowed && p.Duck(_indexT[h]);
+                            GateRelease(i, ReactionKind.Selected, ducked || !allowed);
+                            if (ducked) _duckCd[i].Start(now, 2f);
                         }
                     }
 
@@ -672,7 +799,10 @@ namespace MuseDesk.Agents
                                 && Vector3.Dot(tip - p.CenterPoint, _headPos - p.CenterPoint) > 0f;
                     if (_hold[k].Tick(tip, zone && !busy, dt) && _highFiveCd[i].TryFire(now, 3f))
                     {
-                        if (p.HighFive(tip)) FeedbackFor(i);
+                        bool allowed = !ArbOn || (p.CanReact && Gate(i, ReactionKind.Selected, now, true));
+                        bool five = allowed && p.HighFive(tip);
+                        GateRelease(i, ReactionKind.Selected, five || !allowed);
+                        if (five) FeedbackFor(i);
                     }
                 }
 
@@ -715,7 +845,15 @@ namespace MuseDesk.Agents
         {
             AgentPresence p = agents[i];
             int streak = _combo[i].Register(now);
-            p.Poke(streak);
+            if (ArbOn && p.CanReact)
+            {
+                // The user's own touch: survives Focus (as before). A body the pipeline owns keeps AgentPresence's
+                // own 1.5 s keep-and-replay, so the arbiter is only asked when the body is free.
+                bool allowed = Gate(i, ReactionKind.Poke, now, true);
+                bool played = allowed && p.Poke(streak);
+                GateRelease(i, ReactionKind.Poke, played || !allowed);
+            }
+            else p.Poke(streak);
             // The status is shown even when the body cannot react (it is standing with the paper),
             // but not while it walks or the completion sequence plays.
             if (p.HardBusy || p.bubble == null) return;
@@ -734,7 +872,7 @@ namespace MuseDesk.Agents
                 AgentPresence p = agents[i];
                 if (!p.CanReact || p.IsWorking) continue;
                 if (focus && waved > 0) break;
-                if (p.WaveBack(0.12f * waved)) waved++;
+                if (WaveGated(i, 0.12f * waved, now)) waved++;
             }
             if (waved > 0) return;
             int nearest = -1;
@@ -742,10 +880,10 @@ namespace MuseDesk.Agents
             for (int i = 0; i < _n; i++)
                 if (agents[i].CanReact && _dist[i] < best) { best = _dist[i]; nearest = i; }
             if (nearest < 0) return;
-            agents[nearest].WaveBack(0f);
+            WaveGated(nearest, 0f, now);
             if (focus) return;
             for (int i = 0; i < _n; i++)
-                if (i != nearest) agents[i].Glance(_cam);
+                if (i != nearest) GlanceGated(i, _cam, now);
         }
 
         // ── head ──
@@ -764,7 +902,7 @@ namespace MuseDesk.Agents
             if (nearest >= 0 && !focus && best < leanInMaxDistance
                 && _baseline[nearest] - best > leanInDelta && _glanceCd.Ready(now))
             {
-                if (agents[nearest].Glance(_cam)) _glanceCd.Start(now, glanceGlobalCooldown);
+                if (GlanceGated(nearest, _cam, now)) _glanceCd.Start(now, glanceGlobalCooldown);
                 for (int i = 0; i < _n; i++) _baseline[i] = _dist[i];   // one glance per lean
             }
             for (int i = 0; i < _n; i++) _baseline[i] = Mathf.Lerp(_baseline[i], _dist[i], k);
@@ -797,7 +935,7 @@ namespace MuseDesk.Agents
             {
                 agents[shown].SetHighlight(true);
                 // It notices being looked at (not in Focus mode, and within the glance budget).
-                if (!focus && _glanceCd.Ready(now) && agents[shown].Glance(_cam))
+                if (!focus && _glanceCd.Ready(now) && GlanceGated(shown, _cam, now))
                     _glanceCd.Start(now, glanceGlobalCooldown);
             }
         }
@@ -850,6 +988,60 @@ namespace MuseDesk.Agents
                     int other = (i + 1 + Random.Range(0, _n - 1)) % _n;
                     p.LookAt(agents[other].head, 1.2f, 0.6f);
                 }
+            }
+        }
+
+        // Arbiter path: the same schedule and the same status-backed paper offer, but timing and variant come from a
+        // per-agent seeded AmbientVariation (no Random), and each gesture is asked of the arbiter first. The status-backed
+        // paper offer (WaitingOffer, Task) survives Focus and the ambient gap/cap; random ambient (IdleVariation) does not.
+        void IdleGesturesArbited(float now, bool focus)
+        {
+            for (int i = 0; i < _n; i++)
+            {
+                AgentPresence p = agents[i];
+                if (now < p.NextIdleAt) continue;
+                float slow = IdleGesturePolicy.StatusRepeatMultiplier(focus, focusIdleSlowdown);
+                p.NextIdleAt = now + _ambient[i].NextDelay(slow);
+
+                AgentStatusKind kind = _kinds[i];
+                if (kind == AgentStatusKind.WaitingForUser)
+                {
+                    p.NextIdleAt = now + _present[i].NextDelay(slow);
+                    // PresentPaper may play away from the desk; it refuses only while the body is hard-busy or reacting.
+                    if (!p.isActiveAndEnabled || p.HardBusy || p.Reacting) continue;
+                    if (!Gate(i, ReactionKind.WaitingOffer, now, true)) continue;
+                    bool offered = p.PresentPaper(p.gaze != null ? p.gaze.paper : null);
+                    GateRelease(i, ReactionKind.WaitingOffer, offered);
+                    continue;
+                }
+                if (!IdleGesturePolicy.AmbientAllowed(focus)) { AmbientSuppressed++; continue; }
+                if (!p.CanReact) continue;
+                if (kind != AgentStatusKind.Idle && kind != AgentStatusKind.Complete) continue;
+
+                int worker = -1;
+                for (int j = 0; j < _n; j++)
+                    if (j != i && AgentStatusSentence.IsWorking(_kinds[j])) { worker = j; break; }
+                IdleAction act = ReactionAdapter.ChooseIdleAction(_ambient[i].NextVariant(), worker >= 0, _n > 1, focus);
+                if (act == IdleAction.None) continue;
+                // Looking at a colleague who is really working is state-backed; a stretch or a random look is not.
+                if (!Gate(i, ReactionKind.IdleVariation, now, act == IdleAction.LookAtWorker)) continue;
+                bool did = false;
+                switch (act)
+                {
+                    case IdleAction.LookAtWorker:
+                        did = p.LookAt(agents[worker].head, 1.6f, 0.75f);
+                        break;
+                    case IdleAction.Stretch:
+                        did = p.Stretch();
+                        break;
+                    case IdleAction.LookAtColleague:
+                    {
+                        int other = (i + 1 + (_idleTick[i]++ % (_n - 1))) % _n;
+                        did = p.LookAt(agents[other].head, 1.2f, 0.6f);
+                        break;
+                    }
+                }
+                GateRelease(i, ReactionKind.IdleVariation, did);
             }
         }
 

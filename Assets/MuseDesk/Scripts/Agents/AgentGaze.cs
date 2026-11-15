@@ -92,6 +92,9 @@ namespace MuseDesk.Agents
         AgentGaze _nearAgent;
         bool _holding;
         float _holdStart;
+        AttentionPolicy _policy;
+        string _policyState;
+        float _policyStateSince;
 
         // explicit hooks
         Transform _attention;
@@ -285,6 +288,24 @@ namespace MuseDesk.Agents
             _nearAgent = Nearest(away);
             _hand = NearestFingertip();
 
+            // Sprint A3: with the reaction arbiter on, how long the desk agent looks at the user while it waits comes
+            // from AttentionPolicy (a bounded dwell, never a continuous stare). Updated every decision so its edges
+            // stay true; only the waiting / error branch below uses the answer. Off: the previous behaviour.
+            bool policyOn = AgentAttention.ArbiterActive;
+            AttentionTarget policyTarget = AttentionTarget.Workstation;
+            if (policyOn)
+            {
+                if (_policy == null) _policy = new AttentionPolicy();
+                bool needsUser = state == AgentStates.Waiting || state == AgentStates.Error;
+                if (state != _policyState) { _policyState = state; _policyStateSince = now; }
+                AttentionContext ctx = new AttentionContext();
+                // The user needs to be told once per 8 s while it waits: a short level pulse is one new "addressed" edge.
+                ctx.AddressedByUser = needsUser && Mathf.Repeat(now - _policyStateSince, 8f) < 0.25f;
+                ctx.HandoffActive = AgentHandoffController.AnyBusy && _nearAgent != null;
+                ctx.Working = bridge != null && bridge.IsWorkingState;
+                policyTarget = _policy.Update(now, ctx).Target;
+            }
+
             Transform t = null;
             float w = 0f;
             bool explicitAttention = false;
@@ -327,7 +348,15 @@ namespace MuseDesk.Agents
             }
             else if (state == AgentStates.Waiting || state == AgentStates.Error)
             {
-                t = _user; w = focus ? 0.35f : 0.75f;            // it needs the user
+                if (!policyOn)
+                {
+                    t = _user; w = focus ? 0.35f : 0.75f;        // it needs the user
+                }
+                else if (policyTarget == AttentionTarget.User)
+                {
+                    t = _user; w = focus ? 0.35f : 0.75f;        // a look of at most 3 s, then back to its desk
+                }
+                // else: its desk (the clip's own head pose) until the next bounded look
             }
             else
             {

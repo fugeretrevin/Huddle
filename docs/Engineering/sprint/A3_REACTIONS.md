@@ -39,3 +39,24 @@ Per-frame, the integration owner calls `arb.SetFocus(FocusModeController.Active)
 - Nothing compiled or run. Tests were checked by reading only; a failing assertion most likely points at timing constants (cooldown/duration tables).
 - Poll re-queues blocked entries; a request kind blocked forever (e.g. Wave behind a stuck Walking) is dropped by staleness, not by Poll.
 - Defaults (gaps, caps, dwell) are untuned and should be tuned on head.
+
+## Applied (desk adapter, branch worktree-agent-a3de476ff109164fe, based on 8c2ca85)
+Status: NOT compiled in Unity, NOT run. Only the pure Core files (ReactionArbiter, ReactionAdapter, AttentionPolicy, DeskPolishLogic) were compile-checked with Unity's bundled Roslyn csc against netstandard 2.1; AgentAttention/AgentGaze and the new tests were verified by reading only.
+
+Rollback: `AgentAttention.useReactionArbiter` (default true). False restores the previous code paths (Random.Range idle, no gating, old waiting gaze).
+
+What is wired (one `ReactionArbiter` per desk, owned by AgentAttention; AgentCount = number of desk agents):
+- Focus and hands-busy are fed every frame (`SetFocus(FocusModeController.Active)`, `SetHandsBusy(HandsBusy)`), existing guards stay in place.
+- Critical (read-only from confirmed state, `CriticalSync`): completion sequence playing = PaperTransfer, office move = ElevatorBoarding, handoff (same condition as AgentPresence.HardBusy) = Handoff, `movement.IsMoving` = Walking. Released when the state ends.
+- Social: glance (hand near, lean in, gaze dwell, non-nearest wave glances) = Glance, status/touch NOT backed (silenced by Focus, as before); poke = Poke, wave back = Wave, flinch (Duck) and high five = Selected. Poke / wave / flinch / high five are direct user actions and are passed StatusBacked=true so they still work under Focus exactly as before (hands-busy still silences them, as before).
+- Task: the waiting agent's PresentPaper = WaitingOffer, StatusBacked, survives Focus. Next offer delay is 8.1..12 s (was 7..12) because the arbiter's WaitingOffer cooldown is 8 s.
+- Ambient: IdleGestures uses per-agent seeded `AmbientVariation` (delay and 3-way variant, never the same twice in a row) instead of `Random`. Variant -> action is `ReactionAdapter.ChooseIdleAction`. Durations are fixed (worker look 1.6 s, colleague look 1.2 s) instead of random.
+- A body-blocked Social/Task reaction is queued by the arbiter and replayed by `PollQueued` (Poke, Wave, Glance, WaitingOffer). Pokes while the body is pipeline-busy keep AgentPresence's own 1.5 s keep-and-replay (the arbiter is only asked when `CanReact`).
+- If the body refuses after the arbiter said yes, the slot is released (`ReactionAdapter.Release`).
+- Gaze (AgentGaze.Decide, only with the arbiter on): the desk agent in Waiting/Error looks at the user for at most 3 s (AttentionPolicy addressed edge, one new edge every 8 s) and otherwise keeps its desk pose; before it stared continuously. Handoff / away-from-desk / paper-holding looks are unchanged (they already look at the colleague or the user while presenting).
+
+Bridge API (not edited here; the bridge can call it later): `AgentAttention.Instance.TryBeginReaction(role, ReactionKind, statusBacked)` returns true when the reaction may play (always true when the arbiter is off), `EndReaction(role, kind)` releases. Intended: `PlayConfirmedNod` -> `CompletionNod` (replaces NodGate), `PlayOffer`/`EndOffer` -> `WaitingOffer`, error clip -> `ErrorWorry`. `AgentAttention.ArbiterActive` is a static flag.
+
+Tests: `Assets/MuseDesk/Tests/EditMode/AgentInteraction/ReactionAdapterTests.cs`.
+
+Headset checks: (1) poke / wave / high five still answer, also in Focus; (2) a poke during another agent's wave is still answered, now after a short delay instead of overlapping; (3) at most about 4 non-critical reactions per 6 s across the desk, so a flurry of glances may skip; (4) waiting agents no longer stare at the user: a 3 s look every ~8 s; (5) idle gestures vary but not randomly differently each launch; (6) nothing reacts while an agent walks / hands off / the completion sequence plays (as before).
