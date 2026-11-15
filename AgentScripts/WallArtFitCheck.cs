@@ -59,7 +59,7 @@ public static class WallArtFitCheck
             {
                 HabitatSocket s;
                 bool inLayout = layout.TryGetSocket(ls, out s);
-                var t = Find(art);
+                var t = Find(ls) ?? Find(art);   // prefer the contract (layout) name, accept the legacy art name
                 if (!inLayout && t == null) continue;
                 if (!inLayout) { sb.AppendLine("  " + ls + ": not in this layout (art has " + art + ")"); continue; }
                 if (t == null) { sb.AppendLine("  " + ls + ": layout " + s.position.ToString("F3") + " | art socket '" + art + "' MISSING"); miss++; continue; }
