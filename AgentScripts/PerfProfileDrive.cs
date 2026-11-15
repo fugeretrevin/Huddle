@@ -34,10 +34,12 @@ public static class PerfProfileDrive
         if (!Application.isPlaying) return "ERROR: not in Play Mode";
         if (_live != null) return "ERROR: sampler already running (" + _live.Label + ")";
         _live = new Sampler();
-        _live.Init(label, seconds, r => { Results.Add(r); _live = null; });
+        _live.Init(label, seconds, r => { Results.Add(r); _live = null; AppendRow(r); });
         return "Sampling '" + label + "' for " + seconds + " s (Editor-only numbers)";
     }
 
+    public static string Idle() => Begin("desk-idle", 6f);   // A16 wrappers (drv.ps1 passes one arg)
+    public static string Board() => Begin("board-open", 6f);
     public static string Reset() { Results.Clear(); return "cleared"; }
 
     public static string Status() => _live != null ? "running: " + _live.Label : "idle, " + Results.Count + " result(s)";
@@ -54,6 +56,15 @@ public static class PerfProfileDrive
         if (Results.Count == 0) sb.AppendLine("(no results yet; call Begin first)");
         return sb.ToString();
     }
+
+    // A16: each driver run compiles a fresh assembly, so statics do not survive between runs; rows persist in a file.
+    const string RowFile = "Library/PerfProfileRows.txt";
+    static void AppendRow(Result r)
+    {
+        System.IO.File.AppendAllText(RowFile, string.Format("{0,-19} {1,6}  {2,6:F2}  {3,6:F2}  {4,6:F2}  {5,10}  {6,9}  {7,7}  {8,9}  {9,7}  {10}\n",
+            r.Label, r.Frames, r.AvgMs, r.P95Ms, r.MaxMs, r.GcBytesPerFrameAvg, r.GcFramesWithAlloc, F(r.Batches), F(r.DrawCalls), F(r.SetPass), F(r.Tris)));
+    }
+    public static string TableFile() { return System.IO.File.Exists(RowFile) ? System.IO.File.ReadAllText(RowFile) : "(no rows)"; }
 
     static string F(long v) => v < 0 ? "n/a" : v.ToString();
 
@@ -131,4 +142,6 @@ public static class PerfProfileDrive
         }
     }
 }
+
+
 
