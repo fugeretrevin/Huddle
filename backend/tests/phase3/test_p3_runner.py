@@ -38,7 +38,8 @@ def state(c, task_id) -> str:
 
 
 def artifacts(c, sid, task_id):
-    return [a for a in c.app.state.phase2_store.list_artifacts_v2(sid) if a["task_id"] == task_id]
+    return [a for a in c.app.state.phase2_store.list_artifacts_v2(sid)
+            if a["task_id"] == task_id and a["kind"] != "completion"]   # not the plan summary
 
 
 def test_demo_mode_works_chain_in_order_with_scripted_label_and_handoffs():
