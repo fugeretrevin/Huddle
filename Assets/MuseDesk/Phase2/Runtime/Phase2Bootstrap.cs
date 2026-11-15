@@ -310,7 +310,7 @@ namespace MuseDesk.Phase2
             {
                 if (view == null || view.Data == null || view.Data.TaskId != target.TaskId) continue;
                 _ = boardPresenter.RequestAssignAsync(view, Phase2AgentIds.Researcher,
-                                                      boardPresenter.NextIdemKey("start"));
+                                                      boardPresenter.StableKey(target.TaskId, "assign", Phase2AgentIds.Researcher, "start"));
                 return true;
             }
             _ = AssignWithoutViewAsync(target.TaskId, target.Revision);
@@ -319,19 +319,24 @@ namespace MuseDesk.Phase2
 
         async Task AssignWithoutViewAsync(string taskId, int revision)
         {
+            // Same guard as the presenter path: one in flight per task, one stable key per (task, assign, Researcher).
+            if (!boardPresenter.TryBeginCommand(taskId)) return;
+            string key = boardPresenter.StableKey(taskId, "assign", Phase2AgentIds.Researcher, "start");
+            Phase2CommandResult<TaskCardV2> result = null;
             try
             {
-                var result = await Gateway.AssignAsync(taskId, new AssignCommand
+                result = await Gateway.AssignAsync(taskId, new AssignCommand
                 {
                     TargetAgentId = Phase2AgentIds.Researcher,
                     ExpectedRevision = revision,
-                    IdempotencyKey = boardPresenter.NextIdemKey("start"),
+                    IdempotencyKey = key,
                 }, _cts != null ? _cts.Token : CancellationToken.None);
                 if (result != null && !result.Ok)
                     Debug.Log($"[MuseDesk.P2] start through card refused: {result.Error?.Code} — {result.Error?.Message}");
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { Debug.LogWarning($"[MuseDesk.P2] start through card failed: {ex.Message}"); }
+            finally { boardPresenter.ReleaseCommand(taskId, key, result); }
         }
 
         /// <summary>True when the board has executable cards and all of them have finished
@@ -360,7 +365,7 @@ namespace MuseDesk.Phase2
         public void CreateTask(string title)
         {
             if (boardPresenter == null) return;
-            _ = boardPresenter.RequestCreateTaskAsync(title, null, 1, boardPresenter.NextIdemKey("create"));
+            _ = boardPresenter.RequestCreateTaskAsync(title, null, 1, boardPresenter.StableCreateKey(title));
         }
 
         /// <summary>Create a default-titled task (for a single "＋ New task" poke button). It is a
@@ -378,18 +383,28 @@ namespace MuseDesk.Phase2
 
         async Task CreateExecutableTaskAsync()
         {
+            const string lockId = "create-exec";
+            if (!boardPresenter.TryBeginCommand(lockId)) return;
+            string key = boardPresenter.StableKey("board", "create-exec", Phase2DemoFixture.ExecutableCardTitle, "create-exec");
+            bool answered = false;
             try
             {
-                await Gateway.CreateTaskAsync(new TaskCreateV2
+                var card = await Gateway.CreateTaskAsync(new TaskCreateV2
                 {
                     Title = Phase2DemoFixture.ExecutableCardTitle,
                     Priority = 3,
                     TaskTemplate = TaskTemplates.AuthDemo,
-                    IdempotencyKey = boardPresenter.NextIdemKey("create-exec"),
+                    IdempotencyKey = key,
                 }, _cts != null ? _cts.Token : CancellationToken.None);
+                answered = card != null;
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { Debug.LogWarning($"[MuseDesk.P2] create executable task failed: {ex.Message}"); }
+            finally
+            {
+                // A card back = the server answered: forget the key. Otherwise keep it for a retry.
+                boardPresenter.ReleaseCommand(lockId, key, answered ? Phase2CommandResult<TaskCardV2>.Success(null) : null);
+            }
         }
 
         void OnDestroy()

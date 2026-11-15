@@ -457,7 +457,7 @@ namespace MuseDesk.Phase2.Board
                 // The presenter path a drop uses: pending on the card, one idempotent assign, the
                 // card reconciled to the gateway's canonical answer. Nothing is shown as started
                 // until the gateway has answered.
-                result = await presenter.RequestAssignAsync(view, Phase2AgentIds.Researcher, presenter.NextIdemKey("start"));
+                result = await presenter.RequestAssignAsync(view, Phase2AgentIds.Researcher, presenter.StableKey(view.Data.TaskId, "assign", Phase2AgentIds.Researcher, "start"));
             }
             catch (Exception ex)
             {

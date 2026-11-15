@@ -443,14 +443,23 @@ namespace MuseDesk.Networking
                 Debug.Log("[MuseDesk] start ignored: the scripted run is already in progress.");
                 return;
             }
+            // One start in flight; a retry after a lost answer reuses the same key (server de-duplicates).
+            const string startLock = "start|auth_demo";
+            if (!_startLedger.TryLock(startLock)) return;
+            string key = _startLedger.KeyFor(startLock, () => NextKey("task"));
+            bool answered = false;
             try
             {
-                await Gateway.StartTaskAsync("auth_demo", NextKey("task"), _cts.Token);
+                await Gateway.StartTaskAsync("auth_demo", key, _cts.Token);
+                answered = true;
                 if (IsLive) { _liveRunActive = true; HasStartedRun = true; RefreshRunState(); }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { Debug.LogError($"[MuseDesk] start task failed: {ex.Message}"); }
+            finally { _startLedger.Unlock(startLock, key, answered); }
         }
+
+        readonly CommandLedger _startLedger = new CommandLedger();
 
         // Polish S2: ONE guard for every way a decision is answered (paper keys, stamps, voice, the demo
         // director, ApprovePending/RejectPending all end here). One response per decision id in flight
