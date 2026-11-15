@@ -263,14 +263,36 @@ namespace MuseDesk.Voice
         /// <summary>The characters tilt their heads to the user while the microphone is open.</summary>
         public void AgentsListen(bool on)
         {
+            // Truthful per-agent signal: VoiceAddressing.Shared raises ListeningStarted/Ended(agent).
+            if (on) VoiceAddressing.Shared.MicOpened(Time.unscaledTime);
+            else VoiceAddressing.Shared.MicClosed(Time.unscaledTime);
+            ApplyListen(on);
+        }
+
+        /// <summary>Feed transcript text so a spoken name addresses that agent; the others stop tilting.</summary>
+        public void HearForAddressing(string text)
+        {
+            var a = VoiceAddressing.Shared;
+            if (!a.MicOpen) return;
+            VoiceAgentTarget before = a.AddressedAgent;
+            a.Hear(text, Time.unscaledTime);
+            if (a.AddressedAgent != before) ApplyListen(true);
+        }
+
+        // All agents tilt when nobody is addressed (as before); once one is, only that one does.
+        void ApplyListen(bool on)
+        {
             try
             {
                 var attention = AgentAttention.Instance;
                 if (attention == null || attention.agents == null) return;
+                VoiceAgentTarget addressed = on ? VoiceAddressing.Shared.AddressedAgent : VoiceAgentTarget.None;
                 for (int i = 0; i < attention.agents.Length; i++)
                 {
                     var p = attention.agents[i];
-                    if (p != null && p.gaze != null && p.gaze.isActiveAndEnabled) p.gaze.SetListening(on);
+                    if (p == null || p.gaze == null || !p.gaze.isActiveAndEnabled) continue;
+                    bool tilt = on && (addressed == VoiceAgentTarget.None || VoiceIntentClassifier.FromId(p.Role) == addressed);
+                    p.gaze.SetListening(tilt);
                 }
             }
             catch { }

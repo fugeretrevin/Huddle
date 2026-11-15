@@ -154,6 +154,7 @@ namespace MuseDesk.Voice
         {
             float now = Time.unscaledTime;
             _office.Find(false);
+            VoiceAddressing.Shared.Tick(now);
 
             // The microphone never stays open longer than one sentence.
             if (_listening && now - _listenStart > maxListenSeconds && _source != null) _source.EndRequest();
@@ -269,6 +270,7 @@ namespace MuseDesk.Voice
         {
             _partial = VoiceAnswers.Ascii(text ?? "").Trim();
             if (_display == Display.Listening && hud != null) hud.SetBody(Quote(VoiceAnswers.Clip(_partial, 90)));
+            if (_partial.Length > 0) _office.HearForAddressing(_partial);
             if (_actedOnPartial != VoiceIntentKind.None || _partial.Length == 0) return;
 
             // Halting is the only thing done before the sentence is final.
