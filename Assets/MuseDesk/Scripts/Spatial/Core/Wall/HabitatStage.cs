@@ -145,6 +145,14 @@ namespace MuseDesk.Spatial.Wall
         public HabitatWalker Walker(HabitatRole r) { return _walkers[(int)r]; }
         public HabitatAct Running(HabitatRole r) { return _running[(int)r]; }
         public int Pending(HabitatRole r) { return _queues[(int)r].Count; }
+        /// <summary>True while an act of this kind is running or waiting for this role.</summary>
+        public bool HasAct(HabitatRole r, HabitatActKind k)
+        {
+            if (_running[(int)r] != null && _running[(int)r].kind == k) return true;
+            List<HabitatAct> q = _queues[(int)r];
+            for (int i = 0; i < q.Count; i++) if (q[i].kind == k) return true;
+            return false;
+        }
         public bool TravelLocked => _travelLock >= 0;
         /// <summary>The role that holds the ride lane (-1: free) and the one standing by at its aisle for it (-1: nobody).</summary>
         public int LaneHolder => _travelLock;
