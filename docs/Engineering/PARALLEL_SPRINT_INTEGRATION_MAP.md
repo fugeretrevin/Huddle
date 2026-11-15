@@ -1,4 +1,4 @@
-﻿# Parallel sprint integration map (A16)
+# Parallel sprint integration map (A16)
 
 Branch: feature/living-world-polish. Merged one at a time in the order below; each compiled clean. "Tests" = new fixtures. Nothing here was run on a Quest.
 
@@ -15,6 +15,7 @@ Branch: feature/living-world-polish. Merged one at a time in the order below; ea
 | 9 | A15 onboarding | 4a815b2 | Spatial/Core/Onboarding/HintCatalog, OnboardingCoach (+PlayerPrefsOnboardingStore) | OnboardingCoachTests 36 | merged, green; PlayerPrefs compiles in Core asmdef | Not wired to UI |
 | 10 | A13 perf (cherry-pick of ad74130, branch NOT merged) | d60b4b0 | AgentScripts/PerfProfileDrive.cs, sprint/A13_PERFORMANCE.md | none | Cherry-pick conflicted in HeldPaperController and StationDropZone; HEAD already had the equivalent fixes (GrabState.BindSelectingPoints delegate; MPB halo), kept HEAD. Halo verified in Play: URP/Unlit, _BaseColor and _Color both exist, valid/invalid colours read back from the MPB | Editor-only perf table in test results doc |
 | 11 | A11 backend reliability | 1d01fd1 | backend/app decision_wait, storage, orchestrator, live_orchestrator, workspace_guard, main, models, settings | backend/tests/test_a11_reliability.py | merged; backend 298 passed, 1 skipped | |
+| 12 | Art branch art/living-world-polish (642ace5) | b6789c6 | Art/Controllers/MuseDesk_Agent.controller (100 states, 3 layers), regenerated desk-agent FBXs, 24 Wall prefabs (Art/Prefabs/WallHabitat), Scripts/Art (10 new visual scripts, not attached to the desk scene), 12 wav, gallery scenes | interaction 173, motion 88, wall 168 (1 skipped), board 69, spatial 277, real 50, core UI fixtures 53; SpatialIsolationTests passes | merged, green; desk demo Play with animator state log, 0 console errors; see docs/Engineering/ART_INTEGRATION_RESULT.md | Wall prefabs NOT hooked up: socket layout is mirrored and differently sized against HabitatStage (tool: AgentScripts/WallArtFitCheck). Art audio and Confirmed visual hooks deliberately not wired |
 
 Earlier backend merges (already on HEAD): A8 /btw routing, A10 manager plan.
 
