@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import Request
 
 from ..phase2.errors import CommandError
+from ..phase2.keylock import idempotency_lock
 from ..phase2.store import Phase2Store, body_hash
 
 
@@ -43,13 +44,16 @@ async def idempotent(store: Phase2Store, session_id: str, route: str, body_dict:
     decline to remember a transient outcome (busy / timeout) so a retry can succeed."""
     key = body_dict["idempotency_key"]
     bhash = body_hash({"route": route, **body_dict})
-    prior = store.get_idempotent_v2(session_id, key)
-    if prior is not None:
-        if prior["body_hash"] == bhash:
-            return prior["result"]
-        raise CommandError("IDEMPOTENCY_KEY_REUSE",
-                           "idempotency key reused with a different body", status=409)
-    result = await coro()
-    if cache is None or cache(result):
-        store.save_idempotent_v2(session_id, key, route, bhash, result)
-    return result
+    # Held across check -> run -> save so an overlapping retry with the same key waits
+    # and replays instead of executing a second time.
+    async with idempotency_lock(session_id, key):
+        prior = store.get_idempotent_v2(session_id, key)
+        if prior is not None:
+            if prior["body_hash"] == bhash:
+                return prior["result"]
+            raise CommandError("IDEMPOTENCY_KEY_REUSE",
+                               "idempotency key reused with a different body", status=409)
+        result = await coro()
+        if cache is None or cache(result):
+            store.save_idempotent_v2(session_id, key, route, bhash, result)
+        return result

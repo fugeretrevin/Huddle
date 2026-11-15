@@ -261,7 +261,8 @@ class LiveOrchestrator:
                                code="DECISION_TIMEOUT",
                                reason="no decision was made in time",
                                agent_message="Run stopped: decision timed out", mode="live",
-                               board=self._board)
+                               board=self._board,
+                               expired_decision_id=proposal.decision_id)
                 return
             if action !=DecisionAction.request_changes.value or revision >= max_revisions:
                 break

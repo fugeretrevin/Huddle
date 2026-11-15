@@ -148,11 +148,16 @@ class PlanOps:
                 failed.append({"task_id": row["id"], "title": row["title"],
                                "reason": card["failure"]})
             cards.append(card)
+        synthesis = plan.get("synthesis")
         return {"plan_id": plan_id, "title": plan["title"], "plan_status": plan["status"],
                 "provenance": plan["provenance"], "total": len(cards), "counts": counts,
                 "cards": cards, "failed": failed, "blocked": blocked,
                 "settled": plan["status"] == "committed" and self._settled(plan),
-                "synthesis": plan.get("synthesis"), "source_mode": self._mode}
+                "synthesis": synthesis, "source_mode": self._mode,
+                # Additive resync fields: enough to rebuild the Wall plan after a reconnect.
+                "revision": plan["revision"], "objective": plan.get("objective", ""),
+                "items": plan.get("items", []),
+                "synthesis_artifact_id": (synthesis or {}).get("artifact_id")}
 
     def manager_status(self, session_id: str) -> dict[str, Any]:
         plans = [self.plan_status(p["plan_id"]) for p in self._s3.plans_for_session(session_id)
@@ -161,10 +166,15 @@ class PlanOps:
         for p in plans:
             for k, v in p["counts"].items():
                 counts[k] = counts.get(k, 0) + v
+        # Plans still awaiting a decision (not on the board yet): full plan documents so a
+        # reconnecting client can show the proposal and its items again.
+        open_plans = [{k: v for k, v in p.items() if k != "session_id"}
+                      for p in self._s3.plans_for_session(session_id)
+                      if p["status"] in ("proposed", "approved")]
         return {"session_id": session_id, "plans": plans, "counts": counts,
                 "failed": [f for p in plans for f in p["failed"]],
                 "blocked": [b for p in plans for b in p["blocked"]],
-                "source_mode": self._mode}
+                "source_mode": self._mode, "open_plans": open_plans}
 
     # ─────────────────────── blocked announcement ───────────────────────
     async def announce_blocked_dependents(self, plan: dict[str, Any], failed_row: dict) -> int:

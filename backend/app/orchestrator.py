@@ -231,7 +231,7 @@ class Orchestrator:
                                code="DECISION_TIMEOUT",
                                reason="no decision was made in time",
                                agent_message="Run stopped: decision timed out", mode=mode,
-                               board=self._board)
+                               board=self._board, expired_decision_id=decision_id)
                 return
             if action !=DecisionAction.request_changes.value or revision >= max_revisions:
                 break

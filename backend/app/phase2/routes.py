@@ -18,6 +18,7 @@ from .diagrams import DiagramService
 from .errors import CommandError, NotFoundError
 from .events import Phase2EventBus
 from .focus import FocusService
+from .keylock import idempotency_lock
 from .handoffs import HandoffService
 from .models import (
     ArtifactRefV2,
@@ -116,15 +117,16 @@ def register_phase2_routes(app: FastAPI) -> None:
         store = _store(request)
         key = body_dict["idempotency_key"]
         bhash = body_hash({"route": route, **body_dict})
-        prior = store.get_idempotent_v2(session_id, key)
-        if prior is not None:
-            if prior["body_hash"] == bhash:
-                return prior["result"]  # canonical replay; no re-exec, no new event
-            raise CommandError("IDEMPOTENCY_KEY_REUSE",
-                               "idempotency key reused with a different body", status=409)
-        result = await coro()
-        store.save_idempotent_v2(session_id, key, route, bhash, result)
-        return result
+        async with idempotency_lock(session_id, key):
+            prior = store.get_idempotent_v2(session_id, key)
+            if prior is not None:
+                if prior["body_hash"] == bhash:
+                    return prior["result"]  # canonical replay; no re-exec, no new event
+                raise CommandError("IDEMPOTENCY_KEY_REUSE",
+                                   "idempotency key reused with a different body", status=409)
+            result = await coro()
+            store.save_idempotent_v2(session_id, key, route, bhash, result)
+            return result
 
     # ─────────────────────── snapshot ───────────────────────
     @app.get("/v2/sessions/{session_id}/snapshot", response_model=SnapshotV2)
