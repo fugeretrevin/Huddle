@@ -103,8 +103,16 @@ namespace MuseDesk.Wall
         public WallHabitatView View => _view;
         public string StatusLine => Time.unscaledTime < _noteUntil ? _note : (_flow != null ? _flow.Status : "");
 
+        [Header("Card look (rc12; CardLookV1 assigns the app's unlit UI materials)")]
+        public Material cardPlateMaterial;
+        public Material cardPaperMaterial;
+        public Material cardAccentMaterial;
+
         void Awake()
         {
+            WallUi.PlateMaterial = cardPlateMaterial;
+            WallUi.PaperMaterial = cardPaperMaterial;
+            WallUi.AccentMaterial = cardAccentMaterial;
             _flow = new WallModeFlow(() => roomService != null ? roomService.Room : null, () => roomService != null ? roomService.Walls : null,
                                      ReadUser, placement, flags);
             _flow.PlacedChanged += OnPlacedChanged;
@@ -112,6 +120,9 @@ namespace MuseDesk.Wall
             _registry = new AgentPresentationRegistry();
             _visit = new AgentVisitFlow(_registry);
             _portal = new PortalFlow(_registry);
+            // rc12: the scene's portal follows Antigravity's clips (Portal_Open_Expand 1.13 s, Portal_Emerge_Step 1.29 s,
+            // Portal_Return_Step 1.13 s, Portal_Close_Collapse 0.96 s). The PortalFlow defaults stay as the tests know them.
+            _portal.timings = new PortalTimings { opening = 1.1f, emerging = 1.3f, returning = 1.2f, closing = 0.9f };
             _manager = new ManagerPlanFlow();
             _manager.Committed += OnPlanCommitted;
             _backend = backendBehaviour as IWallBackend;
@@ -621,10 +632,14 @@ namespace MuseDesk.Wall
             _ghost.SetPositionAndRotation(c.position, c.rotation);
             Color col = !c.valid ? WallHabitatView.Coral : c.needsReview ? WallHabitatView.Amber : WallHabitatView.Teal;
             for (int i = 0; i < _ghostEdges.Length; i++) _ghostArt.Tint(_ghostEdges[i], col);
-            string words = c.valid ? (c.needsReview ? "Check this spot: " + c.reason : "Fits: " + c.reason) : "Can't place: " + c.reason;
-            words += c.roomChecked ? "\nChecked against your room scan." : "\nNo room scan here, so not checked.";
+            // rc12: a coloured status word first (the ghost's colour), the reason, then what to do.
+            string hex = ColorUtility.ToHtmlStringRGB(Color.Lerp(col, Color.white, 0.25f));
+            string head = c.valid ? (c.needsReview ? "Check this spot" : "Fits here") : "Can't place here";
+            string why = c.valid ? (c.needsReview ? c.reason : (c.roomChecked ? "Checked against your room scan" : c.reason)) : c.reason;
+            string words = "<b><color=#" + hex + ">" + head + "</color></b>  " + why
+                         + "\n<size=80%>Point at a wall, pinch and drag to move it. Then press Place.</size>";
             _ghostLabel.text = words;
-            _ghostLabel.color = WallHabitatView.Ink;
+            _ghostLabel.color = WallCard.DarkTitle;
             if (!_ghost.gameObject.activeSelf) _ghost.gameObject.SetActive(true);
         }
 
@@ -647,8 +662,9 @@ namespace MuseDesk.Wall
             _ghostArt = ArtHelper();
             _ghostEdges = new Renderer[16];
             for (int i = 0; i < _ghostEdges.Length; i++) _ghostEdges[i] = _ghostArt.Box(_ghost, "Edge" + i, Vector3.zero, Vector3.one, WallHabitatView.Teal);
-            _ghostLabel = WallUi.MakeText(_ghost, "GhostLabel", font, Vector3.zero, new Vector2(40f, 6f), 14f, WallHabitatView.Ink, TextAlignmentOptions.Center);
-            _ghostArt.Box(_ghost, "LabelPlate", Vector3.zero, Vector3.one, WallHabitatView.Paper).name = "LabelPlate";
+            // rc12: the cards' look (dark rounded unlit plate, light words), above the ghost where furniture cannot hide it.
+            _ghostLabel = WallUi.MakeText(_ghost, "GhostLabel", font, Vector3.zero, new Vector2(40f, 6f), 14f, WallCard.DarkTitle, TextAlignmentOptions.Center);
+            WallUi.Plate(_ghost, "LabelPlate", Vector3.zero, 0.44f, 0.08f, 0.02f, WallCard.DarkPlate, WallUi.PlateMaterial, _ghostArt);
         }
 
         void LayoutGhost(Vector3 s)
@@ -662,10 +678,11 @@ namespace MuseDesk.Wall
             for (int sx = -1; sx <= 1; sx += 2) for (int sy = -1; sy <= 1; sy += 2) Edge(i++, new Vector3(sx * hw, sy * hh, d * 0.5f), new Vector3(t, t, d));
             for (int sx = -1; sx <= 1; sx += 2) for (int sy = -1; sy <= 1; sy += 2) Edge(i++, new Vector3(sx * (hw - 0.03f), sy * (hh - 0.03f), 0.003f), new Vector3(0.05f, 0.05f, 0.004f));
             // Label in front of the volume, facing the room (TMP reads on -Z: turn it so -Z faces out).
-            _ghostLabel.transform.localPosition = new Vector3(0, -hh - 0.05f, d + 0.01f);
+            _ghostLabel.transform.localPosition = new Vector3(0, hh + 0.065f, d + 0.01f);
             _ghostLabel.transform.localRotation = Quaternion.Euler(0, 180f, 0);
             Transform plate = _ghost.Find("LabelPlate");
-            if (plate != null) { plate.localPosition = new Vector3(0, -hh - 0.05f, d + 0.012f); plate.localScale = new Vector3(0.42f, 0.07f, 0.002f); }
+            // The plate sits behind the words (the viewer is on +Z) and faces the room like them.
+            if (plate != null) { plate.localPosition = new Vector3(0, hh + 0.065f, d + 0.006f); plate.localRotation = Quaternion.Euler(0, 180f, 0); if (WallUi.PlateMaterial == null) plate.localScale = new Vector3(0.44f, 0.08f, 0.002f); }
         }
 
         void Edge(int i, Vector3 c, Vector3 size) { _ghostEdges[i].transform.localPosition = c; _ghostEdges[i].transform.localScale = size; }

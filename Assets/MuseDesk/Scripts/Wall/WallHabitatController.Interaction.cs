@@ -140,6 +140,7 @@ namespace MuseDesk.Wall
                 _hoverRole = -1;
                 _lock.Reset();
                 _pinchPending[0] = _pinchPending[1] = false;
+                TickWallAim(false, dt);
                 TickProxy(dt);
                 TickPortalVisual(dt);
                 RefreshVisitCard();
@@ -260,10 +261,11 @@ namespace MuseDesk.Wall
                 if (i == _aimHand)
                 {
                     if (sig == HandGateSignal.Holding && _samples[i].tracked) { _flow.Aim(_samples[i].origin, _samples[i].direction); ShowGhost(); }
-                    else if (sig == HandGateSignal.Released || sig == HandGateSignal.Cancelled) _aimHand = -1;
+                    else if (sig == HandGateSignal.Released || sig == HandGateSignal.Cancelled) { _aimHand = -1; if (_flow.ReleaseAim()) ShowGhost(); }
                 }
             }
             if (!aimMode && _aimHand >= 0) { _arb.Relinquish(_aimHand); _aimHand = -1; }
+            TickWallAim(aimMode, dt);
 
             TickProxy(dt);
             TickPortalVisual(dt);
@@ -632,7 +634,8 @@ namespace MuseDesk.Wall
         void RefreshVisitCard()
         {
             if (_side != null) _side.CheckTimeout(Time.unscaledTime);
-            bool visiting = _visit.State == VisitState.Perched || _portal.State == PortalState.Conversing || _portal.State == PortalState.AwaitConfirm || _portal.State == PortalState.Preview;
+            // rc12: the card stays up while the portal opens and the agent steps out (it used to vanish and come back).
+            bool visiting = _visit.State == VisitState.Perched || (_portal.State >= PortalState.Preview && _portal.State <= PortalState.Conversing);
             if (_visitCard == null) return;
             if (!visiting) { if (_visitCard.Visible) _visitCard.Show(false); return; }
             if (!_visitCard.Visible) { PlaceCards(); _visitCard.Show(true); }
@@ -666,8 +669,10 @@ namespace MuseDesk.Wall
                 if (!string.IsNullOrEmpty(x.amendment)) body += "\nSuggested change NOT applied: needs your approval through the board.";
             }
             else body += flags.agentBtwEnabled ? "\nAsk a question. This never changes the task." : "";
-            string foot = (_side != null && _side.History.Count > 0 ? (!string.IsNullOrEmpty(_side.History[_side.History.Count - 1].label) ? _side.History[_side.History.Count - 1].label : ProvenanceWords(_side.History[_side.History.Count - 1].provenance)) + " · " : "")
-                        + (_tasks != null ? _tasks.SourceModeLabel : "") + " · projection: the real agent keeps working";
+            // rc12: one short line (it wrapped into the keys), and the mode only once ("SCRIPTED DEMO · SCRIPTED DEMO").
+            string said = _side != null && _side.History.Count > 0 ? (!string.IsNullOrEmpty(_side.History[_side.History.Count - 1].label) ? _side.History[_side.History.Count - 1].label : ProvenanceWords(_side.History[_side.History.Count - 1].provenance)) : "";
+            string modeLabel = _tasks != null ? _tasks.SourceModeLabel : "";
+            string foot = (string.IsNullOrEmpty(said) || said == modeLabel ? modeLabel : said + " · " + modeLabel) + " · a projection; the real agent keeps working";
             _visitCard.SetText(name + (_portal.State != PortalState.Hidden ? " (portal)" : " visiting"), body, foot);
             if (flags.agentBtwEnabled) for (int i = 0; i < 3; i++) { int qi = i; keys.Add(new KeyValuePair<string, Action>(QuestionKeys[i], () => Ask(qi))); }
             if (_portal.State == PortalState.Hidden && flags.largeAgentPortalEnabled) keys.Add(new KeyValuePair<string, Action>("Meet larger", PressMeetLarger));
@@ -793,9 +798,17 @@ namespace MuseDesk.Wall
                 }
                 // A preview cancelled before it opened (Meet, voice, Meet larger): its read-only conversation ends with it.
                 else if (_side != null && !_visit.Busy) EndDeskVisit();
+                _portalFxState = PortalState.Hidden;
+                _portalLife = null;
                 return;
             }
-            if (st == PortalState.Preview || st == PortalState.AwaitConfirm) { TickPortalSpotTracking(); if (_portalRoot != null && (_portalRoot.position - _portal.Spot.position).sqrMagnitude > 1e-6f) ShowPortalPreview(); return; }
+            if (st == PortalState.Preview || st == PortalState.AwaitConfirm)
+            {
+                TickPortalSpotTracking();
+                if (_portalRoot != null && (_portalRoot.position - _portal.Spot.position).sqrMagnitude > 1e-6f) ShowPortalPreview();
+                TickPortalFx(st, 0f);
+                return;
+            }
             if (_portalAvatar == null && st >= PortalState.Opening && !_portalForcedHome)
             {
                 GameObject src = SourceFor(RoleOf(_portal.Agent));
@@ -808,21 +821,26 @@ namespace MuseDesk.Wall
                     var an = _portalAvatar.GetComponentInChildren<Animator>();
                     // Attentive listening, not talking: nothing is spoken aloud, and speech must not be simulated (spec 6).
                     if (an != null) { an.applyRootMotion = false; an.speed = 1f; if (an.HasState(0, Animator.StringToHash("Listening"))) an.CrossFadeInFixedTime("Listening", 0.3f, 0); }
+                    // rc12: a lively visitor (look at the user and their hands, breathe, lean from a touch, wave back, talk).
+                    _portalLife = _portalAvatar.gameObject.AddComponent<PortalVisitorLife>();
+                    _portalLife.height = _portal.Spot.avatarHeight * PortalFitFactor();
+                    _portalLife.eye = ResolveHead();
+                    _portalLife.grow = 0f;
+                    // It came out during Emerging (a late spawn): the step-out clip still plays.
+                    if (st == PortalState.Emerging) _portalLife.Arrive();
                 }
             }
-            if (_portalAvatar == null) return;
             float k = _portal.Progress;
-            float grow;
-            switch (st)
-            {
-                case PortalState.Opening: grow = 0.001f; break;
-                case PortalState.Emerging: grow = Mathf.Lerp(0.05f, 1f, MuseDesk.Motion.Ease.Evaluate(MuseDesk.Motion.EaseKind.InOutSine, k)); break;
-                case PortalState.Conversing: grow = 1f; break;
-                case PortalState.Returning: grow = Mathf.Lerp(1f, 0.05f, MuseDesk.Motion.Ease.Evaluate(MuseDesk.Motion.EaseKind.InOutSine, k)); break;
-                default: grow = 0.001f; break;
-            }
-            // Grows in place inside the cleared column (scale only; it never walks).
-            _portalAvatar.localScale = Vector3.one * (_portalAvatarScale * grow);
+            TickPortalFx(st, k);
+            if (_portalAvatar == null) return;
+            // rc12: pops in inside the light column with a small overshoot, then steps out (its clip); on leaving it is drawn
+            // up into the column, narrower and taller. It never walks: the cleared column is where it stays.
+            float stretch;
+            float grow = PortalGrow(st, k, out stretch);
+            float s = _portalAvatarScale * grow;
+            float xz = s / Mathf.Sqrt(Mathf.Max(0.2f, stretch));
+            _portalAvatar.localScale = new Vector3(xz, s * stretch, xz);
+            if (_portalLife != null) _portalLife.grow = grow;
         }
 
         // ───────────────────────── hands ─────────────────────────

@@ -77,6 +77,67 @@ namespace MuseDesk.Tests.EditMode.Wall
             }
         }
 
+        // ── rc12: owner "too strict, only far places" ──
+
+        [Test]
+        public void StraightAhead_AboveTheScreen_IsAllowed()
+        {
+            var r = Room();
+            // Full habitat (0.90 m tall) centred 0.5 m above the eye: its bottom edge (1.25 m) clears the eye (1.2 m).
+            WallCandidate c = Eval(r, "wall-N", 0f, 1.2f + 0.5f);
+            Assert.IsTrue(c.valid, c.reason);
+            StringAssert.Contains("above your screen", c.reason);
+        }
+
+        [Test]
+        public void DeskAgainstTheWall_HigherSpotStillFits()
+        {
+            // A desk pushed against wall-E reaches 0.85 m: the low spot touches it, a spot above it fits.
+            var r = Room();
+            r.room.AddFurniture("TABLE", new Vector3(1.6f, 0.425f, 0f), new Vector3(0.8f, 0.85f, 1.4f));
+            Assert.AreEqual(WallProblem.HitsFurniture, Eval(r, "wall-E", 0f, 1.08f, WallLayoutKind.Compact).problem);
+            Assert.IsTrue(Eval(r, "wall-E", 0f, 1.35f, WallLayoutKind.Compact).valid);
+        }
+
+        [Test]
+        public void CloseWall_AtArmsLength_IsOffered()
+        {
+            // The user sits 0.8 m from wall-E: the compact habitat's face is about 0.58 m from the eye. Refused before (0.75 m rule).
+            var r = Room();
+            var near = User(new Vector3(1.2f, 1.2f, 0f), Vector3.forward);
+            Assert.IsTrue(Eval(r, "wall-E", 0.3f, 1.35f, WallLayoutKind.Compact, near).valid);
+            Assert.Greater(WallPlacementEvaluator.FindCandidates(r.room, r, near, S).Count, 0);
+        }
+
+        [Test]
+        public void NearestValid_FindsAFittingSpotNextToARefusedOne()
+        {
+            var r = Room();
+            r.AddOpening("wall-E", WallOpeningKind.Door, 0.6f, 1.0f, 0.9f, 2.0f);
+            // The door (0.9 m wide at u 0.6) plus its margin: a habitat centred at u = 0 overlaps it; one at u <= -0.475 clears it.
+            WallCandidate bad = Eval(r, "wall-E", 0f, 1.35f);
+            Assert.AreEqual(WallProblem.OverlapsDoor, bad.problem);
+            WallCandidate near;
+            Assert.IsTrue(WallPlacementEvaluator.NearestValid(r.room, r, r.IndexOf("wall-E"), 0f, 1.35f, WallLayoutKind.Full, User(), S, out near));
+            Assert.IsTrue(near.valid, near.reason);
+            Assert.Less(near.u, -0.45f, "moved away from the door");
+            Assert.LessOrEqual(new Vector2(near.u, near.centerY - 1.35f).magnitude, S.snapRadius + 1e-3f);
+        }
+
+        [Test]
+        public void Flow_ReleaseOnARefusedSpot_SnapsToTheNearestFit()
+        {
+            var r = Room();
+            var f = Flow(r);
+            f.RequestEnter(true, false);
+            Assert.IsTrue(f.Aim(new Vector3(0, 1.3f, 0), Vector3.forward));      // over the monitor: refused
+            Assert.IsFalse(f.Shown.valid);
+            Assert.IsTrue(f.ReleaseAim());
+            Assert.IsTrue(f.Shown.valid, f.Status);
+            StringAssert.Contains("fits", f.Status);
+            Assert.IsTrue(f.PlaceHere(false));
+        }
+
         [Test]
         public void ShortWall_TooSmallForFull_CompactMayFit()
         {

@@ -60,7 +60,7 @@ namespace MuseDesk.Wall
         public WallPlanPaper(Transform parent, string name, Transform keyTemplate, TMP_FontAsset font, WallHabitatView art, Vector2 size, float keyScale)
         {
             _font = font; _size = size; _art = art;
-            card = new WallCard(parent, name, keyTemplate, font, art, size, keyScale);
+            card = new WallCard(parent, name, keyTemplate, font, art, size, keyScale, true);   // rc12: the cream paper sheet look
             _zoneRect = PlanPaperGeometry.StampZone(size.x, size.y);
             Color ink = Workspace.OfficeTokens.Ink, soft = Workspace.OfficeTokens.InkSoft, teal = Workspace.OfficeTokens.Teal;
 
@@ -70,7 +70,7 @@ namespace MuseDesk.Wall
             _zone.localPosition = new Vector3(_zoneRect.CenterX, _zoneRect.CenterY, -0.0006f);
             if (art != null)
             {
-                Renderer plate = art.Box(_zone, "ZonePlate", Vector3.zero, new Vector3(_zoneRect.Width, _zoneRect.Height, 0.0004f), Color.Lerp(WallHabitatView.Paper, ink, 0.05f));
+                Renderer plate = WallUi.Plate(_zone, "ZonePlate", new Vector3(0f, 0f, 0.0004f), _zoneRect.Width, _zoneRect.Height, 0.003f, Color.Lerp(WallCard.PaperSheet, teal, 0.08f), WallUi.PaperMaterial, art);
                 _frame.Add(plate);
                 float hw = _zoneRect.Width * 0.5f - FrameBar * 0.5f, hh = _zoneRect.Height * 0.5f - FrameBar * 0.5f;
                 _frame.Add(art.Box(_zone, "ZoneTop", new Vector3(0f, hh, -0.0003f), new Vector3(_zoneRect.Width, FrameBar, 0.0006f), teal));

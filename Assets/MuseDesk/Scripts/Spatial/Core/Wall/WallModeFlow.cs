@@ -80,6 +80,7 @@ namespace MuseDesk.Spatial.Wall
             IWallGeometry walls = _walls();
             _candidates = WallPlacementEvaluator.FindCandidates(_room(), walls, user, settings, Layout);
             _index = 0;
+            _hasLastValid = false;
             if (_candidates.Count > 0) { Show(_candidates[0]); return; }
             if (walls == null || walls.WallAvailability != RoomAvailability.Available)
             {
@@ -94,10 +95,14 @@ namespace MuseDesk.Spatial.Wall
             Say(Layout == WallLayoutKind.Full ? "No wall spot fits the full habitat: try Compact, or point at a wall" : "No wall spot fits: point at a wall to see why");
         }
 
+        WallCandidate _lastValid;
+        bool _hasLastValid;
+
         void Show(WallCandidate c)
         {
             Shown = c;
             HasShown = true;
+            if (c.valid) { _lastValid = c; _hasLastValid = true; }
             Status = c.valid ? c.reason : WallPlacementEvaluator.Words(c.problem) + ": " + c.reason;
             Raise();
         }
@@ -125,6 +130,33 @@ namespace MuseDesk.Spatial.Wall
             if (!WallPlacementEvaluator.FromRay(_room(), _walls(), origin, dir, Layout, _user(), settings, out c)) return false;
             Show(c);
             return true;
+        }
+
+        /// <summary>
+        /// A drag ended (the pinch opened). On a spot that fits nothing changes. On one that does not, the ghost goes to the
+        /// nearest spot on the same wall that fits (within <see cref="WallPlacementSettings.snapRadius"/>), else back to the
+        /// last spot that fitted, and the status says which. Nothing is placed: Place is still needed.
+        /// </summary>
+        public bool ReleaseAim()
+        {
+            if ((State != WallModeState.Previewing && State != WallModeState.Relocating) || !HasShown || Shown.valid) return false;
+            string why = WallPlacementEvaluator.Words(Shown.problem);
+            WallCandidate near;
+            if (Shown.wallIndex >= 0 && WallPlacementEvaluator.NearestValid(_room(), _walls(), Shown.wallIndex, Shown.u, Shown.centerY, Layout, _user(), settings, out near))
+            {
+                Show(near);
+                Status = why + " there: moved to the nearest spot that fits";
+                Raise();
+                return true;
+            }
+            if (_hasLastValid && _lastValid.layout == Layout)
+            {
+                Show(_lastValid);
+                Status = why + " there: back to the last spot that fits";
+                Raise();
+                return true;
+            }
+            return false;
         }
 
         /// <summary>Slide the shown spot along its wall / up and down (metres).</summary>

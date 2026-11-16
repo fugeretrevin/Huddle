@@ -23109,6 +23109,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a7b08035ac9b7894db1bbd9b1ac3506b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Wall.WallHabitatController
+  aimRayWidth: 0.004
+  aimCursorRadius: 0.035
+  aimHoverInterval: 0.1
   guide: {fileID: 0}
   useSelectGrabV2: 1
   selectGrab:
@@ -23155,6 +23158,9 @@ MonoBehaviour:
   managerRayPoke: 1
   meetChooserTimeout: 30
   meetHintSeconds: 10
+  portalArt: {fileID: 8154156005999822430, guid: e157c2839807af94eb7c9c7408c1dd26, type: 3}
+  portalArtLowFx: {fileID: 4525292280919888268, guid: 55c591852ef75834da741c86c6ff759d, type: 3}
+  portalColumnAlpha: 0.55
   usePresentationLifecycle: 1
   flags:
     wallHabitatEnabled: 0
@@ -23207,6 +23213,9 @@ MonoBehaviour:
     maxCandidates: 8
     wallStandoff: 0.004
     reviewMarginFactor: 2
+    aboveScreenClearance: 0.02
+    snapRadius: 0.6
+    snapStep: 0.04
   walker:
     walkSpeed: 0.14
     turnSpeed: 420
@@ -23229,9 +23238,12 @@ MonoBehaviour:
   keyScale: 0.023
   perchLocal: {x: 0.22, y: 0.004, z: 0.4}
   perchRadius: 0.13
-  visitCardLocal: {x: 0.26, y: 0.13, z: 0.4}
+  visitCardLocal: {x: 0.27, y: 0.2, z: 0.4}
   planCardLocal: {x: 0.04, y: 0.17, z: 0.32}
   comfortMode: 0
+  cardPlateMaterial: {fileID: 2100000, guid: 6bc94b5d4cdf8de40af33fc4bfc6c584, type: 2}
+  cardPaperMaterial: {fileID: 2100000, guid: 2349e1f29c2d59c48909c6c0dca8cbfd, type: 2}
+  cardAccentMaterial: {fileID: 2100000, guid: 073d2aa9a12c04d4e86963b19eb08142, type: 2}
   restoreOnStart: 0
 --- !u!114 &366174295
 MonoBehaviour:

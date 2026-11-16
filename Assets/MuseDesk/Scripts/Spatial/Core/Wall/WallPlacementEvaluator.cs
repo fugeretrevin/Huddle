@@ -45,11 +45,11 @@ namespace MuseDesk.Spatial.Wall
         [Tooltip("The habitat volume grown by this much must not touch scanned furniture (m).")]
         public float furnitureMargin = 0.06f;
         [Tooltip("The habitat volume must stay this far from the user's head (m).")]
-        public float minHeadDistance = 0.75f;
+        public float minHeadDistance = 0.5f;
         [Tooltip("Farther than this (head to habitat) and it is too small to read (m).")]
         public float maxHeadDistance = 3.4f;
-        public float preferredDistance = 1.6f;
-        [Tooltip("A habitat centred within this horizontal angle of the user's forward sits over the monitor: refused (deg).")]
+        public float preferredDistance = 1.2f;
+        [Tooltip("A habitat centred within this horizontal angle of the user's forward sits over the monitor: refused while its bottom edge is below the eye (it would hide the screen), allowed above it (deg).")]
         public float monitorConeDeg = 15f;
         [Tooltip("Within this angle it is allowed but scored lower (deg).")]
         public float monitorSoftDeg = 32f;
@@ -57,12 +57,12 @@ namespace MuseDesk.Spatial.Wall
         public float maxViewAngleDeg = 72f;
         [Tooltip("Habitat centre height relative to the seated eye: allowed range and preferred value (m).")]
         public float minCenterAboveEye = -0.25f;
-        public float maxCenterAboveEye = 0.55f;
+        public float maxCenterAboveEye = 0.85f;
         public float preferredCenterAboveEye = 0.15f;
         [Tooltip("Search step along the wall (m).")]
-        public float uStep = 0.12f;
+        public float uStep = 0.08f;
         [Tooltip("Centre heights tried, relative to the eye (m).")]
-        public float[] heightOffsets = { 0.15f, 0.30f, 0.0f, 0.45f, -0.12f };
+        public float[] heightOffsets = { 0.15f, 0.30f, 0.0f, 0.45f, -0.12f, 0.60f, 0.75f };
         [Tooltip("Two offered spots on the same wall are at least this far apart (m).")]
         public float minCandidateSpacing = 0.35f;
         [Tooltip("At most this many spots are offered.")]
@@ -71,6 +71,12 @@ namespace MuseDesk.Spatial.Wall
         public float wallStandoff = 0.004f;
         [Tooltip("Margins below this multiple of the required margin mark the spot as 'needs review' (amber).")]
         public float reviewMarginFactor = 2.0f;
+
+        [Tooltip("Straight ahead is allowed when the habitat's bottom edge is at least this far above the eye (m).")]
+        public float aboveScreenClearance = 0.02f;
+        [Tooltip("Letting go on a spot that does not fit: the nearest spot that fits on the same wall within this distance is taken instead (m).")]
+        public float snapRadius = 0.6f;
+        public float snapStep = 0.04f;
 
         public Vector3 SizeOf(WallLayoutKind k) { return k == WallLayoutKind.Full ? fullSize : compactSize; }
     }
@@ -189,17 +195,20 @@ namespace MuseDesk.Spatial.Wall
             if (headDist < s.minHeadDistance) return Fail(ref c, WallProblem.TooCloseToUser, "Too close to your head");
             if (headDist > s.maxHeadDistance) return Fail(ref c, WallProblem.TooFar, "Too far away to see");
             float fromForward = WallMath.HorizontalAngleFromForward(user, vc);
-            if (fromForward < s.monitorConeDeg) return Fail(ref c, WallProblem.OverMonitor, "Straight ahead, over your screen");
+            // rc12 (owner: "too strict, only far places"): straight ahead is refused only while it would hide the screen.
+            // A habitat whose bottom edge clears the eye sits above the monitor and is allowed.
+            bool aboveScreen = centerY - hh >= user.head.y + s.aboveScreenClearance;
+            if (fromForward < s.monitorConeDeg && !aboveScreen) return Fail(ref c, WallProblem.OverMonitor, "Straight ahead, over your screen");
 
             // Valid: score it.
             c.valid = true;
             c.problem = WallProblem.None;
-            c.score = Score(s, headDist, viewAngle, fromForward, eyeRel, c.minClearance);
+            c.score = Score(s, headDist, viewAngle, aboveScreen ? Mathf.Max(fromForward, 30f) : fromForward, eyeRel, c.minClearance);
             float review = Mathf.Max(s.openingMargin, s.furnitureMargin) * s.reviewMarginFactor;
-            c.needsReview = !c.roomChecked || c.minClearance < review || viewAngle > s.maxViewAngleDeg - 15f || fromForward < s.monitorSoftDeg;
+            c.needsReview = !c.roomChecked || c.minClearance < review || viewAngle > s.maxViewAngleDeg - 15f || (fromForward < s.monitorSoftDeg && !aboveScreen);
             c.reason = !c.roomChecked ? "Room scan incomplete: check the spot yourself"
                      : c.needsReview ? "Fits, but close to something: please check"
-                     : "Fits this wall";
+                     : aboveScreen && fromForward < s.monitorSoftDeg ? "Fits above your screen" : "Fits this wall";
             return c;
         }
 
@@ -298,6 +307,36 @@ namespace MuseDesk.Spatial.Wall
             return true;
         }
 
+        /// <summary>
+        /// The nearest spot on the same wall that fits (valid), searched outward from (<paramref name="u"/>,
+        /// <paramref name="centerY"/>) in rings of <see cref="WallPlacementSettings.snapStep"/> up to
+        /// <see cref="WallPlacementSettings.snapRadius"/>. Used when a drag ends on a spot that does not fit. False when none.
+        /// </summary>
+        public static bool NearestValid(IRoomGeometry room, IWallGeometry walls, int wallIndex, float u, float centerY,
+                                        WallLayoutKind layout, SeatedUser user, WallPlacementSettings s, out WallCandidate result)
+        {
+            result = default(WallCandidate);
+            if (walls == null || wallIndex < 0 || wallIndex >= walls.WallCount) return false;
+            float step = Mathf.Max(0.01f, s.snapStep);
+            int rings = Mathf.CeilToInt(Mathf.Max(step, s.snapRadius) / step);
+            float best = float.MaxValue;
+            for (int ring = 0; ring <= rings; ring++)
+            {
+                for (int i = -ring; i <= ring; i++)
+                    for (int j = -ring; j <= ring; j++)
+                    {
+                        if (Mathf.Max(Mathf.Abs(i), Mathf.Abs(j)) != ring) continue;      // the ring's border only
+                        float du = i * step, dy = j * step, d2 = du * du + dy * dy;
+                        if (d2 >= best || d2 > s.snapRadius * s.snapRadius) continue;
+                        WallCandidate c = Evaluate(room, walls, wallIndex, u + du, centerY + dy, layout, user, s);
+                        if (!c.valid) continue;
+                        best = d2; result = c;
+                    }
+                // A hit in this ring can only be beaten by a closer one in the next ring's corners; stop one ring later.
+                if (best < float.MaxValue && ring * step > Mathf.Sqrt(best) + step) break;
+            }
+            return best < float.MaxValue;
+        }
         /// <summary>
         /// No usable room data: a manual spot in front-side of the user at <paramref name="distance"/>, on a
         /// virtual vertical plane facing them. Never "roomChecked": it is offered amber and the UI says

@@ -72,9 +72,11 @@ namespace MuseDesk.Spatial.Wall
         public float frontConeDeg = 45f;
         [Tooltip("Never further round than this (behind the user) (deg).")]
         public float maxSideDeg = 135f;
-        public float maxDistance = 2.0f;
-        public float[] sideAnglesDeg = { 75f, 95f, 60f, 105f };
-        public float[] distances = { 1.15f, 1.35f, 1.0f, 1.6f };
+        // rc12 (owner: the portal fell back to the small visitor): more side angles and one farther ring. The keep-out
+        // rules (front cone, personal radius, margins, the swept body model) are unchanged: only more places are tried.
+        public float maxDistance = 2.2f;
+        public float[] sideAnglesDeg = { 75f, 95f, 60f, 105f, 120f, 50f };
+        public float[] distances = { 1.15f, 1.35f, 1.0f, 1.6f, 1.85f };
         [Tooltip("Head room required above the avatar when the ceiling is known (m).")]
         public float headRoom = 0.12f;
         public float avatarHeight = 1.0f;
