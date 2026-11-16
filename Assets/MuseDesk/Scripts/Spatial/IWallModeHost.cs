@@ -51,5 +51,13 @@ namespace MuseDesk.Spatial
         void WallMove();
         void WallSelect();
         void WallManager();
+
+        // ── Meet (MeetKeyV1): one poke to the large-agent portal ──
+
+        /// <summary>The large-agent portal flag is on: the dock offers Meet while the office is on the wall.</summary>
+        bool WallMeetEnabled { get; }
+        /// <summary>Meet: open (or close) the agent chooser; with an agent on the desk perch, that agent steps out. A request the
+        /// host may refuse (words in <see cref="WallStatus"/>). Only ever opens a preview the user must confirm.</summary>
+        void WallMeet();
     }
 }

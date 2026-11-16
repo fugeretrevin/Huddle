@@ -120,6 +120,7 @@ namespace MuseDesk.Wall
             _portal.comfortMode = Comfort;
             _portal.Tick(dt);
             TickPresentations();
+            TickMeet(dt);
 
             bool selectMode = WallActive && flags.agentSelectEnabled && (_visit.IsArmed || _visit.State == VisitState.Carrying);
             // V2: while an agent sits on the perch, a pinch ON it picks it up again (to move it, or to put it back on the wall).
@@ -130,7 +131,7 @@ namespace MuseDesk.Wall
             // Asking the Manager by hand: point a free hand at the Manager in the habitat and pinch (same arbiter as Select
             // Agents, so a held paper, a grab or a poke always wins). It only opens the Manager paper.
             bool managerMode = managerRayPoke && WallActive && !aimMode && !selectMode && flags.wallManagerEnabled && !_planCardOpen
-                               && !_visit.Busy && _portal.State == PortalState.Hidden && _view != null;
+                               && !_visit.Busy && _portal.State == PortalState.Hidden && !MeetChoosing && _view != null;
             if (!managerMode && _view != null) _view.SetManagerHint(false);
             // A Return key (or any interruption) ended the carry while the pinch is still closed: give the hand back now.
             if (_carryHand >= 0 && _visit.State != VisitState.Carrying) { _arb.Relinquish(_carryHand); _carryHand = -1; }
@@ -700,12 +701,37 @@ namespace MuseDesk.Wall
             if (!_visit.HandOverToPortal(out agent)) { Note("Bring an agent to your desk first"); return; }
             // The desk projection leaves without flying home: the portal takes the same presentation.
             DestroyProxy();
-            SideConversationSession keep = _side;
+            BeginPortalPreview(agent, _side);
+        }
+
+        /// <summary>
+        /// The one way into the portal preview (Meet larger on the visit card, the dock's Meet key and its chooser, voice).
+        /// Plans the spots (A9 PortalSpotPlanner; the small-visitor fallback "Not enough space here" when no large spot is
+        /// clear), reserves the agent through <see cref="PortalFlow.BeginPreview"/> (one presentation per agent, one away at a
+        /// time) and shows the ring. The conversation of a desk visit that handed over is kept; otherwise a fresh read-only
+        /// side session starts, so the portal card can ask its questions. Nothing opens until the user presses Open here.
+        /// </summary>
+        bool BeginPortalPreview(string agent, SideConversationSession keep)
+        {
             _portalSpotIndex = 0;
             PortalCandidate spot = PlanPortalSpots(ReadUser());      // A9: side spots via PortalSpotPlanner (legacy evaluator when off / non-rectangular room)
-            if (!_portal.BeginPreview(agent, spot)) { Note(_portal.Message); return; }
-            _side = keep;
+            if (!_portal.BeginPreview(agent, spot)) { Note(_portal.Message); return false; }
+            // Meet starts with no desk visit: the portal's card may not exist yet. Place it now (not a frame later), because the
+            // keep-out guard keeps the avatar clear of the card and of the line of sight to it.
+            EnsureVisitCard();
+            if (_visitCard != null && !_visitCard.Visible && nearUserRig != null)
+            {
+                Transform hd = ResolveHead();
+                _visitCard.Place(nearUserRig.TransformPoint(visitCardLocal), hd != null ? hd.position : nearUserRig.TransformPoint(new Vector3(0f, 0.30f, 0.62f)), 12f);
+            }
+            if (keep != null && keep.agentId == agent) _side = keep;
+            else
+            {
+                _visitCounter++;
+                _side = new SideConversationSession(agent, "visit-" + DateTime.UtcNow.Ticks.ToString("x") + "-" + _visitCounter);
+            }
             ShowPortalPreview();
+            return true;
         }
 
         void NextPortalSpot()
@@ -765,6 +791,8 @@ namespace MuseDesk.Wall
                     _portalAvatar = null;
                     if (_visit.State != VisitState.Perched) EndDeskVisit();     // the conversation ends with the portal
                 }
+                // A preview cancelled before it opened (Meet, voice, Meet larger): its read-only conversation ends with it.
+                else if (_side != null && !_visit.Busy) EndDeskVisit();
                 return;
             }
             if (st == PortalState.Preview || st == PortalState.AwaitConfirm) { TickPortalSpotTracking(); if (_portalRoot != null && (_portalRoot.position - _portal.Spot.position).sqrMagnitude > 1e-6f) ShowPortalPreview(); return; }

@@ -154,6 +154,7 @@ namespace MuseDesk.Wall
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted -= OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded -= OnVoiceListeningEnded;
             if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
+            ClearMeetVoiceHook();          // Meet (WallHabitatController.Meet.cs): re-registered per frame while Wall is active
             Unhook();
             ResetPlanStamp();
             if (WallActive || WallPreviewing) ExitWall("disabled");
@@ -218,6 +219,7 @@ namespace MuseDesk.Wall
             bool wasActive = WallActive;
             if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.ModeChanged);
             if (_portal != null) _portal.Interrupt("Mode changed");
+            CloseMeetChooser();
             ReleaseHands();
             if (_planCardOpen && _planCard != null) { _planCardOpen = false; _planCard.Show(false); }   // the Manager lives in the wall
             if (_stage != null) _stage.ResetAll();
@@ -682,7 +684,7 @@ namespace MuseDesk.Wall
 
         Transform _dock;
         TMP_Text _dockStatus;
-        WallKey _kWall, _kDesk, _kPlace, _kOther, _kLayout, _kCancel, _kMove, _kSelect, _kManager;
+        WallKey _kWall, _kDesk, _kPlace, _kOther, _kLayout, _kCancel, _kMove, _kSelect, _kManager, _kMeet;
 
         // UnifiedModeDockV1: when the director's Spaces dock (ModeConsole) carries the Wall keys it sets ExternalDock, and
         // this controller builds and shows NO dock of its own; it only reports changes (DockChanged). Without it (an older
@@ -709,6 +711,7 @@ namespace MuseDesk.Wall
             _kDesk = WallUi.MakeKey(keyTemplate, _dock, "Key_Desk", SpacesDockLogic.Desk, new Vector3(1.5f * p, 0.016f, 0), keyScale, PressDesk);
             _kSelect = WallUi.MakeKey(keyTemplate, _dock, "Key_Select", SpacesDockLogic.Select, new Vector3(-0.5f * p, -0.016f, 0), keyScale, PressSelectAgents);
             _kManager = WallUi.MakeKey(keyTemplate, _dock, "Key_Manager", SpacesDockLogic.Manager, new Vector3(0.5f * p, -0.016f, 0), keyScale, PressManager);
+            _kMeet = WallUi.MakeKey(keyTemplate, _dock, "Key_Meet", SpacesDockLogic.Meet, new Vector3(1.5f * p, -0.016f, 0), keyScale, PressMeet);
             _dockStatus = WallUi.MakeText(_dock, "DockStatus", font, new Vector3(0, 0.036f, -0.0005f), new Vector2(p * 400f, 1.2f), 4.2f, WallHabitatView.Ink, TextAlignmentOptions.Center);
             PlaceDock();
             RefreshDock();
@@ -754,6 +757,7 @@ namespace MuseDesk.Wall
             _kDesk.Show(active);
             _kSelect.Show(active && flags.agentSelectEnabled);
             _kManager.Show(active && flags.wallManagerEnabled);
+            _kMeet.Show(active && flags.largeAgentPortalEnabled);
         }
 
         void RefreshDockLabels()

@@ -24,7 +24,7 @@ namespace MuseDesk.Spatial
     /// <see cref="SummonController"/>. The state table is <see cref="SpacesDockLogic.Compute"/>.
     ///
     /// UnifiedModeDockV1 (rc8 feedback) makes it the ONE Spaces dock: a fourth place key, Wall, and the
-    /// Wall's context keys (Full / Compact, Move, Select, Manager) in the same row and language; the
+    /// Wall's context keys (Full / Compact, Move, Select, Manager, and Meet from MeetKeyV1) in the same row and language; the
     /// shared Next spot / Place / Cancel keys act on whichever preview is open (Floor, Ceiling or Wall).
     /// The wall host then builds no floating dock of its own (<see cref="IWallModeHost.ExternalDock"/>).
     /// With no Wall key in the scene everything works exactly as before.
@@ -89,6 +89,8 @@ namespace MuseDesk.Spatial
         public ConsoleKey moveKey = new ConsoleKey();
         public ConsoleKey selectKey = new ConsoleKey();
         public ConsoleKey managerKey = new ConsoleKey();
+        [Tooltip("Wall at rest: Meet, one poke to an agent stepping out full size beside the user (MeetKeyV1; the Layout key's slot). Empty: no Meet key, as before.")]
+        public ConsoleKey meetKey = new ConsoleKey();
         [Tooltip("Seconds a key takes to grow in or shrink away.")]
         public float easeSeconds = 0.2f;
         [Tooltip("The Stop key cannot be poked for this long after it appears (the finger that pressed Confirm is still there).")]
@@ -164,9 +166,10 @@ namespace MuseDesk.Spatial
             if (moveKey == null) moveKey = new ConsoleKey();
             if (selectKey == null) selectKey = new ConsoleKey();
             if (managerKey == null) managerKey = new ConsoleKey();
+            if (meetKey == null) meetKey = new ConsoleKey();
             _segments = new[] { deskKey, floorKey, ceilingKey, wallKey };
             _all = new[] { deskKey, floorKey, ceilingKey, wallKey, nextKey, confirmKey, cancelKey, stopKey, podKey, bringKey, statusKey,
-                           layoutKey, moveKey, selectKey, managerKey };
+                           layoutKey, moveKey, selectKey, managerKey, meetKey };
             for (int i = 0; i < _all.Length; i++)
             {
                 ConsoleKey k = _all[i];
@@ -308,6 +311,7 @@ namespace MuseDesk.Spatial
                 input.wallSelectEnabled = h.WallSelectEnabled;
                 input.wallManagerEnabled = h.WallManagerEnabled;
                 input.wallSelecting = h.WallSelecting;
+                input.wallMeetEnabled = h.WallMeetEnabled && meetKey.root != null;
             }
             _keys = SpacesDockLogic.Compute(input);
 
@@ -329,6 +333,7 @@ namespace MuseDesk.Spatial
             SetShown(moveKey, _keys.move);
             SetShown(selectKey, _keys.select);
             SetShown(managerKey, _keys.manager);
+            SetShown(meetKey, _keys.meet);
 
             if (podKey.label != null && _keys.podWords != _podWords)
             {
@@ -571,6 +576,8 @@ namespace MuseDesk.Spatial
         public void PressMove() { if (!Refused(moveKey) && ResolveHost() != null) _host.WallMove(); }
         public void PressSelect() { if (!Refused(selectKey) && ResolveHost() != null) _host.WallSelect(); }
         public void PressManager() { if (!Refused(managerKey) && ResolveHost() != null) _host.WallManager(); }
+        /// <summary>Wall at rest: Meet (the agent chooser, or the perched agent steps out). Refusals are said on the status line.</summary>
+        public void PressMeet() { if (!Refused(meetKey) && ResolveHost() != null) _host.WallMeet(); }
 
         public void PressStop() { if (!Refused(stopKey)) director.StopMove(); }
 
@@ -600,7 +607,7 @@ namespace MuseDesk.Spatial
         {
             EnsureInit();
             string[] names = { "Desk", "Floor", "Ceiling", "Wall", "Next", "Confirm", "Cancel", "Stop", "Pod", "Bring", "Status",
-                               "Layout", "Move", "Select", "Manager" };
+                               "Layout", "Move", "Select", "Manager", "Meet" };
             StringBuilder sb = new StringBuilder(400);
             sb.Append("ModeConsole mode=").Append(_mode).Append(" active=").Append(_active)
               .Append(" status='").Append(_status).Append("'");
@@ -618,7 +625,7 @@ namespace MuseDesk.Spatial
         }
 
         /// <summary>Play Mode driver: press a key by name as its poke would (Desk, Floor, Ceiling, Wall,
-        /// Next, Confirm / Place, Cancel, Stop, Pod, Bring, Status, Layout, Move, Select, Manager). False for an unknown name.</summary>
+        /// Next, Confirm / Place, Cancel, Stop, Pod, Bring, Status, Layout, Move, Select, Manager, Meet). False for an unknown name.</summary>
         public bool PressByName(string key)
         {
             switch (key)
@@ -631,6 +638,7 @@ namespace MuseDesk.Spatial
                 case "Move": PressMove(); return true;
                 case "Select": PressSelect(); return true;
                 case "Manager": PressManager(); return true;
+                case "Meet": PressMeet(); return true;
                 case "Next": PressNext(); return true;
                 case "Place":
                 case "Confirm": PressConfirm(); return true;

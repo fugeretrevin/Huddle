@@ -164,8 +164,9 @@ namespace MuseDesk.Spatial.Onboarding
             new HintDef(HintId.ManagerPlan, "Review the plan card, then approve it.", HintAnchorKind.Board,
                 OnboardingEvent.ManagerPlanShown, E(OnboardingEvent.ManagerPlanApproved),
                 OnboardingFlags.Wall | OnboardingFlags.Manager, HintId.None, 1f, 12f, 1, false, false),
-            new HintDef(HintId.PortalMeet, "Far-pinch an agent to meet them larger.", HintAnchorKind.Agent,
-                OnboardingEvent.AgentSelected, E(OnboardingEvent.PortalOpened),
+            // rc9 (MeetKeyV1): the portal is one poke away on the dock, so the hint follows the habitat being placed.
+            new HintDef(HintId.PortalMeet, "Press Meet to see an agent beside you.", HintAnchorKind.Plaque,
+                OnboardingEvent.WallPlaced, E(OnboardingEvent.PortalOpened),
                 OnboardingFlags.Wall | OnboardingFlags.Portal, HintId.None, 1f, 10f, 1, false, false),
             // Recovery.
             new HintDef(HintId.RecoverDroppedPaper, "Put it back on the desk tray.", HintAnchorKind.Paper,
