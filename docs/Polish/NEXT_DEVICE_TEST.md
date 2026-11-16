@@ -1,6 +1,6 @@
 # Next device test (about 30 minutes, one person, Quest 3)
 
-> **Competition build is now rc7 (`Builds/MuseDesk.apk` = `Builds/MuseDesk_rc7.apk`, buildLabel `rc7-living-office`): every feature flag is ON by default (Wall Habitat, Manager, Select Agents, /btw, Large Portal, elevator VFX flag, Calm motion key, onboarding hints, Floor, Ceiling, voice) and the role colours are the soft pastels.** Rollback = reinstall `Builds\MuseDesk_rc6_2.apk`. Nothing has been worn on a headset and nothing was installed by this pass.
+> **Competition build is now rc8 (`Builds/MuseDesk.apk` = `Builds/MuseDesk_rc8.apk`, buildLabel `rc8-living-office`): rc7 plus the deck refit (Floor and Ceiling decks, 0 cm overhang) and matte role-colour trims; every feature flag is ON by default.** Rollbacks: first `Builds\MuseDesk_rc7.apk`, then `Builds\MuseDesk_rc6_2.apk`. Nothing has been worn on a headset and nothing was installed by this pass.
 
 Install the polish2 validation build (it includes everything in the older polish build). The exact file and hash are in `RELEASE_POLISH_CHANGELOG.md`. Nothing in this file has been done on a headset yet.
 
