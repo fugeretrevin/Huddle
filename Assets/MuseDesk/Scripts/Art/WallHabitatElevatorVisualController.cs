@@ -144,6 +144,9 @@ namespace MuseDesk.Art
             }
         }
 
+        /// <summary>The release flag wallElevatorVfx (ReleaseConfigApplier sets it). Default on: gates the arrival particles only.</summary>
+        public static bool ArrivalVfxEnabled = true;
+
         public void SetReducedMotion(bool reduced)
         {
             reducedMotion = reduced;
@@ -232,7 +235,7 @@ namespace MuseDesk.Art
                 cabAnimator.Play(CabArriveChimeHash, 0, 0f);
             }
 
-            if (arrivalParticles != null && !reducedMotion)
+            if (arrivalParticles != null && !reducedMotion && ArrivalVfxEnabled)
             {
                 Transform anchor = GetStopTransform(clamped) ?? elevatorCarPivot;
                 if (anchor != null)

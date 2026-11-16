@@ -446,6 +446,22 @@ namespace MuseDesk.Tests.EditMode
         [TestCase("go to ceiling mode", "ModeCeiling")]
         public void Modes(string said, string expected) { Expect(expected, said, None); }
 
+        [TestCase("wall", "ModeWall")]
+        [TestCase("wall mode", "ModeWall")]
+        [TestCase("put the office on the wall", "ModeWall")]
+        [TestCase("go to the wall", "ModeWall")]
+        public void Modes_Wall(string said, string expected) { Expect(expected, said, None); }
+
+        [TestCase("don't go to the wall")]
+        [TestCase("do not put the office on the wall")]
+        [TestCase("the wall is blue")]
+        [TestCase("I hit the wall with my hand")]
+        public void Modes_WallNearMissesAndNegation(string said)
+        {
+            string got = VoiceReflect.Describe(said, None);
+            Assert.IsFalse(got.StartsWith("Mode"), "\"" + said + "\" got " + got);
+        }
+
         [TestCase("the floor is dirty")]
         [TestCase("I dropped my pen on the floor again")]
         [TestCase("look at the ceiling fan")]

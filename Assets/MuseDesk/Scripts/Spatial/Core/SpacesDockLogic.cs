@@ -39,6 +39,8 @@ namespace MuseDesk.Spatial
         /// <summary>The shared preview keys act on the wall preview, not on the director's.</summary>
         public bool wallContext;
         public string podWords, confirmWords, nextWords, layoutWords, selectWords;
+        /// <summary>Why the greyed Wall key does nothing (Floor or Ceiling at rest); null when there is nothing to say.</summary>
+        public string wallNote;
     }
 
     /// <summary>
@@ -61,6 +63,7 @@ namespace MuseDesk.Spatial
         public const string Desk = "Desk", Floor = "Floor", Ceiling = "Ceiling", Wall = "Wall", SendBack = "Send back";
         public const string NextSpot = "Next spot", Place = "Place", Cancel = "Cancel", Stop = "Stop";
         public const string Bring = "Bring", Status = "Status", Full = "Full", Compact = "Compact";
+        public const string WallFromDeskNote = "Wall: go back to Desk first";
         public const string Move = "Move", Select = "Select", Done = "Done", Manager = "Manager";
 
         /// <summary>Every word a dock key can show (the label-fit test walks this list).</summary>
@@ -136,6 +139,9 @@ namespace MuseDesk.Spatial
             }
             // Desk / Floor / Ceiling as before. Wall only from the desk, at rest, with nothing previewed.
             k.wallDisabled = !i.wallEnabled || !deskIdle;
+            // Floor or Ceiling at rest: Wall stays closed (never chain moves) but the dock says why.
+            bool floorOrCeiling = i.mode == PlacementMode.Floor || i.mode == PlacementMode.Ceiling;
+            if (i.wallEnabled && floorOrCeiling && !i.previewing && !i.transitioning) k.wallNote = WallFromDeskNote;
             return k;
         }
     }

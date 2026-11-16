@@ -675,6 +675,7 @@ namespace MuseDesk.Voice
                 case VoiceIntentKind.ModeDesk:
                 case VoiceIntentKind.ModeFloor:
                 case VoiceIntentKind.ModeCeiling:
+                case VoiceIntentKind.ModeWall:
                     return DoMode(intent.Kind, ref tone);
 
                 case VoiceIntentKind.NextSpot:
@@ -828,6 +829,15 @@ namespace MuseDesk.Voice
                 if (SpatialWorkspaceState.Mode == WorkspaceMode.Desk && !director.IsPreviewing) return "The office is already on the desk.";
                 director.RequestDesk();
                 return Words(director.StatusText, "Returning the office to the desk.");
+            }
+            if (kind == VoiceIntentKind.ModeWall)
+            {
+                // Opens the wall preview only (nothing moves until Place on the dock). Wall is offered from an idle Desk.
+                if (director.RequestMode(WorkspaceMode.Wall)) return "Wall preview. Use the dock to place it, or Cancel.";
+                tone = VoiceTone.Warn;
+                return SpatialWorkspaceState.Mode == WorkspaceMode.Desk && !director.IsPreviewing
+                    ? "Wall mode is not available in this build."
+                    : "Say desk mode first, then wall mode.";
             }
             bool floor = kind == VoiceIntentKind.ModeFloor;
             bool enabled = director.flags != null && (floor ? director.flags.floorModeEnabled : director.flags.ceilingModeEnabled);
