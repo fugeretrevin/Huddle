@@ -324,6 +324,7 @@ namespace MuseDesk.Wall
 
             TickInteraction(dt);
             TickManager(dt);
+            TickHints();
             if (WallPreviewing) UpdateGhost();
             RefreshDockLabels();
         }

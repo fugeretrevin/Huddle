@@ -31058,7 +31058,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Use a stamp instead of a key
+  m_text: Stamp to approve or reject
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 1d85f0e8fbeaabd4087dc09ad958fef4, type: 2}
   m_sharedMaterial: {fileID: 3255995288093549690, guid: 1d85f0e8fbeaabd4087dc09ad958fef4, type: 2}
@@ -104031,7 +104031,7 @@ MonoBehaviour:
   arrow: {fileID: 259529500}
   cancelKey:
     root: {fileID: 1308116774}
-    shownScale: {x: 0.023469375, y: 0.023469375, z: 0.023469375}
+    shownScale: {x: 0.0000023469374, y: 0.0000023469374, z: 0.0000023469374}
     poke: {fileID: 1308116773}
     visual: {fileID: 1308116769}
   startKey:
@@ -104041,12 +104041,12 @@ MonoBehaviour:
     visual: {fileID: 1011434882}
   placeKey:
     root: {fileID: 697152566}
-    shownScale: {x: 0.023469375, y: 0.023469375, z: 0.023469375}
+    shownScale: {x: 0.0000023469374, y: 0.0000023469374, z: 0.0000023469374}
     poke: {fileID: 697152565}
     visual: {fileID: 697152561}
   anotherKey:
     root: {fileID: 1561682905}
-    shownScale: {x: 0.023469375, y: 0.023469375, z: 0.023469375}
+    shownScale: {x: 0.0000023469374, y: 0.0000023469374, z: 0.0000023469374}
     poke: {fileID: 1561682904}
     visual: {fileID: 1561682900}
   ceilingPitchDeg: 35
@@ -104071,11 +104071,11 @@ MonoBehaviour:
   requestedTitle: Scanning
   requestedBody: Keep looking at the spot
   floorPreviewTitle: Place the office
-  floorPreviewBody: Press Place here, or drag it
-  floorDraggingBody: Let go on a clear spot
-  floorReadyBody: Press Place here to move
+  floorPreviewBody: Press Place, or drag the outline
+  floorDraggingBody: Let go on a clear spot, then press Place
+  floorReadyBody: Press Place to move it here
   ceilingPreviewTitle: Mount it here?
-  ceilingPreviewBody: Confirm, or try Next spot
+  ceilingPreviewBody: Press Place to mount it here
 --- !u!4 &1547186416
 Transform:
   m_ObjectHideFlags: 0

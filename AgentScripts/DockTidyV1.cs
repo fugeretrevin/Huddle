@@ -69,8 +69,7 @@ public static class DockTidyV1
             sb.AppendLine("  mic level halo moved behind the Mic toggle");
         }
 
-        // Every key's press visual re-reads its rest offset at the new scale.
-        foreach (var k in new[] { mic, motion }) k.BroadcastMessage("SyncToCurrentScale", SendMessageOptions.DontRequireReceiver);
+        // (Press visuals re-read their rest offset at run time; BroadcastMessage asserts in Edit Mode, so it is not called here.)
         EditorSceneManager.MarkSceneDirty(c.gameObject.scene);
         sb.AppendLine("  scene saved=" + EditorSceneManager.SaveScene(c.gameObject.scene));
         return sb.ToString();
