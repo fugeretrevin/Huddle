@@ -211,6 +211,10 @@ namespace MuseDesk.Spatial
         public HandBlock LastBlock(int hand) { return hand == 0 ? _left.block : _right.block; }
         public HandClaim Claim(int hand) { return hand == 0 ? _left.claim : _right.claim; }
         public bool IsClaimed(int hand) { GateState s = hand == 0 ? _left.state : _right.state; return s == GateState.Claimed || s == GateState.Lost; }
+        /// <summary>Read only: a fresh pinch is closed and still debouncing (it may become Ready).</summary>
+        public bool IsPending(int hand) { return (hand == 0 ? _left.state : _right.state) == GateState.Pending; }
+        /// <summary>Read only: the last pinch is spent (refused, untaken or relinquished); <see cref="LastBlock"/> says why.</summary>
+        public bool IsSpent(int hand) { return (hand == 0 ? _left.state : _right.state) == GateState.Spent; }
 
         /// <summary>Who owns the hand now, in the priority order of the class comment.</summary>
         public HandOwner Owner(int hand)

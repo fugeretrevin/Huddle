@@ -154,21 +154,58 @@ namespace MuseDesk.Spatial.Wall
         /// <summary>The claimed pinch was seen to open. <paramref name="overValidPerch"/>: the projection is over a desk perch.</summary>
         public void Release(bool overValidPerch)
         {
+            Release(overValidPerch ? VisitDrop.Perch : VisitDrop.Home);
+        }
+
+        /// <summary>
+        /// The claimed pinch was seen to open. Perch: it (re)lands on the desk perch. Home: a fresh carry was let go away
+        /// from the desk (it goes home, nothing changed), or a projection picked up off the perch was let go toward the
+        /// wall: the user put it back.
+        /// </summary>
+        public void Release(VisitDrop drop)
+        {
             if (State != VisitState.Carrying) return;
-            if (overValidPerch)
+            bool regrab = IsRegrab;
+            if (drop == VisitDrop.Perch)
             {
                 _registry.Move(Agent, AgentPresentation.DeskVisit);
+                IsRegrab = false;
                 Go(VisitState.Perched);
                 Message = "";
                 return;
             }
-            BeginReturn(VisitEndReason.InvalidDrop, "Not a desk spot: going home");
+            if (regrab) BeginReturn(VisitEndReason.UserReturn, "Back to work on the wall");
+            else BeginReturn(VisitEndReason.InvalidDrop, "Not a desk spot: going home");
         }
 
-        /// <summary>The claim was taken away (tracking lost, something picked up, preempted). Never a placement.</summary>
+        /// <summary>True while the carried projection was picked up off the perch (not from the wall).</summary>
+        public bool IsRegrab { get; private set; }
+
+        /// <summary>Pick the perched projection up again (to move it, or to put it back on the wall). Perched only.</summary>
+        public bool Regrab()
+        {
+            if (State != VisitState.Perched || Agent == null) { Message = "Nothing on your desk to pick up"; return false; }
+            if (!_registry.Move(Agent, AgentPresentation.CarriedProxy)) return false;
+            IsRegrab = true;
+            Go(VisitState.Carrying);
+            Message = "Let go over your desk to keep it, or toward the wall to send it back";
+            return true;
+        }
+
+        /// <summary>The claim was taken away (tracking lost, something picked up, preempted). Never a placement: a fresh
+        /// carry goes home; a projection picked up off the perch goes back to the perch it came from (its previous state).</summary>
         public void CancelCarry(VisitEndReason why)
         {
             if (State != VisitState.Carrying) return;
+            if (IsRegrab)
+            {
+                _registry.Move(Agent, AgentPresentation.DeskVisit);
+                IsRegrab = false;
+                LastEnd = why;
+                Go(VisitState.Perched);
+                Message = why == VisitEndReason.TrackingLost ? "Hand lost: it stays on your desk" : "Cancelled: it stays on your desk";
+                return;
+            }
             BeginReturn(why, why == VisitEndReason.TrackingLost ? "Hand lost: going home" : "Cancelled: going home");
         }
 
@@ -196,6 +233,7 @@ namespace MuseDesk.Spatial.Wall
         {
             LastEnd = why;
             Message = msg;
+            IsRegrab = false;
             if (Agent != null) _registry.Move(Agent, AgentPresentation.Returning);
             Go(VisitState.Returning);
         }
@@ -228,6 +266,7 @@ namespace MuseDesk.Spatial.Wall
         void Go(VisitState s)
         {
             _timer = 0f;
+            if (s != VisitState.Carrying) IsRegrab = false;
             if (State == s) return;
             State = s;
             var h = StateChanged; if (h != null) h(s);

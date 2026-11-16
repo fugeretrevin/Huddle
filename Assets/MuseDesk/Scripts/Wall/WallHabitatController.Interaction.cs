@@ -26,9 +26,44 @@ namespace MuseDesk.Wall
         readonly AimHandSample[] _samples = new AimHandSample[2];
         readonly AimHandSample[] _sim = new AimHandSample[2];
         readonly bool[] _simOn = new bool[2];
-        HandVisual _leftHand, _rightHand;
+        readonly List<IHand> _handsL = new List<IHand>(4), _handsR = new List<IHand>(4);
         float _nextHandSearch;
         int _hoverRole = -1;
+
+        // ── Select Agents force grab (AgentSelectGrabV1) ──
+        [Header("Select Agents grab (AgentSelectGrabV1)")]
+        [Tooltip("V2 grab: forgiving ray target with a hover lock, the pinch takes what it BEGAN on, refusals are said out loud, " +
+                 "a forgiving drop (pull it toward you), pick it up off the perch and let go toward the wall to put it back, " +
+                 "and the hidden desk office's interactables are switched off while Wall is active. False = the previous path.")]
+        public bool useSelectGrabV2 = true;
+        public AgentSelectGrabSettings selectGrab = new AgentSelectGrabSettings();
+        public VisitDropSettings visitDrop = new VisitDropSettings();
+        [Tooltip("Switch off the hidden desk office's ISDK interactables while Wall is active (they are invisible and ate far pinches).")]
+        public bool muteHiddenOfficeInteractables = true;
+        [Tooltip("While Select Agents is armed or carrying, switch off distance-grab interactables so a far pinch means 'agent'. Near grabs and pokes stay on.")]
+        public bool muteDistanceGrabWhileSelecting = true;
+        [Tooltip("A pinch this close to the perched projection (m) picks it up again.")]
+        public float regrabReach = 0.16f;
+        [Tooltip("The rig's hand-tracking visuals (OVRHandVisualLeft/Right). Wired by AgentSelectGrabV1; when empty or untracked, " +
+                 "every HandVisual of that hand is tried and the TRACKED one is used (the rig also has controller-driven hand visuals).")]
+        public HandVisual leftHandVisual, rightHandVisual;
+
+        readonly AgentTargetLock _lock = new AgentTargetLock();
+        readonly List<Vector3> _targetCenters = new List<Vector3>(4) { Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero };
+        readonly List<bool> _targetEligible = new List<bool>(4) { false, false, false, false };
+        readonly bool[] _pinchPending = new bool[2];
+        AgentSelectInteractableMute _mute;
+        float _returnFromScale;
+        int _grabs, _regrabs, _refusals;
+
+        /// <summary>The last thing the user was told about a refused agent pinch (drivers and the log read it).</summary>
+        public string LastSelectRefusal { get; private set; }
+        public int HoverRole => _hoverRole;
+        public int SelectGrabs => _grabs;
+        public int SelectRegrabs => _regrabs;
+        public int SelectRefusals => _refusals;
+        public AgentSelectInteractableMute InteractableMute => _mute;
+        public HandOwnershipArbiter HandArbiter => _arb;
         int _carryHand = -1;
         int _aimHand = -1;
         Transform _proxy;
@@ -64,6 +99,17 @@ namespace MuseDesk.Wall
         {
             if (_carryHand >= 0) { _arb.Relinquish(_carryHand); _carryHand = -1; }
             if (_aimHand >= 0) { _arb.Relinquish(_aimHand); _aimHand = -1; }
+            _lock.Reset();
+            _pinchPending[0] = _pinchPending[1] = false;
+        }
+
+        void RefuseSelect(string why)
+        {
+            if (string.IsNullOrEmpty(why)) return;
+            _refusals++;
+            LastSelectRefusal = why;
+            Note(why);
+            Debug.Log("[MuseDesk.Wall] Select Agents pinch refused: " + why);
         }
 
         // ───────────────────────── per frame ─────────────────────────
@@ -76,15 +122,23 @@ namespace MuseDesk.Wall
             TickPresentations();
 
             bool selectMode = WallActive && flags.agentSelectEnabled && (_visit.IsArmed || _visit.State == VisitState.Carrying);
+            // V2: while an agent sits on the perch, a pinch ON it picks it up again (to move it, or to put it back on the wall).
+            bool regrabMode = useSelectGrabV2 && WallActive && flags.agentSelectEnabled && _visit.State == VisitState.Perched
+                              && _portal.State == PortalState.Hidden && _proxy != null;
             bool aimMode = WallPreviewing;
+            TickInteractableMute(selectMode);
             // Asking the Manager by hand: point a free hand at the Manager in the habitat and pinch (same arbiter as Select
             // Agents, so a held paper, a grab or a poke always wins). It only opens the Manager paper.
             bool managerMode = managerRayPoke && WallActive && !aimMode && !selectMode && flags.wallManagerEnabled && !_planCardOpen
                                && !_visit.Busy && _portal.State == PortalState.Hidden && _view != null;
             if (!managerMode && _view != null) _view.SetManagerHint(false);
-            if (!selectMode && !aimMode && !managerMode && _carryHand < 0 && _aimHand < 0)
+            // A Return key (or any interruption) ended the carry while the pinch is still closed: give the hand back now.
+            if (_carryHand >= 0 && _visit.State != VisitState.Carrying) { _arb.Relinquish(_carryHand); _carryHand = -1; }
+            if (!selectMode && !regrabMode && !aimMode && !managerMode && _carryHand < 0 && _aimHand < 0)
             {
                 _hoverRole = -1;
+                _lock.Reset();
+                _pinchPending[0] = _pinchPending[1] = false;
                 TickProxy(dt);
                 TickPortalVisual(dt);
                 RefreshVisitCard();
@@ -103,9 +157,46 @@ namespace MuseDesk.Wall
             // Hover: which agent does a free hand's ray point at?
             _hoverRole = -1;
             int hoverHand = -1;
-            if (selectMode && _visit.IsArmed && _view != null)
+            bool picking = selectMode && _visit.IsArmed && _view != null;
+            if (picking && useSelectGrabV2)
+            {
+                // Forgiving target + per-hand lock: the pinch takes what it BEGAN on (the ray dips as the fingers close).
+                BuildAgentTargets();
+                _lock.graceSeconds = selectGrab.lockGraceSeconds;
+                float scale = _habitatRoot != null ? _habitatRoot.lossyScale.y : 1f;
+                float radius = Mathf.Max(0.045f, _view.AvatarHeight * 0.45f) * scale + 0.02f;
+                for (int i = 0; i < 2; i++)
+                {
+                    int raw = _samples[i].tracked && _carryHand < 0
+                        ? AgentRayTargeting.Pick(_samples[i].origin, _samples[i].direction, _targetCenters, _targetEligible, radius, selectGrab.minTargetDegrees, selectGrab.minRayDistance)
+                        : -1;
+                    _lock.Update(i, raw, Time.unscaledTime);
+                    if (_arb.Began(i)) { _lock.NoteBegan(i); _pinchPending[i] = _lock.PinchTarget(i) >= 0; }
+                    if (_hoverRole < 0 && _lock.Locked(i) >= 0) { _hoverRole = _lock.Locked(i); hoverHand = i; }
+                }
+            }
+            else if (picking)
+            {
                 for (int i = 0; i < 2 && _hoverRole < 0; i++)
                     if (_samples[i].tracked) { _hoverRole = RayPickAgent(_samples[i].origin, _samples[i].direction); if (_hoverRole >= 0) hoverHand = i; }
+            }
+            else _lock.Reset();
+            if (regrabMode)
+                for (int i = 0; i < 2; i++)
+                    if (_arb.Began(i) && i != _carryHand) _pinchPending[i] = NearProxy(_samples[i]);
+            if (regrabMode && _perchPadR != null)
+            {
+                bool near = (_samples[0].tracked && NearProxy(_samples[0])) || (_samples[1].tracked && NearProxy(_samples[1]));
+                ArtHelper().Tint(_perchPadR, near ? Color.Lerp(WallHabitatView.Teal, Color.white, 0.45f) : WallHabitatView.Teal * 0.55f);
+            }
+
+            // A pinch that began on an agent (or on the perched projection) and was refused is never silent.
+            for (int i = 0; i < 2; i++)
+            {
+                if (!_pinchPending[i] || _arb.Signal(i) == HandGateSignal.Ready) continue;
+                if (_arb.IsSpent(i)) { RefuseSelect(SelectBlockWords.For(_arb.LastBlock(i))); _pinchPending[i] = false; _lock.ClearPinch(i); }
+                else if (!_arb.IsPending(i)) { _pinchPending[i] = false; _lock.ClearPinch(i); }   // a short tap: it opened inside the debounce
+            }
 
             if (managerMode)
             {
@@ -130,11 +221,27 @@ namespace MuseDesk.Wall
                 HandGateSignal sig = _arb.Signal(i);
                 if (sig == HandGateSignal.Ready)
                 {
-                    if (selectMode && _visit.IsArmed && hoverHand == i && _hoverRole >= 0 && _carryHand < 0)
+                    int target = useSelectGrabV2 ? (picking ? _lock.PinchTarget(i) : -1) : (hoverHand == i ? _hoverRole : -1);
+                    if (useSelectGrabV2) { _pinchPending[i] = false; _lock.ClearPinch(i); }
+                    if (useSelectGrabV2 && target >= 0 && !_targetEligible[target]) target = -1;   // it left home since the pinch began
+                    if (selectMode && _visit.IsArmed && target >= 0 && _carryHand < 0)
                     {
-                        string agent = AgentId((HabitatRole)_hoverRole);
-                        if (_visit.Grab(agent) && _arb.TryClaim(i, HandClaim.AgentSelect)) { _carryHand = i; BeginCarry((HabitatRole)_hoverRole); }
+                        string agent = AgentId((HabitatRole)target);
+                        if (useSelectGrabV2)
+                        {
+                            // Claim the hand first (one owner per hand, held until a seen-open release), then start the carry.
+                            if (!_arb.TryClaim(i, HandClaim.AgentSelect)) RefuseSelect(SelectBlockWords.For(HandBlock.Preempted));
+                            else if (!_visit.Grab(agent)) { _arb.Relinquish(i); RefuseSelect(_visit.Message); }
+                            else { _carryHand = i; _grabs++; _lock.Forget(target); BeginCarry((HabitatRole)target); }
+                        }
+                        else if (_visit.Grab(agent) && _arb.TryClaim(i, HandClaim.AgentSelect)) { _carryHand = i; BeginCarry((HabitatRole)target); }
                         else { if (_visit.State == VisitState.Carrying) _visit.CancelCarry(VisitEndReason.Preempted); Note(_visit.Message); }
+                    }
+                    else if (regrabMode && _carryHand < 0 && NearProxy(_samples[i]))
+                    {
+                        if (!_arb.TryClaim(i, HandClaim.AgentSelect)) RefuseSelect(SelectBlockWords.For(HandBlock.Preempted));
+                        else if (!_visit.Regrab()) _arb.Relinquish(i);
+                        else { _carryHand = i; _regrabs++; BeginRegrab(); }
                     }
                     else if (aimMode && _aimHand < 0)
                     {
@@ -146,8 +253,8 @@ namespace MuseDesk.Wall
                 }
                 if (i == _carryHand)
                 {
-                    if (sig == HandGateSignal.Released) { _carryHand = -1; EndCarry(true); }
-                    else if (sig == HandGateSignal.Cancelled) { _carryHand = -1; EndCarry(false); }
+                    if (sig == HandGateSignal.Released) { _carryHand = -1; EndCarry(true, i); }
+                    else if (sig == HandGateSignal.Cancelled) { _carryHand = -1; EndCarry(false, i); }
                 }
                 if (i == _aimHand)
                 {
@@ -205,6 +312,54 @@ namespace MuseDesk.Wall
             return pick;
         }
 
+        /// <summary>V2 targets: the chest of every habitat agent that is at home (one presentation per agent).</summary>
+        void BuildAgentTargets()
+        {
+            float scale = _habitatRoot != null ? _habitatRoot.lossyScale.y : 1f;
+            Vector3 up = _habitatRoot != null ? _habitatRoot.up : Vector3.up;
+            for (int i = 0; i < 4; i++)
+            {
+                Transform a = _view != null ? _view.Avatar((HabitatRole)i) : null;
+                bool ok = a != null && a.gameObject.activeInHierarchy && _registry.Of(AgentId((HabitatRole)i)) == AgentPresentation.Home;
+                _targetEligible[i] = ok;
+                _targetCenters[i] = ok ? a.position + up * (_view.AvatarHeight * 0.5f * scale) : Vector3.zero;
+                if (!ok) _lock.Forget(i);
+            }
+        }
+
+        /// <summary>The middle of the perched projection (its pivot is at its feet).</summary>
+        Vector3 ProxyCenter => _proxy != null ? _proxy.position + _proxy.up * (0.5f * AvatarWorldHeight * (_proxy.localScale.x / Mathf.Max(1e-5f, _proxyScaleCarry))) : Vector3.zero;
+        float AvatarWorldHeight => _view != null ? _view.AvatarHeight * (_habitatRoot != null ? _habitatRoot.lossyScale.y : 1f) : 0.17f;
+
+        /// <summary>Is this hand on the perched projection: its pinch point within reach, or its ray on it from under 1 m?</summary>
+        bool NearProxy(AimHandSample s)
+        {
+            if (!s.tracked || _proxy == null) return false;
+            Vector3 c = ProxyCenter;
+            if ((s.origin - c).sqrMagnitude <= regrabReach * regrabReach) return true;
+            float r = Mathf.Max(0.06f, AvatarWorldHeight * 0.6f);
+            return (c - s.origin).sqrMagnitude <= 1f && AgentRayTargeting.Hits(s.origin, s.direction, c, r, 0.02f);
+        }
+
+        void EnsureMute()
+        {
+            if (_mute != null) return;
+            _mute = GetComponent<AgentSelectInteractableMute>();
+            if (_mute == null) _mute = gameObject.AddComponent<AgentSelectInteractableMute>();
+            _mute.owner = this;
+        }
+
+        /// <summary>Hidden office interactables off while Wall is active; distance grabs off while selecting/carrying.</summary>
+        void TickInteractableMute(bool selecting)
+        {
+            bool office = useSelectGrabV2 && muteHiddenOfficeInteractables && WallActive && _suppressor.Active;
+            bool distance = useSelectGrabV2 && muteDistanceGrabWhileSelecting && selecting;
+            if (!office && !distance && (_mute == null || (!_mute.OfficeActive && !_mute.DistanceActive))) return;
+            EnsureMute();
+            _mute.SetOffice(office, officeRoot != null ? officeRoot : SpatialWorkspaceState.WorkspaceRoot, neverHide);
+            _mute.SetDistance(distance);
+        }
+
         // ───────────────────────── the carried projection ─────────────────────────
 
         Vector3 _proxyVel, _landFromPos;
@@ -233,7 +388,7 @@ namespace MuseDesk.Wall
                 new Vector3(0.09f, 0.002f, 0.09f) / Mathf.Max(1e-5f, _proxy.lossyScale.y / Mathf.Max(1e-5f, transform.lossyScale.y));
             EnsurePerch();
             _side = null;
-            Note("Let go over the teal pad on your desk");
+            Note(useSelectGrabV2 ? "Pull it toward you and let go: it lands on the teal pad" : "Let go over the teal pad on your desk");
         }
 
         GameObject SourceFor(HabitatRole role)
@@ -257,14 +412,49 @@ namespace MuseDesk.Wall
             }
         }
 
-        void EndCarry(bool released)
+        void EndCarry(bool released, int hand = -1)
         {
             if (_visit.State != VisitState.Carrying) return;
-            if (!released) { _visit.CancelCarry(VisitEndReason.TrackingLost); Note("Hand lost: the agent went home. Nothing changed."); return; }
-            bool over = _proxy != null && (_proxy.position - PerchWorld).magnitude <= perchRadius;
-            _visit.Release(over);
-            if (over) BeginDeskVisit();
-            else Note("Not over the desk pad: going home");
+            if (!useSelectGrabV2)
+            {
+                if (!released) { _visit.CancelCarry(VisitEndReason.TrackingLost); Note("Hand lost: the agent went home. Nothing changed."); return; }
+                bool over = _proxy != null && (_proxy.position - PerchWorld).magnitude <= perchRadius;
+                _visit.Release(over);
+                if (over) BeginDeskVisit();
+                else Note("Not over the desk pad: going home");
+                return;
+            }
+
+            if (!released)
+            {
+                // Taken away (tracking lost, something picked up, preempted): never a placement. A fresh carry goes home;
+                // one picked up off the perch goes back onto the perch it came from.
+                HandBlock why = hand >= 0 ? _arb.LastBlock(hand) : HandBlock.TrackingLost;
+                _visit.CancelCarry(why == HandBlock.TrackingLost ? VisitEndReason.TrackingLost : VisitEndReason.Preempted);
+                if (_visit.State == VisitState.Perched) _landStarted = false;
+                Note(_visit.Message + ". Nothing changed.");
+                return;
+            }
+            Vector3 eye = ResolveHead() != null ? ResolveHead().position
+                        : (nearUserRig != null ? nearUserRig.TransformPoint(new Vector3(0f, 0.30f, 0.62f)) : PerchWorld);
+            VisitDrop drop = _proxy != null ? VisitDropRule.Decide(_proxy.position, PerchWorld, eye, HomeAnchorOf(_visit.Agent), visitDrop) : VisitDrop.Home;
+            _visit.Release(drop);
+            if (_visit.State == VisitState.Perched)
+            {
+                _landStarted = false;                       // land (again) onto the perch from where it was let go
+                if (_side == null) BeginDeskVisit();        // a re-perched projection keeps its conversation
+            }
+            else Note(_visit.Message);
+        }
+
+        /// <summary>Picked up off the perch: follow the hand from where it stands (no fly-in), keep its size.</summary>
+        void BeginRegrab()
+        {
+            _proxyT = 1f;
+            _proxyVel = Vector3.zero;
+            _landStarted = false;
+            if (_audio != null) _audio.Play(WallCue.Land, true);
+            Note(_visit.Message);
         }
 
         void TickProxy(float dt)
@@ -301,7 +491,10 @@ namespace MuseDesk.Wall
                     }
                     Vector3 eye = ResolveHead() != null ? ResolveHead().position : _proxy.position + Vector3.back;
                     _proxy.rotation = WallUi.FacingEye(eye, _proxy.position) ;   // +Z toward the user
-                    bool over = (_proxy.position - PerchWorld).magnitude <= perchRadius;
+                    // The pad lights when letting go now would land it there (V2: the same rule the release uses).
+                    bool over = useSelectGrabV2
+                        ? VisitDropRule.Decide(_proxy.position, PerchWorld, eye, HomeAnchorOf(_visit.Agent), visitDrop) == VisitDrop.Perch
+                        : (_proxy.position - PerchWorld).magnitude <= perchRadius;
                     if (_perchPadR != null) ArtHelper().Tint(_perchPadR, over ? WallHabitatView.Teal : WallHabitatView.Teal * 0.55f);
                     return;
                 }
@@ -328,11 +521,13 @@ namespace MuseDesk.Wall
                 case VisitState.Returning:
                 {
                     Transform home = _view != null && _visit.Agent != null ? _view.Avatar(RoleOf(_visit.Agent)) : null;
-                    if (_proxyT >= 0f) { _proxyFrom = _proxy.position; _proxyT = -1f; }
+                    if (_proxyT >= 0f) { _proxyFrom = _proxy.position; _returnFromScale = _proxy.localScale.x; _proxyT = -1f; }
                     float k = _visit.ReturnProgress;
                     Vector3 to = home != null ? home.position : _proxyFrom;
                     _proxy.position = Vector3.Lerp(_proxyFrom, to, k * k * (3f - 2f * k));
-                    _proxy.localScale = Vector3.one * Mathf.Lerp(_proxyScaleCarry, _proxyScaleCarry * 0.2f, k);
+                    // From the size it had when it left (a perched projection is 1.35x), so it never pops.
+                    float from = useSelectGrabV2 && _returnFromScale > 0f ? _returnFromScale : _proxyScaleCarry;
+                    _proxy.localScale = Vector3.one * Mathf.Lerp(from, _proxyScaleCarry * 0.2f, k);
                     return;
                 }
                 default:
@@ -603,27 +798,64 @@ namespace MuseDesk.Wall
 
         // ───────────────────────── hands ─────────────────────────
 
+        // The comprehensive rig has FOUR HandVisuals (the two hand-tracking ones, OVRHandVisualLeft/Right, and two
+        // controller-driven hands). The previous code latched the FIRST HandVisual of each handedness that
+        // FindObjectsByType returned (unordered, inactive ones included) and never looked again, so a hand could be read
+        // from a controller-driven visual that is never tracked while hands are used: no ray, no pinch, nothing happens.
+        // Now: the wired visual if it is tracked, else whichever candidate of that hand IS tracked this frame.
         AimHandSample ReadHand(int index)
         {
-            HandVisual visual = index == 0 ? _leftHand : _rightHand;
-            if (visual == null)
-            {
-                if (Time.unscaledTime < _nextHandSearch) return AimHandSample.None;
-                _nextHandSearch = Time.unscaledTime + 1f;
-                foreach (var v in FindObjectsByType<HandVisual>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-                {
-                    if (v == null || v.Hand == null) continue;
-                    if (v.Hand.Handedness == Handedness.Left) { if (_leftHand == null) _leftHand = v; }
-                    else if (_rightHand == null) _rightHand = v;
-                }
-                visual = index == 0 ? _leftHand : _rightHand;
-                if (visual == null) return AimHandSample.None;
-            }
-            IHand hand = visual.Hand;
-            if (hand == null || !hand.IsTrackedDataValid || !hand.IsPointerPoseValid) return AimHandSample.None;
+            AimHandSample s;
+            HandVisual wired = index == 0 ? leftHandVisual : rightHandVisual;
+            if (wired != null && TrySample(wired.Hand, out s)) return s;
+            List<IHand> list = index == 0 ? _handsL : _handsR;
+            for (int i = 0; i < list.Count; i++) if (TrySample(list[i], out s)) return s;
+            // None tracked: look again, at most once a second (a hand that was inactive at the last search shows up).
+            if (Time.unscaledTime < _nextHandSearch) return AimHandSample.None;
+            _nextHandSearch = Time.unscaledTime + 1f;
+            FindHands();
+            for (int i = 0; i < list.Count; i++) if (TrySample(list[i], out s)) return s;
+            return AimHandSample.None;
+        }
+
+        static bool TrySample(IHand hand, out AimHandSample s)
+        {
+            s = AimHandSample.None;
+            if (hand == null) return false;
+            var uo = hand as UnityEngine.Object;
+            if (ReferenceEquals(uo, null) == false && uo == null) return false;          // destroyed
+            if (!hand.IsTrackedDataValid || !hand.IsPointerPoseValid) return false;
             Pose pointer;
-            if (!hand.GetPointerPose(out pointer)) return AimHandSample.None;
-            return AimHandSample.Ray(pointer.position, pointer.rotation * Vector3.forward, hand.GetIndexFingerIsPinching());
+            if (!hand.GetPointerPose(out pointer)) return false;
+            s = AimHandSample.Ray(pointer.position, pointer.rotation * Vector3.forward, hand.GetIndexFingerIsPinching());
+            return true;
+        }
+
+        void FindHands()
+        {
+            _handsL.Clear(); _handsR.Clear();
+            HandVisual[] all = FindObjectsByType<HandVisual>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            // Active visuals first, then the rest: the order only matters when two are tracked at once.
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < all.Length; i++)
+                {
+                    HandVisual v = all[i];
+                    if (v == null || v.Hand == null || v.gameObject.activeInHierarchy != (pass == 0)) continue;
+                    List<IHand> list = v.Hand.Handedness == Handedness.Left ? _handsL : _handsR;
+                    if (!list.Contains(v.Hand)) list.Add(v.Hand);
+                }
+        }
+
+        /// <summary>For a driver's report: how many hand candidates each side has, and which are tracked now.</summary>
+        public string DescribeHands()
+        {
+            if (_handsL.Count == 0 && _handsR.Count == 0) FindHands();
+            AimHandSample s;
+            int lt = 0, rt = 0;
+            for (int i = 0; i < _handsL.Count; i++) if (TrySample(_handsL[i], out s)) lt++;
+            for (int i = 0; i < _handsR.Count; i++) if (TrySample(_handsR[i], out s)) rt++;
+            return "hands: L candidates=" + _handsL.Count + " tracked=" + lt + " R candidates=" + _handsR.Count + " tracked=" + rt
+                 + " wired L=" + (leftHandVisual != null ? leftHandVisual.name : "none") + " R=" + (rightHandVisual != null ? rightHandVisual.name : "none");
         }
 
         /// <summary>Play Mode driver: stand in for a hand (ray + pinch). holding/nearHover mark it busy like a paper grab.</summary>
@@ -651,6 +883,28 @@ namespace MuseDesk.Wall
 
         public Vector3 ProxyPosition => _proxy != null ? _proxy.position : Vector3.zero;
         public bool HasProxy => _proxy != null;
+
+        /// <summary>How many desk-visit projections exist right now (must be 0 or 1: one presentation per logical agent).</summary>
+        public int ProjectionCount
+        {
+            get
+            {
+                int n = 0;
+                for (int i = 0; i < transform.childCount; i++) if (transform.GetChild(i).name.StartsWith("VisitProjection_", StringComparison.Ordinal)) n++;
+                return n;
+            }
+        }
+
+        /// <summary>Select Agents grab state for drivers and logs.</summary>
+        public string DescribeSelectGrab()
+        {
+            return "selectGrab v2=" + useSelectGrabV2 + " visit=" + _visit.State + (_visit.Agent != null ? ":" + _visit.Agent : "") + (_visit.IsRegrab ? "(regrab)" : "")
+                 + " hover=" + (_hoverRole >= 0 ? ((HabitatRole)_hoverRole).ToString() : "-") + " carryHand=" + _carryHand
+                 + " grabs=" + _grabs + " regrabs=" + _regrabs + " refusals=" + _refusals + (LastSelectRefusal != null ? " lastRefusal='" + LastSelectRefusal + "'" : "")
+                 + " away=" + _registry.AwayCount + " projections=" + ProjectionCount
+                 + " muted office=" + (_mute != null ? _mute.OfficeMuted : 0) + " distance=" + (_mute != null ? _mute.DistanceMuted : 0)
+                 + " gate L=" + _arb.Signal(0) + "/" + _arb.LastBlock(0) + " R=" + _arb.Signal(1) + "/" + _arb.LastBlock(1);
+        }
         public bool HasPortalAvatar => _portalAvatar != null;
         public float PortalAvatarHeight => _portal.Spot.avatarHeight;
     }
