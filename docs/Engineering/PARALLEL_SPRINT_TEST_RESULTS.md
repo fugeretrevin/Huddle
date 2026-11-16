@@ -122,3 +122,9 @@ Step 1 merges (see integration map rows 13-17): ListeningGate/DeskCommandKey/Com
 
 Step 2 final regression (EditMode, one group at a time): motion 95, board 80, spatial 277, voice 420, interaction 204, wall 196 (1 skipped), real 50, UI fixtures (TypeScale 12, TextFit 15, PlanReviewLayout 26) plus AgentClipLoopFlag 5, HandoffWaitPolicy 4, WalkClearance 14, OnboardingCoach 36. 0 failed, 0 timeouts.
 Play: desk demo at timeScale 1 (Start, paper, TakePaper, Approve) reached Completed, handoff log shows two Approaching/Exchanging/Returning cycles and Completion Success; also with hints=1 (hints followed the run, nothing broke). Console: no game errors. DeskClearanceDrive Report: 7/7 routes pass (min 0.018 m) in Desk, Floor and Ceiling. LivingOfficeDrive RunOffline after all merges: 13/13, 0 console errors.
+
+### Three small fixes (2026-11-15)
+
+- Manager plan revision after a resync: the status DTO and `WallParsedPlanStatus` now carry `revision`; the offline demo status reports `op.plan.revision`; `ManagerPlanFlow.RestoreCommitted` takes it. New test `Restore_CarriesTheCommittedRevision`. PLAY: RunOffline then `ResyncCheck` shows restores 1, `rev=1` (was 0), the committed revision.
+- Elevator test un-ignored: the dispatcher was right (`out` boarded before the jam and correctly held in the cabin). The test now requests `out` after the cabin has left floor 0, then jams the doors, and keeps every assertion. ElevatorSequenceTests 22/22, group wall 198 passed, 0 skipped.
+- Driver re-run: `LivingOfficeDrive` (offline) calls `WallHabitatController.ResetForDriver()` at the start of a run (closes the paper and visit, resets the Manager flow, the board and the offline plans, does not rebuild from the backend). Two consecutive `RunOffline` in one Play session: 13/13 and 13/13, 0 console errors, riders never detached, doors fully open at every doorway frame.

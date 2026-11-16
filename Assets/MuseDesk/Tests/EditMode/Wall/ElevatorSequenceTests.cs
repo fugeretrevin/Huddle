@@ -315,7 +315,6 @@ namespace MuseDesk.Tests.EditMode.Wall
         }
 
         [Test]
-        [Ignore("A16: scenario timing, not proven a dispatcher bug. 'out' is requested while the cabin is still at floor 0 with doors open (the loop breaks at the first Riding tick), so 'out' boards before the jam and correctly gets HoldInCabin at line 334. Needs a scenario where 'out' is requested after the cabin left floor 0, then re-enable.")]
         public void StuckDoors_TakeTheCabinOutOfService_WaitersWalkHome_RiderHolds_ThenIsReleased()
         {
             var d = Disp(Layout(), 2);
@@ -324,7 +323,11 @@ namespace MuseDesk.Tests.EditMode.Wall
             d.StrandedRiderReleased += (a, f) => released.Add(a);
             string[] agents = { "in", "out" };
             d.Request("in", 0, 2);
-            for (int i = 0; i < 72 * 30; i++) { s.Step(agents); RidePhase p; if (d.TryGetPhase("in", out p) && p == RidePhase.Riding) break; }
+            // 'out' must be requested after the cabin has left floor 0 with 'in' aboard (otherwise 'out' would board
+            // before the jam and legitimately hold in the cabin), then the doors jam before the cabin arrives at floor 2.
+            float floor0 = FloorYs(Layout())[0];
+            for (int i = 0; i < 72 * 30; i++) { s.Step(agents); if (d.Cabin == CabinPhase.Moving && d.CabinY > floor0 + 0.05f) break; }
+            Assert.AreEqual(CabinPhase.Moving, d.Cabin, "the cabin is under way with 'in' aboard");
             d.Request("out", 0, 1);
             d.DoorsJammed = true;
             s.Run(agents, d.settings.doorStuckSeconds + 20f);
