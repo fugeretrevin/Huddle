@@ -19,13 +19,13 @@ MonoBehaviour:
   ceilingPortalCone: 1
   placementScanGrids: 1
   voice: 1
-  wallHabitat: 0
-  wallManager: 0
-  agentSelect: 0
-  agentBtw: 0
-  largeAgentPortal: 0
-  wallElevatorVfx: 0
+  wallHabitat: 1
+  wallManager: 1
+  agentSelect: 1
+  agentBtw: 1
+  largeAgentPortal: 1
+  wallElevatorVfx: 1
   reducedMotion: 0
-  reducedMotionToggle: 0
-  onboardingHints: 0
-  buildLabel: rc6-dev
+  reducedMotionToggle: 1
+  onboardingHints: 1
+  buildLabel: rc7-living-office
