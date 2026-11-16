@@ -60,7 +60,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 8321830993562964698}
+  - {fileID: 3155156027657438529}
   m_Father: {fileID: 3293618636783664701}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2832313797551447098
@@ -470,10 +470,10 @@ SkinnedMeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: 7f167071b28dff546bc143f2f4803c19, type: 2}
-  - {fileID: 2100000, guid: 783fc1aa8b342604583d30455a96cedd, type: 2}
-  - {fileID: 2100000, guid: e4d39ab1cd0c4cd4a81dd3f96e4d8954, type: 2}
-  - {fileID: 2100000, guid: b5ec3ef88e01da148994d67c1f52383d, type: 2}
+  - {fileID: 2100000, guid: 5c7469f6197c6084ab74e9a82989bbfd, type: 2}
+  - {fileID: 2100000, guid: 03f5dd3ff1b6f114588f709028f7380b, type: 2}
   - {fileID: 2100000, guid: 68f062ae4ddaf1149a6d5e044f0bad6b, type: 2}
+  - {fileID: 2100000, guid: e4d39ab1cd0c4cd4a81dd3f96e4d8954, type: 2}
   - {fileID: 2100000, guid: 23418a3a7f1c8c4438aa5ef233574962, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
@@ -672,7 +672,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 3293618636783664701}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &2762066286599785612
+--- !u!1001 &9142478928194083607
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -729,8 +729,8 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: b3c4803eb62abff4090919ac4c6e6949, type: 3}
---- !u!4 &8321830993562964698 stripped
+--- !u!4 &3155156027657438529 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6136648816435453526, guid: b3c4803eb62abff4090919ac4c6e6949, type: 3}
-  m_PrefabInstance: {fileID: 2762066286599785612}
+  m_PrefabInstance: {fileID: 9142478928194083607}
   m_PrefabAsset: {fileID: 0}

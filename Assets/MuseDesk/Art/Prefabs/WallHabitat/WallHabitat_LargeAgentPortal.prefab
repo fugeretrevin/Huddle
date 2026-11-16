@@ -617,7 +617,7 @@ Transform:
   - {fileID: 2466456113664507858}
   - {fileID: 6584200955557152663}
   - {fileID: 6815262356447977595}
-  - {fileID: 3706350813377302155}
+  - {fileID: 3047011129390418179}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!95 &874454949518248392
@@ -655,7 +655,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Art.WallHabitatLargePortalVisualController
   portalAnimator: {fileID: 874454949518248392}
-  optionalSparseMotes: {fileID: 2689909310205399320}
+  optionalSparseMotes: {fileID: 4355764048787199632}
   agentMountPose: {fileID: 4041408391343884368}
   dialoguePanelSocket: {fileID: 1067795682317728172}
   comfortReducedMotion: 0
@@ -747,7 +747,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 5019807759717931845}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &5871375937135503361
+--- !u!1001 &5214573917474336649
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -804,13 +804,13 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: f9557b2bc9fc4b046a8b2b4a387be63a, type: 3}
---- !u!198 &2689909310205399320 stripped
-ParticleSystem:
-  m_CorrespondingSourceObject: {fileID: 8371957556460124441, guid: f9557b2bc9fc4b046a8b2b4a387be63a, type: 3}
-  m_PrefabInstance: {fileID: 5871375937135503361}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &3706350813377302155 stripped
+--- !u!4 &3047011129390418179 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7067497070460495498, guid: f9557b2bc9fc4b046a8b2b4a387be63a, type: 3}
-  m_PrefabInstance: {fileID: 5871375937135503361}
+  m_PrefabInstance: {fileID: 5214573917474336649}
+  m_PrefabAsset: {fileID: 0}
+--- !u!198 &4355764048787199632 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 8371957556460124441, guid: f9557b2bc9fc4b046a8b2b4a387be63a, type: 3}
+  m_PrefabInstance: {fileID: 5214573917474336649}
   m_PrefabAsset: {fileID: 0}

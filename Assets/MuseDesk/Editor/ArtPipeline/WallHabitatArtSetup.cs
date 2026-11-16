@@ -231,8 +231,32 @@ namespace MuseDesk.Editor.ArtPipeline
                 map["Mat_BlueprintBlue"] = bp;
             }
 
+            // Ensure opaque matte Forest & Treehouse materials exist (single-pass URP Lit, zero overdraw)
+            EnsureOpaqueMat(map, urpLit, "Mat_TreeBark", new Color(0.305f, 0.205f, 0.135f, 1f), 0.16f);
+            EnsureOpaqueMat(map, urpLit, "Mat_ForestMoss", new Color(0.215f, 0.460f, 0.250f, 1f), 0.22f);
+
             AssetDatabase.SaveAssets();
             return map;
+        }
+
+        private static void EnsureOpaqueMat(Dictionary<string, Material> map, Shader urpLit, string matName, Color color, float smoothness)
+        {
+            Material mat;
+            if (!map.TryGetValue(matName, out mat) || mat == null)
+            {
+                string path = $"{MatsDir}/{matName}.mat";
+                mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (mat == null)
+                {
+                    mat = new Material(urpLit) { name = matName };
+                    AssetDatabase.CreateAsset(mat, path);
+                }
+                map[matName] = mat;
+            }
+            mat.SetColor("_BaseColor", color);
+            mat.SetFloat("_Smoothness", smoothness);
+            mat.SetFloat("_Metallic", 0f);
+            EditorUtility.SetDirty(mat);
         }
 
         private static void ConfigureSinglePassTransparentUrpLit(Material mat, Color baseCol, Color emissionCol)

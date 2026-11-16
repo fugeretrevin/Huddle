@@ -66,8 +66,11 @@
 - [inter_01_stamps_and_trays.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/interaction/inter_01_stamps_and_trays.png) — Stamps, trays & receipt (`Editor, not headset`)
 - [inter_02_decision_paper_close.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/interaction/inter_02_decision_paper_close.png) — `DecisionDocument` + `DetailsSheet` (`Editor, not headset`)
 
-### Wall Habitat Full & Compact Elevator (`Editor, not headset`)
-- [wall_full_wide.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/wall_elevator/wall_full_wide.png) (`Editor, not headset`)
+### Wall Habitat Full & Compact — Forest & Treehouse Theme + Elevator (`Editor, not headset`)
+- [01_WallHabitat_3Tier_Front.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/Screenshots/WallHabitat/Unity/01_WallHabitat_3Tier_Front.png) — Final Forest Treehouse 3-Tier composite front (`Editor, not headset`, `46/46 FIT`, `90,090 tris`)
+- [02_WallHabitat_3Tier_ThreeQuarter.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/Screenshots/WallHabitat/Unity/02_WallHabitat_3Tier_ThreeQuarter.png) — Final Forest Treehouse 3-Tier 3/4 view (`Editor, not headset`)
+- [03_WallHabitat_2Tier_Compact.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/Screenshots/WallHabitat/Unity/03_WallHabitat_2Tier_Compact.png) — Final Forest Treehouse 2-Tier Compact (`Editor, not headset`, `44/44 FIT`, `83,178 tris`)
+- [wall_full_wide.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/wall_elevator/wall_full_wide.png) (`Editor, not headset` — pre-treehouse baseline)
 - [wall_full_elevator_ride_side.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/wall_elevator/wall_full_elevator_ride_side.png) (`Editor, not headset`)
 - [wall_full_manager_doors_open.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/wall_elevator/wall_full_manager_doors_open.png) (`Editor, not headset`)
 - [wall_compact_wide.png](file:///C:/dev/MuseDesk/MuseDesk/.worktrees/deck-refit/docs/review_screenshots/rc8_validation/wall_elevator/wall_compact_wide.png) (`Editor, not headset`)
