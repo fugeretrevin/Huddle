@@ -327,6 +327,30 @@ namespace MuseDesk.Tests.EditMode.Onboarding
             // PlayerPrefsOnboardingStore keys progress by the id's number: existing ids must never shift.
             Assert.AreEqual(16, (int)HintId.RecoverNoUndo);
             Assert.AreEqual(17, (int)HintId.ResetLayout);
+            Assert.AreEqual(18, (int)HintId.VisitorHello);
+        }
+
+        [Test]
+        public void VisitorHelloHint_FollowsThePortalOpening_AndEndsOnAPokeOrWave()
+        {
+            Ctx(flags: OnboardingFlags.Wall | OnboardingFlags.Portal);
+            Skip(HintId.PortalMeet);
+            _coach.Observe(OnboardingEvent.PortalOpened);
+            Run(3);
+            Assert.AreEqual(HintId.VisitorHello, Cur());
+            _coach.Observe(OnboardingEvent.VisitorGreeted);
+            Run(0.5);
+            Assert.AreNotEqual(HintId.VisitorHello, Cur());
+            Assert.IsTrue(_store.IsDone(HintId.VisitorHello));
+        }
+
+        [Test]
+        public void VisitorHelloHint_NeedsThePortalFlag()
+        {
+            Ctx(flags: OnboardingFlags.Wall);
+            _coach.Observe(OnboardingEvent.PortalOpened);
+            Run(5);
+            Assert.AreNotEqual(HintId.VisitorHello, Cur());
         }
 
         // ---- dismiss, skip, timeout, reset ----

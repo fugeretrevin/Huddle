@@ -137,6 +137,7 @@ namespace MuseDesk.Workspace
             MuseDesk.Wall.WallEvents.AgentSelected += OnAgentPicked;
             MuseDesk.Wall.WallEvents.PortalOpened += OnPortalOpened;
             MovablePanel.PanelMoved += OnPanelMoved;
+            MuseDesk.Wall.WallEvents.VisitorGreeted += OnVisitorGreeted;
             MovablePanel.LayoutReset += OnLayoutReset;
             _runEdge.Reset(); _modeEdge.Reset(); _handoff.Reset();
             _lostMask = 0; _prevTracked0 = _prevTracked1 = true;
@@ -156,6 +157,7 @@ namespace MuseDesk.Workspace
             MuseDesk.Wall.WallEvents.AgentSelected -= OnAgentPicked;
             MuseDesk.Wall.WallEvents.PortalOpened -= OnPortalOpened;
             MovablePanel.PanelMoved -= OnPanelMoved;
+            MuseDesk.Wall.WallEvents.VisitorGreeted -= OnVisitorGreeted;
             MovablePanel.LayoutReset -= OnLayoutReset;
             UnbindSession();
             // Hide any visible card without touching the persisted progress.
@@ -263,6 +265,7 @@ namespace MuseDesk.Workspace
         void OnAgentPicked() { Obs(OnboardingEvent.AgentSelected); }
         void OnPortalOpened() { Obs(OnboardingEvent.PortalOpened); }
         void OnPanelMoved() { Obs(OnboardingEvent.PanelMoved); }
+        void OnVisitorGreeted() { Obs(OnboardingEvent.VisitorGreeted); }
         void OnLayoutReset() { Obs(OnboardingEvent.LayoutReset); }
 
         // Hand tracking lost while a paper is in hand (recovery hint). ISDK drops the grab on the same frame the hand is

@@ -29,6 +29,7 @@ namespace MuseDesk.Spatial.Onboarding
         RecoverNoUndo,
         // Appended (the store keys progress by number, so new ids go last).
         ResetLayout,
+        VisitorHello,
     }
 
     /// <summary>What a hint points at. The display layer maps this to a transform.</summary>
@@ -70,6 +71,7 @@ namespace MuseDesk.Spatial.Onboarding
         UndoAttempted,         // needs event (voice already has an undo window, so the hint stays unwired)
         PanelMoved,            // MovablePanel.PanelMoved: a panel was carried by its grab bar and let go
         LayoutReset,           // MovablePanel.LayoutReset (the Reset layout chip)
+        VisitorGreeted,        // WallEvents.VisitorGreeted: a poke or a wave at a visitor (PortalVisitorLife)
     }
 
     /// <summary>Which build features are on. Hints needing a feature are never shown without it.</summary>
@@ -176,6 +178,10 @@ namespace MuseDesk.Spatial.Onboarding
             new HintDef(HintId.PortalMeet, "Press Meet to see an agent beside you.", HintAnchorKind.Plaque,
                 OnboardingEvent.WallPlaced, E(OnboardingEvent.PortalOpened),
                 OnboardingFlags.Wall | OnboardingFlags.Portal, HintId.None, 1f, 10f, 1, false, false),
+            // rc12: the visitor beside you is alive: say so once, the first time one comes out.
+            new HintDef(HintId.VisitorHello, "Wave or poke them. Ask on the card.", HintAnchorKind.Plaque,
+                OnboardingEvent.PortalOpened, E(OnboardingEvent.VisitorGreeted),
+                OnboardingFlags.Wall | OnboardingFlags.Portal, HintId.None, 2.5f, 10f, 1, false, false),
             // Recovery.
             new HintDef(HintId.RecoverDroppedPaper, "Put it back on the desk tray.", HintAnchorKind.Paper,
                 OnboardingEvent.PaperDropped, E(OnboardingEvent.PaperReturned, OnboardingEvent.PaperGrabbed),

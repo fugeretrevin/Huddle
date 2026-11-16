@@ -22,5 +22,8 @@ namespace MuseDesk.Wall
         public static void RaiseManagerPlanApproved() { var h = ManagerPlanApproved; if (h != null) h(); }
         public static void RaiseAgentSelected() { var h = AgentSelected; if (h != null) h(); }
         public static void RaisePortalOpened() { var h = PortalOpened; if (h != null) h(); }
+        /// <summary>rc12: the user touched or waved at a visitor (portal or desk perch): first-use hint bookkeeping.</summary>
+        public static event Action VisitorGreeted;
+        public static void RaiseVisitorGreeted() { var h = VisitorGreeted; if (h != null) h(); }
     }
 }

@@ -294,6 +294,7 @@ namespace MuseDesk.Wall
                     {
                         _pokeReady = Time.unscaledTime + 2.5f;
                         Pokes++;
+                        WallEvents.RaiseVisitorGreeted();
                         PlayOnce(Poke, 1.0f);
                     }
                 }
@@ -341,6 +342,7 @@ namespace MuseDesk.Wall
                     _flips[hand] = 0;
                     _waveReady = Time.unscaledTime + 6f;
                     Waves++;
+                    WallEvents.RaiseVisitorGreeted();
                     PlayOnce(Has(Wave) ? Wave : "Waving", 1.6f);
                 }
             }
