@@ -109,13 +109,17 @@ namespace MuseDesk.Tests.EditMode.Wall
         }
 
         [Test]
-        public void Build_NonRectangularFloor_ReportsNoFloor_SoLegacyEvaluatorIsUsed()
+        public void Build_NonRectangularFloor_IsPlannedExactly_SoTheKeepOutPlannerCoversEveryRoom()
         {
+            // P0 keep-out: an L-shaped floor used to fall back to the legacy evaluator, which ignores screens and the desk
+            // front. The outline is now planned exactly (PortalKeepOutTests.LShapedFloor_PlannedExactly_NotchRefused).
             var room = new SyntheticRoomGeometry();
             room.AddFloor(new[] { new Vector2(-3, -3), new Vector2(3, -3), new Vector2(3, 0), new Vector2(0, 0), new Vector2(0, 3), new Vector2(-3, 3) }, 0f);   // L shape
             var b = new PortalRoomBounds();
-            Assert.IsFalse(PortalSpotAdapter.Build(room, new SeatedUser(new Vector3(-1.5f, 1.2f, -1.5f), Vector3.forward), b));
-            Assert.IsFalse(b.hasFloor);
+            Assert.IsTrue(PortalSpotAdapter.Build(room, new SeatedUser(new Vector3(-1.5f, 1.2f, -1.5f), Vector3.forward), b));
+            Assert.IsTrue(b.hasFloor);
+            Assert.IsNotNull(b.floorPolygon);
+            Assert.AreEqual(6, b.floorPolygon.Length);
         }
 
         [Test]

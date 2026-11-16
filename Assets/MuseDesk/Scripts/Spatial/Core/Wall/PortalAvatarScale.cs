@@ -76,10 +76,21 @@ namespace MuseDesk.Spatial.Wall
             return d.magnitude - bodyRadius;
         }
 
-        /// <summary>True when the body bounds stay outside the user's comfort envelope (a horizontal cylinder around the head).</summary>
+        /// <summary>True when the body bounds stay outside the user's comfort envelope (a horizontal cylinder around the head).
+        /// Wired: every swept sample of <see cref="PortalSpotPlanner.SweepClear"/> calls this with the seated head-and-torso
+        /// envelope (<see cref="SeatedUserKeepOut.HeadTorsoEnvelope"/>).</summary>
         public static bool ClearsUserEnvelope(Vector3 bodyCentre, float bodyRadius, SeatedUser user, float envelopeRadius)
         {
             return GapToUser(bodyCentre, bodyRadius, user) >= envelopeRadius;
+        }
+
+        /// <summary>
+        /// Comfort body radius of the large avatar for its height: a taller avatar (a scale change) is wider, so the planner
+        /// and the guard re-check with this, never with a fixed footprint. Never below <paramref name="minRadius"/>.
+        /// </summary>
+        public static float ComfortRadius(float avatarHeight, float minRadius, float radiusPerHeight)
+        {
+            return Mathf.Max(Mathf.Max(0f, minRadius), Mathf.Max(0f, avatarHeight) * Mathf.Max(0f, radiusPerHeight));
         }
     }
 }
