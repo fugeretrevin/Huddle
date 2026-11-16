@@ -87,11 +87,34 @@ class AnthropicProvider:
         return "".join(parts).strip()
 
 
+def _build_meta(settings: Any) -> ModelProvider | None:
+    key = (settings.provider_api_key or os.environ.get("MUSE_LLM_API_KEY")
+           or os.environ.get("LLAMA_API_KEY"))
+    if not key:
+        log.warning("MUSEDESK_MODEL_PROVIDER=meta but no API key is set "
+                    "(MUSEDESK_PROVIDER_API_KEY, MUSE_LLM_API_KEY or LLAMA_API_KEY); "
+                    "running without a model")
+        return None
+    from .provider_meta import MetaLlamaProvider
+    provider = MetaLlamaProvider(
+        api_key=key, base_url=settings.p3_meta_base_url,
+        models={"plan": settings.p3_meta_model_plan, "work": settings.p3_meta_model_work,
+                "side": settings.p3_meta_model_side},
+        efforts={"side": settings.p3_meta_side_effort, "plan": settings.p3_meta_plan_effort,
+                 "work": settings.p3_meta_work_effort},
+        timeout=float(settings.p3_provider_timeout_seconds))
+    log.info("model provider: meta plan=%s work=%s side=%s", settings.p3_meta_model_plan,
+             settings.p3_meta_model_work, settings.p3_meta_model_side)
+    return provider
+
+
 def build_provider(settings: Any) -> ModelProvider | None:
     """Return the configured provider, or None (logged, never raised)."""
     name = (settings.model_provider or "").strip().lower()
     if not name or name == "none":
         return None
+    if name in ("meta", "llama", "meta_llama"):
+        return _build_meta(settings)
     if name not in ("anthropic", "claude"):
         log.warning("unknown MUSEDESK_MODEL_PROVIDER=%r; running without a model", name)
         return None

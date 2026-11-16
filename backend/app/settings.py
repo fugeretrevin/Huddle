@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     p3_work_effort: str = "medium"
     p3_provider_timeout_seconds: float = 170.0
     p3_refusal_fallbacks: bool = True
+    # Meta Model API (MUSEDESK_MODEL_PROVIDER=meta). Docs: https://dev.meta.ai/docs
+    p3_meta_base_url: str = "https://api.meta.ai/v1"
+    p3_meta_model_plan: str = "muse-spark-1.3"
+    p3_meta_model_work: str = "muse-spark-1.3"
+    p3_meta_model_side: str = "muse-ember-1.0"
+    p3_meta_side_effort: str = "low"
+    p3_meta_plan_effort: str = "medium"
+    p3_meta_work_effort: str = "medium"
 
 
 _settings: Settings | None = None

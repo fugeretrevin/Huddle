@@ -14,6 +14,7 @@ dependencies = [
 # Claude for /btw answers, Manager plans and plan-card work (MUSEDESK_MODEL_PROVIDER=anthropic).
 model = [
     "anthropic>=2.8,<3.0",
+    "httpx>=0.27,<1.0",   # Meta provider (MUSEDESK_MODEL_PROVIDER=meta)
 ]
 dev = [
     "pytest>=8.2,<9.0",
