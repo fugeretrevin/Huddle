@@ -19,12 +19,19 @@ namespace MuseDesk.Spatial.Wall
         public float stopSeconds = 0.28f;          // walking speed -> rest
         public float turnSmoothTime = 0.16f;       // critically damped body turn
         public float walkTurnLimit = 50f;          // sharper heading changes stop and turn in place first
-        public float leaseTimeout = 6f;            // waiting for a clear corridor longer than this -> soft transfer
-        public float elevatorWaitTimeout = 20f;    // waiting for the cabin longer than this -> soft transfer
+        // rc10: the three limits below are LOWER BOUNDS only. A walker waits visibly (at its aisle, or in the open cabin)
+        // while others clear the corridor; it is faded home only after stuckTimeout without progress (a true last resort).
+        public float leaseTimeout = 6f;            // corridor wait: soft transfer after max(this, stuckTimeout)
+        public float elevatorWaitTimeout = 20f;    // cabin wait: soft transfer after max(this, stuckTimeout) (one-rider machine)
         public float softTransferSeconds = 0.6f;   // fade out, re-home, fade in
-        public float queueWaitTimeout = 90f;       // dispatcher only: waiting off the corridor for the ride lane (others ride first)
+        public float queueWaitTimeout = 90f;       // dispatcher only: waiting off the corridor for the ride lane, lower bound of laneWaitTimeout
         public float faceDoorTolerance = 8f;       // dispatcher only: degrees off the door line that still counts as facing it
-        public float tripTimeout = 45f;            // a whole journey longer than this -> soft transfer home
+        // rc9 and before: "a whole journey longer than this -> soft transfer home". That cut legitimate journeys short (a rider
+        // that waited for the corridor was faded home the moment it stepped out of the cabin). Ignored since rc10.
+        public float tripTimeout = 45f;
+        public float stuckTimeout = 60f;           // rc10: no progress (corridor, cabin exit) for this long -> soft transfer (last resort)
+        public float laneWaitTimeout = 300f;       // rc10: dispatcher lane / cabin wait (others ride first) -> soft transfer (last resort)
+        public float maxTripSeconds = 600f;        // rc10: absolute cap on one journey (livelock guard), lane waits excluded
     }
 
     /// <summary>
@@ -32,17 +39,31 @@ namespace MuseDesk.Spatial.Wall
     ///
     /// The corridors are single file (a capsule is 0.064 m wide in a 0.08 m corridor), so stepping node by node
     /// could leave two characters face to face. Instead the route is cut into SEGMENTS that run from one
-    /// off-corridor stop (desk, aisle, cubicle entry, cabin) to the next stop or the destination, and a
-    /// segment is LEASED whole (every node reserved at once) before the first step. A character that cannot
-    /// lease waits where it is, off the corridor. A segment that ends in the cabin is entered only once the
-    /// elevator is at this floor with its doors open for this character. Nodes are released as they are left.
+    /// rest stop (desk, aisle, cabin, the elevator wait spot) to the next rest stop or the destination, and a
+    /// segment is LEASED whole (every node reserved at once) before the first step. A segment that ends in the cabin
+    /// is entered only once the elevator is at this floor with its doors open for this character. Nodes are released as
+    /// they are left.
     ///
-    /// When a route is impossible, a lease or the cabin takes too long, or a trip runs over time, the walker
-    /// does a soft transfer (fade out, re-home, fade in) instead of walking through anything. Visual only:
-    /// it never touches task state; the stage sends it home whenever the authoritative state moves on.
+    /// rc10 (owner rc9: "never left the elevator and teleported back to the seat"):
+    ///  - Nobody waits ON the corridor for someone else. A walker waits at its own aisle (inside its cubicle, where it
+    ///    blocks nobody), in the open cabin, or at the elevator wait spot (only for the cabin). The cubicle entry is not a
+    ///    stop any more: standing there blocked the corridor at the cubicle door, and two such waiters could block each
+    ///    other forever.
+    ///  - A trip to a spot ON the corridor (a colleague's door, the dispatch spot, the Manager's hand-off spot) keeps the
+    ///    way back reserved while it dwells there (it returns the same way), so it never has to wait on the corridor.
+    ///  - A rider that arrives at a busy floor stays in the cabin with the doors held open (<see cref="IHabitatElevator.KeepWaiting"/>)
+    ///    and claims its exit segment with rider priority; nobody else may start through that zone, so the floor clears
+    ///    and the rider walks out. A waiting walker's claim (<see cref="HabitatReservations.SetClaim"/>) gives the corridor
+    ///    to the oldest waiter next: no deadlock, no starvation.
+    ///  - Soft transfer (fade out, re-home, fade in) is the last resort for a pathological stall only: no progress for
+    ///    <see cref="WalkerSettings.stuckTimeout"/>, an elevator fault (eviction), no route. Visual only: it never touches
+    ///    task state; the stage sends it home whenever the authoritative state moves on.
     /// </summary>
     public sealed class HabitatWalker
     {
+        /// <summary>Claim priority bonus of a trip that rides (the ride lane holder): it is served before anyone else waits.</summary>
+        public const float RiderPriority = 1000f;
+
         readonly HabitatLayout _L;
         readonly HabitatReservations _res;
         readonly IHabitatElevator _elev;
@@ -54,7 +75,7 @@ namespace MuseDesk.Spatial.Wall
         int _segEnd;            // index of the last node of the leased segment
         int _at;                // node we stand on (or last left)
         float _waitTimer, _tripTimer, _dwell, _dwellTimer, _fade;
-        bool _returnHomeAfter, _exitReported;
+        bool _returnHomeAfter, _exitReported, _holdBehind;
         string _pendingTarget;
         float _pendingDwell;
         bool _pendingReturn;
@@ -85,6 +106,10 @@ namespace MuseDesk.Spatial.Wall
         public bool TripHasRide { get; private set; }
         public string LastBlock { get; private set; }
         public int SoftTransfers { get; private set; }
+        /// <summary>True while a rider stands in the open cabin at its floor, waiting for the floor's corridor to clear.</summary>
+        public bool HoldingInCabin { get; private set; }
+        /// <summary>Seconds the walker has been waiting in its current wait (corridor, lift, or in the cabin). 0 while moving.</summary>
+        public float WaitSeconds => State == WalkerState.Leasing || State == WalkerState.WaitingElevator || HoldingInCabin ? _waitTimer : 0f;
         /// <summary>Raised at the destination of an outbound trip (node id).</summary>
         public event Action<string> ArrivedAt;
         /// <summary>Raised when the character is back at its desk (walked or soft-transferred).</summary>
@@ -107,12 +132,26 @@ namespace MuseDesk.Spatial.Wall
 
         public void Dispose() { if (_elev != null) _elev.RiderEvicted -= OnEvicted; }
 
-        void OnEvicted(string who) { if (who == agent) BeginSoftTransfer("elevator timed out"); }
+        /// <summary>The ride failed (timed out, fault, interrupt). A walker that is already at its desk (sent home by a reset) has
+        /// nothing to re-home: the late eviction of its old ticket is ignored.</summary>
+        void OnEvicted(string who)
+        {
+            if (who != agent || State == WalkerState.Home || State == WalkerState.AtRest || State == WalkerState.SoftTransfer) return;
+            BeginSoftTransfer("elevator timed out");
+        }
 
+        /// <summary>Segment ends: where a walker may stand still. The cubicle Entry is NOT one (rc10): it sits within two
+        /// capsules of the cubicle's corridor door, so a walker waiting there blocked the corridor.</summary>
         static bool IsStop(HabitatNodeKind k)
         {
-            return k == HabitatNodeKind.Work || k == HabitatNodeKind.Aisle || k == HabitatNodeKind.Entry || k == HabitatNodeKind.Cabin;
+            return k == HabitatNodeKind.Work || k == HabitatNodeKind.Aisle || k == HabitatNodeKind.Cabin;
         }
+
+        /// <summary>Off the corridor: a walker standing here blocks nobody else's way.</summary>
+        static bool IsRest(HabitatNodeKind k) { return k == HabitatNodeKind.Work || k == HabitatNodeKind.Aisle; }
+
+        float BasePriority => TripHasRide ? RiderPriority : 0f;
+        float LeasePriority => BasePriority + _waitTimer;
 
         /// <summary>Plan a trip; true when a route exists. Mid-ride the new trip waits until the ride ends.</summary>
         public bool CanRoute(string nodeId, out bool needsRide)
@@ -137,11 +176,15 @@ namespace MuseDesk.Spatial.Wall
                 _pendingTarget = nodeId; _pendingDwell = dwellSeconds; _pendingReturn = returnHome;
                 return true;
             }
+            var route = new List<int>();
+            if (!_L.nav.FindRoute(_at, target, route)) { LastBlock = "no route to " + nodeId; return false; }
             if (State == WalkerState.WaitingElevator && _elev != null) _elev.Cancel(agent);
             if (_elev != null) _elev.ReportReachedDestination(agent);   // a new trip: the last ride's journey ends where we stand
             _spotReported = _faceReported = false;
-            var route = new List<int>();
-            if (!_L.nav.FindRoute(_at, target, route)) { LastBlock = "no route to " + nodeId; return false; }
+            _res.ClearClaim(agent);
+            _res.ReleaseAllExcept(agent, route);                     // the way back held during a dwell is on the new route
+            HoldingInCabin = false;
+            _holdBehind = false;
             _route.Clear(); _route.AddRange(route);
             TripHasRide = false;
             for (int i = 1; i < _route.Count; i++) if (_L.nav.IsRide(_route[i - 1], _route[i])) { TripHasRide = true; break; }
@@ -149,6 +192,7 @@ namespace MuseDesk.Spatial.Wall
             _returnHomeAfter = returnHome;
             _tripTimer = 0f;
             _step = 1;
+            _segEnd = 0;
             if (_route.Count <= 1) { Arrive(); return true; }
             State = WalkerState.Leasing;
             _waitTimer = 0f;
@@ -172,6 +216,9 @@ namespace MuseDesk.Spatial.Wall
             _speed = 0f; _yawVel = 0f;
             Visibility = 1f;
             TripHasRide = false;
+            HoldingInCabin = false;
+            _holdBehind = false;
+            _waitTimer = 0f;
             State = WalkerState.Home;
             Anim = WalkerAnim.Work;
         }
@@ -181,7 +228,9 @@ namespace MuseDesk.Spatial.Wall
             LastBlock = why;
             SoftTransfers++;
             if (_elev != null && !_elev.IsRiding(agent)) _elev.Cancel(agent);
+            _res.ClearClaim(agent);
             _spotReported = _faceReported = false;
+            HoldingInCabin = false;
             _fade = 0f;
             _speed = 0f;
             State = WalkerState.SoftTransfer;
@@ -196,9 +245,9 @@ namespace MuseDesk.Spatial.Wall
             _dt = dt;
             // Waiting off the corridor for the ride lane is not travel time (dispatcher only; it has its own limit).
             bool laneWait = State == WalkerState.WaitingElevator && _elev != null && _elev.UsesWaitSpot;
-            if (State != WalkerState.Home && State != WalkerState.AtRest && !laneWait) _tripTimer += dt;
-            if (State != WalkerState.Home && State != WalkerState.AtRest && State != WalkerState.SoftTransfer
-                && State != WalkerState.Riding && _tripTimer > settings.tripTimeout)
+            bool travelling = State != WalkerState.Home && State != WalkerState.AtRest && State != WalkerState.SoftTransfer;
+            if (travelling && !laneWait) _tripTimer += dt;
+            if (travelling && State != WalkerState.Riding && _tripTimer > Mathf.Max(1f, settings.maxTripSeconds))
                 BeginSoftTransfer("trip took too long");
 
             switch (State)
@@ -214,12 +263,19 @@ namespace MuseDesk.Spatial.Wall
 
                 case WalkerState.Leasing:
                 case WalkerState.WaitingElevator:
+                {
                     _waitTimer += dt;
                     Anim = WalkerAnim.Wait;
                     if (TryLease()) { State = WalkerState.Walking; _waitTimer = 0f; StepWalk(dt); return; }
-                    float limit = State == WalkerState.WaitingElevator ? (_elev != null && _elev.UsesWaitSpot ? Mathf.Max(settings.elevatorWaitTimeout, settings.queueWaitTimeout) : settings.elevatorWaitTimeout) : settings.leaseTimeout;
-                    if (_waitTimer > limit) BeginSoftTransfer(State == WalkerState.WaitingElevator ? "elevator busy" : "corridor busy");
+                    float limit;
+                    if (State == WalkerState.WaitingElevator)
+                        limit = _elev != null && _elev.UsesWaitSpot
+                            ? Mathf.Max(settings.elevatorWaitTimeout, Mathf.Max(settings.queueWaitTimeout, settings.laneWaitTimeout))
+                            : Mathf.Max(settings.elevatorWaitTimeout, settings.stuckTimeout);
+                    else limit = Mathf.Max(settings.leaseTimeout, settings.stuckTimeout);
+                    if (_waitTimer > limit) BeginSoftTransfer(State == WalkerState.WaitingElevator ? "elevator busy" : "corridor busy (" + LastBlock + ")");
                     return;
+                }
 
                 case WalkerState.Walking:
                     StepWalk(dt);
@@ -231,14 +287,18 @@ namespace MuseDesk.Spatial.Wall
                     _speed = 0f;
                     Vector3 p = Position; p.y = _elev.CabinY; Position = p;
                     FaceDesk(dt);   // face out of the cabin door, toward the user
-                    if (!_elev.MustExit(agent)) return;
+                    if (!_elev.MustExit(agent)) { HoldingInCabin = false; _waitTimer = 0f; return; }
                     // Skip the cabin nodes of the ride: we are now at the destination floor's cabin node.
                     while (_step < _route.Count && _L.nav.nodes[_route[_step]].kind == HabitatNodeKind.Cabin) { _at = _route[_step]; _step++; }
                     Position = _L.nav.nodes[_at].position;
                     _exitReported = false;
-                    if (_step >= _route.Count) { _elev.ReportExited(agent); Arrive(); return; }
-                    if (TryLease()) { State = WalkerState.Walking; StepWalk(dt); }
-                    // else: stay in the cabin, doors open; the elevator evicts us after its exit timeout.
+                    if (_step >= _route.Count) { HoldingInCabin = false; _elev.ReportExited(agent); Arrive(); return; }
+                    if (TryLease()) { HoldingInCabin = false; _waitTimer = 0f; State = WalkerState.Walking; StepWalk(dt); return; }
+                    // The floor is busy: stay in the cabin with the doors held open (TryLease asked the elevator to keep
+                    // waiting) and our exit claimed with rider priority; whoever is in the way finishes and the floor clears.
+                    HoldingInCabin = true;
+                    _waitTimer += dt;
+                    if (_waitTimer > Mathf.Max(1f, settings.stuckTimeout)) BeginSoftTransfer("stuck in the cabin (" + LastBlock + ")");
                     return;
                 }
 
@@ -270,6 +330,7 @@ namespace MuseDesk.Spatial.Wall
                     Visibility = 1f;
                     _route.Clear();
                     TripHasRide = false;
+                    _holdBehind = false;
                     _tripTimer = 0f;
                     State = WalkerState.Home;
                     Anim = WalkerAnim.Work;
@@ -291,7 +352,18 @@ namespace MuseDesk.Spatial.Wall
             return _route.Count - 1;
         }
 
-        /// <summary>Reserve the whole next segment, or nothing. A segment into the cabin needs the cabin open for us.</summary>
+        /// <summary>A segment that ends at the trip's destination ON the corridor, with the walk home to follow, keeps every node
+        /// it passes until the walker is back: the way home is the same way, so it never waits on the corridor after its dwell.</summary>
+        bool HoldsWayBack(int end)
+        {
+            if (end != _route.Count - 1 || !_returnHomeAfter || _pendingTarget != null) return false;
+            HabitatNodeKind k = _L.nav.nodes[_route[end]].kind;
+            return !IsRest(k) && k != HabitatNodeKind.Cabin;
+        }
+
+        /// <summary>Reserve the whole next segment, or nothing. A segment into the cabin needs the cabin open for us.
+        /// When the nodes are taken, the walker claims them (so the floor clears for it) and tells the elevator it is still
+        /// coming; the caller decides where it waits (its aisle, the wait spot, or the cabin).</summary>
         bool TryLease()
         {
             if (_step >= _route.Count) return true;
@@ -299,7 +371,7 @@ namespace MuseDesk.Spatial.Wall
             HabitatNavNode endNode = _L.nav.nodes[_route[end]];
             if (_elev != null && _elev.UsesWaitSpot)
             {
-                if (!WaitSpotHandshake(end, endNode)) return false;
+                if (!WaitSpotHandshake(end, endNode)) { _res.ClearClaim(agent); return false; }
             }
             else if (endNode.kind == HabitatNodeKind.Cabin && _L.nav.nodes[_at].kind != HabitatNodeKind.Cabin)
             {
@@ -307,13 +379,23 @@ namespace MuseDesk.Spatial.Wall
                 if (dest >= 0 && dest != endNode.floor)
                 {
                     if (!_elev.IsQueued(agent)) _elev.Request(agent, endNode.floor, dest);
-                    if (!_elev.MayBoard(agent)) { if (State != WalkerState.WaitingElevator) { State = WalkerState.WaitingElevator; _waitTimer = 0f; } return false; }
+                    if (!_elev.MayBoard(agent)) { _res.ClearClaim(agent); WaitForLift(); return false; }
                 }
             }
+            float priority = LeasePriority;
             for (int k = _step; k <= end; k++)
-                if (!_res.CanReserve(_route[k], agent)) { LastBlock = "waiting for " + _L.nav.nodes[_route[k]].id; return false; }
+                if (!_res.CanLease(_route[k], agent, priority))
+                {
+                    LastBlock = "waiting for " + _L.nav.nodes[_route[k]].id;
+                    _res.SetClaim(agent, _route, _step, end, priority);
+                    if (_elev != null) _elev.KeepWaiting(agent);
+                    if (State == WalkerState.WaitingElevator) { State = WalkerState.Leasing; _waitTimer = 0f; }   // the lift is ours: now it is the corridor
+                    return false;
+                }
             for (int k = _step; k <= end; k++) _res.TryReserve(_route[k], agent);
+            _res.ClearClaim(agent);
             _segEnd = end;
+            _holdBehind = HoldsWayBack(end);
             return true;
         }
 
@@ -343,7 +425,7 @@ namespace MuseDesk.Spatial.Wall
 
         bool WaitForLift()
         {
-            if (State != WalkerState.WaitingElevator) { State = WalkerState.WaitingElevator; _waitTimer = 0f; }
+            if (State != WalkerState.WaitingElevator && State != WalkerState.Riding) { State = WalkerState.WaitingElevator; _waitTimer = 0f; }
             return false;
         }
 
@@ -415,7 +497,7 @@ namespace MuseDesk.Spatial.Wall
             int left = _at;
             _at = next;
             _step++;
-            if (left != _at) _res.Release(left, agent);
+            if (left != _at && !_holdBehind) _res.Release(left, agent);
             if (!_exitReported && _L.nav.nodes[left].kind == HabitatNodeKind.Cabin && nn.kind != HabitatNodeKind.Cabin && _elev != null)
             {
                 _elev.ReportExited(agent);       // out of the door: the cabin is free
@@ -427,6 +509,8 @@ namespace MuseDesk.Spatial.Wall
                 _elev.ReportBoarded(agent);
                 _spotReported = _faceReported = false;
                 _speed = 0f;   // A16: a rider is stationary from the first riding tick (no walk cycle in the cabin)
+                _waitTimer = 0f;
+                HoldingInCabin = false;
                 State = WalkerState.Riding;
                 return;
             }
@@ -487,7 +571,8 @@ namespace MuseDesk.Spatial.Wall
         /// <summary>
         /// While walking, lease the NEXT segment early when it is free, so a multi-segment trip flows through doorways
         /// instead of stopping at each one. Never into the cabin (boarding needs a stop and the elevator's handshake),
-        /// never while a new trip is pending, and never by waiting: if any node is taken, nothing extra is held.
+        /// never while a new trip is pending, never through a zone someone with a higher claim is waiting for, and never by
+        /// waiting: if any node is taken, nothing extra is held.
         /// </summary>
         void TryExtendLease()
         {
@@ -498,18 +583,22 @@ namespace MuseDesk.Spatial.Wall
             // Never flow onto the corridor toward the wait spot without the dispatcher's go-ahead.
             if (_elev != null && _elev.UsesWaitSpot && BoardingAhead(start) >= 0 && !_elev.MayApproach(agent)) return;
             int end = SegmentEnd(start);
+            float priority = BasePriority;
             for (int k = start; k <= end; k++)
             {
                 if (_L.nav.nodes[_route[k]].kind == HabitatNodeKind.Cabin) return;
-                if (!_res.CanReserve(_route[k], agent)) return;
+                if (!_res.CanLease(_route[k], agent, priority)) return;
             }
             for (int k = start; k <= end; k++) _res.TryReserve(_route[k], agent);
             _segEnd = end;
+            _holdBehind = HoldsWayBack(end);
         }
 
         void Arrive()
         {
             _speed = 0f;
+            HoldingInCabin = false;
+            _res.ClearClaim(agent);
             if (_elev != null) _elev.ReportReachedDestination(agent);
             if (_at == _home)
             {
@@ -517,7 +606,9 @@ namespace MuseDesk.Spatial.Wall
                 Anim = WalkerAnim.Work;
                 _route.Clear();
                 TripHasRide = false;
+                _holdBehind = false;
                 _tripTimer = 0f;
+                _res.ReleaseAllExcept(agent, new[] { _home });
                 var h = ReturnedHome; if (h != null) h();
                 if (_pendingTarget != null) StartPending();
                 return;

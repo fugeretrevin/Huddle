@@ -304,7 +304,10 @@ namespace MuseDesk.Tests.EditMode.Wall
             var w = new HabitatWalker("researcher", HabitatRole.Researcher, L, res, elev);
             res.TryReserve(L.nav.IndexOf(HabitatLayout.DoorNode(HabitatRole.Developer)), "stranger");   // never released
             Assert.IsTrue(w.GoTo(HabitatLayout.DoorNode(HabitatRole.Tester), 1f));
-            for (float t = 0; t < 30f; t += Dt) { elev.Tick(Dt); w.Tick(Dt); }
+            // rc10: a walker waits visibly at its aisle for a busy corridor; the fade home is the last resort after
+            // stuckTimeout (60 s) without progress, so this runs past that.
+            Assert.LessOrEqual(w.settings.stuckTimeout, 60f);
+            for (float t = 0; t < 75f; t += Dt) { elev.Tick(Dt); w.Tick(Dt); }
             Assert.IsTrue(w.AtHome);
             Assert.GreaterOrEqual(w.SoftTransfers, 1);
             Assert.AreEqual("stranger", res.OwnerOf(L.nav.IndexOf(HabitatLayout.DoorNode(HabitatRole.Developer))));
