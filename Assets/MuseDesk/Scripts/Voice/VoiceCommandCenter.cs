@@ -1042,7 +1042,7 @@ namespace MuseDesk.Voice
             _hintShown = true;
             _display = Display.Info;
             _displayUntil = Time.unscaledTime + 5f;
-            if (hud != null) hud.Show("Voice", ModeWord(), "Press Mic and say approve or reject.", "", VoiceTone.Neutral);
+            if (hud != null) hud.Show("Voice", ModeWord(), "Turn the mic on and just talk, or stamp the paper.", "", VoiceTone.Neutral);
         }
 
         // ───────────────────────── driver ─────────────────────────
