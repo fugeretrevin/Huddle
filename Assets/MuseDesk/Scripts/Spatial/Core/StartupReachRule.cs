@@ -17,13 +17,14 @@ namespace MuseDesk.Spatial
     /// <summary>The start-up reach check, as plain values (NearUserKit fills it once per frame during the window).</summary>
     public struct StartupReachInput
     {
-        /// <summary>Seconds since the near-user rig first took the desk pose; negative while it has none.</summary>
+        /// <summary>Seconds since the near-user rig first took the desk pose (or was first seated from the head because the
+        /// office left the desk before any desk pose: <see cref="StartupReachRule.DecideAwaySeat"/>); negative while neither happened.</summary>
         public float secondsSinceDeskPose;
         /// <summary>The head pose is usable (<see cref="StartupReachRule.HeadUsable"/>), and the headset is worn.</summary>
         public bool headUsable;
         /// <summary>How long the head has been steady (under 45 degrees per second), seconds.</summary>
         public float headSteadySeconds;
-        /// <summary>Desk (or Wall, whose desk office stays put) at rest, no preview, nothing held.</summary>
+        /// <summary>At rest in any mode (<see cref="StartupReachRule.Placeable"/>): no move, no preview, nothing held.</summary>
         public bool placeable;
         /// <summary>The user dragged a panel this session: their layout wins from then on.</summary>
         public bool userMovedPanel;
@@ -33,6 +34,33 @@ namespace MuseDesk.Spatial
         public float secondsSinceLastReseat;
         /// <summary>Farthest and nearest panel pivot from the head, metres; worst negative = nothing measured.</summary>
         public float worstDistance, nearestDistance;
+    }
+
+    public enum AwaySeatAction
+    {
+        /// <summary>Nothing to do: at the desk, or the rig already stands at a placed desk pose, or it was seated already.</summary>
+        None,
+        /// <summary>The panels need a seat but not now: tracking loss, or something is in hand.</summary>
+        Wait,
+        /// <summary>Stand the near-user rig in front of the head now (panels only; the office never moves).</summary>
+        Seat,
+    }
+
+    /// <summary>The "left the desk before the first desk pose" check, as plain values (NearUserKit fills it).</summary>
+    public struct AwaySeatInput
+    {
+        /// <summary>The office is not resting at the desk (Floor, Ceiling or Wall, or on its way there): the rig does not follow the root.</summary>
+        public bool away;
+        /// <summary>The rig has stood at a PLACED desk pose this session (the desk placement had finished).</summary>
+        public bool hasPlacedDeskPose;
+        /// <summary>The rig was already seated from the head since the office left the desk.</summary>
+        public bool seated;
+        /// <summary>The head pose is usable (<see cref="StartupReachRule.HeadUsable"/>) and the headset is worn.</summary>
+        public bool headUsable;
+        /// <summary>Something is in hand, or a hand holds a transition.</summary>
+        public bool held;
+        /// <summary>The user dragged a panel this session: their layout wins.</summary>
+        public bool userMovedPanel;
     }
 
     /// <summary>
@@ -68,6 +96,41 @@ namespace MuseDesk.Spatial
             if (i.worstDistance < 0f) return StartupReachAction.Keep;
             if (i.worstDistance > MaxReach || i.nearestDistance < MinReach) return StartupReachAction.Reseat;
             return StartupReachAction.Keep;
+        }
+
+        /// <summary>
+        /// Stranded panels (owner, rc9: "the panel for placing the wall or choosing floor or ceiling were entirely gone").
+        /// The near-user rig only learns the desk pose while the office rests at a PLACED desk. When the office leaves
+        /// the desk before that ever happened (a restore at launch, a voice request, any mode), the rig would be left at
+        /// the office root's pre-placement pose, out of sight. This decides when to seat the rig in front of the head
+        /// instead (<see cref="ReseatPose"/>). Panels only: the office is never moved. Fail-closed: it waits on tracking
+        /// loss and while something is in hand, never acts twice for one departure, and never after the user moved a panel.
+        /// </summary>
+        public static AwaySeatAction DecideAwaySeat(AwaySeatInput i)
+        {
+            if (!i.away || i.hasPlacedDeskPose || i.seated || i.userMovedPanel) return AwaySeatAction.None;
+            if (!i.headUsable || i.held) return AwaySeatAction.Wait;
+            return AwaySeatAction.Seat;
+        }
+
+        /// <summary>
+        /// May a start-up re-seat happen in this state? Any mode (Desk, Floor, Ceiling, Wall: the rig is either on the desk
+        /// pose or standing still while the office is away), but never during a move, a preview (the director's or the
+        /// wall's), or with something in hand.
+        /// </summary>
+        public static bool Placeable(bool transitioning, bool held, bool directorPreviewing, bool wallPreviewing)
+        {
+            return !transitioning && !held && !directorPreviewing && !wallPreviewing;
+        }
+
+        /// <summary>
+        /// Keep a re-seat as a correction relative to the office root (so the rig follows the desk afterwards)? Only when
+        /// the root stands at its desk pose: at the desk, or in Wall mode (the desk office stays put, hidden) once a placed
+        /// desk pose exists. In Floor / Ceiling the root is elsewhere, so the rig is only stood in front of the head.
+        /// </summary>
+        public static bool KeepAsDeskCorrection(bool atDesk, bool inWall, bool hasPlacedDeskPose)
+        {
+            return atDesk || (inWall && hasPlacedDeskPose);
         }
 
         /// <summary>A head pose that can be placed from: finite, not at the tracking origin (no pose yet), looking
