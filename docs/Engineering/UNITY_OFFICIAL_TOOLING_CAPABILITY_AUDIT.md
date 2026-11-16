@@ -92,4 +92,9 @@ unity command --project-path . diagnostics get_performance --result-only        
 unity command --project-path . console status --result-only
 ```
 
+Gotcha seen in this session: Play Mode drivers time out in wall-clock seconds; if the Editor's player loop stalls
+(`Time.unscaledDeltaTime` 0 while `Time.frameCount` climbs), every timed step fails. Check with
+`script eval --file` returning `Time.unscaledTime`/`frameCount` twice a few seconds apart before trusting a driver
+failure. `editor set_auto_tick --enabled true|false` (persisted) did not change it here; an Editor restart is next.
+
 Existing project entry points stay the default for anything stateful: `scripts\compile.ps1`, `scripts\tests.ps1`, `scripts\drv.ps1 <Class> <Method> [arg]`, `scripts\run_guarded.ps1`. Rules unchanged: never edit `Assets/` scripts in Play Mode or during an APK build; one agent drives the shared Editor at a time; never print `ProjectSettings/wit.config`, the Wit asset or `backend/.env`.
