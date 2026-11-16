@@ -246,6 +246,34 @@ public static class PortalFxDrive
         return Press(card, a[1].Replace('_', ' '));
     }
 
+    /// <summary>Desk: take the decision paper as a grab + release would (it unfolds to full size).</summary>
+    public static string Paper()
+    {
+        var p = Object.FindAnyObjectByType<MuseDesk.Documents.HeldPaperController>(FindObjectsInactive.Include);
+        if (p == null) return "no paper";
+        bool active = p.isActiveAndEnabled;
+        p.TakeNow();
+        return "paper active=" + active + " taken";
+    }
+
+    /// <summary>Visible renderers under a named object with their world size (smallest first), to find stray bits.</summary>
+    public static string Renderers(string name)
+    {
+        Transform root = null;
+        foreach (var x in Resources.FindObjectsOfTypeAll<Transform>()) if (x.name == name && x.gameObject.scene.IsValid() && x.gameObject.activeInHierarchy) { root = x; break; }
+        if (root == null) return "no " + name;
+        var list = new System.Collections.Generic.List<Renderer>(root.GetComponentsInChildren<Renderer>());
+        list.RemoveAll(r => !r.enabled || r is TMPro.TMP_SubMesh || r.GetComponent<TMPro.TMP_Text>() != null);
+        list.Sort((a, b) => a.bounds.size.magnitude.CompareTo(b.bounds.size.magnitude));
+        var sb = new StringBuilder();
+        for (int i = 0; i < list.Count && i < 25; i++)
+        {
+            var r = list[i]; string path = r.name; var t = r.transform.parent; for (int k = 0; k < 3 && t != null && t != root; k++) { path = t.name + "/" + path; t = t.parent; }
+            sb.Append(path).Append(" size=").Append(r.bounds.size.ToString("F4")).Append(" lossy=").Append(r.transform.lossyScale.x.ToString("G3")).Append(" mat=").Append(r.sharedMaterial != null ? r.sharedMaterial.name : "-").Append('\n');
+        }
+        return sb.ToString();
+    }
+
     public static string PlanCard() { C.PressManager(); return "manager pressed | planOpen"; }
 
     public static string State()
