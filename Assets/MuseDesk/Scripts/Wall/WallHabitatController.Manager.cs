@@ -563,7 +563,7 @@ namespace MuseDesk.Wall
         {
             PlanModel model = PlanPaperMapper.ToModel(_manager);
             PlanLayoutResult layout = PlanReviewLayout.Layout(model, _paper.TextWidthMm, 0f, _paper.readingDistance);
-            List<PlanPage> pages = PlanPaperPager.Paginate(layout, _paper.PageHeightMm);
+            List<PlanPage> pages = PlanPaperPager.Paginate(layout, _paper.PlanPageHeightMm);      // the rows stop above the framed stamp zone
             if (pages.Count == 0) pages.Add(new PlanPage());
             _page = ((_page % pages.Count) + pages.Count) % pages.Count;
 
@@ -576,9 +576,14 @@ namespace MuseDesk.Wall
             _paper.ShowPage(pages[_page], _page, pages.Count, foot);
 
             // The stamp is a CONFIRMED outcome: approved once the backend created the cards, rejected once it said so.
+            // The framed zone says where to stamp; the mark itself is drawn inside it, only after the backend confirmed.
             if (committed) _paper.SetStamp("APPROVED", Workspace.OfficeTokens.Success);
             else if (st == ManagerFlowState.Rejected) _paper.SetStamp("REJECTED", Workspace.OfficeTokens.Coral);
-            else _paper.SetStamp(null, Color.clear);
+            else
+            {
+                _paper.SetStamp(null, Color.clear);
+                _paper.SetStampZone(st == ManagerFlowState.AwaitingApproval ? StampZoneMode.Awaiting : st == ManagerFlowState.Committing ? StampZoneMode.Committing : StampZoneMode.Hidden);
+            }
 
             int n = _manager.Items.Count;
             int windows = Mathf.Max(1, (n + 2) / 3);
@@ -586,19 +591,20 @@ namespace MuseDesk.Wall
             bool more = pages.Count > 1 || windows > 1;
             Action turn = () => { _page++; _stepWindow++; };
 
+            // Approve and Reject are the two stamps (guarded exactly as before: see Stamp.cs), so the paper has no keys for them.
+            // What is left: the step ticks, More (page / next steps), Revise, Close, and the separate OK for a risky step.
             if (st == ManagerFlowState.AwaitingApproval)
             {
                 for (int k = 0; k < 3; k++)
                 {
                     int ii = _stepWindow * 3 + k;
-                    if (ii < n) Key(keys, (_manager.Items[ii].approved ? "[x] Step " : "[ ] Step ") + (ii + 1), () => ToggleItem(ii));
+                    if (ii < n) Key(keys, (_manager.Items[ii].approved ? "Keep " : "Skip ") + (ii + 1), () => ToggleItem(ii));
                     else Key(keys, null, null);
                 }
-                Key(keys, more ? "Next page" : null, turn);
-                if (_riskStep) Key(keys, "Confirm risk", ConfirmRisky);
-                else Key(keys, "Approve", () => ApprovePlan());
+                Key(keys, more ? "More" : null, turn);
                 Key(keys, "Revise", () => RevisePlan());
-                Key(keys, _rejectBusy ? null : "Reject", RejectPlan);
+                Key(keys, _riskStep ? "Confirm risk" : null, ConfirmRisky);
+                Key(keys, null, null);
                 Key(keys, "Close", PressManager);
             }
             else
@@ -606,7 +612,7 @@ namespace MuseDesk.Wall
                 Key(keys, committed && _board.Count > 0 ? "Status" : null, () => { _showCommittedPlan = false; _stampHoldUntil = 0f; _page = 0; });
                 Key(keys, st == ManagerFlowState.Rejected ? "New plan" : null, () => _askMode = true);
                 Key(keys, null, null);
-                Key(keys, more ? "Next page" : null, turn);
+                Key(keys, more ? "More" : null, turn);
                 Key(keys, null, null); Key(keys, null, null); Key(keys, null, null);
                 Key(keys, "Close", PressManager);
             }
@@ -656,6 +662,7 @@ namespace MuseDesk.Wall
         void ShowStatusPage(List<KeyValuePair<string, Action>> keys, string mode)
         {
             _paper.SetStamp(null, Color.clear);
+            _paper.SetStampZone(StampZoneMode.Hidden);
             List<PlanPage> pages = PlanPaperPager.Paginate(BuildStatusLayout(), _paper.PageHeightMm);
             if (pages.Count == 0) pages.Add(new PlanPage());
             _page = ((_page % pages.Count) + pages.Count) % pages.Count;
@@ -676,7 +683,7 @@ namespace MuseDesk.Wall
                 shown++;
             }
             while (keys.Count < 3) Key(keys, null, null);
-            Key(keys, pages.Count > 1 ? "Next page" : null, () => _page++);
+            Key(keys, pages.Count > 1 ? "More" : null, () => _page++);
             Key(keys, "Plan", () => { _showCommittedPlan = true; _page = 0; });
             Key(keys, _board.Receipt.stage == ReceiptStage.OnDesk && _receiptCard != null && !_receiptCard.Visible ? "Receipt" : null, () => { if (_receiptCard != null) { PlaceReceipt(); _receiptCard.Show(true); } });
             Key(keys, "New plan", () => _askMode = true);

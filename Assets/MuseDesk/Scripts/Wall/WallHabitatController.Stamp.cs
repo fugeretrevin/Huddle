@@ -7,10 +7,11 @@ using MuseDesk.Spatial.Wall;
 namespace MuseDesk.Wall
 {
     /// <summary>
-    /// The desk's physical stamps work on the Manager plan paper too, as an alternative to the Approve and Reject keys.
+    /// The desk's physical stamps are THE way to approve or reject on the Manager plan paper (the paper has no Approve or Reject keys).
     ///
-    /// A held Approve stamp pressed onto the paper's stamp spot calls <see cref="ApprovePlan"/>; a held Reject stamp calls
-    /// <see cref="RejectPlan"/>. Those are the same guarded methods the keys call, so the same rules apply (a risky step still
+    /// A held Approve stamp pressed onto the paper's framed "Stamp here" zone (its centre is <see cref="WallPlanPaper.StampSpotWorld"/>,
+    /// and the mark is drawn in the same box) calls <see cref="ApprovePlan"/>; a held Reject stamp calls
+    /// <see cref="RejectPlan"/>. Those are the guarded methods drivers call too, so the same rules apply (a risky step still
     /// needs its separate OK, one commit in flight, a stable idempotency key, nothing created before the backend confirms), and the
     /// APPROVED / REJECTED mark is still drawn only after the backend (or the labelled offline board) confirmed.
     ///
@@ -44,7 +45,8 @@ namespace MuseDesk.Wall
 
         void TickPlanStamp(float dt, float now)
         {
-            bool needed = flags.wallManagerEnabled && _planCardOpen && _manager != null
+            // The stamps come out only when the paper is open on its framed stamp zone (ready for a decision), never before.
+            bool needed = flags.wallManagerEnabled && _planCardOpen && _manager != null && _planCard != null && _planCard.Visible
                           && (_manager.State == ManagerFlowState.AwaitingApproval || _manager.State == ManagerFlowState.Committing);
             if (needed) _stampDemandUntil = now + 3f;                    // the stamp stays a moment after the answer
             bool demand = now < _stampDemandUntil;

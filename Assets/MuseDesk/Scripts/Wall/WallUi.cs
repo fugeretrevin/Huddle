@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 using Oculus.Interaction;
+using MuseDesk.Spatial.Ui;
 
 namespace MuseDesk.Wall
 {
@@ -70,7 +71,31 @@ namespace MuseDesk.Wall
             label.color = c;
         }
 
-        public void SetLabel(string s) { if (label != null && label.text != s) label.text = s; }
+        /// <summary>Label font size at authored size (before any shrink to fit) and the key's width factor.</summary>
+        public float baseFontSize;
+        public float widthScale = 1f;
+
+        /// <summary>Set the label and shrink its font (never below <see cref="KeyLabelFit.DefaultMinScale"/>) until the whole text
+        /// fits the key: no ellipsis. A change only; nothing runs when the text is the same.</summary>
+        public void SetLabel(string s)
+        {
+            if (label == null || label.text == s) return;
+            label.text = s;
+            FitLabel(s);
+        }
+
+        /// <summary>Fit the label's current text (used once, when the key is made with its first text).</summary>
+        public void SetLabelFitOnly() { if (label != null) FitLabel(label.text); }
+
+        void FitLabel(string s)
+        {
+            if (baseFontSize <= 0f || string.IsNullOrEmpty(s)) return;
+            label.fontSize = baseFontSize;
+            float avail = label.rectTransform.rect.width;
+            float pw = label.GetPreferredValues(s, 0f, 0f).x;
+            float k = KeyLabelFit.FontScale(pw, avail);
+            if (k < 1f) label.fontSize = baseFontSize * k;
+        }
     }
 
     /// <summary>
@@ -97,7 +122,18 @@ namespace MuseDesk.Wall
 
         public static WallKey MakeKey(Transform template, Transform parent, string name, string text, Vector3 localPos, float scale, Action onPress)
         {
-            var k = new WallKey { shownScale = Vector3.one * scale, action = onPress };
+            return MakeKey(template, parent, name, text, localPos, scale, onPress, 1f);
+        }
+
+        /// <summary>
+        /// A key <paramref name="widthScale"/> times wider than the template (1 = the old size). Only the key (its housing and poke face)
+        /// widens: the label is counter-scaled so its glyphs keep their shape, and its box grows with the key. The label never
+        /// wraps or ellipses; <see cref="WallKey.SetLabel"/> shrinks the font to fit instead.
+        /// </summary>
+        public static WallKey MakeKey(Transform template, Transform parent, string name, string text, Vector3 localPos, float scale, Action onPress, float widthScale)
+        {
+            widthScale = Mathf.Max(1f, widthScale);
+            var k = new WallKey { shownScale = new Vector3(scale * widthScale, scale, scale), action = onPress, widthScale = widthScale };
             if (template == null) return k;
             GameObject go = UnityEngine.Object.Instantiate(template.gameObject, parent);
             go.name = name;
@@ -122,7 +158,22 @@ namespace MuseDesk.Wall
             // The same soft click every other poke key in the app makes (the clone was made after start-up).
             MuseDesk.Feedback.FeedbackController.RegisterLateKeys(go);
             k.label = go.GetComponentInChildren<TMP_Text>(true);
-            if (k.label != null) { k.label.text = text; k.label.enableAutoSizing = false; }
+            if (k.label != null)
+            {
+                k.label.enableAutoSizing = false;
+                k.label.textWrappingMode = TextWrappingModes.NoWrap;
+                k.label.overflowMode = TextOverflowModes.Overflow;      // never "..."; the font shrinks to fit instead
+                if (widthScale > 1.001f)
+                {
+                    Vector3 ls = k.label.transform.localScale;
+                    k.label.transform.localScale = new Vector3(ls.x / widthScale, ls.y, ls.z);   // undo the key's stretch on the glyphs
+                    Vector2 sd = k.label.rectTransform.sizeDelta;
+                    k.label.rectTransform.sizeDelta = new Vector2(sd.x * widthScale, sd.y);       // and give the text the wider box
+                }
+                k.baseFontSize = k.label.fontSize;
+                k.label.text = text;
+                if (!string.IsNullOrEmpty(text)) k.SetLabelFitOnly();
+            }
             k.shown = false;
             k.enabled = true;
             if (k.poke != null) k.poke.enabled = false;
@@ -241,7 +292,7 @@ namespace MuseDesk.Wall
             while (_keys.Count < n)
             {
                 int i = _keys.Count;
-                _keys.Add(WallUi.MakeKey(_template, root, "Key" + i, "", KeyPos(i), _keyScale, null));
+                _keys.Add(WallUi.MakeKey(_template, root, "Key" + i, "", KeyPos(i), _keyScale, null, KeyWidthScale));
             }
             for (int i = 0; i < _keys.Count; i++)
             {
@@ -252,13 +303,13 @@ namespace MuseDesk.Wall
             }
         }
 
+        /// <summary>Keys fill most of their column (a wide key keeps its label on one line, no ellipsis).</summary>
+        public float KeyWidthScale => PlanPaperGeometry.KeyWidthScale(_size.x, _keyScale);
+
         Vector3 KeyPos(int i)
         {
             int row = i / 4, col = i % 4;
-            float pitch = _size.x / 4f;
-            float x = -_size.x * 0.5f + pitch * (col + 0.5f);
-            float y = -_size.y * 0.5f + 0.022f + (1 - row) * 0.03f;
-            return new Vector3(x, y, -0.006f);
+            return new Vector3(PlanPaperGeometry.KeyColumnX(_size.x, col), PlanPaperGeometry.KeyRowCenterY(_size.y, row), -0.006f);
         }
 
         public void SetText(string title, string body, string footer)
