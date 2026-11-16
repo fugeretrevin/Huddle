@@ -98,6 +98,81 @@ namespace MuseDesk.Voice
         public bool IsListening => _listening;
         public bool HasPendingQuestion => _pending != Pending.None;
 
+        // ───────────────────────── hands-free mic ─────────────────────────
+        // Muted by default (privacy). Unmuted: the microphone re-arms by itself after each sentence, silence or
+        // error (HandsFreeMic does the timing and backoff). Every sentence still goes through VoiceIntentParser
+        // and the same confirmation rules: a spoken decision still needs the paper taken and opened, the undo
+        // window and the word "cancel"; a new task still needs "confirm". Ambient speech that is not a command is
+        // dropped silently (no "Not understood" card), and the Manager classifier is not consulted.
+
+        readonly HandsFreeMic _mic = new HandsFreeMic();
+        readonly IMicPrefStore _micPrefs = new PlayerPrefsMicStore();
+        bool _micLoaded;
+        bool _ambient;          // the open request was started by the hands-free loop
+        bool _ambientQuiet;     // ... and nobody has spoken yet: no card, no listening animation
+
+        public bool MicUnmuted => _mic.Unmuted;
+        public MicPhase MicPhase => _mic.Phase;
+        public MicProblem MicBlocked => _mic.Blocked;
+        public int MicBeginCount => _mic.BeginCount;
+        public int MicConsecutiveErrors => _mic.ConsecutiveErrors;
+        /// <summary>Raised when the mic key should redraw (phase or mute changed).</summary>
+        public event Action MicStateChanged;
+        MicPhase _micShown = (MicPhase)(-1);
+
+        void LoadMicPref()
+        {
+            if (_micLoaded) return;
+            _micLoaded = true;
+            bool on = false;
+            try { on = MicPreference.Load(_micPrefs); } catch { }
+            _mic.SetUnmuted(on, Time.unscaledTime);
+        }
+
+        /// <summary>Mute or unmute and remember it on this device. Returns the resulting state: unmuting is refused
+        /// (and the reason shown) when this build has no speech service or token, so the key never pretends.</summary>
+        public bool SetMicUnmuted(bool on)
+        {
+            LoadMicPref();
+            if (on)
+            {
+                if (!_hooked) Hook();
+                VoiceProblem p = _source == null ? VoiceProblem.NoRecognizer : _source.Availability;
+                if (p == VoiceProblem.NoRecognizer || p == VoiceProblem.NoToken)
+                {
+                    _mic.SetUnmuted(false, Time.unscaledTime);
+                    ShowProblem(p, null);
+                    NotifyMic();
+                    return false;
+                }
+            }
+            _mic.SetUnmuted(on, Time.unscaledTime);
+            try { MicPreference.Save(_micPrefs, on); } catch { }
+            if (!on)
+            {
+                // Muted: nothing listens. Drop an open ambient request; a manual one is left to finish.
+                if (_ambient && (_listening || _thinking)) Abort();
+                _ambient = _ambientQuiet = false;
+                EndDisplay();
+            }
+            RefreshMic();
+            NotifyMic();
+            return on;
+        }
+
+        public bool ToggleMic() { LoadMicPref(); return SetMicUnmuted(!_mic.Unmuted); }
+
+        void TickMic(float now)
+        {
+            LoadMicPref();
+            VoiceProblem avail = _source == null ? VoiceProblem.NoRecognizer : _source.Availability;
+            MicAction a = _mic.Tick(now, (MicProblem)(int)avail, _listening, _thinking, _pending == Pending.None && !_aborting);
+            if (a == MicAction.Begin) BeginListening(true, true);
+            if (_mic.Phase != _micShown) { _micShown = _mic.Phase; NotifyMic(); }
+        }
+
+        void NotifyMic() { MicStateChanged?.Invoke(); }
+
         // ───────────────────────── lifecycle ─────────────────────────
 
         void OnEnable()
@@ -106,6 +181,7 @@ namespace MuseDesk.Voice
             _office.Session = session;
             _office.RunChanged += OnRunChanged;
             Hook();
+            LoadMicPref();
         }
 
         void OnDisable()
@@ -166,6 +242,8 @@ namespace MuseDesk.Voice
                 OnProblem(VoiceProblem.Timeout, null);
             }
 
+            TickMic(now);
+
             if (_relistenAt >= 0f && now >= _relistenAt)
             {
                 _relistenAt = -1f;
@@ -202,6 +280,8 @@ namespace MuseDesk.Voice
         /// or close it and transcribe when it is open.</summary>
         public void PressMic()
         {
+            // A hand on the old key takes over an ambient request: it behaves like a normal press.
+            if (_ambient) { PromoteAmbient(); _ambient = false; }
             if (_listening) { if (_source != null) _source.EndRequest(); return; }
             if (_thinking)
             {
@@ -219,7 +299,7 @@ namespace MuseDesk.Voice
             if (!_listening && !_thinking) BeginListening(false);
         }
 
-        void BeginListening(bool auto)
+        void BeginListening(bool auto, bool ambient = false)
         {
             if (!_hooked) Hook();
             VoiceProblem p = _source == null ? VoiceProblem.NoRecognizer : _source.Availability;
@@ -228,6 +308,8 @@ namespace MuseDesk.Voice
                 if (!auto) ShowProblem(p, null);
                 return;
             }
+            _ambient = ambient;
+            _ambientQuiet = ambient;
             _autoListen = auto;
             _partial = "";
             _actedOnPartial = VoiceIntentKind.None;
@@ -239,12 +321,14 @@ namespace MuseDesk.Voice
         void OnListeningChanged(bool on)
         {
             _listening = on;
-            _office.AgentsListen(on);
+            _mic.NotifyListeningChanged(on, Time.unscaledTime);
+            if (!(_ambientQuiet && on)) _office.AgentsListen(on);
+            else _office.AgentsListen(false);
             if (on)
             {
                 _thinking = false;
                 _listenStart = Time.unscaledTime;
-                if (_pending == Pending.None)
+                if (_pending == Pending.None && !_ambientQuiet)
                 {
                     _display = Display.Listening;
                     if (hud != null) hud.Show("Listening", ModeWord(), "", TrySaying(), VoiceTone.Listening);
@@ -269,6 +353,7 @@ namespace MuseDesk.Voice
         void OnPartial(string text)
         {
             _partial = VoiceAnswers.Ascii(text ?? "").Trim();
+            if (_partial.Length > 0) { _mic.NotifyPartial(); if (_ambientQuiet) PromoteAmbient(); }
             if (_display == Display.Listening && hud != null) hud.SetBody(Quote(VoiceAnswers.Clip(_partial, 90)));
             if (_partial.Length > 0) _office.HearForAddressing(_partial);
             if (_actedOnPartial != VoiceIntentKind.None || _partial.Length == 0) return;
@@ -289,15 +374,42 @@ namespace MuseDesk.Voice
             }
         }
 
+        /// <summary>Words arrived on an ambient request: from now on it looks and behaves like a normal one.</summary>
+        void PromoteAmbient()
+        {
+            if (!_ambientQuiet) return;
+            _ambientQuiet = false;
+            if (_listening)
+            {
+                _office.AgentsListen(true);
+                if (_pending == Pending.None)
+                {
+                    _display = Display.Listening;
+                    if (hud != null) hud.Show("Listening", ModeWord(), "", TrySaying(), VoiceTone.Listening);
+                }
+            }
+        }
+
         void OnFinal(string text)
         {
             _thinking = false;
+            _mic.NotifyFinal(Time.unscaledTime);
             HandleFinal(text);
         }
 
         void OnProblem(VoiceProblem problem, string detail)
         {
             _thinking = false;
+            _mic.NotifyProblem((MicProblem)(int)problem, Time.unscaledTime);
+            if (_ambient && _pending == Pending.None)
+            {
+                // Hands-free never pops a card for silence or a failing service; the mic key shows the state.
+                _ambient = _ambientQuiet = false;
+                if (problem != VoiceProblem.NoSpeech && _loggedProblems.Add((int)problem)) Debug.Log("[MuseDesk] voice (hands-free) unavailable: " + problem);
+                if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                RefreshMic();
+                return;
+            }
             if (problem == VoiceProblem.NoSpeech)
             {
                 if (_pending != Pending.None) { ShowPrompt(); RefreshMic(); return; }
@@ -314,6 +426,9 @@ namespace MuseDesk.Voice
 
         /// <summary>A final transcript, exactly as if the recogniser had produced it (the driver).</summary>
         public void InjectFinal(string transcript) { _thinking = false; HandleFinal(transcript); }
+
+        /// <summary>A final transcript as if the hands-free loop had heard it (the driver): same path, but quiet when it is not a command.</summary>
+        public void InjectAmbientFinal(string transcript) { _thinking = false; _ambient = true; _ambientQuiet = false; HandleFinal(transcript); }
 
         /// <summary>A partial transcript, exactly as if the recogniser had produced it (the driver).</summary>
         public void InjectPartial(string transcript)
@@ -337,6 +452,8 @@ namespace MuseDesk.Voice
             HandledCount++;
             LastTranscript = heard;
             if (heard.Length == 0) { LastIntent = "None"; OnProblem(VoiceProblem.NoSpeech, null); return; }
+            bool ambient = _ambient;        // this sentence came from the hands-free loop
+            _ambient = _ambientQuiet = false;
 
             VoiceIntent intent = VoiceIntentParser.Parse(heard, CurrentContext());
             LastIntent = intent.ToString();
@@ -357,7 +474,8 @@ namespace MuseDesk.Voice
             // "Manager, <goal>": the local grammar has no such command; the A12 classifier recognises it. It is handed to whoever
             // registered as the Manager (the Wall habitat, when it is active and its flag is on). It only ASKS for a plan:
             // nothing is created until the user approves the plan paper.
-            if (intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
+            // (Not for hands-free sentences: ambient speech only ever goes through VoiceIntentParser.)
+            if (!ambient && intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
             {
                 VoiceClassification c = VoiceIntentClassifier.Classify(heard);
                 if (c.Kind == VoiceAction.ManagerRequest && !string.IsNullOrEmpty(c.Question) && c.Question.Trim().Length >= 3)
@@ -384,6 +502,11 @@ namespace MuseDesk.Voice
             {
                 ShowPrompt();
                 ScheduleRelisten();
+            }
+            else if (ambient && !understood)
+            {
+                // Room chatter that is not a command: no card, no paper line, nothing sent.
+                if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
             }
             else if (message != null)
             {
