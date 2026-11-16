@@ -379,6 +379,7 @@ namespace MuseDesk.Wall
             _proxy = src != null ? WallHabitatView.CloneVisual(src, "VisitProjection_" + role, transform, h)
                                  : WallHabitatView.CloneVisual(home != null ? home.gameObject : null, "VisitProjection_" + role, transform, h);
             if (_proxy == null) { _visit.CancelCarry(VisitEndReason.Cancelled); return; }
+            AttachProxyLife(h);                                   // rc12: dangles while carried, lively on the perch
             _proxy.position = home != null ? home.position : PerchWorld;
             _proxy.rotation = home != null ? home.rotation : Quaternion.identity;
             _proxyScaleCarry = _proxy.localScale.x;
@@ -387,8 +388,15 @@ namespace MuseDesk.Wall
             _proxyVel = Vector3.zero;
             _landStarted = false;
             // A soft ring marks the projection as a projection.
-            ArtHelper().Box(_proxy, "ProjectionRing", Vector3.zero, Vector3.one, WallHabitatView.Teal).transform.localScale =
-                new Vector3(0.09f, 0.002f, 0.09f) / Mathf.Max(1e-5f, _proxy.lossyScale.y / Mathf.Max(1e-5f, transform.lossyScale.y));
+            float ringK = Mathf.Max(1e-5f, _proxy.lossyScale.y / Mathf.Max(1e-5f, transform.lossyScale.y));
+            if (WallUi.AccentMaterial != null)
+            {
+                // rc12: a round marker (it was a square box), flat under the feet.
+                float d = 0.09f / ringK;
+                WallUi.Plate(_proxy, "ProjectionRing", Vector3.up * (0.002f / ringK), d, d, d * 0.5f, WallHabitatView.Teal, WallUi.AccentMaterial, ArtHelper())
+                    .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+            else ArtHelper().Box(_proxy, "ProjectionRing", Vector3.zero, Vector3.one, WallHabitatView.Teal).transform.localScale = new Vector3(0.09f, 0.002f, 0.09f) / ringK;
             EnsurePerch();
             _side = null;
             Note(useSelectGrabV2 ? "Pull it toward you and let go: it lands on the teal pad" : "Let go over the teal pad on your desk");
@@ -466,6 +474,12 @@ namespace MuseDesk.Wall
             bool showPad = _visit.State == VisitState.Carrying || _visit.State == VisitState.Perched;
             if (_perchPad != null && _perchPad.gameObject.activeSelf != showPad) _perchPad.gameObject.SetActive(showPad);
             if (_proxy == null) return;
+            if (_proxyLife != null)
+            {
+                bool perched = _visit.State == VisitState.Perched && _landStarted && !_landClock.Running;
+                _proxyLife.SetCarried(!perched);
+                if (perched) TickLifeConversation(_proxyLife, ref _proxyHeard, ref _proxyAsking);
+            }
             switch (_visit.State)
             {
                 case VisitState.Carrying:
@@ -520,6 +534,12 @@ namespace MuseDesk.Wall
                     _proxy.position = Vector3.LerpUnclamped(_landFromPos, PerchWorld, u);
                     _proxy.localScale = Vector3.one * Mathf.LerpUnclamped(_landFromScale, s, u);
                     _proxy.rotation = WallUi.FacingEye(eye, PerchWorld);
+                    if (_proxyLife != null)
+                    {
+                        _proxyLife.height = _view.AvatarHeight * (_habitatRoot != null ? _habitatRoot.lossyScale.y : 1f) * 1.35f;
+                        // Landed: a hello wave, then it perches and listens (SetCarried(false) above starts its loop).
+                        if (!_landClock.Running && !_proxyGreeted) { _proxyGreeted = true; _proxyLife.SetCarried(false); _proxyLife.Arrive(); }
+                    }
                     return;
                 }
                 case VisitState.Returning:
@@ -541,16 +561,26 @@ namespace MuseDesk.Wall
             }
         }
 
+        bool _proxyGreeted;
+
         void DestroyProxy()
         {
             if (_proxy != null) Destroy(_proxy.gameObject);
             _proxy = null;
+            _proxyLife = null;
+            _proxyGreeted = false;
         }
 
         void EnsurePerch()
         {
             if (_perchPad != null || nearUserRig == null) return;
-            _perchPadR = ArtHelper().Box(nearUserRig, "WallVisitPerch", perchLocal, new Vector3(0.11f, 0.004f, 0.11f), WallHabitatView.Teal * 0.55f);
+            if (WallUi.AccentMaterial != null)
+            {
+                // rc12: a round unlit pad (the cards' teal), lying flat: the plate faces -Z, turned to face up.
+                _perchPadR = WallUi.Plate(nearUserRig, "WallVisitPerch", perchLocal + Vector3.up * 0.002f, 0.11f, 0.11f, 0.055f, WallHabitatView.Teal * 0.55f, WallUi.AccentMaterial, ArtHelper());
+                _perchPadR.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+            else _perchPadR = ArtHelper().Box(nearUserRig, "WallVisitPerch", perchLocal, new Vector3(0.11f, 0.004f, 0.11f), WallHabitatView.Teal * 0.55f);
             _perchPad = _perchPadR.transform;
             _perchPad.gameObject.SetActive(false);
         }

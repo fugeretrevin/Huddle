@@ -147,20 +147,41 @@ namespace MuseDesk.Wall
             }
 
             // The conversation drives the visitor: thinking while a question is out, gesturing when the answer lands.
-            if (_portalLife != null && st == PortalState.Conversing && _side != null)
+            if (st == PortalState.Conversing) TickLifeConversation(_portalLife, ref _portalHeard, ref _portalAsking);
+        }
+
+        /// <summary>Thinking while a question is out, gesturing for a while when its answer lands (portal and desk visitor).</summary>
+        void TickLifeConversation(PortalVisitorLife life, ref int heardCount, ref bool wasAsking)
+        {
+            if (life == null || _side == null) return;
+            bool asking = _side.State == SideAskState.Asking;
+            if (asking && !wasAsking) life.Asked();
+            wasAsking = asking;
+            int heard = _side.History.Count;
+            if (heardCount < 0) heardCount = heard;
+            else if (heard > heardCount)
             {
-                bool asking = _side.State == SideAskState.Asking;
-                if (asking && !_portalAsking) _portalLife.Asked();
-                _portalAsking = asking;
-                int heard = _side.History.Count;
-                if (_portalHeard < 0) _portalHeard = heard;
-                else if (heard > _portalHeard)
-                {
-                    _portalHeard = heard;
-                    string reply = _side.History[heard - 1].reply;
-                    _portalLife.Speak(2.5f + (reply != null ? Mathf.Min(6f, reply.Length * 0.035f) : 0f));
-                }
+                heardCount = heard;
+                string reply = _side.History[heard - 1].reply;
+                life.Speak(2.5f + (reply != null ? Mathf.Min(6f, reply.Length * 0.035f) : 0f));
             }
+        }
+
+        // rc12: the small Select Agents visitor gets the same life on the bones (its root is placed by TickProxy).
+        PortalVisitorLife _proxyLife;
+        int _proxyHeard = -1;
+        bool _proxyAsking;
+        public PortalVisitorLife ProxyLife => _proxyLife;
+
+        void AttachProxyLife(float height)
+        {
+            if (_proxy == null) return;
+            _proxyLife = _proxy.gameObject.AddComponent<PortalVisitorLife>();
+            _proxyLife.UsePerchClips();
+            _proxyLife.height = height;
+            _proxyLife.eye = ResolveHead();
+            _proxyLife.SetCarried(true);
+            _proxyHeard = -1; _proxyAsking = false;
         }
 
         void SetRingVisible(bool on)

@@ -39,13 +39,38 @@ namespace MuseDesk.Wall
         [Tooltip("A hand closer than this share of the height to the agent's head draws its gaze.")]
         public float handNotice = 0.55f;
 
-        const string Base = "Listening", Think = "Thinking", Converse = "Portal_Converse_Loop",
-                     Emerge = "Portal_Emerge_Step", Leave = "Portal_Return_Step", Poke = "React_Poke_Surprise", Wave = "React_Wave_Greet";
+        [Header("Clips (portal defaults; UsePerchClips() for the small desk visitor)")]
+        public string Base = "Listening", Think = "Thinking", Converse = "Portal_Converse_Loop",
+                      Emerge = "Portal_Emerge_Step", Leave = "Portal_Return_Step", Poke = "React_Poke_Surprise", Wave = "React_Wave_Greet",
+                      Dangle = "Carry_Suspended_Idle";
+        [Tooltip("True: this component may turn the root to face the user and slide it away from a push (the portal visitor). " +
+                 "False: someone else places the root every frame (the carried / perched desk visitor); only the bones move.")]
+        public bool moveRoot = true;
+
+        /// <summary>The small Select Agents visitor on the desk perch: its own perch clips.</summary>
+        public void UsePerchClips()
+        {
+            Base = "DeskVisit_Perch_Idle"; Think = "DeskVisit_Listening"; Converse = "DeskVisit_Explain";
+            Emerge = "React_Wave_Greet"; Leave = "Waving";
+            moveRoot = false;
+        }
+
+        bool _carried;
+        /// <summary>Held in a hand (or flying home): it dangles, does not react, and looks at the user only lightly.</summary>
+        public void SetCarried(bool carried)
+        {
+            if (_carried == carried) return;
+            _carried = carried;
+            _oneShotUntil = -1f;
+            _playing = null;
+            if (carried) { _leaving = false; Cross(Has(Dangle) ? Dangle : Base, 0.2f); }
+            else RefreshLoop();
+        }
 
         Animator _an;
         Transform _head, _neck, _chest, _spine;
         readonly Dictionary<string, float> _len = new Dictionary<string, float>();
-        string _loop = Base, _playing;
+        string _loop = "Listening", _playing;
         float _oneShotUntil = -1f, _speakUntil = -1f;
         bool _thinking, _leaving;
 
@@ -137,6 +162,7 @@ namespace MuseDesk.Wall
 
         void RefreshLoop()
         {
+            if (_carried) return;
             string want = _speakUntil > Time.unscaledTime ? Converse : _thinking ? Think : Base;
             if (!Has(want)) want = Base;
             _loop = want;
@@ -171,7 +197,7 @@ namespace MuseDesk.Wall
             _lookAt = Vector3.Lerp(_lookAt == Vector3.zero ? target : _lookAt, target, 1f - Mathf.Exp(-dt * 7f));
 
             // Body: keep facing the user (yaw only), gently.
-            if (eye != null && !_leaving)
+            if (eye != null && !_leaving && moveRoot && !_carried)
             {
                 Vector3 to = eye.position - root; to.y = 0f;
                 Transform parent = transform.parent;
@@ -183,7 +209,7 @@ namespace MuseDesk.Wall
             }
 
             // Head and neck (additive, after the clip).
-            float wantWeight = _leaving ? 0f : (_playing == Emerge ? 0.35f : 1f);
+            float wantWeight = _leaving ? 0f : _carried ? 0.5f : (_playing == Emerge ? 0.35f : 1f);
             _lookWeight = Mathf.MoveTowards(_lookWeight, wantWeight, dt * 2f);
             if (_head != null)
             {
@@ -216,7 +242,7 @@ namespace MuseDesk.Wall
             // The slide (kinematic rubber band), in the parent's space so the portal's own pose is untouched.
             Vector3 pushGoal = _touching ? _pushGoal : Vector3.zero;
             _push = Vector3.SmoothDamp(_push, pushGoal, ref _pushVel, _touching ? 0.06f : 0.3f, Mathf.Infinity, dt);
-            if (transform.parent != null) transform.localPosition = _baseLocal + transform.parent.InverseTransformVector(_push);
+            if (moveRoot && transform.parent != null) transform.localPosition = _baseLocal + transform.parent.InverseTransformVector(_push);
         }
 
         /// <summary>How far grown the avatar is (0..1; the portal sets it while the agent appears): radii follow it.</summary>
@@ -257,7 +283,7 @@ namespace MuseDesk.Wall
                 Vector3 away = c - p; away.y = 0f;
                 float dist = away.magnitude;
                 float depth = bodyR - dist;
-                if (depth > 0f && !_leaving)
+                if (depth > 0f && !_leaving && !_carried)
                 {
                     touching = true;
                     Vector3 dir = dist > 1e-4f ? away / dist : -transform.forward;
@@ -289,7 +315,7 @@ namespace MuseDesk.Wall
 
         void SenseWave(IReadOnlyList<Transform> tips, int n, float dt)
         {
-            if (eye == null || n < 5 || _leaving) return;
+            if (eye == null || n < 5 || _leaving || _carried) return;
             Vector3 right = eye.right;
             for (int hand = 0; hand < 2; hand++)
             {

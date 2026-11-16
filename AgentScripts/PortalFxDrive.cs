@@ -178,6 +178,64 @@ public static class PortalFxDrive
     public static string Release() { C.SimulateRelease(1); return "released | ghost='" + C.WallStatus + "'"; }
     public static string StopHands() { C.StopSimulating(); return "hands off"; }
 
+    // ── the small desk visitor (Select agents): one call per phase ──
+    static Vector3 HeadPos() { var cam = Camera.main; return cam != null ? cam.transform.position : new Vector3(0, 1.2f, 0); }
+    static Vector3 HandO() { var cam = Camera.main; Vector3 f = cam != null ? cam.transform.forward : Vector3.forward; f.y = 0; f.Normalize(); return HeadPos() + Vector3.down * 0.25f + f * 0.2f; }
+
+    public static string Perch(string phase)
+    {
+        var c = C;
+        Vector3 at;
+        switch (phase)
+        {
+            case "arm":
+                if (!c.Visit.IsArmed) c.PressSelectAgents();
+                if (!c.TryGetAvatarCenter(HabitatRole.Developer, out at)) return "no developer";
+                c.SimulateHand(1, HandO(), at - HandO(), false); break;
+            case "pinch":
+                if (!c.TryGetAvatarCenter(HabitatRole.Developer, out at)) return "no developer";
+                c.SimulateHand(1, HandO(), at - HandO(), true); break;
+            case "carry":
+            {
+                Vector3 perch = c.PerchWorld + Vector3.up * 0.02f;
+                Vector3 o = perch - (perch - HeadPos()).normalized * 0.14f;
+                c.SimulateHand(1, o, perch - o, true); break;
+            }
+            case "drop": c.SimulateRelease(1); break;
+            case "off": c.StopSimulating(); break;
+        }
+        var life = c.ProxyLife;
+        return "visit=" + c.Visit.State + " proxy=" + c.HasProxy + (life != null ? " | life " + life.Describe() : " | no life");
+    }
+
+    public static string PerchTouch()
+    {
+        var life = C.ProxyLife; if (life == null) return "no perched visitor";
+        Vector3 root = life.transform.position; float h = life.height;
+        Vector3 toUser = HeadPos() - root; toUser.y = 0; toUser.Normalize();
+        life.SimulateTouch(root + Vector3.up * (h * 0.6f) + toUser * (h * 0.05f), 1.2f);
+        return "touch | " + life.Describe();
+    }
+
+    /// <summary>Rig-local bounds of named objects (comma separated), for laying things out beside each other.</summary>
+    public static string Where(string names)
+    {
+        var rig = C.nearUserRig;
+        var sb = new StringBuilder("rig=" + (rig != null ? rig.name : "none") + "\n");
+        foreach (string n in names.Split(','))
+        {
+            Transform t = null;
+            foreach (var x in Resources.FindObjectsOfTypeAll<Transform>()) if (x.name == n && x.gameObject.scene.IsValid() && x.gameObject.activeInHierarchy) { t = x; break; }
+            if (t == null) { sb.Append("  ").Append(n).Append(": none\n"); continue; }
+            Bounds b = new Bounds(t.position, Vector3.zero); bool any = false;
+            foreach (var r in t.GetComponentsInChildren<Renderer>()) { if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds); }
+            Vector3 lc = rig != null ? rig.InverseTransformPoint(b.center) : b.center;
+            Vector3 lmin = rig != null ? rig.InverseTransformPoint(b.min) : b.min, lmax = rig != null ? rig.InverseTransformPoint(b.max) : b.max;
+            sb.Append("  ").Append(n).Append(": centre ").Append(lc.ToString("F3")).Append(" min ").Append(Vector3.Min(lmin, lmax).ToString("F3")).Append(" max ").Append(Vector3.Max(lmin, lmax).ToString("F3")).Append('\n');
+        }
+        return sb.ToString();
+    }
+
     public static string PlanCard() { C.PressManager(); return "manager pressed | planOpen"; }
 
     public static string State()

@@ -23236,9 +23236,9 @@ MonoBehaviour:
   dockLocal: {x: -0.19, y: 0.045, z: 0.5}
   dockTiltBack: 35
   keyScale: 0.023
-  perchLocal: {x: 0.22, y: 0.004, z: 0.4}
+  perchLocal: {x: 0.4, y: 0.004, z: 0.38}
   perchRadius: 0.13
-  visitCardLocal: {x: 0.27, y: 0.2, z: 0.4}
+  visitCardLocal: {x: 0.13, y: 0.21, z: 0.42}
   planCardLocal: {x: 0.04, y: 0.17, z: 0.32}
   comfortMode: 0
   cardPlateMaterial: {fileID: 2100000, guid: 6bc94b5d4cdf8de40af33fc4bfc6c584, type: 2}
