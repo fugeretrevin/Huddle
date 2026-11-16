@@ -42,6 +42,14 @@ WALL_EXTRA_PALETTE = {
     "Mat_Wall_PortalRim": {"color": (0.280, 0.735, 0.680, 0.78), "roughness": 0.18, "metallic": 0.0, "emission": (0.20, 0.68, 0.62)},
     "Mat_Wall_WoodFloor": sc.PALETTE["Mat_WarmWood"],
     "Mat_Wall_Canopy":    sc.PALETTE["Mat_WarmBeige"],
+    "Mat_TreeBark":       {"color": (0.305, 0.205, 0.135, 1.0), "roughness": 0.85, "metallic": 0.00},
+    "Mat_ForestMoss":     {"color": (0.215, 0.460, 0.250, 1.0), "roughness": 0.78, "metallic": 0.00},
+    "Mat_CardboardBox":   {"color": (0.760, 0.580, 0.400, 1.0), "roughness": 0.62, "metallic": 0.00},
+    "Mat_Terracotta":     {"color": (0.780, 0.430, 0.310, 1.0), "roughness": 0.56, "metallic": 0.00},
+    "Mat_PlantGreen":     {"color": (0.340, 0.690, 0.440, 1.0), "roughness": 0.40, "metallic": 0.00},
+    "Mat_LampGlow":       {"color": (1.000, 0.950, 0.800, 1.0), "roughness": 0.15, "metallic": 0.00, "emission": (1.10, 1.00, 0.80)},
+    "Mat_LeatherSatchel": {"color": (0.520, 0.350, 0.230, 1.0), "roughness": 0.55, "metallic": 0.00},
+    "Mat_ScreenCode":     {"color": (0.120, 0.260, 0.400, 1.0), "roughness": 0.14, "metallic": 0.00, "emission": (0.16, 0.52, 0.82)},
 }
 for _k, _v in WALL_EXTRA_PALETTE.items():
     if _k not in sc.PALETTE:
@@ -265,8 +273,9 @@ def make_curved_canopy(name, width, depth, thickness, arch_rise, location, mat_n
 
 
 def make_railing(name, start_xy, end_xy, z_base, rail_h=0.028, posts=3,
-                 rail_mat="Mat_WarmWood", post_mat="Mat_Brass", parent=None, parts_list=None):
-    """Creates a delicate architectural safety railing with slim posts and rounded top bar."""
+                 rail_mat="Mat_WarmWood", post_mat="Mat_TreeBark", mid_mat="Mat_LeatherSatchel",
+                 parent=None, parts_list=None):
+    """Creates a rustic treehouse timber & leather-rope safety railing with acorn/bark posts."""
     dx = end_xy[0] - start_xy[0]
     dy = end_xy[1] - start_xy[1]
     length = math.hypot(dx, dy)
@@ -276,21 +285,139 @@ def make_railing(name, start_xy, end_xy, z_base, rail_h=0.028, posts=3,
     cx = (start_xy[0] + end_xy[0]) * 0.5
     cy = (start_xy[1] + end_xy[1]) * 0.5
 
-    # Top handrail
-    make_beveled_box(f"{name}_TopRail", (length + 0.004, 0.005, 0.005),
-                     (cx, cy, z_base + rail_h), rail_mat, bevel_width=0.0012,
+    # Warm rounded timber top handrail
+    make_beveled_box(f"{name}_TopRail", (length + 0.005, 0.0055, 0.0055),
+                     (cx, cy, z_base + rail_h), rail_mat, bevel_width=0.0014,
                      rot_deg=(0, 0, ang_z), parent=parent, parts_list=parts_list)
-    # Mid thin brass bar
-    make_beveled_box(f"{name}_MidBar", (length, 0.003, 0.003),
-                     (cx, cy, z_base + rail_h * 0.52), post_mat, bevel_width=0.0006,
+    # Mid rustic twig/rope cross rail
+    make_beveled_box(f"{name}_MidBar", (length, 0.0032, 0.0032),
+                     (cx, cy, z_base + rail_h * 0.50), mid_mat, bevel_width=0.0007,
                      rot_deg=(0, 0, ang_z), parent=parent, parts_list=parts_list)
-    # Stanchion posts
-    for i in range(max(2, posts)):
-        t = i / max(1, posts - 1)
+    # Chunky treehouse stanchion posts + subtle brass post caps
+    n_posts = max(2, posts)
+    for i in range(n_posts):
+        t = i / max(1, n_posts - 1)
         px = start_xy[0] + dx * t
         py = start_xy[1] + dy * t
-        make_cylinder(f"{name}_Post_{i}", 0.0022, rail_h, (px, py, z_base + rail_h * 0.5),
-                      post_mat, vertices=10, parent=parent, parts_list=parts_list)
+        make_cylinder(f"{name}_Post_{i}", 0.0026, rail_h, (px, py, z_base + rail_h * 0.5),
+                      post_mat, vertices=8, parent=parent, parts_list=parts_list)
+        if i == 0 or i == n_posts - 1:
+            make_sphere(f"{name}_Finial_{i}", (0.0032, 0.0032, 0.0024),
+                        (px, py, z_base + rail_h + 0.0032), "Mat_TreeBark",
+                        segments=8, rings=5, parent=parent, parts_list=parts_list)
+
+
+def make_branch_tube(name, knots, mat_name="Mat_TreeBark", sides=8,
+                     min_y=0.002, parent=None, bone_name=None, parts_list=None):
+    """Low-poly swept tapered bark trunk/limb along [((x, y, z), radius), ...]. Clamps y - r >= min_y so backplate stays wall-flush."""
+    if len(knots) < 2:
+        return None
+    bm = bmesh.new()
+    rings = []
+    for i, (pt, rad) in enumerate(knots):
+        p = mathutils.Vector((pt[0], max(pt[1], min_y + rad * 0.92), pt[2]))
+        if i == 0:
+            tangent = (mathutils.Vector(knots[1][0]) - p).normalized()
+        elif i == len(knots) - 1:
+            tangent = (p - mathutils.Vector(knots[-2][0])).normalized()
+        else:
+            tangent = (mathutils.Vector(knots[i + 1][0]) - mathutils.Vector(knots[i - 1][0])).normalized()
+        if tangent.length < 1e-6:
+            tangent = mathutils.Vector((0, 0, 1))
+        up_ref = mathutils.Vector((0, 1, 0)) if abs(tangent.y) < 0.9 else mathutils.Vector((1, 0, 0))
+        binorm = tangent.cross(up_ref).normalized()
+        norm = binorm.cross(tangent).normalized()
+        ring = []
+        for k in range(sides):
+            ang = (2.0 * math.pi * k) / sides
+            wobble = 1.0 + 0.08 * math.sin(ang * 3.0 + i * 1.3)
+            offset = (binorm * math.cos(ang) + norm * math.sin(ang)) * (rad * wobble)
+            ring.append(bm.verts.new(p + offset))
+        rings.append(ring)
+
+    bm.verts.ensure_lookup_table()
+    for i in range(len(rings) - 1):
+        r0, r1 = rings[i], rings[i + 1]
+        for k in range(sides):
+            kn = (k + 1) % sides
+            bm.faces.new([r0[k], r0[kn], r1[kn], r1[k]])
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+    mesh = bpy.data.meshes.new(name + "_Mesh")
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.data.materials.append(get_mat(mat_name))
+    sc._apply_crisp_shading(obj, flat_normal_threshold=0.92)
+    if parent:
+        obj.parent = parent
+    if bone_name:
+        sc.bind_weight(obj, bone_name)
+    if parts_list is not None:
+        parts_list.append(obj)
+    return obj
+
+
+def make_foliage_cluster(name, center, scale_xyz, base_mat="Mat_ForestMoss",
+                         leaf_mat="Mat_PlantGreen", tip_mat="Mat_Tester_Mint",
+                         rot_z=0.0, parent=None, bone_name=None, parts_list=None):
+    """Creates a crisp low-poly 3-lobe stylized foliage tuft (~60 tris total)."""
+    cx, cy, cz = center
+    sx, sy, sz = scale_xyz
+    specs = [
+        ("Base", (0.0, 0.0, 0.0),                  (sx, sy, sz),                      base_mat, (12, 8, rot_z)),
+        ("Top",  (-sx * 0.28, +sy * 0.14, sz * 0.34), (sx * 0.74, sy * 0.72, sz * 0.78), leaf_mat, (-8, 16, rot_z + 25)),
+        ("Side", (+sx * 0.34, +sy * 0.18, -sz * 0.10), (sx * 0.66, sy * 0.64, sz * 0.68), tip_mat if sz > 0.014 else leaf_mat, (14, -12, rot_z - 22)),
+    ]
+    for suf, (ox, oy, oz), lscale, mat, rot in specs:
+        bpy.ops.mesh.primitive_ico_sphere_add(
+            subdivisions=1, radius=1.0,
+            location=(cx + ox, cy + oy, cz + oz),
+            rotation=tuple(math.radians(a) for a in rot),
+        )
+        obj = bpy.context.active_object
+        obj.name = f"{name}_{suf}"
+        obj.scale = lscale
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        for p in obj.data.polygons:
+            p.use_smooth = False
+        obj.data.materials.append(get_mat(mat))
+        if parent:
+            obj.parent = parent
+        if bone_name:
+            sc.bind_weight(obj, bone_name)
+        if parts_list is not None:
+            parts_list.append(obj)
+
+
+def make_acorn_lantern(name, pos, scale=1.0, parent=None, bone_name=None,
+                       parts_list=None, bulb_list=None):
+    """Creates a hanging acorn fairy lantern (brass hook + bark cap + warm glowing bulb)."""
+    x, y, z = pos
+    make_cylinder(f"{name}_Stem", 0.0014 * scale, 0.006 * scale,
+                  (x, y, z + 0.005 * scale), "Mat_Brass", vertices=6,
+                  parent=parent, bone_name=bone_name, parts_list=parts_list)
+    make_cone(f"{name}_Cap", 0.0075 * scale, 0.0025 * scale, 0.005 * scale,
+              (x, y, z + 0.0015 * scale), "Mat_TreeBark", vertices=10,
+              parent=parent, bone_name=bone_name, parts_list=parts_list)
+    make_sphere(f"{name}_Bulb", (0.0056 * scale, 0.0056 * scale, 0.0065 * scale),
+                (x, y, z - 0.003 * scale), "Mat_LampGlow", segments=8, rings=6,
+                parent=parent, bone_name=bone_name,
+                parts_list=bulb_list if bulb_list is not None else parts_list)
+
+
+def make_toadstool(name, pos, cap_r=0.009, h=0.015, parent=None, parts_list=None):
+    """Tiny stylized woodland mushroom."""
+    x, y, z = pos
+    make_cylinder(f"{name}_Stem", cap_r * 0.34, h * 0.72,
+                  (x, y, z + h * 0.36), "Mat_WarmBeige", vertices=8,
+                  parent=parent, parts_list=parts_list)
+    make_cone(f"{name}_Cap", cap_r, cap_r * 0.25, h * 0.55,
+              (x, y, z + h * 0.80), "Mat_Terracotta", vertices=10,
+              parent=parent, parts_list=parts_list)
 
 
 def render_wall_preview(asset_name, cam_pos=(0.35, 1.05, 0.16), target=(0.0, 0.10, 0.0), suffix="preview"):

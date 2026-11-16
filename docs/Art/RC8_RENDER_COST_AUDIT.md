@@ -13,8 +13,10 @@
 | `Desk Idle (Workspace + NearUserRig)` | 317 | `230 / 4 / 79` | 85 | 83 *(mostly TMP/UI)* | 79,370 | 4 | 28 |
 | `Desk + Floor Platform` | 322 | `232 / 6 / 80` | 86 | 84 | 92,662 | 4 | 28 |
 | `Desk + Ceiling Pod` | 318 | `230 / 5 / 79` | 86 | 83 | 88,654 | 4 | 28 |
-| `Wall_Complete_3Tier` (isolated prefab) | 104 | `86 / 16 / 0` | 39 | 2 | 85,886 | 2 | 28 |
-| `Wall_Complete_2Tier` (isolated prefab) | 102 | `84 / 16 / 0` | 39 | 2 | 79,910 | 2 | 28 |
+| `Wall_Complete_3Tier` (isolated prefab, pre-treehouse / treehouse)* | 104 / **106** | `86 / 16 / 0` (treehouse: `skin=20` total rend `106` in `WALL_HABITAT_INVENTORY.json`) | 39 / **41** *(+opaque `Mat_TreeBark`, `Mat_ForestMoss`)* | 2 | 85,886 → **90,090** *(+4,204)* | 2 | 28 |
+| `Wall_Complete_2Tier` (isolated prefab, pre-treehouse / treehouse)* | 102 / **104** | `84 / 16 / 0` (treehouse: `skin=20` total rend `104` in `WALL_HABITAT_INVENTORY.json`) | 39 / **41** | 2 | 79,910 → **83,178** *(+3,268)* | 2 | 28 |
+
+*\*Updated `WallHabitat_Complete_3Tier` and `_2Tier` counts reflect `docs/Art/WALL_HABITAT_INVENTORY.json` after the forest-and-treehouse art pass (opaque matte `Mat_TreeBark` & `Mat_ForestMoss`; `0` transparent materials added).*
 | `Desk + Wall_Complete_3Tier + NearUserRig` | 421 | `316 / 20 / 79` | 88 | 85 | 165,256 | 6 | 56 |
 | `LargePortal_HighFX` (isolated prefab) | 2 | `0 / 1 / 0` | 8 | 2 | 6,144 | 1 | 14 |
 | `LargePortal_LowFX` (isolated prefab) | 2 | `0 / 1 / 0` | 8 | 2 | 6,144 | 1 | 8 |

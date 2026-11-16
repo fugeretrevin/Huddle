@@ -188,55 +188,63 @@ def _build_wall_backplate(name="WallHabitat_Backplate_Full", compact=False):
                              (px, 0.003, pz), "Mat_Brass", vertices=12,
                              rot_deg=(90, 0, 0), parent=root, parts_list=static_parts)
 
-    # 2. Main contoured ivory backplate spanning W x H, front face strictly at Blender Y = back (0.015)
+    # 2. Honey-cedar Forest Cabin Backboard spanning W x H, front face strictly at Blender Y = back (0.015)
     wh.make_rounded_slab(f"{name}_IvoryPlate", W, H, 0.012, 0.028,
-                         (0.0, 0.009, 0.0), "Mat_CreamCeramic", bevel=0.0018,
+                         (0.0, 0.009, 0.0), "Mat_WarmWood", bevel=0.0018,
                          corner_segs=5, rot_deg=(90, 0, 0), parent=root, parts_list=static_parts)
 
-    # 3. Warm-wood outer perimeter timber rails (1.5mm proud of IvoryPlate to eliminate coplanar z-fighting)
-    frame_d = 0.014
-    frame_y = 0.0095
+    # 3. Rich Tree-Bark outer perimeter timber logs (1.5mm proud of Backboard)
+    frame_d = 0.015
+    frame_y = 0.0098
     for lbl, sz in [("Bottom", -hh + 0.009), ("Top", +hh - 0.009)]:
-        wh.make_beveled_box(f"{name}_TimberBeam_{lbl}", (W - 0.036, frame_d, 0.016),
-                            (0.0, frame_y, sz), "Mat_WarmWood", bevel_width=0.0018,
+        wh.make_beveled_box(f"{name}_TimberBeam_{lbl}", (W - 0.034, frame_d, 0.017),
+                            (0.0, frame_y, sz), "Mat_TreeBark", bevel_width=0.0020,
                             parent=root, parts_list=static_parts)
     for lbl, sx in [("Left", -hw + 0.009), ("Right", +hw - 0.009)]:
-        wh.make_beveled_box(f"{name}_TimberStile_{lbl}", (0.016, frame_d, H - 0.044),
-                            (sx, frame_y, 0.0), "Mat_WarmWood", bevel_width=0.0018,
+        wh.make_beveled_box(f"{name}_TimberStile_{lbl}", (0.017, frame_d, H - 0.042),
+                            (sx, frame_y, 0.0), "Mat_TreeBark", bevel_width=0.0020,
                             parent=root, parts_list=static_parts)
 
-    # Decorative vertical wood louvers & floor ledgers flush on backplate
+    # Rustic cabin shiplap timber battens & bark floor ledgers flush on backplate
     slat_count = 13 if not compact else 9
     for idx in range(slat_count):
         t = (idx / (slat_count - 1)) - 0.5
         sx = t * (W - 0.110)
-        wh.make_beveled_box(f"{name}_BackSlat_{idx}", (0.009, 0.003, H - 0.070),
-                            (sx, 0.014, 0.0), "Mat_WarmBeige", bevel_width=0.0006,
+        slat_mat = "Mat_CardboardBox" if idx % 2 == 0 else "Mat_DarkWood"
+        wh.make_beveled_box(f"{name}_BackSlat_{idx}", (0.012, 0.003, H - 0.068),
+                            (sx, 0.014, 0.0), slat_mat, bevel_width=0.0006,
                             parent=root, parts_list=static_parts)
 
     for fl in s["floors"]:
         fw = fl["width"]
         fcx = (fl["xMin"] + fl["xMax"]) * 0.5
         fz = fl["floorY"]
-        wh.make_beveled_box(f"{name}_LedgerRail_{fl['index']}", (fw, 0.005, 0.010),
-                            (fcx, 0.015, fz - 0.012), "Mat_DarkWood", bevel_width=0.001,
+        wh.make_beveled_box(f"{name}_LedgerRail_{fl['index']}", (fw, 0.006, 0.011),
+                            (fcx, 0.015, fz - 0.012), "Mat_TreeBark", bevel_width=0.0012,
                             parent=root, parts_list=static_parts)
-        wh.make_beveled_box(f"{name}_CoveTrim_{fl['index']}", (fw * 0.94, 0.004, 0.004),
-                            (fcx, 0.0165, fz + fl["clearH"] - 0.006), "Mat_Researcher_Teal",
-                            bevel_width=0.0006, parent=root, parts_list=trim_parts)
+        wh.make_beveled_box(f"{name}_CoveTrim_{fl['index']}", (fw * 0.94, 0.004, 0.0045),
+                            (fcx, 0.0165, fz + fl["clearH"] - 0.006), "Mat_ForestMoss",
+                            bevel_width=0.0006, parent=root, parts_list=static_parts)
 
-    # 4. Under-corbel brackets below Floor 0 & Leftmost EndWall filler [f0.xMin, x_l0]
+    # 4. Carved Tree-Root Buttresses below Floor 0 & Leftmost/Rightmost deck edge strips
     skirt_z0 = -hh + 0.010
     skirt_z1 = f0["floorY"] - s["slab"]
     if skirt_z1 > skirt_z0:
         skirt_w = s["shaft_x1"] - f0["xMin"]
         skirt_cx = (f0["xMin"] + s["shaft_x1"]) * 0.5
         for c_off in (-skirt_w * 0.36, 0.0, +skirt_w * 0.36):
-            wh.make_beveled_box(f"{name}_UnderCorbel_{c_off:+.2f}", (0.022, 0.095, skirt_z1 - skirt_z0),
+            wh.make_beveled_box(f"{name}_UnderCorbel_{c_off:+.2f}", (0.024, 0.095, skirt_z1 - skirt_z0),
                                 (skirt_cx + c_off, back + 0.048, (skirt_z0 + skirt_z1) * 0.5),
-                                "Mat_DarkWood", bevel_width=0.002, parent=root, parts_list=static_parts)
+                                "Mat_TreeBark", bevel_width=0.0025, parent=root, parts_list=static_parts)
 
-    # Small left edge floor strip closing the 1cm margin [f0.xMin, x_l0] & right 1cm strip [x_l1, shaft_x0]
+    # Root flare & forest toadstool accent on bottom-left skirt strictly below f0.floorY
+    wh.make_toadstool(f"{name}_RootShroom_A", (f0["xMin"] + 0.055, back + 0.065, skirt_z0 + 0.001),
+                      cap_r=0.009, h=0.014, parent=root, parts_list=static_parts)
+    wh.make_toadstool(f"{name}_RootShroom_B", (f0["xMin"] + 0.074, back + 0.072, skirt_z0 + 0.001),
+                      cap_r=0.0065, h=0.010, parent=root, parts_list=static_parts)
+    wh.make_foliage_cluster(f"{name}_RootMossL", (f0["xMin"] + 0.032, back + 0.055, skirt_z0 + 0.008),
+                            (0.018, 0.014, 0.010), parent=root, parts_list=static_parts)
+
     for slbl, sx0, sx1 in [("LowerMarginL", f0["xMin"], s["x_l0"]), ("LowerMarginR", s["x_l1"], s["shaft_x0"])]:
         mw = sx1 - sx0
         mc = (sx0 + sx1) * 0.5
@@ -244,38 +252,126 @@ def _build_wall_backplate(name="WallHabitat_Backplate_Full", compact=False):
                             (mc, (back + s["D"]) * 0.5, f0["floorY"] - s["slab"] * 0.5),
                             "Mat_WarmWood", bevel_width=0.0008, parent=root, parts_list=static_parts)
 
-    # 5. Grounded Beacon Perch Plinth directly atop Manager Roof Deck at AttentionBeaconSocket
+    # 4b. Sculptural Living Oak Trunk, Structural Treehouse Limbs & Leafy Forest Canopy
+    # Placed strictly along the -X outer edge below Mid/Mgr and flourishing through the clear -X upper sky void!
+    if not compact:
+        trunk_knots = [
+            ((-hw + 0.022, 0.026, -hh + 0.016), 0.020),
+            ((-hw + 0.018, 0.024, -0.250),      0.015),
+            ((-hw + 0.032, 0.042, -0.105),      0.021),
+            ((-hw + 0.088, 0.076, +0.060),      0.024),
+            ((-hw + 0.112, 0.088, +0.230),      0.020),
+            ((-hw + 0.082, 0.092, +0.365),      0.015),
+            ((-hw + 0.175, 0.094, +0.422),      0.010),
+        ]
+        wh.make_branch_tube(f"{name}_HeroTrunk", trunk_knots, "Mat_TreeBark", sides=8, min_y=0.005,
+                            parent=root, parts_list=static_parts)
+        # Cradle bough reaching across open sky to support MidPlanningNook underside
+        mid_bough = [
+            ((-hw + 0.078, 0.074, +0.020), 0.015),
+            ((-0.255,      0.092, -0.068), 0.013),
+            ((-0.052,      0.108, -0.118), 0.011),
+        ]
+        wh.make_branch_tube(f"{name}_MidBough", mid_bough, "Mat_TreeBark", sides=8, min_y=0.005,
+                            parent=root, parts_list=static_parts)
+        # Cradle bough bracing underside of ManagerLookout
+        mgr_bough = [
+            ((-hw + 0.095, 0.082, +0.075), 0.014),
+            ((-0.365,      0.098, +0.118), 0.012),
+            ((-0.295,      0.112, +0.132), 0.010),
+        ]
+        wh.make_branch_tube(f"{name}_MgrBough", mgr_bough, "Mat_TreeBark", sides=8, min_y=0.005,
+                            parent=root, parts_list=static_parts)
+        # Outer +X framing bough beside Elevator spine
+        right_bough = [
+            ((+hw - 0.014, 0.022, -hh + 0.020), 0.011),
+            ((+hw - 0.012, 0.022, +0.060),      0.010),
+            ((+hw - 0.014, 0.032, +0.395),      0.009),
+            ((+hw - 0.065, 0.075, +0.432),      0.007),
+        ]
+        wh.make_branch_tube(f"{name}_RightFramingBough", right_bough, "Mat_TreeBark", sides=7, min_y=0.005,
+                            parent=root, parts_list=static_parts)
+
+        # Lush overlapping Oak Canopy Crown (clear of AttentionBeaconSocket at (-0.250, 0.130, 0.410))
+        for ci, (cpos, csc, crot) in enumerate([
+            ((-0.445, 0.095, +0.340), (0.068, 0.050, 0.048),  12),
+            ((-0.378, 0.105, +0.398), (0.072, 0.052, 0.046), -18),
+            ((-0.472, 0.088, +0.275), (0.056, 0.044, 0.042),  28),
+            ((-0.352, 0.086, +0.305), (0.048, 0.036, 0.036), -14),
+            ((-0.425, 0.096, +0.405), (0.060, 0.044, 0.040),  42),
+            ((-0.482, 0.068, +0.185), (0.040, 0.032, 0.032),  -8),
+            ((-0.145, 0.090, -0.088), (0.038, 0.028, 0.026),  18),
+            ((-0.078, 0.092, -0.102), (0.032, 0.024, 0.022), -24),
+            ((+0.445, 0.070, +0.430), (0.062, 0.042, 0.028), -22),
+            ((+0.285, 0.060, +0.434), (0.048, 0.032, 0.022),  15),
+            ((+0.095, 0.055, +0.434), (0.052, 0.034, 0.024),  10),
+        ]):
+            wh.make_foliage_cluster(f"{name}_Canopy_{ci}", cpos, csc, rot_z=crot,
+                                    parent=root, parts_list=static_parts)
+
+        # Two warm Acorn Fairy Lanterns hanging inside clear sky voids
+        wh.make_acorn_lantern(f"{name}_SkyLantern_A", (-0.392, 0.088, +0.185), scale=1.25,
+                              parent=root, parts_list=static_parts, bulb_list=trim_parts)
+        wh.make_acorn_lantern(f"{name}_SkyLantern_B", (-0.235, 0.090, -0.095), scale=1.15,
+                              parent=root, parts_list=static_parts, bulb_list=trim_parts)
+    else:
+        trunk_knots = [
+            ((-hw + 0.018, 0.022, -hh + 0.014), 0.014),
+            ((-hw + 0.016, 0.022, -0.100),      0.012),
+            ((-hw + 0.032, 0.042, +0.020),      0.016),
+            ((-hw + 0.068, 0.070, +0.155),      0.015),
+            ((-hw + 0.055, 0.075, +0.275),      0.011),
+            ((-hw + 0.110, 0.078, +0.295),      0.008),
+        ]
+        wh.make_branch_tube(f"{name}_HeroTrunk", trunk_knots, "Mat_TreeBark", sides=8, min_y=0.005,
+                            parent=root, parts_list=static_parts)
+        mgr_bough = [
+            ((-hw + 0.045, 0.055, +0.045), 0.012),
+            ((-0.250,      0.082, -0.012), 0.010),
+            ((-0.195,      0.095, -0.016), 0.009),
+        ]
+        wh.make_branch_tube(f"{name}_MgrBough", mgr_bough, "Mat_TreeBark", sides=8, min_y=0.005,
+                            parent=root, parts_list=static_parts)
+        for ci, (cpos, csc, crot) in enumerate([
+            ((-0.312, 0.082, +0.210), (0.056, 0.040, 0.040),  15),
+            ((-0.262, 0.086, +0.268), (0.056, 0.040, 0.034), -20),
+            ((-0.335, 0.072, +0.145), (0.040, 0.030, 0.030),  30),
+            ((+0.285, 0.058, +0.285), (0.046, 0.032, 0.022),  12),
+            ((+0.095, 0.054, +0.288), (0.040, 0.028, 0.020), -18),
+        ]):
+            wh.make_foliage_cluster(f"{name}_Canopy_{ci}", cpos, csc, rot_z=crot,
+                                    parent=root, parts_list=static_parts)
+        wh.make_acorn_lantern(f"{name}_SkyLantern_A", (-0.282, 0.075, +0.110), scale=1.10,
+                              parent=root, parts_list=static_parts, bulb_list=trim_parts)
+
+    # 5. Grounded Beacon Perch Plinth directly atop Manager Roof Deck at AttentionBeaconSocket (now timber + moss rim)
     bx, by, bz = s["beacon_pos"]
     wh.make_cylinder(f"{name}_BeaconPerchPad", 0.024, 0.004,
-                     (bx, by, bz + 0.002), "Mat_CreamCeramic", vertices=18,
+                     (bx, by, bz + 0.002), "Mat_WarmWood", vertices=18,
                      parent=root, parts_list=static_parts)
     wh.make_torus(f"{name}_BeaconBrassRim", 0.025, 0.0018,
                   (bx, by, bz + 0.003), "Mat_Brass", maj_seg=20, min_seg=6,
                   parent=root, parts_list=trim_parts)
 
-    # 6. Whimsical Botanical Wall Sconce in clear negative-X upper void (strictly outside all floor decks!)
-    planter_x = (-0.415 if not compact else -0.285)
-    planter_z = (+0.040 if not compact else +0.080)
-    wh.make_rounded_slab(f"{name}_SidePlanterShelf", 0.072, 0.058, 0.009, 0.014,
-                         (planter_x, back + 0.029, planter_z), "Mat_WarmWood",
+    # 6. Cozy Treehouse Branch Planter Ledge + Terracotta Pot + Mushrooms in clear -X void
+    planter_x = (-0.395 if not compact else -0.285)
+    planter_z = (+0.038 if not compact else +0.048)
+    wh.make_rounded_slab(f"{name}_SidePlanterShelf", 0.074, 0.058, 0.009, 0.014,
+                         (planter_x, back + 0.030, planter_z), "Mat_TreeBark",
                          bevel=0.0015, parent=root, parts_list=static_parts)
-    wh.make_cylinder(f"{name}_PlanterPot", 0.018, 0.022,
-                     (planter_x, back + 0.030, planter_z + 0.015),
+    wh.make_cylinder(f"{name}_PlanterPot", 0.017, 0.020,
+                     (planter_x - 0.010, back + 0.032, planter_z + 0.014),
                      "Mat_Terracotta", vertices=14, parent=root, parts_list=static_parts)
-    for lx, ly, lz, sc_xyz in [
-        (-0.007, +0.003, 0.030, (0.011, 0.008, 0.008)),
-        (+0.008, -0.002, 0.032, (0.010, 0.008, 0.007)),
-        ( 0.000, +0.001, 0.039, (0.009, 0.009, 0.011)),
-    ]:
-        wh.make_sphere(f"{name}_Leaf_{lz:.3f}", sc_xyz,
-                       (planter_x + lx, back + 0.030 + ly, planter_z + lz),
-                       "Mat_PlantGreen", segments=10, rings=8, parent=root, parts_list=static_parts)
+    wh.make_foliage_cluster(f"{name}_PlanterFern", (planter_x - 0.010, back + 0.032, planter_z + 0.030),
+                            (0.018, 0.015, 0.014), parent=root, parts_list=static_parts)
+    wh.make_toadstool(f"{name}_ShelfShroom", (planter_x + 0.020, back + 0.036, planter_z + 0.005),
+                      cap_r=0.007, h=0.012, parent=root, parts_list=static_parts)
 
-    # Courier Dispatch landing pad at CourierDispatchSocket
+    # Courier Dispatch landing pad at CourierDispatchSocket (moss-rimmed wooden pad)
     cx_d, cy_d, cz_d = s["courier_pos"]
     wh.make_cylinder(f"{name}_CourierPad", 0.022, 0.002,
                      (cx_d, cy_d, cz_d + 0.001),
-                     "Mat_FeltSlate", vertices=16, parent=root, parts_list=static_parts)
+                     "Mat_ForestMoss", vertices=16, parent=root, parts_list=static_parts)
 
     wh.join_static_parts(static_parts, f"{name}_Chassis", parent=root)
     wh.join_static_parts(trim_parts, f"{name}_StatusTrim", parent=root)
@@ -367,30 +463,38 @@ def _build_cubicle_bay(name="WallHabitat_CubicleBay", compact=False):
                         (0.0, (ly_back + ly_front) * 0.5, -slab * 0.5),
                         "Mat_WarmWood", bevel_width=0.0015, parent=root, parts_list=parts)
 
-    # Flush felt corridor runner strictly inside corridor [z_c0, z_c1]
+    # Flush mossy forest-path runner strictly inside corridor [z_c0, z_c1]
     wh.make_rounded_slab(f"{name}_WalkwayRug", width - 0.008, s["corridor_depth"] - 0.012, 0.0015, 0.006,
-                         (0.0, ly_corr, 0.0008), "Mat_FeltSlate",
+                         (0.0, ly_corr, 0.0008), "Mat_ForestMoss",
                          bevel=0.0003, parent=root, parts_list=parts)
 
-    # Subtle work mat under agent standing zone (lx_work, ly_work)
-    wh.make_cylinder(f"{name}_WorkRug", min(rs["desk_w"] * 0.45, 0.044), 0.0015,
+    # Carved tree-ring log-slice mat under agent standing zone (lx_work, ly_work)
+    mat_r = min(rs["desk_w"] * 0.45, 0.044)
+    wh.make_cylinder(f"{name}_WorkRugBark", mat_r, 0.0013,
+                     (lx_work, ly_work, 0.0007), "Mat_TreeBark",
+                     vertices=16, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_WorkRug", mat_r * 0.86, 0.0015,
                      (lx_work, ly_work, 0.0008), "Mat_WarmBeige",
-                     vertices=20, parent=root, parts_list=parts)
+                     vertices=16, parent=root, parts_list=parts)
 
-    # 2. Rear wainscot back panel + cozy framed window against backplate
+    # 2. Warm birch-cream wainscot back panel with dark-bark timbered window frame
     panel_h = clear_h - 0.024
     wh.make_beveled_box(f"{name}_RearPanel", (width - 0.018, 0.005, panel_h),
-                        (0.0, ly_back + 0.0025, panel_h * 0.5), "Mat_CreamCeramic",
+                        (0.0, ly_back + 0.0025, panel_h * 0.5), "Mat_WarmBeige",
                         bevel_width=0.001, parent=root, parts_list=parts)
     win_w = min(width * 0.42, 0.105)
-    wh.make_beveled_box(f"{name}_RearWindowTrim", (win_w, 0.004, 0.068),
-                        (0.0, ly_back + 0.005, 0.135), "Mat_WarmWood",
+    wh.make_beveled_box(f"{name}_RearWindowTrim", (win_w, 0.0045, 0.068),
+                        (0.0, ly_back + 0.005, 0.135), "Mat_TreeBark",
                         bevel_width=0.001, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_RearWindowPane", (win_w - 0.010, 0.005, 0.054),
+    wh.make_beveled_box(f"{name}_RearWindowPane", (win_w - 0.010, 0.0055, 0.054),
                         (0.0, ly_back + 0.0055, 0.135), "Mat_ChamberGlass",
                         bevel_width=0.0004, parent=root, parts_list=parts)
+    # Cross timber mullion inside window
+    wh.make_beveled_box(f"{name}_RearWindowMullionV", (0.004, 0.006, 0.054),
+                        (0.0, ly_back + 0.006, 0.135), "Mat_TreeBark",
+                        bevel_width=0.0004, parent=root, parts_list=parts)
 
-    # 3. Left (-X) Half-Height Partition matching HabitatLayoutBuilder Partition_0..2 [back, z_c0 - 0.005]
+    # 3. Left (-X) Half-Height Timbered Partition matching HabitatLayoutBuilder Partition_0..2
     part_y0 = ly_back + 0.002
     part_y1 = ly_c0 - 0.008
     part_len = max(0.040, part_y1 - part_y0)
@@ -398,28 +502,27 @@ def _build_cubicle_bay(name="WallHabitat_CubicleBay", compact=False):
     part_h = 0.110
     wh.make_beveled_box(f"{name}_LeftPartition", (part_t, part_len, part_h),
                         (-width * 0.5, part_yc, part_h * 0.5),
-                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_LeftPartitionCap", (part_t + 0.003, part_len + 0.002, 0.007),
-                        (-width * 0.5, part_yc, part_h + 0.0035),
-                        "Mat_WarmWood", bevel_width=0.0008, parent=root, parts_list=parts)
+                        "Mat_CardboardBox", bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_LeftPartitionCap", (part_t + 0.004, part_len + 0.003, 0.008),
+                        (-width * 0.5, part_yc, part_h + 0.004),
+                        "Mat_TreeBark", bevel_width=0.0010, parent=root, parts_list=parts)
 
-    wh.make_cylinder(f"{name}_RearCornerPost", 0.0050, clear_h - 0.008,
+    wh.make_cylinder(f"{name}_RearCornerPost", 0.0058, clear_h - 0.008,
                      (-width * 0.5 + 0.005, ly_back + 0.008, (clear_h - 0.008) * 0.5),
-                     "Mat_WarmWood", vertices=10, parent=root, parts_list=parts)
+                     "Mat_TreeBark", vertices=10, parent=root, parts_list=parts)
 
-    # 4. Warm Overhead Valance Rib strictly along rear wall
-    wh.make_beveled_box(f"{name}_RearValance", (width - 0.010, 0.032, 0.010),
-                        (0.0, ly_back + 0.018, clear_h - 0.007), "Mat_WarmWood",
-                        bevel_width=0.0012, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_RoleNameplateTrim", (width * 0.36, 0.006, 0.009),
+    # 4. Warm Tree-Bark Overhead Valance + Acorn Fairy Lantern & Leaf Tuft
+    wh.make_beveled_box(f"{name}_RearValance", (width - 0.010, 0.032, 0.011),
+                        (0.0, ly_back + 0.018, clear_h - 0.007), "Mat_TreeBark",
+                        bevel_width=0.0014, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_RoleNameplateTrim", (width * 0.34, 0.006, 0.008),
                         (0.0, ly_back + 0.035, clear_h - 0.007), "Mat_Brass",
                         bevel_width=0.0008, parent=root, parts_list=trim)
 
-    wh.make_cylinder(f"{name}_LampCanopy", 0.011, 0.004, (0.0, ly_back + 0.028, clear_h - 0.013),
-                     "Mat_Brass", vertices=12, parent=root, parts_list=parts)
-    wh.make_sphere(f"{name}_CeilingLightBulb", (0.008, 0.008, 0.005),
-                   (0.0, ly_back + 0.028, clear_h - 0.017), "Mat_LampGlow",
-                   segments=10, rings=8, parent=root, parts_list=trim)
+    wh.make_acorn_lantern(f"{name}_AcornLantern", (0.0, ly_back + 0.028, clear_h - 0.017),
+                          scale=1.0, parent=root, parts_list=parts, bulb_list=trim)
+    wh.make_foliage_cluster(f"{name}_ValanceIvy", (-width * 0.35, ly_back + 0.026, clear_h - 0.010),
+                            (0.016, 0.012, 0.010), parent=root, parts_list=parts)
 
     # 5. Front Balcony Safety Railing strictly inside [z_c1, D]
     rail_y = (ly_c1 + ly_front) * 0.5
@@ -467,7 +570,7 @@ def _build_hallway_segment():
     wh.make_beveled_box(f"{name}_Deck", (w, d, slab), (0.0, yc, -slab * 0.5),
                         "Mat_WarmWood", bevel_width=0.0015, parent=root, parts_list=parts)
     wh.make_rounded_slab(f"{name}_Runner", w - 0.006, s["corridor_depth"] - 0.010, 0.0015, 0.005,
-                         (0.0, s["zc"] - s["office_yc"], 0.0008), "Mat_FeltSlate",
+                         (0.0, s["zc"] - s["office_yc"], 0.0008), "Mat_ForestMoss",
                          bevel=0.0003, parent=root, parts_list=parts)
     wh.make_railing(f"{name}_FrontRail", (-w * 0.46, y_rail), (w * 0.46, y_rail), 0.0,
                     rail_h=0.028, posts=3, parent=root, parts_list=parts)
@@ -515,41 +618,41 @@ def _build_mid_planning_nook():
     parts = []
     accents = []
 
-    # 1. Floor deck slab + corridor strip + meeting mat
+    # 1. Floor deck slab + mossy forest corridor strip + cozy forest rug
     wh.make_beveled_box(f"{name}_Deck", (w, depth, slab),
                         (0.0, (ly_back + ly_front) * 0.5, -slab * 0.5),
                         "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
     wh.make_rounded_slab(f"{name}_CorridorPad", w - 0.016, s["corridor_depth"] - 0.012, 0.0015, 0.006,
-                         (0.0, ly_corr, 0.0008), "Mat_FeltSlate", bevel=0.0003,
+                         (0.0, ly_corr, 0.0008), "Mat_ForestMoss", bevel=0.0003,
                          parent=root, parts_list=parts)
     wh.make_cylinder(f"{name}_MeetingRug", 0.068, 0.0015,
-                     (0.0, -0.005, 0.0008), "Mat_Researcher_Teal", vertices=24,
+                     (0.0, -0.005, 0.0008), "Mat_PlantGreen", vertices=24,
                      parent=root, parts_list=parts)
 
-    # 2. Left (-X) End Wall & Rear Posts (keeps +X edge 100% OPEN to ElevatorStop_Mid!)
+    # 2. Left (-X) Timbered End Wall & Bark Rear Posts (keeps +X edge 100% OPEN & cleanly frames WallBoard!)
     wh.make_beveled_box(f"{name}_LeftEndWall", (s["partition"], depth - 0.012, clear_h * 0.52),
                         (-w * 0.5 + s["partition"] * 0.5, (ly_back + ly_front) * 0.5, clear_h * 0.26),
-                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+                        "Mat_WarmWood", bevel_width=0.0012, parent=root, parts_list=parts)
     wh.make_beveled_box(f"{name}_LeftEndWallCap", (s["partition"] + 0.004, depth - 0.008, 0.008),
                         (-w * 0.5 + s["partition"] * 0.5, (ly_back + ly_front) * 0.5, clear_h * 0.52 + 0.004),
-                        "Mat_WarmWood", bevel_width=0.001, parent=root, parts_list=parts)
+                        "Mat_TreeBark", bevel_width=0.001, parent=root, parts_list=parts)
 
-    for rx in (-w * 0.44, +0.02, +w * 0.44):
-        wh.make_cylinder(f"{name}_RearPost_{rx:+.2f}", 0.0065, clear_h - 0.008,
+    for rx in (-w * 0.44, -0.092, +0.092, +w * 0.44):
+        wh.make_cylinder(f"{name}_RearPost_{rx:+.2f}", 0.0068, clear_h - 0.008,
                          (rx, ly_back + 0.007, (clear_h - 0.008) * 0.5),
-                         "Mat_WarmWood", vertices=12, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_BackHeader", (w - 0.016, 0.014, 0.012),
-                        (0.0, ly_back + 0.009, clear_h - 0.008), "Mat_CreamCeramic",
-                        bevel_width=0.0012, parent=root, parts_list=parts)
+                         "Mat_TreeBark", vertices=10, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_BackHeader", (w - 0.016, 0.015, 0.014),
+                        (0.0, ly_back + 0.009, clear_h - 0.008), "Mat_TreeBark",
+                        bevel_width=0.0014, parent=root, parts_list=parts)
 
-    # 3. Shared Round Blueprint Table strictly inside [mx-0.06..mx+0.06] x [back+0.02..zC0-0.01]
+    # 3. Tree-Stump Pedestal Round Blueprint Table strictly inside [mx-0.06..mx+0.06] x [back+0.02..zC0-0.01]
     tx, ty = 0.0, 0.0
-    wh.make_cylinder(f"{name}_TablePedestal", 0.010, 0.044, (tx, ty, 0.022),
-                     "Mat_DarkWood", vertices=12, parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_TableFoot", 0.026, 0.004, (tx, ty, 0.002),
-                     "Mat_Brass", vertices=16, parent=root, parts_list=parts)
+    wh.make_cone(f"{name}_TableStumpBase", 0.024, 0.011, 0.022, (tx, ty, 0.011),
+                 "Mat_TreeBark", vertices=12, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_TablePedestal", 0.011, 0.030, (tx, ty, 0.029),
+                     "Mat_TreeBark", vertices=12, parent=root, parts_list=parts)
     wh.make_cylinder(f"{name}_TableTop", 0.048, 0.006, (tx, ty, 0.047),
-                     "Mat_CreamCeramic", vertices=22, bevel_caps=0.0008, parent=root, parts_list=parts)
+                     "Mat_WarmWood", vertices=22, bevel_caps=0.0008, parent=root, parts_list=parts)
     wh.make_beveled_box(f"{name}_SharedBlueprint", (0.058, 0.038, 0.002), (tx, ty, 0.051),
                         "Mat_BlueprintBlue", bevel_width=0.0004, rot_deg=(0, 0, -5),
                         parent=root, parts_list=parts)
@@ -558,21 +661,21 @@ def _build_mid_planning_nook():
                          pmat, vertices=10, parent=root, parts_list=accents)
 
     for side_lbl, sx in [("L", -0.072), ("R", +0.072)]:
-        wh.make_cylinder(f"{name}_StoolLeg_{side_lbl}", 0.006, 0.022, (sx, ty, 0.011),
-                         "Mat_DarkWood", vertices=12, parent=root, parts_list=parts)
+        wh.make_cylinder(f"{name}_StoolLeg_{side_lbl}", 0.007, 0.022, (sx, ty, 0.011),
+                         "Mat_TreeBark", vertices=10, parent=root, parts_list=parts)
         wh.make_cylinder(f"{name}_StoolCushion_{side_lbl}", 0.015, 0.005, (sx, ty, 0.024),
                          "Mat_WarmBeige", vertices=14, parent=root, parts_list=parts)
 
-    # 4. Pinned Kanban Board & Task-Card Rail mounted flat along rear wall
+    # 4. Forest Kanban Board & Vine-Trimmed Task-Card Rail mounted flat along rear wall
     wh.make_beveled_box(f"{name}_WallBoard", (0.115, 0.006, 0.068),
-                        (0.0, ly_back + 0.008, 0.112), "Mat_WarmWood",
+                        (0.0, ly_back + 0.008, 0.112), "Mat_TreeBark",
                         bevel_width=0.0015, parent=root, parts_list=parts)
     wh.make_beveled_box(f"{name}_WallBoardFace", (0.102, 0.007, 0.054),
                         (0.0, ly_back + 0.009, 0.112), "Mat_PaperWarm",
                         bevel_width=0.0004, parent=root, parts_list=parts)
     rail_z = 0.172
     wh.make_beveled_box(f"{name}_CardRailBack", (0.280, 0.008, 0.010),
-                        (0.0, ly_back + 0.010, rail_z), "Mat_DarkWood",
+                        (0.0, ly_back + 0.010, rail_z), "Mat_TreeBark",
                         bevel_width=0.0012, parent=root, parts_list=parts)
     wh.make_cylinder(f"{name}_CardRailBar", 0.0028, 0.275,
                      (0.0, ly_back + 0.017, rail_z), "Mat_Brass",
@@ -581,17 +684,19 @@ def _build_mid_planning_nook():
         wh.make_beveled_box(f"{name}_RailToken_{tok_lbl}", (0.016, 0.003, 0.020),
                             (tx_tok, ly_back + 0.019, rail_z - 0.009), tok_mat,
                             bevel_width=0.0005, parent=root, parts_list=accents)
+    wh.make_foliage_cluster(f"{name}_HeaderVine", (+0.135, ly_back + 0.018, clear_h - 0.016),
+                            (0.024, 0.012, 0.012), parent=root, parts_list=parts)
 
     # 5. Front safety railing strictly inside [z_c1, D]
     rail_y = (ly_c1 + ly_front) * 0.5
     wh.make_railing(f"{name}_FrontRail", (-w * 0.45, rail_y), (+w * 0.45, rail_y),
                     0.0, rail_h=0.028, posts=4, parent=root, parts_list=parts)
 
-    wh.make_cylinder(f"{name}_PendantCord", 0.0018, 0.024, (tx, ty, clear_h - 0.018),
-                     "Mat_Brass", vertices=10, parent=root, parts_list=parts)
-    wh.make_cone(f"{name}_PendantShade", 0.020, 0.007, 0.014, (tx, ty, clear_h - 0.032),
-                 "Mat_Researcher_Teal", vertices=16, parent=root, parts_list=parts)
-    wh.make_sphere(f"{name}_PendantBulb", (0.007, 0.007, 0.005), (tx, ty, clear_h - 0.040),
+    wh.make_cylinder(f"{name}_PendantCord", 0.0018, 0.022, (tx, ty, clear_h - 0.017),
+                     "Mat_Brass", vertices=8, parent=root, parts_list=parts)
+    wh.make_cone(f"{name}_PendantShade", 0.021, 0.007, 0.015, (tx, ty, clear_h - 0.032),
+                 "Mat_ForestMoss", vertices=14, parent=root, parts_list=parts)
+    wh.make_sphere(f"{name}_PendantBulb", (0.007, 0.007, 0.0055), (tx, ty, clear_h - 0.041),
                    "Mat_LampGlow", segments=10, rings=8, parent=root, parts_list=accents)
 
     wh.join_static_parts(parts, f"{name}_Structure", parent=root)
@@ -662,37 +767,52 @@ def _build_manager_lookout(name="WallHabitat_ManagerLookout", compact=False):
     wh.make_beveled_box(f"{name}_Deck", (w, depth, slab),
                         (deck_cx, (ly_back + ly_front) * 0.5, -slab * 0.5),
                         "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
-    # Executive rug under Manager office zone & corridor runner strip
+    # Executive mossy-forest rug under Manager office zone & moss corridor strip
     off_w = lx_max - lx_part
     wh.make_rounded_slab(f"{name}_Carpet", max(0.14, off_w - 0.04), 0.115, 0.0015, 0.016,
-                         (0.0, -0.005, 0.0008), "Mat_Researcher_Lavender",
+                         (0.0, -0.005, 0.0008), "Mat_ForestMoss",
                          bevel=0.0004, parent=root, parts_list=parts)
     wh.make_rounded_slab(f"{name}_CorridorStrip", w - 0.020, s["corridor_depth"] - 0.012, 0.0015, 0.006,
-                         (deck_cx, ly_corr, 0.0008), "Mat_FeltSlate",
+                         (deck_cx, ly_corr, 0.0008), "Mat_ForestMoss",
                          bevel=0.0003, parent=root, parts_list=parts)
 
-    # 2. Architectural Roof Slab strictly inside [clear_h, clear_h + slab]
+    # 2. Treehouse Shingled Canopy Roof Slab strictly inside [clear_h, clear_h + slab]
     wh.make_beveled_box(f"{name}_RoofDeck", (w + 0.004, depth + 0.002, slab),
                         (deck_cx, (ly_back + ly_front) * 0.5, clear_h + slab * 0.5),
-                        "Mat_WarmWood", bevel_width=0.0018, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_RoofFasciaTrim", (w * 0.85, 0.006, 0.010),
-                        (deck_cx, ly_front + 0.001, clear_h + slab * 0.5),
-                        "Mat_Brass", bevel_width=0.0010, parent=root, parts_list=accents)
+                        "Mat_TreeBark", bevel_width=0.0018, parent=root, parts_list=parts)
+    # Layered rustic wooden roof shingles & moss tufts along front roof eaves (keeping beacon perch top clean)
+    shingle_n = 7 if not compact else 5
+    for si in range(shingle_n):
+        t = (si / max(1, shingle_n - 1)) - 0.5
+        sx = deck_cx + t * (w * 0.84)
+        sh_mat = "Mat_DarkWood" if si % 2 == 0 else "Mat_CardboardBox"
+        wh.make_beveled_box(f"{name}_Shingle_{si}", (w / (shingle_n + 1.0), 0.012, 0.010),
+                            (sx, ly_front + 0.003, clear_h + slab * 0.38), sh_mat,
+                            bevel_width=0.0012, rot_deg=(14, 0, 0), parent=root, parts_list=parts)
+    # Hanging acorn lanterns under front treehouse eave corners
+    for li, lx_l in enumerate((lx_min + 0.045, lx_part + 0.010, lx_max - 0.045)):
+        wh.make_acorn_lantern(f"{name}_EaveLantern_{li}", (lx_l, ly_front - 0.008, clear_h - 0.010),
+                              scale=0.92, parent=root, parts_list=parts, bulb_list=accents)
+    # Moss tufts along roof crown strictly clear of AttentionBeaconSocket
+    wh.make_foliage_cluster(f"{name}_RoofMossRight", (lx_max - 0.055, (ly_back + ly_front) * 0.55, clear_h + slab + 0.012),
+                            (0.042, 0.030, 0.020), rot_z=15, parent=root, parts_list=parts)
+    wh.make_foliage_cluster(f"{name}_RoofMossMid", (lx_part + 0.015, ly_front - 0.030, clear_h + slab + 0.011),
+                            (0.036, 0.026, 0.018), rot_z=-20, parent=root, parts_list=parts)
 
-    # Left (-X) end wall at lx_min & rear study wall
+    # Left (-X) end wall at lx_min & cozy timbered rear study wall
     wh.make_beveled_box(f"{name}_LeftEndWall", (s["partition"], depth - 0.012, clear_h * 0.52),
                         (lx_min + s["partition"] * 0.5, (ly_back + ly_front) * 0.5, clear_h * 0.26),
-                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+                        "Mat_WarmWood", bevel_width=0.0012, parent=root, parts_list=parts)
     wh.make_beveled_box(f"{name}_RearStudyWall", (w - 0.024, 0.006, clear_h - 0.016),
                         (deck_cx, ly_back + 0.003, (clear_h - 0.016) * 0.5),
-                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
+                        "Mat_CardboardBox", bevel_width=0.0012, parent=root, parts_list=parts)
     for cx_col in (lx_min + 0.008, lx_part, lx_max - 0.008):
-        wh.make_cylinder(f"{name}_RearPillar_{cx_col:+.2f}", 0.006, clear_h,
+        wh.make_cylinder(f"{name}_RearPillar_{cx_col:+.2f}", 0.0072, clear_h,
                          (cx_col, ly_back + 0.008, clear_h * 0.5),
-                         "Mat_WarmWood", vertices=10, parent=root, parts_list=parts)
-    wh.make_cylinder(f"{name}_FrontLeftPillar", 0.0065, clear_h,
+                         "Mat_TreeBark", vertices=10, parent=root, parts_list=parts)
+    wh.make_cylinder(f"{name}_FrontLeftPillar", 0.0075, clear_h,
                      (lx_min + 0.008, ly_front - 0.010, clear_h * 0.5),
-                     "Mat_WarmWood", vertices=10, parent=root, parts_list=parts)
+                     "Mat_TreeBark", vertices=10, parent=root, parts_list=parts)
 
     # 3. ManagerPartition between Printer Alcove & Manager Office
     part_y0 = ly_back + 0.002
@@ -700,10 +820,10 @@ def _build_manager_lookout(name="WallHabitat_ManagerLookout", compact=False):
     part_len = max(0.040, part_y1 - part_y0)
     wh.make_beveled_box(f"{name}_PrinterPartition", (s["partition"], part_len, 0.110),
                         (lx_part, (part_y0 + part_y1) * 0.5, 0.055),
-                        "Mat_CreamCeramic", bevel_width=0.0012, parent=root, parts_list=parts)
-    wh.make_beveled_box(f"{name}_PrinterPartitionCap", (s["partition"] + 0.003, part_len + 0.002, 0.007),
-                        (lx_part, (part_y0 + part_y1) * 0.5, 0.1135),
-                        "Mat_WarmWood", bevel_width=0.0008, parent=root, parts_list=parts)
+                        "Mat_CardboardBox", bevel_width=0.0012, parent=root, parts_list=parts)
+    wh.make_beveled_box(f"{name}_PrinterPartitionCap", (s["partition"] + 0.004, part_len + 0.003, 0.008),
+                        (lx_part, (part_y0 + part_y1) * 0.5, 0.114),
+                        "Mat_TreeBark", bevel_width=0.0010, parent=root, parts_list=parts)
 
     # 4. PrinterStand strictly matching HabitatLayoutBuilder PrinterTable (h = 0.050 -> top at lz = +0.050!)
     stand_h = 0.050

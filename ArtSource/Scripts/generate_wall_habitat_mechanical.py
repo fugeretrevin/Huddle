@@ -139,17 +139,16 @@ def _build_elevator_spine(tiers=3):
 
     # 1. Bottom base plinth strictly below floor top (Z in [-slab, 0.000])
     wh.make_beveled_box(f"{name}_BasePlinth", (elev_w, D - back, slab),
-                        (0.0, (back + D) * 0.5, -slab * 0.5), "Mat_DarkWood",
+                        (0.0, (back + D) * 0.5, -slab * 0.5), "Mat_TreeBark",
                         bevel_width=0.0015, bone_name="Bone_SpineRoot", parts_list=parts)
 
-    # 2. Four slim vertical corner columns framing [back, z_c0] x [-hx, +hx]
-    # Note: cols sit cleanly outside door_w (|x| = hx - 0.004 >= 0.051 > door_w/2)
+    # 2. Four sturdy Tree-Bark corner columns framing [back, z_c0] x [-hx, +hx]
     col_h = roof_bot_local
     for sx in (-1, 1):
         cx = sx * (hx - 0.004)
         for cy in (back + 0.004, z_c0 - 0.004):
-            wh.make_cylinder(f"{name}_Col_{sx:+.0f}_{cy:.3f}", 0.0040, col_h,
-                             (cx, cy, col_h * 0.5), "Mat_WarmWood", vertices=10,
+            wh.make_cylinder(f"{name}_Col_{sx:+.0f}_{cy:.3f}", 0.0046, col_h,
+                             (cx, cy, col_h * 0.5), "Mat_TreeBark", vertices=10,
                              bone_name="Bone_SpineRoot", parts_list=parts)
 
     # 3. Shaft Rear Wall & Side Shaft Walls (STRICTLY Y in [back, z_c0] — NEVER blocks corridor [z_c0, D]!)
@@ -176,42 +175,41 @@ def _build_elevator_spine(tiers=3):
                                 (0.0, landing_yc, fz - slab * 0.5), "Mat_WarmWood",
                                 bevel_width=0.0012, bone_name="Bone_SpineRoot", parts_list=parts)
         wh.make_rounded_slab(f"{name}_LandingPad_{flbl}", elev_w - 0.010, s["corridor_depth"] - 0.014, 0.0015, 0.005,
-                             (0.0, zc, fz + 0.0008), "Mat_FeltSlate", bevel=0.0003,
+                             (0.0, zc, fz + 0.0008), "Mat_ForestMoss", bevel=0.0003,
                              bone_name="Bone_SpineRoot", parts_list=parts)
 
-        # Front safety railing strictly on [z_c1, D] and outer +X landing edge guard (+hx - 0.004)
-        # Left (-X) landing edge is 100% OPEN so agents walk straight from decks onto landing!
-        wh.make_beveled_box(f"{name}_LandingFrontBar_{flbl}", (elev_w - 0.008, 0.004, 0.004),
+        # Front rustic treehouse landing rail & outer +X landing edge guard
+        wh.make_beveled_box(f"{name}_LandingFrontBar_{flbl}", (elev_w - 0.008, 0.0045, 0.0045),
                             (0.0, rail_y, fz + 0.026), "Mat_WarmWood",
-                            bevel_width=0.0008, bone_name="Bone_SpineRoot", parts_list=parts)
+                            bevel_width=0.0009, bone_name="Bone_SpineRoot", parts_list=parts)
         wh.make_beveled_box(f"{name}_LandingFrontMid_{flbl}", (elev_w - 0.010, 0.003, 0.003),
-                            (0.0, rail_y, fz + 0.013), "Mat_Brass",
+                            (0.0, rail_y, fz + 0.013), "Mat_LeatherSatchel",
                             bevel_width=0.0005, bone_name="Bone_SpineRoot", parts_list=parts)
-        wh.make_cylinder(f"{name}_LandingPostR_{flbl}", 0.0022, 0.028,
-                         (+hx - 0.004, rail_y, fz + 0.014), "Mat_Brass", vertices=8,
+        wh.make_cylinder(f"{name}_LandingPostR_{flbl}", 0.0026, 0.028,
+                         (+hx - 0.004, rail_y, fz + 0.014), "Mat_TreeBark", vertices=8,
                          bone_name="Bone_SpineRoot", parts_list=parts)
-        wh.make_beveled_box(f"{name}_LandingEndBar_{flbl}", (0.004, landing_d - 0.008, 0.004),
+        wh.make_beveled_box(f"{name}_LandingEndBar_{flbl}", (0.0045, landing_d - 0.008, 0.0045),
                             (+hx - 0.004, landing_yc, fz + 0.026), "Mat_WarmWood",
-                            bevel_width=0.0008, bone_name="Bone_SpineRoot", parts_list=parts)
+                            bevel_width=0.0009, bone_name="Bone_SpineRoot", parts_list=parts)
         wh.make_beveled_box(f"{name}_LandingEndMid_{flbl}", (0.003, landing_d - 0.010, 0.003),
-                            (+hx - 0.004, landing_yc, fz + 0.013), "Mat_Brass",
+                            (+hx - 0.004, landing_yc, fz + 0.013), "Mat_LeatherSatchel",
                             bevel_width=0.0005, bone_name="Bone_SpineRoot", parts_list=parts)
 
-        # Front Shaft Jambs & Door Header along Y = z_c0 (leaving centered door_w opening clear!)
+        # Front Shaft Timber Jambs & Bark Door Header along Y = z_c0
         for j_lbl, sx in [("L", -1), ("R", +1)]:
             jx = sx * (door_w * 0.5 + jamb_w * 0.5)
             wh.make_beveled_box(f"{name}_ShaftFrontJamb_{flbl}_{j_lbl}", (jamb_w, 0.006, door_h + 0.022),
-                                (jx, z_c0, fz + (door_h + 0.022) * 0.5), "Mat_CreamCeramic",
-                                bevel_width=0.0008, bone_name="Bone_SpineRoot", parts_list=parts)
+                                (jx, z_c0, fz + (door_h + 0.022) * 0.5), "Mat_WarmWood",
+                                bevel_width=0.0009, bone_name="Bone_SpineRoot", parts_list=parts)
 
         wh.make_beveled_box(f"{name}_PortalHeader_{flbl}", (elev_w - 0.006, 0.008, 0.026),
-                            (0.0, z_c0, fz + door_h + 0.015), "Mat_CreamCeramic",
-                            bevel_width=0.0012, bone_name="Bone_SpineRoot", parts_list=parts)
+                            (0.0, z_c0, fz + door_h + 0.015), "Mat_TreeBark",
+                            bevel_width=0.0014, bone_name="Bone_SpineRoot", parts_list=parts)
 
-        # Sliding brass/glass doors on +Y corridor front face (slide left/right along X!)
+        # Sliding timber/lattice treehouse lift doors on +Y corridor front face
         for side_lbl, dx_s, b_suf in [("L", -leaf_w * 0.5, "F"), ("R", +leaf_w * 0.5, "B")]:
             wh.make_beveled_box(f"{name}_Door{flbl}_{b_suf}_Frame", (leaf_w - 0.001, 0.004, door_h - 0.004),
-                                (dx_s, z_c0 - 0.002, fz + door_h * 0.5), "Mat_Brass",
+                                (dx_s, z_c0 - 0.002, fz + door_h * 0.5), "Mat_WarmWood",
                                 bevel_width=0.0006, bone_name=f"Bone_Door{flbl}_{b_suf}", parts_list=parts)
             wh.make_beveled_box(f"{name}_Door{flbl}_{b_suf}_Pane", (leaf_w - 0.010, 0.005, door_h - 0.026),
                                 (dx_s, z_c0 - 0.002, fz + door_h * 0.5 + 0.004), "Mat_ChamberGlass",
@@ -226,10 +224,12 @@ def _build_elevator_spine(tiers=3):
                        (0.0, z_c0 + 0.006, fz + door_h + 0.016), ind_mat,
                        segments=10, rings=8, bone_name=f"Bone_Ind{flbl}", parts_list=parts)
 
-    # 5. Roof slab & compact winch crown strictly within Roof elevation (<= max_total_local)
+    # 5. Treehouse timber pulley roof slab + mossy eave crown strictly within Roof elevation (<= max_total_local)
     wh.make_beveled_box(f"{name}_ShaftRoofSlab", (elev_w + 0.006, D - back + 0.004, slab),
-                        (0.0, (back + D) * 0.5, roof_top_local - slab * 0.5), "Mat_WarmWood",
+                        (0.0, (back + D) * 0.5, roof_top_local - slab * 0.5), "Mat_TreeBark",
                         bevel_width=0.0018, bone_name="Bone_SpineRoot", parts_list=parts)
+    wh.make_foliage_cluster(f"{name}_ShaftRoofMoss", (-hx * 0.45, landing_yc, roof_top_local + 0.010),
+                            (0.028, 0.024, 0.014), rot_z=12, bone_name="Bone_SpineRoot", parts_list=parts)
     finial_h = min(0.018, max(0.008, (max_total_local - roof_top_local) * 0.6))
     wh.make_cylinder(f"{name}_CrownFinial", 0.014, finial_h,
                      (0.0, shaft_yc, roof_top_local + finial_h * 0.5), "Mat_Brass",
@@ -335,18 +335,18 @@ def _build_elevator_car(name="WallHabitat_ElevatorCar", compact=False):
     wh.make_rounded_slab(f"{name}_Floor", w, d, 0.006, 0.010, (0.0, 0.0, -0.001),
                          "Mat_WarmWood", bevel=0.0008, bone_name="Bone_CabBody", parts_list=parts)
     wh.make_rounded_slab(f"{name}_FloorPad", w - 0.014, d - 0.014, 0.0015, 0.008, (0.0, 0.0, +0.0025),
-                         "Mat_FeltSlate", bevel=0.0002, bone_name="Bone_CabBody", parts_list=parts)
+                         "Mat_ForestMoss", bevel=0.0002, bone_name="Bone_CabBody", parts_list=parts)
 
-    # Four brass corner posts
+    # Four timber-bark corner posts
     for sx in (-1, 1):
         for sy in (-1, 1):
-            wh.make_cylinder(f"{name}_Post_{sx:+.0f}_{sy:+.0f}", 0.0034, h - 0.012,
-                             (sx * hx, sy * hy, h * 0.5), "Mat_Brass", vertices=10,
+            wh.make_cylinder(f"{name}_Post_{sx:+.0f}_{sy:+.0f}", 0.0036, h - 0.012,
+                             (sx * hx, sy * hy, h * 0.5), "Mat_TreeBark", vertices=10,
                              bone_name="Bone_CabBody", parts_list=parts)
 
-    # Enclosed rear (-Y wall side) & side (±X) wainscot + panorama glass
+    # Enclosed rear (-Y wall side) & side (±X) warm wainscot + panorama glass
     wh.make_beveled_box(f"{name}_BackWainscot", (w - 0.012, 0.004, 0.044),
-                        (0.0, -hy, 0.024), "Mat_CreamCeramic", bevel_width=0.0008,
+                        (0.0, -hy, 0.024), "Mat_WarmWood", bevel_width=0.0008,
                         bone_name="Bone_CabBody", parts_list=parts)
     wh.make_beveled_box(f"{name}_BackWindow", (w - 0.016, 0.0025, h - 0.060),
                         (0.0, -hy, 0.046 + (h - 0.060) * 0.5), "Mat_ChamberGlass",
@@ -356,21 +356,21 @@ def _build_elevator_car(name="WallHabitat_ElevatorCar", compact=False):
                             (sx * hx, 0.0, 0.020), "Mat_WarmWood", bevel_width=0.0006,
                             bone_name="Bone_CabBody", parts_list=parts)
 
-    # Front (+Y) low threshold sill + openable brass gates
+    # Front (+Y) low threshold sill + openable timber pulley gates
     wh.make_beveled_box(f"{name}_FrontCurb", (w - 0.012, 0.004, 0.006),
-                        (0.0, +hy, 0.005), "Mat_Brass", bevel_width=0.0006,
+                        (0.0, +hy, 0.005), "Mat_TreeBark", bevel_width=0.0006,
                         bone_name="Bone_CabBody", parts_list=parts)
     for glbl, gx, b_suf in [("L", -gate_w * 0.5, "F"), ("R", +gate_w * 0.5, "B")]:
         wh.make_beveled_box(f"{name}_GateFrame_{glbl}", (gate_w - 0.002, 0.003, 0.105),
-                            (gx, door_y, 0.062), "Mat_Brass", bevel_width=0.0005,
+                            (gx, door_y, 0.062), "Mat_WarmWood", bevel_width=0.0005,
                             bone_name=f"Bone_CabGate_{b_suf}", parts_list=parts)
         wh.make_beveled_box(f"{name}_GateGlass_{glbl}", (gate_w - 0.010, 0.0036, 0.088),
                             (gx, door_y, 0.064), "Mat_ChamberGlass", bevel_width=0.0003,
                             bone_name=f"Bone_CabGate_{b_suf}", parts_list=parts)
 
-    # Canopy roof & warm ceiling lamp
+    # Treehouse canopy roof & warm acorn ceiling lamp
     wh.make_rounded_slab(f"{name}_RoofDeck", w + 0.002, d + 0.002, 0.010, 0.012,
-                         (0.0, 0.0, h - 0.006), "Mat_CreamCeramic", bevel=0.0014,
+                         (0.0, 0.0, h - 0.006), "Mat_TreeBark", bevel=0.0014,
                          bone_name="Bone_CabBody", parts_list=parts)
     wh.make_cylinder(f"{name}_SuspYoke", 0.012, 0.010, (0.0, 0.0, h + 0.004),
                      "Mat_Brass", vertices=14, bone_name="Bone_CabBody", parts_list=parts)
@@ -443,14 +443,14 @@ def _build_task_printer():
 
     parts = []
     wh.make_rounded_slab(f"{name}_Body", 0.064, 0.044, 0.038, 0.010, (0.0, 0.0, 0.019),
-                         "Mat_CreamCeramic", bevel=0.0020, bone_name="Bone_PrinterBase", parts_list=parts)
+                         "Mat_WarmBeige", bevel=0.0020, bone_name="Bone_PrinterBase", parts_list=parts)
     wh.make_beveled_box(f"{name}_OutputThroat", (0.040, 0.005, 0.009), (0.0, +0.0215, 0.025),
                         "Mat_CharcoalVisor", bevel_width=0.0008, bone_name="Bone_PrinterBase", parts_list=parts)
     wh.make_beveled_box(f"{name}_BrassLip", (0.044, 0.008, 0.003), (0.0, +0.025, 0.018),
                         "Mat_Brass", bevel_width=0.0006, rot_deg=(12, 0, 0),
                         bone_name="Bone_PrinterBase", parts_list=parts)
     wh.make_rounded_slab(f"{name}_TealHood", 0.056, 0.034, 0.012, 0.009, (0.0, -0.003, 0.042),
-                         "Mat_Researcher_Teal", bevel=0.0016, bone_name="Bone_PrinterBase", parts_list=parts)
+                         "Mat_ForestMoss", bevel=0.0016, bone_name="Bone_PrinterBase", parts_list=parts)
     wh.make_beveled_box(f"{name}_PaperMagazine", (0.036, 0.008, 0.020), (0.0, -0.012, 0.052),
                         "Mat_PaperWarm", bevel_width=0.0006, rot_deg=(-12, 0, 0),
                         bone_name="Bone_PrinterBase", parts_list=parts)

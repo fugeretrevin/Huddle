@@ -60,7 +60,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 9145366281390829460}
+  - {fileID: 6499482424421664158}
   m_Father: {fileID: 6129637025852452660}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1293946802386831382
@@ -404,10 +404,10 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b5ec3ef88e01da148994d67c1f52383d, type: 2}
+  - {fileID: 2100000, guid: cfd94b01a20fb6541a06c8c68e48bc3b, type: 2}
   - {fileID: 2100000, guid: b5020d364035987479c29af97109cb67, type: 2}
   - {fileID: 2100000, guid: e4d39ab1cd0c4cd4a81dd3f96e4d8954, type: 2}
-  - {fileID: 2100000, guid: 122d6ea45c06ddf459e30c1a973e7bf3, type: 2}
+  - {fileID: 2100000, guid: 5c7469f6197c6084ab74e9a82989bbfd, type: 2}
   - {fileID: 2100000, guid: ccbe6e3e7d4e1eb4380b969852180925, type: 2}
   - {fileID: 2100000, guid: 72ffba9a3b60ffb4ab353d45e9e10d27, type: 2}
   - {fileID: 2100000, guid: 63b7806154a915243b0307969d1ec78e, type: 2}
@@ -461,7 +461,7 @@ GameObject:
   - component: {fileID: 6129637025852452660}
   - component: {fileID: 2808324224432457007}
   - component: {fileID: 1183293091686995514}
-  - component: {fileID: 2519832449825495472}
+  - component: {fileID: 3213617017620272077}
   m_Layer: 0
   m_Name: WallHabitat_TaskPrinter
   m_TagString: Untagged
@@ -537,7 +537,7 @@ MonoBehaviour:
   - id: TaskCardSpawnPose
     target: {fileID: 9117543382458645246}
   isCompactLayout: 0
---- !u!114 &2519832449825495472
+--- !u!114 &3213617017620272077
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -552,14 +552,14 @@ MonoBehaviour:
   taskPrinterAnimator: {fileID: 2808324224432457007}
   managerAnimator: {fileID: 0}
   statusOrbRenderer: {fileID: 0}
-  optionalPrintParticles: {fileID: 6502863362400972196}
+  optionalPrintParticles: {fileID: 9144239359134861230}
   audioSource: {fileID: 0}
   managerReviewClip: {fileID: 0}
   taskCardPrintedClip: {fileID: 0}
   delegationCompleteClip: {fileID: 0}
   autoReturnToIdleSeconds: 1.4
   reducedMotion: 0
---- !u!1001 &3777034540546916733
+--- !u!1001 &1203211099927800695
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -616,13 +616,13 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 3b760780d7eb36a4a9f0f7a53ae03aa0, type: 3}
---- !u!198 &6502863362400972196 stripped
-ParticleSystem:
-  m_CorrespondingSourceObject: {fileID: 7950110227702082777, guid: 3b760780d7eb36a4a9f0f7a53ae03aa0, type: 3}
-  m_PrefabInstance: {fileID: 3777034540546916733}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &9145366281390829460 stripped
+--- !u!4 &6499482424421664158 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5368403776053751529, guid: 3b760780d7eb36a4a9f0f7a53ae03aa0, type: 3}
-  m_PrefabInstance: {fileID: 3777034540546916733}
+  m_PrefabInstance: {fileID: 1203211099927800695}
+  m_PrefabAsset: {fileID: 0}
+--- !u!198 &9144239359134861230 stripped
+ParticleSystem:
+  m_CorrespondingSourceObject: {fileID: 7950110227702082777, guid: 3b760780d7eb36a4a9f0f7a53ae03aa0, type: 3}
+  m_PrefabInstance: {fileID: 1203211099927800695}
   m_PrefabAsset: {fileID: 0}
