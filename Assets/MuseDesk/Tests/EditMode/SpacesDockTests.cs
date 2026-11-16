@@ -7,8 +7,11 @@
 // near-user panels are re-seated in front of the head at start-up, and where). No scene, no MonoBehaviour. Compiled
 // under the same define as the other spatial tests (see SpatialPlacementTests.cs).
 //
+// Also (rc9): StartupReachRule.DecideAwaySeat (the office left the desk before any placed desk pose: the panels are
+// seated in front of the head, never the office), Placeable in every mode, and when a re-seat is kept relative to the root.
+//
 // NOT covered: the scene keys themselves (poke, scale ease), the wall host, NearUserKit's transforms (PLAY:
-// AgentScripts/UnifiedDockDrive.cs), and anything on a headset.
+// AgentScripts/UnifiedDockDrive.cs, AgentScripts/WallGuideDrive.cs StrandDock / DockReach), and anything on a headset.
 // =============================================================================
 
 #if MUSEDESK_SPATIAL_TESTS
@@ -326,6 +329,92 @@ namespace MuseDesk.Tests.EditMode
                 Assert.Less(w.y, head.y, "below the eyes");
                 Assert.Greater(Vector3.Dot(w - head, flat), 0f, "in front");
             }
+        }
+
+        // ───────────────────────── stranded panels (rc9) ─────────────────────────
+
+        static AwaySeatInput Away()
+        {
+            return new AwaySeatInput { away = true, hasPlacedDeskPose = false, seated = false, headUsable = true, held = false, userMovedPanel = false };
+        }
+
+        [Test]
+        public void AwaySeat_OnlyWhenTheOfficeLeftBeforeAnyPlacedDeskPose()
+        {
+            Assert.AreEqual(AwaySeatAction.Seat, StartupReachRule.DecideAwaySeat(Away()));
+            var i = Away(); i.away = false;
+            Assert.AreEqual(AwaySeatAction.None, StartupReachRule.DecideAwaySeat(i), "at the desk the rig follows the desk");
+            i = Away(); i.hasPlacedDeskPose = true;
+            Assert.AreEqual(AwaySeatAction.None, StartupReachRule.DecideAwaySeat(i), "a real desk pose: the panels stay at the desk");
+            i = Away(); i.seated = true;
+            Assert.AreEqual(AwaySeatAction.None, StartupReachRule.DecideAwaySeat(i), "once per departure");
+            i = Away(); i.userMovedPanel = true;
+            Assert.AreEqual(AwaySeatAction.None, StartupReachRule.DecideAwaySeat(i), "the user's own layout wins");
+        }
+
+        [Test]
+        public void AwaySeat_WaitsOnTrackingLossOrSomethingInHand()
+        {
+            var i = Away(); i.headUsable = false;
+            Assert.AreEqual(AwaySeatAction.Wait, StartupReachRule.DecideAwaySeat(i));
+            i = Away(); i.held = true;
+            Assert.AreEqual(AwaySeatAction.Wait, StartupReachRule.DecideAwaySeat(i));
+        }
+
+        [Test]
+        public void AwaySeat_FramesRecordOneRigPose_TheDockEndsWithinReach_TheOfficeIsNeverWritten()
+        {
+            // rc9: restored into Wall at launch; the rig had followed the office root's PRE-placement pose, far from the user.
+            Vector3 rootPos = new Vector3(0f, 0f, 0f); Quaternion rootRot = Quaternion.identity;
+            Vector3 rigPos = rootPos; Quaternion rigRot = rootRot;
+            Vector3 head = new Vector3(2.4f, 1.2f, -1.6f);
+            Vector3 look = Quaternion.Euler(5f, 200f, 0f) * Vector3.forward;
+            Vector3 dockLocal = new Vector3(-0.3545f, 0.0434f, 0.465f);      // Panel_Mode/ModeConsole in the rig
+            Vector3 taskDockLocal = new Vector3(0.24f, 0.04f, 0.44f);         // Panel_Dock/TaskDock in the rig
+            Assert.Greater(Vector3.Distance(rigPos + rigRot * dockLocal, head), StartupReachRule.MaxReach, "stranded before");
+
+            var rigPosesWritten = new System.Collections.Generic.List<Pose>();
+            bool seated = false;
+            // Frames: tracking not yet usable, then something in hand, then free: exactly one seat, then nothing more.
+            bool[] usable = { false, false, true, true, true, true };
+            bool[] held = { false, false, true, false, false, false };
+            for (int f = 0; f < usable.Length; f++)
+            {
+                var i = Away(); i.headUsable = usable[f]; i.held = held[f]; i.seated = seated;
+                if (StartupReachRule.DecideAwaySeat(i) != AwaySeatAction.Seat) continue;
+                StartupReachRule.ReseatPose(head, look, 0f, 0.62f, 0.39f, out rigPos, out rigRot);
+                rigPosesWritten.Add(new Pose(rigPos, rigRot));
+                seated = true;
+            }
+            Assert.AreEqual(1, rigPosesWritten.Count, "one rig pose written, on the first usable, free frame");
+            Assert.AreEqual(new Vector3(0f, 0f, 0f), rootPos, "the office root is never written");
+            foreach (Vector3 local in new[] { dockLocal, taskDockLocal })
+            {
+                float d = Vector3.Distance(rigPos + rigRot * local, head);
+                Assert.Less(d, StartupReachRule.MaxReach, "within arm's reach: " + d);
+                Assert.Greater(d, StartupReachRule.MinReach, "not inside the head: " + d);
+            }
+            Vector3 toUser = head - rigPos; toUser.y = 0f;
+            Assert.Greater(Vector3.Dot(rigRot * Vector3.forward, toUser.normalized), 0.999f, "+Z points at the user");
+        }
+
+        [Test]
+        public void StartupReach_IsPlaceableInEveryModeButNeverDuringAMoveAPreviewOrAHold()
+        {
+            Assert.IsTrue(StartupReachRule.Placeable(false, false, false, false));
+            Assert.IsFalse(StartupReachRule.Placeable(true, false, false, false), "a move in flight");
+            Assert.IsFalse(StartupReachRule.Placeable(false, true, false, false), "something in hand");
+            Assert.IsFalse(StartupReachRule.Placeable(false, false, true, false), "a floor / ceiling preview");
+            Assert.IsFalse(StartupReachRule.Placeable(false, false, false, true), "a wall preview");
+        }
+
+        [Test]
+        public void ReseatIsKeptRelativeToTheRootOnlyWhenTheRootIsAtItsDeskPose()
+        {
+            Assert.IsTrue(StartupReachRule.KeepAsDeskCorrection(true, false, false), "Desk");
+            Assert.IsTrue(StartupReachRule.KeepAsDeskCorrection(false, true, true), "Wall: the desk office stays put");
+            Assert.IsFalse(StartupReachRule.KeepAsDeskCorrection(false, true, false), "Wall before any placed desk: the root is at its pre-placement pose");
+            Assert.IsFalse(StartupReachRule.KeepAsDeskCorrection(false, false, true), "Floor / Ceiling: the root is elsewhere");
         }
 
         [Test]

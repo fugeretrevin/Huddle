@@ -9,6 +9,24 @@ using MuseDesk.Workspace;
 namespace MuseDesk.Spatial
 {
     /// <summary>
+    /// The Wall host as the guide card sees it (rc9: Wall gets the same guided card as Floor and Ceiling). Implemented by
+    /// the Wall Habitat controller, so this file needs nothing from the Wall code. Every member is read-only except
+    /// <see cref="WallGuideAimAt"/>, which only moves the preview's outline (Place still decides; nothing else moves).
+    /// </summary>
+    public interface IWallGuideSource
+    {
+        /// <summary>A wall preview is open (entering Wall, or choosing a new spot for the placed habitat).</summary>
+        bool WallGuidePreviewOpen { get; }
+        /// <summary>The spot the outline shows: the habitat volume's centre, rotation and half size, and whether it fits.
+        /// False when no spot is shown.</summary>
+        bool TryGetWallGuideSpot(out Vector3 center, out Quaternion rotation, out Vector3 halfExtents, out bool valid);
+        /// <summary>Does this gaze ray land on a wall spot the placement evaluator accepts? Read-only.</summary>
+        bool WallGuideGazeAccepted(Vector3 origin, Vector3 direction);
+        /// <summary>Show the preview's outline where this gaze ray meets a wall (the outline only). False when it could not.</summary>
+        bool WallGuideAimAt(Vector3 origin, Vector3 direction);
+    }
+
+    /// <summary>
     /// The guided step between pressing Floor or Ceiling and the preview starting. A small paper card
     /// appears in front of the user ("Look up at the ceiling", an animated arrow, a Cancel key). It
     /// tracks the head's gaze (main camera forward); when the user looks past the pitch threshold at
@@ -32,6 +50,14 @@ namespace MuseDesk.Spatial
     /// Layout: the "Card" transform has +Z toward the user (as the mode console); its "Content" child
     /// is turned 180 degrees about Y so TMP (readable from its local -Z) reads correctly and x is the
     /// user's right.
+    ///
+    /// Wall (rc9, owner: "the user should get ... the onboarding placing process"): the Wall host calls
+    /// <see cref="BeginWall"/> when its preview opens and <see cref="EndWall"/> on Place, Cancel or leaving Wall. The same
+    /// card shows step 1 "Look at a wall" (the ring fills while the gaze rests on a wall spot the evaluator accepts; the
+    /// arrow points to the side the outline is on), then step 2 "Point and pinch to move it" with the dock's own words
+    /// (Place / Next spot). The card shows NO keys for the wall: the dock carries Place, Next spot and Cancel. The card
+    /// also ends by itself when the host's preview closes. At the end of step 1, if the user looked at a spot that fits
+    /// but the outline is elsewhere, the outline is brought there (the preview only; Place still decides).
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class PlacementGuide : MonoBehaviour
@@ -80,6 +106,10 @@ namespace MuseDesk.Spatial
         public float previewCardPitch = -12f;
         [Tooltip("Distance of the card while a floor preview is open: its keys are poked (arm's reach is about 0.6 m).")]
         public float previewCardDistance = 0.55f;
+        [Tooltip("Wall card: below the horizon, so it stays under the wall the user is looking at.")]
+        public float wallCardPitch = -20f;
+        [Tooltip("Wall card: seconds between gaze checks against the room's walls.")]
+        public float wallGazeInterval = 0.1f;
         public float followRate = 3f;
         public float easeSeconds = 0.2f;
         public float armDelay = 0.35f;
@@ -141,6 +171,12 @@ namespace MuseDesk.Spatial
         Vector3 _injected; bool _hasInjected;
         Vector3 _lastGaze = Vector3.forward;
         float _bob;
+        // Wall card.
+        IWallGuideSource _wall;
+        bool _wallHadBaseline, _wallGazeOk, _wallGazeOnShown;
+        Vector3 _wallBaseline;
+        float _wallGazeNext;
+        int _wallArrowSide;
 
         // Read by the driver and the tests.
         public GuideState State => _logic.State;
@@ -153,6 +189,18 @@ namespace MuseDesk.Spatial
         public string TitleText => _title;
         public string BodyText => _body;
         public Vector3 LastGazeForward => _lastGaze;
+        /// <summary>Wall card step: 1 "Look at a wall", 2 "Point and pinch to move it", 0 when no wall card is up.</summary>
+        public int WallStep => _logic.WallStep;
+        public WallGuideAdvance WallAdvancedBy => _logic.WallAdvancedBy;
+        /// <summary>True while any of the card's own keys is shown (the wall card must show none).</summary>
+        public bool AnyKeyShown => cancelKey.shown || startKey.shown || placeKey.shown || anotherKey.shown;
+
+        /// <summary>The running guide, or the one in the scene (Instance is set in Awake).</summary>
+        public static PlacementGuide Find()
+        {
+            if (Instance != null) return Instance;
+            return FindAnyObjectByType<PlacementGuide>();
+        }
 
         // ───────────────────────── lifecycle ─────────────────────────
 
@@ -180,7 +228,7 @@ namespace MuseDesk.Spatial
             _arrowMesh = BuildArrow();
             if (ringFill != null) ringFill.sharedMesh = _fillMesh;
             if (ringTrack != null) ringTrack.sharedMesh = _trackMesh;
-            if (arrow != null) { arrow.sharedMesh = _arrowMesh; _arrowRestY = arrow.transform.localPosition.y; }
+            if (arrow != null) { arrow.sharedMesh = _arrowMesh; _arrowRest = arrow.transform.localPosition; }
             _fillIndexCount = -1;
             SetFill(0f);
             ApplySettings();
@@ -229,6 +277,7 @@ namespace MuseDesk.Spatial
             if (_logic.State == GuideState.Guiding && _logic.Target == target) return true;       // a repeat press while guiding
 
             ApplySettings();
+            _wall = null;                                                                          // a wall card in progress is replaced
             _logic.Begin(target);
             SnapCard();
             _cardEase.Show();
@@ -242,6 +291,46 @@ namespace MuseDesk.Spatial
         /// <summary>Cancel the guide (Cancel key, Desk key, mode change). Nothing was moved. No-op when idle.</summary>
         public void CancelGuide()
         {
+            if (_logic.Target == GuideTarget.Wall) _wall = null;
+            if (!_logic.Active) return;
+            _logic.Cancel();
+            Hide();
+        }
+
+        /// <summary>
+        /// The Wall host opened its preview (Wall pressed, by key or voice): show the card at step 1, "Look at a wall".
+        /// No keys on the card (the dock carries Place / Next spot / Cancel). False when the card cannot show (no card,
+        /// no head, disabled, or the preview is not open); the dock's status line still says "Choose a wall spot".
+        /// </summary>
+        public bool BeginWall(IWallGuideSource source)
+        {
+            EnsureInit();
+            if (source == null || !isActiveAndEnabled || card == null || EnsureHead() == null) return false;
+            if (!source.WallGuidePreviewOpen) return false;
+            if (_logic.Active && _logic.Target == GuideTarget.Wall && ReferenceEquals(_wall, source)) return true;   // a repeat
+            _wall = source;
+            ApplySettings();
+            _logic.Begin(GuideTarget.Wall);
+            Vector3 c; Quaternion r; Vector3 he; bool valid;
+            _wallHadBaseline = source.TryGetWallGuideSpot(out c, out r, out he, out valid);
+            _wallBaseline = c;
+            _wallGazeNext = 0f; _wallGazeOk = false; _wallGazeOnShown = false; _wallArrowSide = 0;
+            SnapCard();
+            _cardEase.Show();
+            SetKeyShown(cancelKey, false);
+            SetKeyShown(startKey, false);
+            SetKeyShown(placeKey, false);
+            SetKeyShown(anotherKey, false);
+            SetFill(0f);
+            SetTexts();
+            return true;
+        }
+
+        /// <summary>Place, Cancel or leaving Wall: hide the wall card. No-op when the card is not on the wall.</summary>
+        public void EndWall()
+        {
+            if (_logic.Target != GuideTarget.Wall) return;
+            _wall = null;
             if (!_logic.Active) return;
             _logic.Cancel();
             Hide();
@@ -311,6 +400,12 @@ namespace MuseDesk.Spatial
 
             switch (_logic.State)
             {
+                case GuideState.Guiding when _logic.Target == GuideTarget.Wall:
+                    TickWallLook(dt, h, gaze);
+                    break;
+                case GuideState.Previewing when _logic.Target == GuideTarget.Wall:
+                    TickWallAim();
+                    break;
                 case GuideState.Guiding:
                     if (_logic.Tick(dt, gaze)) DoRequest();
                     else
@@ -363,8 +458,76 @@ namespace MuseDesk.Spatial
             else { _gazeStamp = -100f; Hide(); }             // refused or moved at once: the console's status line says why
         }
 
+        // ───────────────────────── wall card ─────────────────────────
+
+        /// <summary>False (and the card hidden) when the host's preview closed: Place, Cancel, a mode change, the flag off.</summary>
+        bool WallStillOpen()
+        {
+            bool open = _wall != null && _wall.WallGuidePreviewOpen;
+            _logic.ReportWallOpen(open);
+            if (_logic.Active) return true;
+            _wall = null;
+            Hide();
+            return false;
+        }
+
+        /// <summary>Step 1: the ring fills while the gaze rests on a wall spot that fits; the arrow points to the outline.</summary>
+        void TickWallLook(float dt, Transform h, Vector3 gaze)
+        {
+            if (!WallStillOpen()) return;
+            Vector3 c; Quaternion r; Vector3 he; bool valid;
+            bool hasSpot = _wall.TryGetWallGuideSpot(out c, out r, out he, out valid);
+            float now = Time.unscaledTime;
+            if (now >= _wallGazeNext)
+            {
+                // Throttled: the evaluator check walks the room's walls.
+                _wallGazeNext = now + Mathf.Max(0.02f, wallGazeInterval);
+                _wallGazeOnShown = hasSpot && valid && PlacementGuideLogic.RayHitsBox(h.position, gaze, c, r, he + Vector3.one * 0.05f, 8f);
+                _wallGazeOk = _wallGazeOnShown || _wall.WallGuideGazeAccepted(h.position, gaze);
+            }
+            bool aimed = PlacementGuideLogic.WallSpotMoved(_wallHadBaseline, _wallBaseline, hasSpot, c);
+            if (_logic.TickWall(dt, _wallGazeOk, aimed))
+            {
+                // Looked at a spot that fits while the outline was elsewhere: bring the outline there (preview only).
+                if (_logic.WallAdvancedBy == WallGuideAdvance.Gaze && !_wallGazeOnShown) _wall.WallGuideAimAt(h.position, gaze);
+                SetFill(0f);
+                SetTexts();
+                return;
+            }
+            SetFill(_logic.Fill);
+            int side = hasSpot ? PlacementGuideLogic.SideOf(h.position, gaze, c) : 0;
+            if (side != _wallArrowSide) { _wallArrowSide = side; SetWallArrow(); }
+        }
+
+        /// <summary>Step 2: the body follows the outline (fits: press Place; does not fit: point elsewhere or Next spot).</summary>
+        void TickWallAim()
+        {
+            if (!WallStillOpen()) return;
+            string b = WallBodyNow();
+            if (b != _body && body != null) { _body = b; body.text = b; }
+        }
+
+        string WallBodyNow()
+        {
+            int step = _logic.WallStep;
+            if (step != 2 || _wall == null) return PlacementGuideLogic.WallBody(step, false, false);
+            Vector3 c; Quaternion r; Vector3 he; bool valid;
+            bool hasSpot = _wall.TryGetWallGuideSpot(out c, out r, out he, out valid);
+            return PlacementGuideLogic.WallBody(2, hasSpot, valid);
+        }
+
+        /// <summary>The arrow points to the user's right (content +X), left, or up when the outline is ahead.</summary>
+        void SetWallArrow()
+        {
+            if (arrow == null) return;
+            float z = _wallArrowSide > 0 ? -90f : _wallArrowSide < 0 ? 90f : 0f;
+            arrow.transform.localRotation = Quaternion.Euler(0f, 0f, z);
+            arrow.transform.localPosition = _arrowRest;
+        }
+
         void Hide()
         {
+            _wallGazeOk = false; _wallGazeOnShown = false;
             _cardEase.Hide();
             SetKeyShown(cancelKey, false);
             SetKeyShown(startKey, false);
@@ -420,6 +583,7 @@ namespace MuseDesk.Spatial
 
         float CardPitch()
         {
+            if (_logic.Target == GuideTarget.Wall) return wallCardPitch;
             if (_logic.State == GuideState.Previewing) return previewCardPitch;
             return _logic.Target == GuideTarget.Ceiling ? ceilingCardPitch : floorCardPitch;
         }
@@ -476,7 +640,14 @@ namespace MuseDesk.Spatial
         {
             string t, b;
             bool floor = _logic.Target == GuideTarget.Floor;
-            switch (_logic.State)
+            bool wall = _logic.Target == GuideTarget.Wall;
+            if (wall)
+            {
+                // The dock's words, never keys of the card's own.
+                t = PlacementGuideLogic.WallTitle(_logic.WallStep);
+                b = WallBodyNow();
+            }
+            else switch (_logic.State)
             {
                 case GuideState.Requested:
                     t = requestedTitle; b = requestedBody; break;
@@ -494,20 +665,33 @@ namespace MuseDesk.Spatial
             if (arrow != null && arrow.gameObject.activeSelf != looking) arrow.gameObject.SetActive(looking);
             if (ringFill != null && ringFill.gameObject.activeSelf != looking) ringFill.gameObject.SetActive(looking);
             if (ringTrack != null && ringTrack.gameObject.activeSelf != looking) ringTrack.gameObject.SetActive(looking);
-            if (arrow != null) arrow.transform.localRotation = Quaternion.Euler(0f, 0f, floor ? 180f : 0f);
+            if (wall) SetWallArrow();
+            else if (arrow != null)
+            {
+                arrow.transform.localRotation = Quaternion.Euler(0f, 0f, floor ? 180f : 0f);
+                arrow.transform.localPosition = _arrowRest;
+            }
         }
 
         void AnimateArrow(float dt)
         {
             if (arrow == null || !arrow.gameObject.activeSelf) return;
             _bob += dt * 5f;
+            float b = Mathf.Abs(Mathf.Sin(_bob)) * 0.008f;
+            if (_logic.Target == GuideTarget.Wall)
+            {
+                // Along the arrow (right, left or up).
+                arrow.transform.localPosition = _arrowRest + (arrow.transform.localRotation * Vector3.up) * b;
+                return;
+            }
             float dir = _logic.Target == GuideTarget.Floor ? -1f : 1f;
             Vector3 lp = arrow.transform.localPosition;
-            lp.y = _arrowRestY + dir * Mathf.Abs(Mathf.Sin(_bob)) * 0.008f;
+            lp.x = _arrowRest.x;
+            lp.y = _arrowRest.y + dir * b;
             arrow.transform.localPosition = lp;
         }
 
-        float _arrowRestY;
+        Vector3 _arrowRest;
 
         void SetFill(float f)
         {
@@ -608,6 +792,9 @@ namespace MuseDesk.Spatial
               .Append(" fill=").Append(_logic.Fill.ToString("F2")).Append(" elapsed=").Append(_logic.Elapsed.ToString("F1"))
               .Append(" gazePitch=").Append(PlacementGuideLogic.PitchDeg(_lastGaze).ToString("F0"))
               .Append(" injected=").Append(_hasInjected).Append(" startOffered=").Append(_logic.StartOffered)
+              .Append(" wallStep=").Append(_logic.WallStep).Append(" wallBy=").Append(_logic.WallAdvancedBy)
+              .Append(" wallGaze=").Append(_wallGazeOk).Append(_wallGazeOnShown ? "(on outline)" : "").Append(" wallArrow=").Append(_wallArrowSide)
+              .Append(" wallHost=").Append(_wall != null)
               .Append("\n  card ").Append(card != null ? (card.localScale.x.ToString("F3")) : "MISSING")
               .Append(" shown=").Append(CardShown)
               .Append(" at ").Append(transform.position.ToString("F2"))

@@ -210,6 +210,7 @@ namespace MuseDesk.Wall
             }
             ShowGhost();
             RefreshDock();
+            BeginGuideCard();          // rc9: the guided card, "Look at a wall" (WallHabitatController.Guide.cs)
             return true;
         }
 
@@ -225,6 +226,7 @@ namespace MuseDesk.Wall
             if (_stage != null) _stage.ResetAll();
             _flow.Exit();
             HideGhost();
+            EndGuideCard();
             ShowHabitat(false);
             _suppressor.Restore();
             if (wasActive) PlayerPrefs.SetInt(ActiveKey, 0);
@@ -241,6 +243,7 @@ namespace MuseDesk.Wall
             _habitatRoot.SetPositionAndRotation(p.position, p.rotation);
             ShowHabitat(true);
             HideGhost();
+            EndGuideCard();            // placed: the guided card is done
             Transform rootToHide = officeRoot != null ? officeRoot : SpatialWorkspaceState.WorkspaceRoot;
             if (!_suppressor.Active) _suppressor.Suppress(rootToHide, neverHide);
             Pose reference = Pose.identity;
@@ -280,6 +283,7 @@ namespace MuseDesk.Wall
             bool entering = _flow.State == WallModeState.Previewing;
             _flow.Cancel();
             HideGhost();
+            EndGuideCard();
             if (entering) { if (director != null) director.PublishWallChanged(); }
             RefreshDock();
         }

@@ -31,6 +31,16 @@ namespace MuseDesk.Spatial
     /// usable head or a panel is beyond 0.8 m, re-seats the RIG in front of the head (the office itself is not moved). The
     /// correction is kept as a pose relative to the office root, so the rig still follows the desk afterwards. It never
     /// acts on tracking loss, during a preview or a move, with something in hand, or after the user moved a panel.
+    /// The window runs in EVERY mode (rc9): away from the desk the rig stands still, so re-seating it moves panels only;
+    /// there the correction is kept relative to the root only when the root is at its desk pose (Desk, or Wall once the
+    /// desk was placed), never relative to a Floor / Ceiling office.
+    ///
+    /// STRANDED PANELS (rc9 owner: "the panel for placing the wall or choosing floor or ceiling were entirely gone").
+    /// The rig only learns the desk pose while the office rests at a PLACED desk. If the office leaves the desk before
+    /// that ever happened (any mode, any path: a restore at launch, voice, a driver), the rig used to stay at the root's
+    /// pre-placement pose, out of sight. Now it is seated in front of the head (<see cref="StartupReachRule.DecideAwaySeat"/>,
+    /// <see cref="StartupReachRule.ReseatPose"/>) as soon as the head is usable and nothing is in hand, and the start-up
+    /// reach window is armed from that moment. Panels only: the office never moves.
     ///
     /// Presentation only. It never touches session or task state.
     /// </summary>
@@ -57,6 +67,13 @@ namespace MuseDesk.Spatial
         public bool Detached => _detached;
         /// <summary>True once the rig has taken the office's desk pose at least once.</summary>
         public bool HasDeskPose => _hasDeskPose;
+        /// <summary>True once the rig has stood at a PLACED desk pose (the desk placement had finished) this session.</summary>
+        public bool HasPlacedDeskPose => _hasPlacedDeskPose;
+        /// <summary>Times the rig was seated in front of the head because the office left the desk before any placed desk pose.</summary>
+        public int AwaySeats => _awaySeats;
+
+        bool _hasPlacedDeskPose, _awaySeated;
+        int _awaySeats;
 
         Transform Root()
         {
@@ -67,6 +84,8 @@ namespace MuseDesk.Spatial
         [Header("Start-up reach (AgentScripts/UnifiedModeDockV1)")]
         [Tooltip("Re-seat the rig in front of the head at start-up when the panels are out of reach (see StartupReachRule).")]
         public bool startupReach = true;
+        [Tooltip("rc9: when the office leaves the desk before the rig ever stood at a placed desk pose, seat the rig in front of the head (panels only; the office never moves).")]
+        public bool seatWhenStranded = true;
         [Tooltip("The user's head. Camera.main when empty.")]
         public Transform head;
         [Tooltip("The desk placement: its offDeskSide / Depth / Drop give the pose the rig is re-seated at. Found when empty.")]
@@ -82,6 +101,7 @@ namespace MuseDesk.Spatial
         float _deskPoseAt = -1f, _lastReseatAt = -100f, _steady;
         bool _firstPoseWithoutHead, _userMoved, _reachDone, _hasLastRot;
         int _reseats;
+        bool _directorLooked;
         Quaternion _lastHeadRot;
         readonly List<MovablePanel> _hooked = new List<MovablePanel>();
         string _reachNote = "";
@@ -151,6 +171,7 @@ namespace MuseDesk.Spatial
             bool on = root.gameObject.activeInHierarchy;
             if (rig.gameObject.activeSelf != on) rig.gameObject.SetActive(on);
             _hasDeskPose = true;
+            if (!_hasPlacedDeskPose && on && DeskPlaced(root)) _hasPlacedDeskPose = true;
         }
 
         void Detach()
@@ -185,6 +206,9 @@ namespace MuseDesk.Spatial
                 }
             }
             _detached = true;
+            _awaySeated = false;
+            // Left before the desk was ever placed: the pose above is the root's pre-placement pose, not a desk.
+            TrySeatAway("the office left the desk before the first desk pose");
         }
 
         void Reattach()
@@ -210,6 +234,81 @@ namespace MuseDesk.Spatial
             }
             _homes.Clear(); _siblingIndex.Clear(); _homeLocals.Clear();
             _detached = false;
+            _awaySeated = false;
+        }
+
+        // ───────────────────────── stranded panels (rc9) ─────────────────────────
+
+        /// <summary>
+        /// Away from the desk with no placed desk pose yet: seat the rig in front of the head once (StartupReachRule.
+        /// DecideAwaySeat). Waits on tracking loss or with something in hand; called on leaving and every frame after.
+        /// </summary>
+        void TrySeatAway(string why)
+        {
+            if (!seatWhenStranded || rig == null || !_detached) return;
+            if (_hasPlacedDeskPose || _awaySeated) return;                 // the common case: nothing to decide
+            Transform root = Root();
+            if (root == null) return;
+            Transform h = Head();
+            AwaySeatInput input = new AwaySeatInput
+            {
+                away = _detached,
+                hasPlacedDeskPose = _hasPlacedDeskPose,
+                seated = _awaySeated,
+                headUsable = h != null && HeadUsableNow(h),
+                held = HandInteractionProbe.AnyHeld || SpatialWorkspaceState.TransitionHeld,
+                userMovedPanel = _userMoved,
+            };
+            if (StartupReachRule.DecideAwaySeat(input) != AwaySeatAction.Seat) return;
+            if (deskPlacement == null) deskPlacement = FindAnyObjectByType<MuseDesk.Workspace.WorkspacePlacement>();
+            float side = 0f, depth = 0.62f, drop = 0.39f;
+            if (deskPlacement != null) { side = deskPlacement.offDeskSide; depth = deskPlacement.offDeskDepth; drop = deskPlacement.offDeskDrop; }
+            Vector3 p; Quaternion q;
+            StartupReachRule.ReseatPose(h.position, h.forward, side, depth, drop, out p, out q);
+            rig.SetPositionAndRotation(p, q);
+            Vector3 s = rig.localScale;
+            if (s.x < 1e-3f || s.y < 1e-3f || s.z < 1e-3f) rig.localScale = Vector3.one;    // a hidden root's scale is no layout
+            if (!rig.gameObject.activeSelf) rig.gameObject.SetActive(true);
+            ResetStalePanels(h.position);
+            _awaySeated = true;
+            _awaySeats++;
+            // Arm the start-up reach window from here (the rig never had a desk pose to start it).
+            if (_deskPoseAt < 0f) { _deskPoseAt = Time.unscaledTime; _firstPoseWithoutHead = false; }
+            _reachNote = "seated in front of the head (" + why + ")";
+            Debug.Log("[MuseDesk] Near-user panels seated in front of the head: " + why + " (mode " + SpatialWorkspaceState.Mode + "). The office was not moved.");
+        }
+
+        /// <summary>A saved panel pose from an earlier session that is still out of reach is stale: back to its default.</summary>
+        void ResetStalePanels(Vector3 headPos)
+        {
+            for (int i = 0; i < MovablePanel.All.Count; i++)
+            {
+                MovablePanel mp = MovablePanel.All[i];
+                if (mp == null || mp.transform.parent != rig) continue;
+                if (Vector3.Distance(mp.PivotWorld, headPos) > StartupReachRule.MaxReach && !string.IsNullOrEmpty(mp.SavedText()))
+                    mp.ResetToDefault(false);
+            }
+        }
+
+        /// <summary>
+        /// Play Mode driver only: replay "the office left the desk before the first desk pose" from where it is now (the
+        /// office must be away, e.g. Wall after Place). The items come home, the rig forgets its desk pose and is put at
+        /// <paramref name="strandAt"/> (where the pre-placement root would leave it), then the office leaves again through
+        /// the same Detach path the app uses. The office itself is not touched.
+        /// </summary>
+        public string DriverLeaveDeskWithoutDeskPose(Vector3 strandAt)
+        {
+            if (rig == null || Root() == null) return "no rig or office root";
+            if (SpatialWorkspaceState.Mode == WorkspaceMode.Desk) return "the office is at the desk: put it away first (e.g. Wall -> Place)";
+            if (_detached) Reattach();
+            // rc9: the rig HAD followed the root (so _hasDeskPose stays true and Detach keeps the rig where it stands), but
+            // the root was at its pre-placement pose: the rig never stood at a placed desk.
+            _hasPlacedDeskPose = false;
+            _awaySeated = false;
+            rig.position = strandAt;
+            Detach();
+            return "stranded at " + strandAt.ToString("F2") + ", left again: " + (_awaySeated ? "seated in front of the head" : "waiting for a usable head / free hands")
+                 + " | rig at " + rig.position.ToString("F2");
         }
 
         readonly List<Pose> _homeLocals = new List<Pose>();
@@ -307,9 +406,12 @@ namespace MuseDesk.Spatial
             float worst = -1f, nearest = -1f;
             if (h != null) MeasurePanels(h.position, out worst, out nearest);
             bool held = HandInteractionProbe.AnyHeld || SpatialWorkspaceState.TransitionHeld;
+            if (director == null && !_directorLooked) { director = FindAnyObjectByType<SpatialWorkspaceDirector>(); _directorLooked = true; }
             bool previewing = director != null && director.IsPreviewing;
-            bool placeable = !SpatialWorkspaceState.IsTransitioning && !held && !previewing
-                             && (SpatialWorkspaceState.Mode == WorkspaceMode.Desk || SpatialWorkspaceState.Mode == WorkspaceMode.Wall);
+            IWallModeHost wall = director != null ? director.wallHost as IWallModeHost : null;
+            bool wallPreviewing = wall != null && wall.WallPreviewing;
+            // Any mode (rc9): away from the desk the rig stands still, so a re-seat moves panels only.
+            bool placeable = StartupReachRule.Placeable(SpatialWorkspaceState.IsTransitioning, held, previewing, wallPreviewing);
 
             StartupReachInput input = new StartupReachInput
             {
@@ -343,19 +445,18 @@ namespace MuseDesk.Spatial
             if (deskPlacement != null) { side = deskPlacement.offDeskSide; depth = deskPlacement.offDeskDepth; drop = deskPlacement.offDeskDrop; }
             Vector3 p; Quaternion q;
             StartupReachRule.ReseatPose(h.position, h.forward, side, depth, drop, out p, out q);
-            StartupReachRule.ToRootLocal(root.position, root.rotation, p, q, out _fixPos, out _fixRot);
-            _fixRootPos = root.position; _fixRootRot = root.rotation;
-            _hasFix = true;
-            rig.SetPositionAndRotation(p, q);
-            // A saved panel pose from an earlier session that is still out of reach is stale: back to its default.
-            Vector3 hp = h.position;
-            for (int i = 0; i < MovablePanel.All.Count; i++)
+            WorkspaceMode mode = SpatialWorkspaceState.Mode;
+            if (StartupReachRule.KeepAsDeskCorrection(mode == WorkspaceMode.Desk, mode == WorkspaceMode.Wall, _hasPlacedDeskPose))
             {
-                MovablePanel mp = MovablePanel.All[i];
-                if (mp == null || mp.transform.parent != rig) continue;
-                if (Vector3.Distance(mp.PivotWorld, hp) > StartupReachRule.MaxReach && !string.IsNullOrEmpty(mp.SavedText()))
-                    mp.ResetToDefault(false);
+                // The root stands at its desk pose: keep the correction relative to it, so the rig follows the desk afterwards.
+                StartupReachRule.ToRootLocal(root.position, root.rotation, p, q, out _fixPos, out _fixRot);
+                _fixRootPos = root.position; _fixRootRot = root.rotation;
+                _hasFix = true;
             }
+            // Otherwise (Floor / Ceiling, or no desk yet) the rig is only stood in front of the head; back at the desk it
+            // follows the root again and the window re-checks.
+            rig.SetPositionAndRotation(p, q);
+            ResetStalePanels(h.position);
             _reseats++;
             _lastReseatAt = Time.unscaledTime;
             _reachNote = "re-seated in front of the head (" + why + ")";
@@ -381,6 +482,7 @@ namespace MuseDesk.Spatial
             if (h != null) MeasurePanels(h.position, out worst, out nearest);
             return "startupReach " + (startupReach ? "on" : "off") + " done=" + _reachDone + " reseats=" + _reseats + " fix=" + _hasFix
                  + " firstPoseWithoutHead=" + _firstPoseWithoutHead + " userMoved=" + _userMoved
+                 + " placedDeskPose=" + _hasPlacedDeskPose + " awaySeats=" + _awaySeats + " detached=" + _detached
                  + " panels worst=" + worst.ToString("F2") + " nearest=" + nearest.ToString("F2") + " m"
                  + (h != null ? " headUsable=" + StartupReachRule.HeadUsable(h.position, h.forward) : " no head")
                  + " | " + _reachNote;
@@ -435,6 +537,7 @@ namespace MuseDesk.Spatial
             if (_detached && SpatialWorkspaceState.Mode == WorkspaceMode.Desk && !SpatialWorkspaceState.IsTransitioning)
                 Reattach();
             FollowDesk();
+            if (_detached && !_hasPlacedDeskPose && !_awaySeated) TrySeatAway("the office left the desk before the first desk pose");
             TickStartupReach();
         }
     }
