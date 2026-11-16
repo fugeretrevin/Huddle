@@ -396,6 +396,7 @@ namespace MuseDesk.Wall
             // Prefer the habitat avatar: a clean visual clone whose renderers are on. (The desk agents' renderers
             // are switched off while Wall mode hides the desk office, and a clone would copy that.)
             if (_view != null && _view.Avatar(role) != null) return _view.Avatar(role).gameObject;
+            if (role == HabitatRole.Manager && managerSource != null) return managerSource;
             if (agentSources == null || agentSources.Length == 0) return null;
             int i = role == HabitatRole.Manager ? 1 : Mathf.Min((int)role, agentSources.Length - 1);
             return agentSources[i];

@@ -47,6 +47,8 @@ public static class WallSingleAgentDrive
         foreach (var s in smrs)
         {
             if (s == null || !s.enabled || !s.gameObject.activeInHierarchy || s.sharedMesh == null) continue;
+            // Characters only: the agent meshes are Agent_<Role>_Body. Animated props (task printer, elevator) are skinned too.
+            if (!s.sharedMesh.name.StartsWith("Agent_")) continue;
             Transform t = s.transform;
             string role = null; Transform charRoot = null;
             for (Transform p = t; p != null; p = p.parent)

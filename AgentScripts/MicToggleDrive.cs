@@ -66,7 +66,8 @@ public static class MicToggleDrive
         if (!Application.isPlaying) return "not playing";
         var c = Center();
         if (c == null) return "no VoiceCommandCenter";
-        c.InjectAmbientFinal(text ?? "");
+        text = (text ?? "").Replace('_', ' ');   // drv.ps1 cannot pass spaces: "Researcher,_approve"
+        c.InjectAmbientFinal(text);
         return "ambient '" + text + "' -> " + c.Describe();
     }
 

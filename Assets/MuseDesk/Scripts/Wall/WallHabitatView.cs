@@ -136,7 +136,10 @@ namespace MuseDesk.Wall
         public Transform Avatar(HabitatRole r) { return _avatar[(int)r]; }
         public float AvatarHeight => layout.agentHeight;
 
-        public WallHabitatView(Transform parent, HabitatLayout layout, Material baseMaterial, GameObject[] agentSources, HabitatArtManifest manifest)
+        /// <summary>True when the Manager avatar is the dedicated Agent_Manager model (not the dressed Developer placeholder).</summary>
+        public bool ManagerIsDedicated { get; private set; }
+
+        public WallHabitatView(Transform parent, HabitatLayout layout, Material baseMaterial, GameObject[] agentSources, HabitatArtManifest manifest, GameObject managerSource = null)
         {
             this.layout = layout;
             _mat = baseMaterial;
@@ -218,10 +221,21 @@ namespace MuseDesk.Wall
             // Avatars.
             for (int r = 0; r < 4; r++)
             {
-                GameObject src = agentSources != null && agentSources.Length > 0 ? agentSources[r == 3 ? 1 : Mathf.Min(r, agentSources.Length - 1)] : null;
-                Transform a = src != null ? CloneVisual(src, "Avatar_" + (HabitatRole)r, root, layout.agentHeight) : null;
+                bool isMgr = r == (int)HabitatRole.Manager;
+                Transform a = null;
+                // The Manager: the dedicated model when it is wired (same rig and state names as the walkers).
+                if (isMgr && managerSource != null)
+                {
+                    a = CloneVisual(managerSource, "Avatar_" + (HabitatRole)r, root, layout.agentHeight);
+                    ManagerIsDedicated = a != null;
+                }
+                if (a == null)
+                {
+                    GameObject src = agentSources != null && agentSources.Length > 0 ? agentSources[r == 3 ? 1 : Mathf.Min(r, agentSources.Length - 1)] : null;
+                    a = src != null ? CloneVisual(src, "Avatar_" + (HabitatRole)r, root, layout.agentHeight) : null;
+                }
                 if (a == null) a = FallbackAvatar(root, (HabitatRole)r);
-                if (r == (int)HabitatRole.Manager) DressManager(a);
+                if (isMgr && !ManagerIsDedicated) DressManager(a);
                 _avatar[r] = a;
                 _avatarScale[r] = a.localScale;
                 _anim[r] = a.GetComponentInChildren<Animator>();
@@ -450,7 +464,7 @@ namespace MuseDesk.Wall
         void DressManager(Transform a)
         {
             float h = layout.agentHeight;
-            // Placeholder Manager (until Antigravity's model): the Developer mesh with a lavender cap and a brass badge.
+            // Fallback Manager (only when managerSource is not wired): the Developer mesh with a lavender cap and a brass badge.
             // (A colour tint on the character's toon material rendered translucent in Play Mode: not used.)
             var cap = Box(a, "ManagerCap", Vector3.zero, Vector3.one, Workspace.OfficeTokens.RoleManager).transform;
             cap.SetParent(a, false);
@@ -557,7 +571,8 @@ namespace MuseDesk.Wall
 
         static readonly int S_Thinking = Animator.StringToHash("Thinking"), S_Worried = Animator.StringToHash("Worried"),
             S_Writing = Animator.StringToHash("Writing"), S_Nodding = Animator.StringToHash("Nodding"),
-            S_TurnL = Animator.StringToHash("Turn_Left"), S_TurnR = Animator.StringToHash("Turn_Right"), S_Listening = Animator.StringToHash("Listening");
+            S_TurnL = Animator.StringToHash("Turn_Left"), S_TurnR = Animator.StringToHash("Turn_Right"), S_Listening = Animator.StringToHash("Listening"),
+            S_MgrLookout = Animator.StringToHash("Manager_Lookout_Idle"), S_MgrReview = Animator.StringToHash("Manager_Review_Plan");
         readonly float[] _worryUntil = new float[4];
 
         /// <summary>One restrained worried beat for a CONFIRMED failure (task.failed). Desk pose only; never moves the character.</summary>
@@ -588,12 +603,13 @@ namespace MuseDesk.Wall
             switch (_activity[r])
             {
                 case DeskActivity.Working:
+                    if (role == HabitatRole.Manager && ManagerIsDedicated) return S_MgrReview;
                     return role == HabitatRole.Researcher ? S_Reading : role == HabitatRole.Tester ? S_Inspecting
                          : role == HabitatRole.Manager ? S_Writing : S_Typing;
                 case DeskActivity.Waiting: return S_Wait;
                 case DeskActivity.Blocked: return S_Thinking;
                 case DeskActivity.Problem: return S_Worried;
-                default: return S_Idle;
+                default: return role == HabitatRole.Manager && ManagerIsDedicated ? S_MgrLookout : S_Idle;
             }
         }
 

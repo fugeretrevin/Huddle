@@ -10778,7 +10778,7 @@ Transform:
   m_GameObject: {fileID: 203000317}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.055, y: 0.125, z: 0.13}
+  m_LocalPosition: {x: 0, y: 0.125, z: 0.13}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -22961,6 +22961,7 @@ MonoBehaviour:
   - {fileID: 913268390}
   - {fileID: 1515650341}
   - {fileID: 1905904050}
+  managerSource: {fileID: 3512397188991860960, guid: 9974f39509b98c14892bb4e0d09849b9, type: 3}
   artManifest: {fileID: 11400000, guid: feabf63b6d8ddd84eb590a3c75ed9d41, type: 2}
   backendBehaviour: {fileID: 366174296}
   eventsBehaviour: {fileID: 366174295}

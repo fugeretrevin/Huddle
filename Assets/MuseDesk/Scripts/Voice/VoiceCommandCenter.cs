@@ -353,7 +353,8 @@ namespace MuseDesk.Voice
         void OnPartial(string text)
         {
             _partial = VoiceAnswers.Ascii(text ?? "").Trim();
-            if (_partial.Length > 0) { _mic.NotifyPartial(); if (_ambientQuiet) PromoteAmbient(); }
+            // Hands-free: the card only appears once the sentence starts with a name (WakeWord); chatter stays silent.
+            if (_partial.Length > 0) { _mic.NotifyPartial(); if (_ambientQuiet && (_pending != Pending.None || WakeWord.IsAddressed(_partial))) PromoteAmbient(); }
             if (_display == Display.Listening && hud != null) hud.SetBody(Quote(VoiceAnswers.Clip(_partial, 90)));
             if (_partial.Length > 0) _office.HearForAddressing(_partial);
             if (_actedOnPartial != VoiceIntentKind.None || _partial.Length == 0) return;
@@ -456,6 +457,28 @@ namespace MuseDesk.Voice
             _ambient = _ambientQuiet = false;
 
             VoiceIntent intent = VoiceIntentParser.Parse(heard, CurrentContext());
+
+            // Hands-free sentences must start with a name ("Researcher, ...", "Hey MuseDesk, ..."), unless they halt
+            // something or answer a conversation the user already opened. The name itself is not a command, so when the
+            // whole sentence parses to nothing, the words after the name are tried.
+            bool addressed = false;
+            if (ambient)
+            {
+                VoiceAgentTarget who; string rest;
+                addressed = WakeWord.Parse(heard, out who, out rest);
+                if (addressed && intent.Kind == VoiceIntentKind.None && rest.Length > 0)
+                    intent = VoiceIntentParser.Parse(rest, CurrentContext());
+                bool halting = intent.Kind == VoiceIntentKind.Stop || intent.Kind == VoiceIntentKind.Cancel;
+                if (!WakeWord.Allows(addressed, _pending != Pending.None, halting))
+                {
+                    LastIntent = "Unaddressed";
+                    _actedOnPartial = VoiceIntentKind.None;
+                    _partial = "";
+                    if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                    RefreshMic();
+                    return;
+                }
+            }
             LastIntent = intent.ToString();
 
             // The halting word was already acted on while it was still a partial.
@@ -474,8 +497,8 @@ namespace MuseDesk.Voice
             // "Manager, <goal>": the local grammar has no such command; the A12 classifier recognises it. It is handed to whoever
             // registered as the Manager (the Wall habitat, when it is active and its flag is on). It only ASKS for a plan:
             // nothing is created until the user approves the plan paper.
-            // (Not for hands-free sentences: ambient speech only ever goes through VoiceIntentParser.)
-            if (!ambient && intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
+            // (Hands-free: only when the sentence was addressed by name, e.g. "Manager, plan a login page".)
+            if ((!ambient || addressed) && intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
             {
                 VoiceClassification c = VoiceIntentClassifier.Classify(heard);
                 if (c.Kind == VoiceAction.ManagerRequest && !string.IsNullOrEmpty(c.Question) && c.Question.Trim().Length >= 3)
@@ -503,9 +526,10 @@ namespace MuseDesk.Voice
                 ShowPrompt();
                 ScheduleRelisten();
             }
-            else if (ambient && !understood)
+            else if (ambient && !addressed && !understood)
             {
-                // Room chatter that is not a command: no card, no paper line, nothing sent.
+                // Room chatter that is not a command: no card, no paper line, nothing sent. (Addressed by name and not
+                // understood: the user meant to talk to us, so the normal "Not understood" card below answers.)
                 if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
             }
             else if (message != null)
@@ -1042,7 +1066,7 @@ namespace MuseDesk.Voice
             _hintShown = true;
             _display = Display.Info;
             _displayUntil = Time.unscaledTime + 5f;
-            if (hud != null) hud.Show("Voice", ModeWord(), "Turn the mic on and just talk, or stamp the paper.", "", VoiceTone.Neutral);
+            if (hud != null) hud.Show("Voice", ModeWord(), "Mic on, then start with a name: \"Researcher, why?\" Or stamp the paper.", "", VoiceTone.Neutral);
         }
 
         // ───────────────────────── driver ─────────────────────────

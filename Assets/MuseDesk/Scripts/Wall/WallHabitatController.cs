@@ -44,6 +44,8 @@ namespace MuseDesk.Wall
         public Material baseMaterial;
         [Tooltip("Desk agents (Researcher, Developer, Tester) whose MESH is cloned for habitat avatars. Never moved.")]
         public GameObject[] agentSources = new GameObject[3];
+        [Tooltip("The dedicated Manager character (Agent_Manager prefab, same rig and clip names as the desk agents). Empty = the Developer mesh with a lavender cap.")]
+        public GameObject managerSource;
         public HabitatArtManifest artManifest;
         [Tooltip("IWallBackend (WallBackendGateway).")]
         public MonoBehaviour backendBehaviour;
@@ -413,7 +415,7 @@ namespace MuseDesk.Wall
             _stage.ActDropped += OnActDropped;
             _doorsWereMoving = _cabinWasMoving = false;
             for (int r = 0; r < 4; r++) _stage.Walker((HabitatRole)r).settings = walker;
-            _view = new WallHabitatView(_habitatRoot, L, ResolveMaterial(), agentSources, artManifest);
+            _view = new WallHabitatView(_habitatRoot, L, ResolveMaterial(), agentSources, artManifest, managerSource);
             _viewKind = kind;
             if (_audio == null) _audio = new WallAudio(_habitatRoot, nearUserRig != null ? nearUserRig : transform);
             // (Elevator sounds follow the cabin's REAL transitions: see TickLiftAudio.)
