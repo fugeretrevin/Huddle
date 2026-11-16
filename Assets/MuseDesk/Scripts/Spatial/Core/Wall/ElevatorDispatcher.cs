@@ -260,6 +260,20 @@ namespace MuseDesk.Spatial.Wall
             return true;
         }
 
+        /// <summary>
+        /// The rider is alive and visibly waiting for its walkway (not for the cabin): before boarding its queue age restarts;
+        /// while the doors are open for it (Boarding/Exiting) its phase timer restarts, so the doors stay open. A rider that
+        /// never reports this is timed out exactly as before. False when the agent has no ticket.
+        /// </summary>
+        public bool KeepWaiting(string agent)
+        {
+            Ticket t = Find(agent);
+            if (t == null) return false;
+            if (t.phase < RidePhase.Boarding) t.age = 0f;
+            else if (t.phase == RidePhase.Boarding || t.phase == RidePhase.Exiting) t.phaseTimer = 0f;
+            return true;
+        }
+
         /// <summary>Recenter, pause, mode change. Riders outside fail with a walkway fallback; riders inside are carried to the
         /// nearest landing, let out there (Failed/Interrupted) and walk home from it. Never leaves the cabin between floors.</summary>
         public void Interrupt()

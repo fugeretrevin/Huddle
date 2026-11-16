@@ -39,6 +39,12 @@ namespace MuseDesk.Spatial.Wall
         void ReportExited(string agent);
         /// <summary>The rider's journey after the ride ended (it stands at its stop): navigation ownership is released.</summary>
         void ReportReachedDestination(string agent);
+        /// <summary>
+        /// The rider is alive and visibly waiting for its corridor to clear (at its aisle with a ticket, on the way to the
+        /// doors, or standing in the open cabin at its destination). Its ticket must not time out meanwhile: the queue/board/
+        /// exit timer restarts and doors that are open for it stay open. Bounded by the walker's own no-progress watchdog.
+        /// </summary>
+        void KeepWaiting(string agent);
 
         void Tick(float dt);
         /// <summary>Recenter, pause, mode change: the cabin stops at the nearest landing; nobody is left between floors.</summary>
@@ -179,6 +185,8 @@ namespace MuseDesk.Spatial.Wall
             RidePhase p;
             if (dispatcher.TryGetPhase(agent, out p) && p == RidePhase.ToDestination) dispatcher.ReportReachedDestination(agent);
         }
+
+        public void KeepWaiting(string agent) { if (!_ghosts.Contains(agent)) dispatcher.KeepWaiting(agent); }
 
         public void Tick(float dt)
         {

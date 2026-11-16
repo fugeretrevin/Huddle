@@ -8,11 +8,20 @@ namespace MuseDesk.Spatial.Wall
     /// Who stands on (or is heading to) which nav node. A node is refused when another character holds any
     /// node of the same floor closer than <see cref="zoneRadius"/> (two capsules plus clearance), so two
     /// characters can never overlap even on neighbouring nodes. Cabin nodes are owned by the elevator.
+    ///
+    /// CLAIMS (rc10): a character that is waiting for a segment registers a claim on it with a priority (a rider first,
+    /// then whoever has waited longest). A claim never moves anyone and never takes a node from its holder; it only stops a
+    /// LOWER-priority character from starting a NEW lease through the claimed zone (<see cref="CanLease"/>). Nodes a character
+    /// already holds are never refused by a claim, so a holder can always finish and leave. With every waiting position
+    /// off the corridor (or in the cabin), this keeps the corridor deadlock-free and lets the oldest waiter through next.
     /// </summary>
     public sealed class HabitatReservations
     {
+        sealed class Claim { public string agent; public float priority; public readonly List<int> nodes = new List<int>(8); }
+
         readonly HabitatLayout _layout;
         readonly string[] _owner;
+        readonly List<Claim> _claims = new List<Claim>(4);
         public float zoneRadius;
 
         public HabitatReservations(HabitatLayout layout)
@@ -23,6 +32,70 @@ namespace MuseDesk.Spatial.Wall
         }
 
         public string OwnerOf(int node) { return node >= 0 && node < _owner.Length ? _owner[node] : null; }
+
+        /// <summary>Number of characters currently waiting with a claim (diagnostics).</summary>
+        public int ClaimCount => _claims.Count;
+
+        Claim FindClaim(string agent)
+        {
+            for (int i = 0; i < _claims.Count; i++) if (_claims[i].agent == agent) return _claims[i];
+            return null;
+        }
+
+        /// <summary>Register (or refresh) the waiting character's claim on route nodes [from..to] with this priority.</summary>
+        public void SetClaim(string agent, IList<int> route, int from, int to, float priority)
+        {
+            if (string.IsNullOrEmpty(agent) || route == null) return;
+            Claim c = FindClaim(agent);
+            if (c == null) { c = new Claim { agent = agent }; _claims.Add(c); }
+            c.priority = priority;
+            c.nodes.Clear();
+            for (int k = Mathf.Max(0, from); k <= to && k < route.Count; k++) c.nodes.Add(route[k]);
+        }
+
+        public void ClearClaim(string agent)
+        {
+            for (int i = _claims.Count - 1; i >= 0; i--) if (_claims[i].agent == agent) _claims.RemoveAt(i);
+        }
+
+        public bool HasClaim(string agent) { return FindClaim(agent) != null; }
+
+        static bool Outranks(Claim c, float priority, string agent)
+        {
+            return c.priority > priority || (c.priority == priority && string.CompareOrdinal(c.agent, agent) < 0);
+        }
+
+        /// <summary>
+        /// May <paramref name="agent"/> (at <paramref name="priority"/>) start holding <paramref name="node"/> now? The plain
+        /// zone rule of <see cref="CanReserve"/>, plus: no other character with a higher-priority claim waits for a node in its
+        /// zone. A node the agent already holds is always allowed (it can always finish and leave).
+        /// </summary>
+        public bool CanLease(int node, string agent, float priority)
+        {
+            if (!CanReserve(node, agent)) return false;
+            if (_owner[node] == agent) return true;
+            HabitatNavNode n = _layout.nav.nodes[node];
+            if (n.kind == HabitatNodeKind.Cabin) return true;
+            for (int i = 0; i < _claims.Count; i++)
+            {
+                Claim c = _claims[i];
+                if (c.agent == agent || !Outranks(c, priority, agent)) continue;
+                for (int k = 0; k < c.nodes.Count; k++)
+                {
+                    HabitatNavNode m = _layout.nav.nodes[c.nodes[k]];
+                    if (m.kind == HabitatNodeKind.Cabin || m.floor != n.floor) continue;
+                    if (c.nodes[k] == node || (m.position - n.position).magnitude < zoneRadius) return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>Release everything the agent holds except the nodes listed (its new route).</summary>
+        public void ReleaseAllExcept(string agent, IList<int> keep)
+        {
+            for (int i = 0; i < _owner.Length; i++)
+                if (_owner[i] == agent && (keep == null || !keep.Contains(i))) _owner[i] = null;
+        }
 
         public bool CanReserve(int node, string agent)
         {
@@ -56,6 +129,7 @@ namespace MuseDesk.Spatial.Wall
         public void ReleaseAll(string agent)
         {
             for (int i = 0; i < _owner.Length; i++) if (_owner[i] == agent) _owner[i] = null;
+            ClearClaim(agent);
         }
 
         public int CountHeldBy(string agent)
@@ -190,6 +264,14 @@ namespace MuseDesk.Spatial.Wall
             if (_active == null || _active.agent != agent || !_active.aboard) return;
             _active = null;
             Go(ElevatorState.Releasing);
+        }
+
+        /// <summary>The active rider is visibly waiting for its corridor (on its way to board, or in the open cabin at its
+        /// floor): the doors stay open and its board/exit timeout restarts. The walker's own watchdog bounds the wait.</summary>
+        public void KeepWaiting(string agent)
+        {
+            if (_active == null || _active.agent != agent) return;
+            if (State == ElevatorState.Boarding || State == ElevatorState.Exiting) _timer = 0f;
         }
 
         /// <summary>Recenter, pause, mode change: stop at the nearest landing, open, evict the rider (the walker

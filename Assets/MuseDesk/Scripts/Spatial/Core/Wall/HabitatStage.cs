@@ -311,7 +311,9 @@ namespace MuseDesk.Spatial.Wall
         /// <summary>Everyone home now, queues cleared, elevator stopped at a landing. Task state is untouched.</summary>
         public void ResetAll()
         {
-            lift.Interrupt();
+            // Walkers first (rc10): each withdraws its own ride request (a rider inside becomes a ghost the cabin lets out at a
+            // landing). Interrupting the lift first failed every waiting ticket and EVICTED its walker, which counted a soft
+            // transfer (a fade) on top of the reset.
             _onDeck = -1;
             for (int r = 0; r < 4; r++)
             {
@@ -321,6 +323,7 @@ namespace MuseDesk.Spatial.Wall
                 _walkers[r].ForceHome();
                 if (a != null) { var h = ActEnded; if (h != null) h(a); }
             }
+            lift.Interrupt();
             _travelLock = -1;
         }
 
