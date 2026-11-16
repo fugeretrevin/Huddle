@@ -1,3 +1,24 @@
+# RC13 (lively polish, 2026-11-16 afternoon) — answers the owner's rc11 worn report
+
+Candidate: `Builds/MuseDesk_rc13_lively_polish.apk` (label `rc13-lively-polish`), SHA-256
+`3DAF3AE6CB45B4DFA24863FC51BA92E743F95A8ABBF62787359AFBA329BBF6AD`, installed on the Quest (installed hash verified).
+Code `42efeff` on `feature/rc8-feedback-1`. Rollback: rc11 `AF34CBE5...`, then rc10, rc9, rc8.
+(`MuseDesk_rc12_portal_polish.apk` exists but was built while scripts were being edited: never installed, superseded by rc13.)
+EditMode **1619 / 1619**.
+
+| Owner rc11 finding | Change | Level | Evidence |
+|---|---|---|---|
+| Wall placement too strict, only far spots | up to 0.85 m above the eye (clears desk/screen), 0.5 m from the head, straight ahead allowed above the screen, finer search; a refused drop snaps to the nearest fit | AUTO + PLAY | 5 WallPlacementTests (desk against wall, close wall, above screen, nearest fit, snap on release); PortalFxDrive Point: refused -> "moved to the nearest spot that fits" |
+| Use the Floor placement's beam / dragging / reasons | per-hand arc (Floor material), ring cursor on the wall, chip "Pinch to move it here" / "Can't: covers a door"; ghost label above the ghost, coloured status word | PLAY | captures: beam + red ghost + chip; label "Fits here / Checked against your room scan" |
+| Portal not animated ("growing from nothing") | Antigravity floor portal (opens into an arch, motes) + light column; agent pops in inside it, steps out (Portal_Emerge_Step), leaves with Portal_Return_Step into the column; smooth validity ring in preview; wider large-spot search | AUTO + PLAY | stage captures (opening, emerge, out, leaving); MeetDrive 15/15 |
+| Visitor should be lively and talkable | PortalVisitorLife: faces you, looks at you / a near hand / the finger that touched it, breathes, leans and slides from a touch, poke hop, waves back, thinks while asked, gestures while answering. The small desk visitor (Select agents) gets the same on its bones: dangles while carried, perch idle, explains | PLAY | simulated touch -> React_Poke_Surprise, look=finger, push; Ask -> converse / DeskVisit_Explain; AgentSelectGrabDrive 12/12 |
+| Buttons / cards after Manager or Meet look poor | Wall cards in the task dock's unlit dark style (plan = cream paper), keys measured from the real key (were overlapping into one bar), balanced rows, one-line footer, card left of the visitor and off the task dock; perch beside the dock, round pads; plan page mark beside the stamp zone; desk paper More / Revise labels readable | PLAY | card captures; LivingOfficeDrive (stamp) all steps; OfferHoldDrive PASS (0 retracts) |
+| (hint) | "Wave or poke them. Ask on the card." once, when a visitor first comes out | AUTO | 2 coach tests |
+
+WORN: NOT RUN for every row. Device frame rate for the new portal art: not yet measured.
+
+---
+
 # RC11 (polish, 2026-11-16 morning) — rc10 plus open audit items
 
 Candidate: `Builds/MuseDesk_rc11_polish.apk` (label `rc11-polish`), SHA-256

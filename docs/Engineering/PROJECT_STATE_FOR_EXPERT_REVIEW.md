@@ -40,17 +40,17 @@ work without controllers or voice; the judge build works with no PC.
 | rc6_2 | 11-13 | Desk/Floor/Ceiling basics worked; earlier grab and text-mirroring issues fixed in rc-feedback rounds | rc7 |
 | rc8 | 11-15 night | 10 findings W1-W10: Wall agents doubled; Manager paper key labels truncated and no stamp zone; panels far at start; remove factory belt; Floor/Ceiling unreachable from the Wall dock; select-agent grab broken; offering agent looped give/take-back; paper keys should be More + Revise only; hands-free mic wanted | rc9 |
 | rc9 | 11-16 | Wall legs walk then slide; an agent rode the elevator and teleported home; portal never used / unreachable; the mode panel and placement flow were gone | rc10 |
-| rc10 / rc11 | 11-16 | rc11 worn: Wall placement too strict (only far spots, missed good ones); wanted the Floor-style beam and reasons; portal "just an agent growing from nothing"; the portal agent should be lively (look at you and your hand, react, be talkable); buttons/cards after opening the Manager paper or Meet look poor | **rc12 (this build)** |
+| rc10 / rc11 | 11-16 | rc11 worn: Wall placement too strict (only far spots, missed good ones); wanted the Floor-style beam and reasons; portal "just an agent growing from nothing"; the portal agent should be lively (look at you and your hand, react, be talkable); buttons/cards after opening the Manager paper or Meet look poor | **rc13 (this build)** |
 
 Device performance (in-app heartbeat + compositor, owner sessions): **72 fps steady** on Desk idle, board open, task
 running, paper held, Wall preview, Wall active and with the (small) portal open (rc9 and rc11 sessions). One-off frame
 hitches of 60-150 ms on scenario changes (board open, paper grab) and a ~1 s load hitch at app start. Memory ~385-398 MB.
-Not yet measured: rc12's new portal art and column, Floor/Ceiling on rc10+, a 15-minute soak, thermals.
+Not yet measured: rc13's new portal art and column, Floor/Ceiling on rc10+, a 15-minute soak, thermals.
 Details: `docs/Engineering/RC8_PERFORMANCE_RESULTS.md`.
 
-Current candidate: **`Builds/MuseDesk_rc12_portal_polish.apk`** (label `rc12-portal-polish`, branch
-`feature/rc8-feedback-1`, commit `61f0b8d`; SHA-256 in `RC8_RELEASE_GATE_MATRIX.md`). Rollbacks kept: rc11, rc10, rc9,
-rc8, rc7, rc6_2.
+Current candidate: **`Builds/MuseDesk_rc13_lively_polish.apk`** (label `rc13-lively-polish`, branch
+`feature/rc8-feedback-1`, commit `42efeff`, SHA-256 `3DAF3AE6...BBF6AD`, installed on the Quest, hash verified).
+Rollbacks kept: rc11, rc10, rc9, rc8, rc7, rc6_2. EditMode 1619 / 1619.
 
 ## 4. Feature inventory
 
@@ -63,12 +63,12 @@ rc8, rc7, rc6_2.
 | Floor office | Guided look card, scan grid, pointing arc to the floor, pinch-drag footprint with colours and reasons, Place moves the office along a swept clear route; Stop reverses | Done | WORN (rc6) + AUTO + PLAY | Desks overhang the floor deck by 3-6 cm |
 | Ceiling pod | Ceiling dock spot, pod descends beside you, Lower/Raise, pull gesture | Done | WORN (rc6) + PLAY | - |
 | Wall habitat | Antigravity treehouse (Full 3-tier / Compact 2-tier) on a scanned wall; one agent per role; walkers with routed corridors; elevator with dispatcher, claims, rider priority, hold-in-cabin; Manager on top floor | Done | AUTO (30-min seeded stress, 0 teleports) + PLAY; WORN rc11 (placed, agents walked) | Elevator "no teleport" fix not yet confirmed worn |
-| Wall placement | **rc12**: Floor-style beam per hand, ring cursor, chip "Pinch to move it here" / "Can't: covers a door"; pinch-drag the ghost; letting go on a refused spot snaps to the nearest spot that fits; rules loosened (closer, higher above the desk/screen, finer search) | New in rc12 | AUTO (5 new tests) + PLAY | **NOT WORN**; rules still conservative by design (doors, windows, furniture, edge-on view) |
+| Wall placement | **rc13**: Floor-style beam per hand, ring cursor, chip "Pinch to move it here" / "Can't: covers a door"; pinch-drag the ghost; letting go on a refused spot snaps to the nearest spot that fits; rules loosened (closer, higher above the desk/screen, finer search) | New in rc13 | AUTO (5 new tests) + PLAY | **NOT WORN**; rules still conservative by design (doors, windows, furniture, edge-on view) |
 | Manager plan paper | Pick a goal, the Manager drafts a plan (live model or scripted), paper with rows + framed "Stamp here" zone, stamp approves, cards print, owners ride the elevator, work, report back; receipt | Done | PLAY (13 steps, stamp variant); LIVE-backend plan PASS (Meta model, 13 s); WORN partially (rc8 paper seen) | Live Manager runner is sequential and text-only (honestly labelled) |
-| Select agents + /btw | Point at a habitat agent and pinch to carry it to a desk perch; ask preset questions (read-only side conversation); put back | Done | AUTO 19 + PLAY 12/12 | **Hand carry is the real test: not yet worn on rc10+** |
-| Meet + large portal | **rc12**: Meet key / voice ("Tester, come here") opens a portal preview with keep-out-checked spot; Antigravity's floor portal opens into an arch, a light column rises, the agent pops in and steps out (Portal_Emerge_Step), leaves with a turn-and-wave into the column; small-visitor fallback when no large spot; wider spot search | New in rc12 | AUTO (keep-out 24+, portal entry 19) + PLAY (stages captured) | **NOT WORN**; rc11 worn session got only the small-visitor fallback (no large spot in that room) |
-| Portal visitor life | **rc12**: faces you; head/neck look at you, a nearby hand, or the finger that touched it; breathing; leans and slides away from a fingertip (kinematic, springs back); startled hop on a jab; waves back; thinks while a question is out; gestures while answering | New in rc12 | PLAY (simulated touch: poke reaction, look-at-finger, push) | **NOT WORN**; wave detection assumes the ISDK fingertip order |
-| Wall cards | **rc12**: visit / Meet / receipt cards in the task dock's dark unlit style with rim and teal accent; Manager plan as cream paper; keys measured from the real key and laid out evenly (they used to overlap into one bar) | New in rc12 | PLAY (captures) | NOT WORN; key caps are the console's grey keys |
+| Select agents + /btw | Point at a habitat agent and pinch to carry it to a desk perch beside the task dock; ask preset questions (read-only side conversation); put back. **rc13**: it dangles while carried, then perches with the same look/touch/talk life as the portal visitor | Done | AUTO 19 + PLAY 12/12 | **Hand carry is the real test: not yet worn on rc10+** |
+| Meet + large portal | **rc13**: Meet key / voice ("Tester, come here") opens a portal preview with keep-out-checked spot; Antigravity's floor portal opens into an arch, a light column rises, the agent pops in and steps out (Portal_Emerge_Step), leaves with a turn-and-wave into the column; small-visitor fallback when no large spot; wider spot search | New in rc13 | AUTO (keep-out 24+, portal entry 19) + PLAY (stages captured) | **NOT WORN**; rc11 worn session got only the small-visitor fallback (no large spot in that room) |
+| Portal visitor life | **rc13**: faces you; head/neck look at you, a nearby hand, or the finger that touched it; breathing; leans and slides away from a fingertip (kinematic, springs back); startled hop on a jab; waves back; thinks while a question is out; gestures while answering | New in rc13 | PLAY (simulated touch: poke reaction, look-at-finger, push) | **NOT WORN**; wave detection assumes the ISDK fingertip order |
+| Wall cards | **rc13**: visit / Meet / receipt cards in the task dock's dark unlit style with rim and teal accent; Manager plan as cream paper; keys measured from the real key and laid out evenly (they used to overlap into one bar) | New in rc13 | PLAY (captures) | NOT WORN; key caps are the console's grey keys |
 | Voice | Hands-free mic (muted by default, dock toggle); wake word: sentences must start with an agent name or "MuseDesk"; "stop" always heard; mode words; portal requests; decisions still need the paper opened + an undo window | Done | AUTO (wake word 21, voice 39+) + PLAY | Needs Wit.ai + network: never in the offline judge path |
 | Onboarding hints | One hint at a time, event-driven (first paper, stamp, receipt, Spaces, Wall, Manager, Meet, Reset layout, hands-lost) | Done | AUTO + PLAY | Some recovery hints deliberately unwired (copy did not fit) |
 | Panels | Movable panels (pinch the bar), reset layout, panels re-seat near the user at start-up in any mode; office never moves on its own | Done | AUTO + PLAY; WORN rc11 (dock in reach) | - |
@@ -76,9 +76,9 @@ rc8, rc7, rc6_2.
 
 ## 5. In progress / not verified
 
-- **Everything new in rc12 is unworn:** Wall beam and snap, loosened rules, the portal sequence and visitor life, and the
+- **Everything new in rc13/rc13 is unworn:** Wall beam and snap, loosened rules, the portal sequence and visitor life, and the
   new card style.
-- **Device FPS for the rc12 portal art** (arch, particles, transparent column) and a 15-minute soak with thermals.
+- **Device FPS for the rc13 portal art** (arch, particles, transparent column) and a 15-minute soak with thermals.
 - **The large portal in a real seated room:** the planner needs a clear spot 50-120 degrees to the side, 1.0-1.85 m away,
   clear of screens, the desk front, furniture and walls. The owner's room produced only the small visitor. We widened
   the search but kept the safety margins.

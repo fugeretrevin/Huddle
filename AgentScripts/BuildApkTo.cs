@@ -7,7 +7,7 @@ public static class BuildApkTo
 {
     public static string Run(string path)
     {
-        if (string.IsNullOrEmpty(path) || path.Replace('\\', '/').EndsWith("Builds/MuseDesk.apk") || path.Contains("rc6") || path.Contains("rc7") || path.Contains("rc8") || path.Contains("rc9") || path.Contains("rc10") || path.Contains("rc11")) return "REFUSED: protected path";
+        if (string.IsNullOrEmpty(path) || path.Replace('\\', '/').EndsWith("Builds/MuseDesk.apk") || path.Contains("rc6") || path.Contains("rc7") || path.Contains("rc8") || path.Contains("rc9") || path.Contains("rc10") || path.Contains("rc11") || path.Contains("rc12")) return "REFUSED: protected path";
         var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
         if (scenes.Length == 0) return "FAILED: no enabled build scenes";
         var opts = new BuildPlayerOptions { scenes = scenes, locationPathName = path, target = BuildTarget.Android, targetGroup = BuildTargetGroup.Android, options = BuildOptions.None };
