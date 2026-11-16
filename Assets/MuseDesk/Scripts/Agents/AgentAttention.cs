@@ -578,9 +578,9 @@ namespace MuseDesk.Agents
 
         static Color RoleColor(string role)
         {
-            if (role == AgentStatusSentence.Developer) return OfficeTokens.Success;
-            if (role == AgentStatusSentence.Tester) return OfficeTokens.Amber;
-            return OfficeTokens.InfoBlue;
+            if (role == AgentStatusSentence.Developer) return OfficeTokens.RoleDeveloper;
+            if (role == AgentStatusSentence.Tester) return OfficeTokens.RoleTester;
+            return OfficeTokens.RoleResearcher;
         }
 
         // ───────────────────────── the frame ─────────────────────────

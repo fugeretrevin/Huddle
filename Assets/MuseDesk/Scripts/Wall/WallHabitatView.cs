@@ -440,7 +440,7 @@ namespace MuseDesk.Wall
             var a = new GameObject("Avatar_" + r + " (placeholder)").transform;
             a.SetParent(parent, false);
             float h = layout.agentHeight;
-            Color body = r == HabitatRole.Researcher ? Teal : r == HabitatRole.Developer ? Hex(0x5B8DEF) : r == HabitatRole.Tester ? Amber : Lavender;
+            Color body = r == HabitatRole.Researcher ? Workspace.OfficeTokens.RoleResearcher : r == HabitatRole.Developer ? Workspace.OfficeTokens.RoleDeveloper : r == HabitatRole.Tester ? Workspace.OfficeTokens.RoleTester : Workspace.OfficeTokens.RoleManager;
             Box(a, "Body", new Vector3(0, h * 0.35f, 0), new Vector3(h * 0.38f, h * 0.7f, h * 0.3f), body);
             Box(a, "Head", new Vector3(0, h * 0.82f, 0), new Vector3(h * 0.34f, h * 0.3f, h * 0.3f), Paper);
             Box(a, "Eyes", new Vector3(0, h * 0.84f, h * 0.152f), new Vector3(h * 0.2f, h * 0.05f, 0.002f), Ink);
@@ -452,7 +452,7 @@ namespace MuseDesk.Wall
             float h = layout.agentHeight;
             // Placeholder Manager (until Antigravity's model): the Developer mesh with a lavender cap and a brass badge.
             // (A colour tint on the character's toon material rendered translucent in Play Mode: not used.)
-            var cap = Box(a, "ManagerCap", Vector3.zero, Vector3.one, Lavender).transform;
+            var cap = Box(a, "ManagerCap", Vector3.zero, Vector3.one, Workspace.OfficeTokens.RoleManager).transform;
             cap.SetParent(a, false);
             float s = a.lossyScale.y > 1e-5f ? a.lossyScale.y : 1f;
             float ps = root.lossyScale.y;

@@ -47,9 +47,10 @@ namespace MuseDesk.Phase2.Board
         {
             switch (agentId)
             {
-                case Phase2AgentIds.Researcher: return researcher;
-                case Phase2AgentIds.Developer:  return developer;
-                case Phase2AgentIds.Tester:     return tester;
+                // The serialized researcher/developer/tester fields are legacy; the design token is the source of truth.
+                case Phase2AgentIds.Researcher: return MuseDesk.Workspace.OfficeTokens.RoleColor(agentId);
+                case Phase2AgentIds.Developer:  return MuseDesk.Workspace.OfficeTokens.RoleColor(agentId);
+                case Phase2AgentIds.Tester:     return MuseDesk.Workspace.OfficeTokens.RoleColor(agentId);
                 default:                        return unassigned;   // null / empty / unknown
             }
         }

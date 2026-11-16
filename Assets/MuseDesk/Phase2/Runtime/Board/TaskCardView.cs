@@ -542,7 +542,8 @@ namespace MuseDesk.Phase2.Board
             {
                 // Both sit on the role strip. The Tester's strip is amber, where dark text reads;
                 // the other strips are dark enough for light text.
-                Color want = Data.AgentId == Phase2AgentIds.Tester ? RoleTextOnLight : RoleTextOnDark;
+                // Every strip is now a light pastel (or the warm cream while unassigned): Ink reads on all of them.
+                Color want = RoleTextOnLight;
                 if (roleLabel && roleLabel.color != want) roleLabel.color = want;
                 if (priorityLabel && priorityLabel.color != want) priorityLabel.color = want;
             }

@@ -25,6 +25,31 @@ namespace MuseDesk.Workspace
         /// <summary>Neutral status (idle, queued, unknown).</summary>
         public static readonly Color Neutral = new Color32(0x9A, 0xA0, 0xA8, 0xFF);
 
+        // Role colours (competition build): soft pastels, never confusable with the saturated state tokens, always shown
+        // with the role name. Mirrored in Core as PlanPalette (RoleResearcher..RoleManager); a parity test guards both.
+        public static readonly Color RoleResearcher = new Color32(0xA9, 0xB8, 0xF0, 0xFF);   // Periwinkle
+        public static readonly Color RoleDeveloper = new Color32(0xD2, 0xA6, 0xE8, 0xFF);    // Orchid
+        public static readonly Color RoleTester = new Color32(0xF0, 0xA9, 0xC4, 0xFF);       // Rose
+        public static readonly Color RoleManager = new Color32(0x4B, 0x4F, 0x9C, 0xFF);      // Indigo
+
+        /// <summary>Role colour for a role word or agent id ("researcher", "Developer", "tester", "manager"); unknown = Neutral.</summary>
+        public static Color RoleColor(string roleOrAgentId)
+        {
+            if (string.IsNullOrEmpty(roleOrAgentId)) return Neutral;
+            string s = roleOrAgentId.Trim();
+            if (string.Equals(s, "researcher", System.StringComparison.OrdinalIgnoreCase)) return RoleResearcher;
+            if (string.Equals(s, "developer", System.StringComparison.OrdinalIgnoreCase)) return RoleDeveloper;
+            if (string.Equals(s, "tester", System.StringComparison.OrdinalIgnoreCase)) return RoleTester;
+            if (string.Equals(s, "manager", System.StringComparison.OrdinalIgnoreCase)) return RoleManager;
+            return Neutral;
+        }
+
+        /// <summary>Text colour that reads on a role chip: OnPlate on the Manager's indigo, Ink on the pastels.</summary>
+        public static Color TextOnRole(string roleOrAgentId)
+        {
+            return RoleColor(roleOrAgentId) == RoleManager ? OnPlate : Ink;
+        }
+
         /// <summary>
         /// THE task-state colour, shared by the board, agent glows, workstation displays and the Wall habitat (polish:
         /// one colour = one meaning everywhere). Running = Teal (active), needs you = Amber, completed = Success,

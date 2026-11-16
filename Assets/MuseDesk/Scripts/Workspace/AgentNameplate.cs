@@ -47,6 +47,21 @@ namespace MuseDesk.Workspace
         {
             _ease.Init(transform, ScaleEase.ResolveFull(transform, shownScale), 0.2f, true);
             if (roleText != null && roleText.text != roleName) roleText.text = roleName;
+            TintRoleStrips();
+        }
+
+        // The role strip(s) on the plate (the builder-made "Strip" and the art skin's "RoleStrip_Art") take the role colour
+        // from the design token through a property block (competition build: role colours are soft pastels).
+        void TintRoleStrips()
+        {
+            var block = new MaterialPropertyBlock();
+            Color c = OfficeTokens.RoleColor(agentId);
+            var rends = GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < rends.Length; i++)
+            {
+                string n = rends[i].name;
+                if (n == "Strip" || n == "RoleStrip_Art") OfficeTokens.Tint(rends[i], block, c);
+            }
         }
 
         void OnEnable() { Render(false); }

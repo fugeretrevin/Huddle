@@ -276,9 +276,8 @@ namespace MuseDesk.Documents
         static Color RoleColor(string agentId)
         {
             string id = (agentId ?? "").Trim();
-            if (string.Equals(id, AgentIds.Developer, System.StringComparison.OrdinalIgnoreCase)) return SuccessPlate;
-            if (string.Equals(id, AgentIds.Tester, System.StringComparison.OrdinalIgnoreCase)) return AmberPlate;
-            return InfoBluePlate;
+            if (id.Length == 0) return MuseDesk.Workspace.OfficeTokens.RoleResearcher;   // RoleName treats empty as Researcher
+            return MuseDesk.Workspace.OfficeTokens.RoleColor(id);
         }
 
         // "medium" -> "Medium": the event's own word, as the start of a line.

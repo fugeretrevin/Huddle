@@ -242,10 +242,8 @@ namespace MuseDesk.Spatial
         /// <summary>The role colours of the design system (Researcher blue, Developer green, Tester amber).</summary>
         public static Color RoleColor(string agentId)
         {
-            if (agentId == AgentIds.Researcher) return OfficeTokens.InfoBlue;
-            if (agentId == AgentIds.Developer) return OfficeTokens.Success;
-            if (agentId == AgentIds.Tester) return OfficeTokens.Amber;
-            return OfficeTokens.Teal;
+            if (agentId == AgentIds.Researcher || agentId == AgentIds.Developer || agentId == AgentIds.Tester) return OfficeTokens.RoleColor(agentId);
+            return OfficeTokens.Neutral;
         }
 
         static string RoleName(string agentId)

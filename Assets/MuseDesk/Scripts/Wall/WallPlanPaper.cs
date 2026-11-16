@@ -73,6 +73,10 @@ namespace MuseDesk.Wall
                 case PlanTone.Lavender: return Workspace.OfficeTokens.Lavender;
                 case PlanTone.InfoBlue: return Workspace.OfficeTokens.InfoBlue;
                 case PlanTone.Neutral: return Workspace.OfficeTokens.Neutral;
+                case PlanTone.RoleResearcher: return Workspace.OfficeTokens.RoleResearcher;
+                case PlanTone.RoleDeveloper: return Workspace.OfficeTokens.RoleDeveloper;
+                case PlanTone.RoleTester: return Workspace.OfficeTokens.RoleTester;
+                case PlanTone.RoleManager: return Workspace.OfficeTokens.RoleManager;
                 default: return Workspace.OfficeTokens.Ink;
             }
         }

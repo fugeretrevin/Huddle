@@ -9,10 +9,22 @@ namespace MuseDesk.Spatial.Ui
     public enum PlanRowKind { Title, State, Section, Text, ItemTitle, ItemDetail, ItemOutput, Risk, More, Provenance }
 
     /// <summary>Colour roles, mirroring OfficeTokens (Core cannot reference the Workspace assembly).</summary>
-    public enum PlanTone { Ink, InkSoft, Teal, Amber, Success, Coral, Lavender, InfoBlue, Neutral }
+    public enum PlanTone { Ink, InkSoft, Teal, Amber, Success, Coral, Lavender, InfoBlue, Neutral, RoleResearcher, RoleDeveloper, RoleTester, RoleManager }
 
     public static class PlanPalette
     {
+        /// <summary>Role tone for a role word or agent id (case-insensitive); unknown or empty = Neutral. Mirrors OfficeTokens.RoleColor.</summary>
+        public static PlanTone RoleTone(string roleOrAgentId)
+        {
+            if (string.IsNullOrEmpty(roleOrAgentId)) return PlanTone.Neutral;
+            string s = roleOrAgentId.Trim();
+            if (string.Equals(s, "researcher", StringComparison.OrdinalIgnoreCase)) return PlanTone.RoleResearcher;
+            if (string.Equals(s, "developer", StringComparison.OrdinalIgnoreCase)) return PlanTone.RoleDeveloper;
+            if (string.Equals(s, "tester", StringComparison.OrdinalIgnoreCase)) return PlanTone.RoleTester;
+            if (string.Equals(s, "manager", StringComparison.OrdinalIgnoreCase)) return PlanTone.RoleManager;
+            return PlanTone.Neutral;
+        }
+
         public static Color32 Of(PlanTone t)
         {
             switch (t)
@@ -25,6 +37,10 @@ namespace MuseDesk.Spatial.Ui
                 case PlanTone.Lavender: return new Color32(0x8C, 0x7B, 0xD6, 0xFF);
                 case PlanTone.InfoBlue: return new Color32(0x4C, 0x85, 0xDB, 0xFF);
                 case PlanTone.Neutral: return new Color32(0x9A, 0xA0, 0xA8, 0xFF);
+                case PlanTone.RoleResearcher: return new Color32(0xA9, 0xB8, 0xF0, 0xFF);
+                case PlanTone.RoleDeveloper: return new Color32(0xD2, 0xA6, 0xE8, 0xFF);
+                case PlanTone.RoleTester: return new Color32(0xF0, 0xA9, 0xC4, 0xFF);
+                case PlanTone.RoleManager: return new Color32(0x4B, 0x4F, 0x9C, 0xFF);
                 default: return new Color32(0x1F, 0x25, 0x30, 0xFF);
             }
         }
