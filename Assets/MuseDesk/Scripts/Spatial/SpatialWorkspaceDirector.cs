@@ -133,7 +133,21 @@ namespace MuseDesk.Spatial
 
         void Start()
         {
+            BindWallDock();
             ApplyFlags();
+        }
+
+        /// <summary>
+        /// UnifiedModeDockV1: when the mode console carries the Wall place key it is the ONE Spaces dock, and the wall host
+        /// is told to build no floating dock of its own. Runs in Start (every Awake has run, nothing has been drawn yet).
+        /// </summary>
+        void BindWallDock()
+        {
+            IWallModeHost wall = Wall;
+            ModeConsole console = strip != null ? strip.console : null;
+            if (wall == null || console == null || !console.HasWallKey) return;
+            if (console.wallHostBehaviour == null) console.wallHostBehaviour = wallHost;
+            wall.ExternalDock = true;
         }
 
         void OnDisable()

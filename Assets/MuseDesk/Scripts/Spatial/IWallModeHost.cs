@@ -1,3 +1,5 @@
+using System;
+
 namespace MuseDesk.Spatial
 {
     /// <summary>
@@ -5,6 +7,10 @@ namespace MuseDesk.Spatial
     /// the only writer of <see cref="SpatialWorkspaceState"/>: it publishes Wall while <see cref="WallActive"/>
     /// and hands Wall requests to the host. With no host wired, or its flag off, nothing changes for
     /// Desk / Floor / Ceiling.
+    ///
+    /// The second half (UnifiedModeDockV1) is what the ONE Spaces dock (<see cref="ModeConsole"/>) needs to show the
+    /// Wall's keys itself instead of a second floating dock: the dock's state, its words, the presses, and a
+    /// change notification. Every press is a request the host may refuse (with words in <see cref="WallStatus"/>).
     /// </summary>
     public interface IWallModeHost
     {
@@ -18,5 +24,32 @@ namespace MuseDesk.Spatial
         bool RequestWall(bool deskIdle);
         /// <summary>Leave Wall mode (or its preview) safely: visits and portals return, agents re-home, the desk office shows again.</summary>
         void ExitWall(string why);
+
+        // ── the unified Spaces dock ──
+
+        /// <summary>Raised when anything the dock shows for the wall changed (state, the spot's fit, layout, words).</summary>
+        event Action DockChanged;
+        /// <summary>Set true by the director when the Spaces dock carries the Wall keys: the host then builds and shows no dock of its own.</summary>
+        bool ExternalDock { get; set; }
+        /// <summary>The previewed wall spot fits: Place is armed.</summary>
+        bool WallCanPlace { get; }
+        /// <summary>The preview shows the Full layout (the layout key offers Compact).</summary>
+        bool WallLayoutFull { get; }
+        /// <summary>Select Agents is armed (the select key reads Done).</summary>
+        bool WallSelecting { get; }
+        bool WallSelectEnabled { get; }
+        bool WallManagerEnabled { get; }
+        /// <summary>The wall's one-line status, in words; empty when there is nothing to say.</summary>
+        string WallStatus { get; }
+        /// <summary>Place the habitat at the previewed spot (refused unless it fits; nothing else moves).</summary>
+        void WallPlace();
+        void WallNextSpot();
+        void WallToggleLayout();
+        /// <summary>Leave the preview as it was (entering: back to Desk; moving the habitat: it stays where it was).</summary>
+        void WallCancel();
+        /// <summary>Open a preview to move the placed habitat (refused while an agent visits or rides).</summary>
+        void WallMove();
+        void WallSelect();
+        void WallManager();
     }
 }
