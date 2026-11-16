@@ -105,6 +105,10 @@ namespace MuseDesk.Documents
         [Tooltip("Seconds the details sheet takes to slide out or back.")]
         public float detailsSlideSeconds = 0.3f;
 
+        /// <summary>Short words on the details key: short enough to fit the key at its authored size, no ellipsis.</summary>
+        public const string MoreWord = "More";
+        public const string LessWord = "Less";
+
         public bool IsExpanded { get; private set; }
 
         /// <summary>True while a response is in flight (keys replaced by inert plates).</summary>
@@ -414,14 +418,12 @@ namespace MuseDesk.Documents
             }
         }
 
-        // The Voice chip is offered only when the voice layer could act on what it hears (the same
-        // conditions VoiceDecisionController checks, apart from "a decision is pending").
+        // The paper carries no Voice key any more (the desk keeps only More and Revise; the microphone lives on its
+        // own panel). If a scene still has one it is kept hidden, and the remaining keys use the no-voice layout.
         void RefreshVoiceChip()
         {
-            if (voiceChip == null) { LayoutChips(false); return; }
-            bool usable = VoiceUsable();
-            Show(voiceChip, usable);
-            LayoutChips(usable);
+            if (voiceChip != null) Show(voiceChip, false);
+            LayoutChips(false);
         }
 
         // Three chips are spread evenly across the row; four take the four-chip positions. Only the
@@ -440,15 +442,6 @@ namespace MuseDesk.Documents
                 if (chipKeys[i] != null) chipKeys[i].localPosition = pos[i];
         }
 
-        bool VoiceUsable()
-        {
-            if (voice == null || !voice.isActiveAndEnabled || !voice.voiceEnabled) return false;
-            var source = voice.sourceBehaviour as MuseDesk.Voice.IVoiceCommandSource;
-            if (source == null || !source.IsAvailable) return false;
-            if (voice.requireLiveMode && (voice.controller == null || !voice.controller.IsLive)) return false;
-            return true;
-        }
-
         /// <summary>The user opened a paper's details sheet. Used by first-use hints only.</summary>
         public static event System.Action DetailsOpened;
 
@@ -457,14 +450,14 @@ namespace MuseDesk.Documents
             bool was = IsExpanded;
             IsExpanded = true;
             if (!was) DetailsOpened?.Invoke();
-            if (detailsChipLabel) detailsChipLabel.text = "Close";
+            if (detailsChipLabel) detailsChipLabel.text = LessWord;
             Apply();
         }
 
         public void Collapse()
         {
             IsExpanded = false;
-            if (detailsChipLabel) detailsChipLabel.text = "Details";
+            if (detailsChipLabel) detailsChipLabel.text = MoreWord;
             Apply();
         }
 

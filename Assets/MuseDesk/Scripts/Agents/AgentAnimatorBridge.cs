@@ -84,6 +84,7 @@ namespace MuseDesk.Agents
         static readonly int S_Blocked = Animator.StringToHash("Blocked");
         static readonly int S_Worried = Animator.StringToHash("Worried");
         static readonly int S_Offer = Animator.StringToHash("Offer_Document");
+        static readonly int S_OfferPresent = Animator.StringToHash("Offer_Document_Present");   // the one-shot raise (20 frames)
         static readonly int S_TaskCompleted = Animator.StringToHash("Task_Completed");
         static readonly int S_Success = Animator.StringToHash("Success");
         static readonly int S_Failure = Animator.StringToHash("Failure");
@@ -113,6 +114,8 @@ namespace MuseDesk.Agents
         bool _oneShot;           // a one-shot reaction is playing
         float _oneShotUntil;
         bool _offerHold;         // DIRECT: holding the paper out until it is taken or the agent moves
+        int _offerTarget = S_Offer;   // DIRECT: the state that shows the raised paper (the one-shot raise when the controller has it)
+        bool _offerFrozen;       // DIRECT: the animator is paused on the raised pose (Offer_Document loops its raise / lower otherwise)
         float _phase;            // per-agent offset so the three never animate in unison
         float _rate = 1f;        // DIRECT: the Animator playback speed we last set
 
@@ -144,6 +147,7 @@ namespace MuseDesk.Agents
             _mode = Mode.Unresolved;
             _oneShot = false;
             _offerHold = false;
+            _offerFrozen = false;
             _moving = false;
             _moveSpeed = 0f;
             if (view != null)
@@ -172,8 +176,9 @@ namespace MuseDesk.Agents
             if (view != null) view.StateChanged -= OnStateChanged;
             if (movement != null) movement.TurnInPlaceChanged -= OnTurnInPlaceChanged;
             // Never leave the Animator running at a walk-matched rate.
-            if (_rate != 1f && animator != null) animator.speed = 1f;
+            if ((_rate != 1f || _offerFrozen) && animator != null) animator.speed = 1f;
             _rate = 1f;
+            _offerFrozen = false;
         }
 
         void Update()
@@ -191,7 +196,38 @@ namespace MuseDesk.Agents
             }
 
             if (_mode == Mode.Direct && _hasMoveSpeed) UpdateMoveSpeed();
-            if (_mode == Mode.Direct) UpdateWalkRate();
+            if (_mode == Mode.Direct) UpdateOfferHold();
+            if (_mode == Mode.Direct && !_offerFrozen) UpdateWalkRate();
+        }
+
+        // DIRECT: hold the raised paper. The offer clip raises the sheet and (it is authored as a loop) lowers it
+        // again; once the cross-fade into the offer state is done and the raised pose is reached, pause the Animator
+        // there. It is released the moment the offer ends, the agent walks or a one-shot reaction takes over.
+        void UpdateOfferHold()
+        {
+            if (animator == null) return;
+            if (_offerFrozen)
+            {
+                if (OfferHoldPolicy.ShouldRelease(true, _offerHold, _moving, _oneShot)) ReleaseOfferHold();
+                return;
+            }
+            if (!_offerHold || _moving || _oneShot) return;
+            AnimatorStateInfo cur = animator.GetCurrentAnimatorStateInfo(0);
+            if (OfferHoldPolicy.ShouldFreeze(_offerHold, _moving, _oneShot, animator.IsInTransition(0),
+                    cur.shortNameHash == _offerTarget, cur.normalizedTime,
+                    OfferHoldPolicy.HoldAt(_offerTarget == S_OfferPresent)))
+            {
+                animator.speed = 0f;
+                _offerFrozen = true;
+            }
+        }
+
+        void ReleaseOfferHold()
+        {
+            if (!_offerFrozen) return;
+            _offerFrozen = false;
+            _rate = 1f;
+            if (animator != null) animator.speed = 1f;
         }
 
         // DIRECT: the walk clip is an in-place cycle and AgentMovement eases the agent along its path,
@@ -258,7 +294,7 @@ namespace MuseDesk.Agents
             bool m = movement != null && movement.IsMoving;
             if (m == _moving) return;
             _moving = m;
-            if (m) { _offerHold = false; _oneShot = false; }   // walking always wins
+            if (m) { _offerHold = false; _oneShot = false; ReleaseOfferHold(); }   // walking always wins
             if (_mode == Mode.Params) animator.SetBool(P_IsMoving, m);
             else if (_mode == Mode.Direct) GoBase(m ? walkInBlend : walkOutBlend);
         }
@@ -313,7 +349,7 @@ namespace MuseDesk.Agents
                 int turn = TurnState();
                 return turn != 0 ? turn : S_Walk;
             }
-            if (_offerHold) return S_Offer;
+            if (_offerHold) return _offerTarget;
             if (ListeningGate.Show(_listening, false, false, _oneShot, _lastState == AgentStates.Error)) return S_Listening;
             return BaseFor(_lastState);
         }
@@ -372,7 +408,8 @@ namespace MuseDesk.Agents
             if (target == S_Idle && !_moving) SetMoveSpeed(0f);
             if (target == _playing) return;
             // A per-agent start offset keeps the three agents' loops out of step.
-            float offset = (target == S_Walk || target == S_TurnL || target == S_TurnR) ? 0f : _phase * 2f;
+            // The offer starts at the beginning of its raise (a random offset would drop it mid-cycle).
+            float offset = (target == S_Walk || target == S_TurnL || target == S_TurnR || target == S_Offer || target == S_OfferPresent) ? 0f : _phase * 2f;
             animator.CrossFadeInFixedTime(target, Mathf.Max(MinBlend, blend), 0, offset);
             _playing = target;
         }
@@ -459,6 +496,7 @@ namespace MuseDesk.Agents
         {
             if (!Ready()) return;
             _offerHold = false;
+            ReleaseOfferHold();
             if (_mode == Mode.Params) { animator.SetTrigger(trigger); MarkOneShot(clipSeconds); return; }
             SyncMoving();
             // Walking always wins: a standing reaction played over a walk slid across the desk and
@@ -476,16 +514,24 @@ namespace MuseDesk.Agents
             if (!Ready()) return;
             if (_mode == Mode.Params) { animator.SetTrigger(P_TrOffer); MarkOneShot(LenOffer); return; }
             SyncMoving();
+            // Already holding it out: never restart the raise (that was the give / take-back loop).
+            if (_offerHold && !_oneShot) return;
             _oneShot = false;
             _offerHold = true;
+            _offerTarget = animator.HasState(0, S_OfferPresent) ? S_OfferPresent : S_Offer;
             GoBase(baseBlend);
         }
+
+        /// <summary>Is the raised paper being held steady right now (the raise finished and is paused)?
+        /// For the Play Mode driver and diagnostics.</summary>
+        public bool OfferPoseHeld => _offerHold && _offerFrozen;
 
         /// <summary>Stop holding the paper out (the user took it). Safe to call at any time.</summary>
         public void EndOffer()
         {
             if (!_offerHold) return;
             _offerHold = false;
+            ReleaseOfferHold();
             if (animator != null && _mode == Mode.Direct && !_oneShot) GoBase(baseBlend);
         }
 
