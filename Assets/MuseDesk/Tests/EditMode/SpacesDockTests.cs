@@ -67,6 +67,20 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
+        public void GreyedWallSaysWhyOnlyWhenFloorOrCeilingIsAtRest()
+        {
+            Assert.AreEqual(SpacesDockLogic.WallFromDeskNote, SpacesDockLogic.Compute(In(PlacementMode.Floor)).wallNote);
+            Assert.AreEqual(SpacesDockLogic.WallFromDeskNote, SpacesDockLogic.Compute(In(PlacementMode.Ceiling)).wallNote);
+            Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(In()).wallNote), "Desk offers Wall: nothing to explain");
+            Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(In(PlacementMode.Floor, wall: false)).wallNote), "flag off: say nothing");
+            var i = In(PlacementMode.Floor); i.previewing = true; i.floorPreview = true;
+            Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(i).wallNote), "preview keys own the line");
+            i = In(PlacementMode.Floor); i.transitioning = true;
+            Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(i).wallNote), "moving: Stop owns the line");
+            Assert.IsTrue(SpacesDockLogic.Compute(In(PlacementMode.Floor)).wallDisabled, "the rule itself is unchanged");
+        }
+
+        [Test]
         public void WallPreviewUsesTheSharedPreviewKeysPlusLayout()
         {
             var i = In(); i.wallPreviewing = true; i.wallCanPlace = true;

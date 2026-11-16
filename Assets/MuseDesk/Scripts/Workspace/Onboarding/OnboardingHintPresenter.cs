@@ -132,6 +132,10 @@ namespace MuseDesk.Workspace
             AgentTouchSummary.Touched += OnAgentTouched;
             FocusModeController.FocusChanged += OnFocusChanged;
             MotionToggleKey.Toggled += OnCalmToggled;
+            MuseDesk.Wall.WallEvents.ManagerPlanShown += OnPlanShown;
+            MuseDesk.Wall.WallEvents.ManagerPlanApproved += OnPlanApproved;
+            MuseDesk.Wall.WallEvents.AgentSelected += OnAgentPicked;
+            MuseDesk.Wall.WallEvents.PortalOpened += OnPortalOpened;
             _runEdge.Reset(); _modeEdge.Reset(); _handoff.Reset();
         }
 
@@ -144,6 +148,10 @@ namespace MuseDesk.Workspace
             AgentTouchSummary.Touched -= OnAgentTouched;
             FocusModeController.FocusChanged -= OnFocusChanged;
             MotionToggleKey.Toggled -= OnCalmToggled;
+            MuseDesk.Wall.WallEvents.ManagerPlanShown -= OnPlanShown;
+            MuseDesk.Wall.WallEvents.ManagerPlanApproved -= OnPlanApproved;
+            MuseDesk.Wall.WallEvents.AgentSelected -= OnAgentPicked;
+            MuseDesk.Wall.WallEvents.PortalOpened -= OnPortalOpened;
             UnbindSession();
             // Hide any visible card without touching the persisted progress.
             if (_built) { _fader.Snap(false); ApplyFactor(); }
@@ -245,6 +253,10 @@ namespace MuseDesk.Workspace
         void OnAgentTouched(AgentTouchSummary a) { Obs(OnboardingEvent.AgentTouched); }
         void OnFocusChanged(bool on) { if (on) Obs(OnboardingEvent.FocusEntered); }
         void OnCalmToggled(bool on) { Obs(OnboardingEvent.CalmMotionToggled); }
+        void OnPlanShown() { Obs(OnboardingEvent.ManagerPlanShown); }
+        void OnPlanApproved() { Obs(OnboardingEvent.ManagerPlanApproved); }
+        void OnAgentPicked() { Obs(OnboardingEvent.AgentSelected); }
+        void OnPortalOpened() { Obs(OnboardingEvent.PortalOpened); }
 
         // The office changing mode (Desk/Floor/Ceiling/Wall) is polled: the director has no event, and the first value is
         // only a baseline so the starting mode never counts as the user moving it.

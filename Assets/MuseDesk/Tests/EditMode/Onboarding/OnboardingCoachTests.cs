@@ -233,13 +233,24 @@ namespace MuseDesk.Tests.EditMode.Onboarding
         [Test]
         public void WallHintNeedsTheWallFlag()
         {
-            Skip(HintId.MeetAgents, HintId.StartWork);
-            _coach.Observe(OnboardingEvent.SessionReady);
-            Run(10);
+            Skip(HintId.MeetAgents, HintId.StartWork, HintId.ReceiptDelivered, HintId.MoveWorkspace, HintId.FocusMode, HintId.CalmMotion);
+            _coach.Observe(OnboardingEvent.TaskCompleted);
+            Run(14);
             Assert.IsNull(_coach.Current);
             Ctx(flags: OnboardingFlags.Wall);
             Run(1);
             Assert.AreEqual(HintId.WallPlace, Cur());
+        }
+
+        [Test]
+        public void WallHintNeverShowsBeforeTheCoreLoopIsDone()
+        {
+            Skip(HintId.MeetAgents, HintId.StartWork);
+            Ctx(flags: OnboardingFlags.Wall);
+            _coach.Observe(OnboardingEvent.SessionReady);
+            Run(30);
+            Assert.AreNotEqual(HintId.WallPlace, Cur());
+            Assert.IsFalse(_coach.IsPending(HintId.WallPlace));
         }
 
         [Test]

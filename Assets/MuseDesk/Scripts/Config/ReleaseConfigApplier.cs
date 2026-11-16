@@ -91,6 +91,9 @@ namespace MuseDesk.Config
                     wallElevatorVfxEnabled = c.wallHabitat && c.wallElevatorVfx,
                 });
 
+            // Elevator arrival particles follow the wallElevatorVfx flag (cosmetic; on in the committed config).
+            MuseDesk.Art.WallHabitatElevatorVisualController.ArrivalVfxEnabled = c.wallElevatorVfx;
+
             // Pull gesture: only meaningful with the ceiling mode.
             bool pull = c.ceilingPullGesture && c.ceilingMode;
             foreach (var g in Object.FindObjectsByType<CeilingPullGesture>(FindObjectsInactive.Include, FindObjectsSortMode.None))

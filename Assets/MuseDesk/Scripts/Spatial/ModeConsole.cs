@@ -346,6 +346,7 @@ namespace MuseDesk.Spatial
 
             string line = status;
             if (h != null && (h.WallActive || h.WallPreviewing)) line = h.WallStatus;
+            if (string.IsNullOrEmpty(line) && h != null && !string.IsNullOrEmpty(_keys.wallNote)) line = _keys.wallNote;
             if (string.IsNullOrEmpty(line))
                 line = h != null && h.WallActive ? wallModeWords
                      : mode == PlacementMode.Floor ? floorModeWords : mode == PlacementMode.Ceiling ? ceilingModeWords : deskWords;
