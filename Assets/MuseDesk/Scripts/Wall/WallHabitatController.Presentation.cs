@@ -22,6 +22,8 @@ namespace MuseDesk.Wall
         readonly PortalSpotSettings _spotSettings = new PortalSpotSettings();
         readonly PortalRoomBounds _bounds = new PortalRoomBounds();
         PortalSpotTracker _spotTracker;
+        // Portal keep-out (RC8): re-checks the live spot against the seated user, screen, desk front and doors; closes on failure.
+        readonly PortalComfortGuard _comfortGuard = new PortalComfortGuard();
         float _nextBoundsAt;
         bool _portalSpotManual;
         bool _portalForcedHome;
@@ -57,6 +59,9 @@ namespace MuseDesk.Wall
                          pAct, pAct ? _portal.Agent : null, pAct ? HomeAnchorOf(_portal.Agent) : Vector3.zero);
             _mirror.visit.Tick(Time.unscaledDeltaTime);
             _mirror.portal.Tick(Time.unscaledDeltaTime);
+            if (_comfortGuard.Tick(_portal, Time.unscaledTime, ReadUser(), roomService != null ? roomService.Room : null,
+                                   HandInteractionProbe.AnyHeld, _visitCard != null ? _visitCard.root.position : (Vector3?)null) == PortalGuardAction.Closed)
+                Note(_comfortGuard.LastReason);
         }
 
         Vector3 HomeAnchorOf(string agent)
