@@ -132,3 +132,50 @@ after the best single translation (0.000, 0.000, 0.000), the worst remaining soc
 - Front Full 3-Tier (`WallHabitat_Complete_3Tier`): `Screenshots/WallHabitat/Unity/01_WallHabitat_3Tier_Front.png`
 - Three-Quarter Full 3-Tier (`WallHabitat_Complete_3Tier`): `Screenshots/WallHabitat/Unity/02_WallHabitat_3Tier_ThreeQuarter.png`
 - Front Compact 2-Tier (`WallHabitat_Complete_2Tier`): `Screenshots/WallHabitat/Unity/03_WallHabitat_2Tier_Compact.png`
+
+## Main-tree re-check after merge (scripts\drv.ps1 WallArtFitCheck Report Full|Compact, 2026-11-15)
+
+Run in the main tree after merging into feature/living-world-polish. Full: 13 FIT, 0 no fit, 0 missing. Compact: 11 FIT, 0 no fit, 0 missing. Worst remaining socket error 0.000 m (this tool checks the 13 layout sockets; the art branch's own check covers 46 and 44).
+
+### Full
+
+```text
+WallHabitat_Complete_3Tier vs layout Full: layout size (1.050, 0.900, 0.260), art bounds size (1.050, 0.917, 0.264) (min (-0.525, -0.450, 0.000) max (0.525, 0.467, 0.264)), art WallContact at prefab-root (0.000, 0.000, 0.000)
+socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 0.010 m)
+WallContact <- WallContact: layout (0.000, 0.000, 0.000) | art (0.000, 0.000, 0.000) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ResearchCubicleSocket <- ResearchCubicleSocket: layout (-0.352, -0.400, 0.092) | art (-0.352, -0.400, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+DeveloperCubicleSocket <- DeveloperCubicleSocket: layout (-0.065, -0.400, 0.092) | art (-0.065, -0.400, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+TesterCubicleSocket <- TestingCubicleSocket: layout (0.222, -0.400, 0.092) | art (0.222, -0.400, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ManagerOfficeSocket <- ManagerLookoutSocket: layout (0.215, 0.150, 0.092) | art (0.215, 0.150, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorCarSocket <- ElevatorCarSocket: layout (0.440, -0.400, 0.092) | art (0.440, -0.400, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorStop_Lower <- ElevatorStop_Lower: layout (0.440, -0.400, 0.210) | art (0.440, -0.400, 0.210) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorStop_Mid <- ElevatorStop_Mid: layout (0.440, -0.110, 0.210) | art (0.440, -0.110, 0.210) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorStop_Manager <- ElevatorStop_Manager: layout (0.440, 0.150, 0.210) | art (0.440, 0.150, 0.210) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+TaskPrinterSocket <- TaskPrinterSocket: layout (-0.230, 0.200, 0.092) | art (-0.230, 0.200, 0.092) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+AttentionBeaconSocket <- AttentionBeaconSocket: layout (-0.250, 0.410, 0.130) | art (-0.250, 0.410, 0.130) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+CourierDispatchSocket <- CourierDispatchSocket: layout (-0.455, -0.400, 0.210) | art (-0.455, -0.400, 0.210) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+SharedMeetingSocket <- PlanningNookSocket: layout (0.163, -0.110, 0.092) | art (0.163, -0.110, 0.093) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+summary: fit 13, no fit 0, missing 0
+after the best single translation (0.000, 0.000, 0.000), the worst remaining socket error is 0.000 m (a pure offset would fit)
+```
+
+### Compact
+
+```text
+WallHabitat_Complete_2Tier vs layout Compact: layout size (0.740, 0.620, 0.240), art bounds size (0.740, 0.620, 0.244) (min (-0.370, -0.310, 0.000) max (0.370, 0.310, 0.244)), art WallContact at prefab-root (0.000, 0.000, 0.000)
+socket: layout | art (relative to art WallContact) | delta | verdict (tolerance 0.010 m)
+WallContact <- WallContact: layout (0.000, 0.000, 0.000) | art (0.000, 0.000, 0.000) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ResearchCubicleSocket <- ResearchCubicleSocket: layout (-0.245, -0.260, 0.083) | art (-0.245, -0.260, 0.083) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+DeveloperCubicleSocket <- DeveloperCubicleSocket: layout (-0.055, -0.260, 0.083) | art (-0.055, -0.260, 0.083) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+TesterCubicleSocket <- TestingCubicleSocket: layout (0.135, -0.260, 0.083) | art (0.135, -0.260, 0.083) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ManagerOfficeSocket <- ManagerLookoutSocket: layout (0.080, 0.000, 0.083) | art (0.080, 0.000, 0.083) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorCarSocket <- ElevatorCarSocket: layout (0.295, -0.260, 0.083) | art (0.295, -0.260, 0.083) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorStop_Lower <- ElevatorStop_Lower: layout (0.295, -0.260, 0.190) | art (0.295, -0.260, 0.190) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+ElevatorStop_Manager <- ElevatorStop_Manager: layout (0.295, 0.000, 0.190) | art (0.295, 0.000, 0.190) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+TaskPrinterSocket <- TaskPrinterSocket: layout (-0.130, 0.050, 0.083) | art (-0.130, 0.050, 0.082) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+AttentionBeaconSocket <- AttentionBeaconSocket: layout (-0.150, 0.240, 0.120) | art (-0.150, 0.240, 0.120) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+CourierDispatchSocket <- CourierDispatchSocket: layout (-0.300, -0.260, 0.190) | art (-0.300, -0.260, 0.190) | delta (0.000, 0.000, 0.000) (0.000 m) | FIT
+summary: fit 11, no fit 0, missing 0
+after the best single translation (0.000, 0.000, 0.000), the worst remaining socket error is 0.000 m (a pure offset would fit)
+```
+

@@ -97,3 +97,12 @@ PLAY, three consecutive desk demo runs at timeScale 1 (`DeskDemoHandoffDrive` tr
 **Loop-flag guard.** `AgentClipLoopFlagTests` (Editor-only `MuseDesk.Tests.AgentInteraction`) reads `ModelImporter.clipAnimations` of Agent_Researcher, Agent_Developer and Agent_Tester (Agent_Manager only if its clips exist) and fails if any of 17 looping clips (Idle_Breathing, Walk_Loop, Typing, Reading, Inspecting, Waiting_For_Input, Thinking and ten more from `LoopingCharacterClips`) lost `loopTime`. If it fails after a reimport, `git checkout -- <Agent_*.fbx.meta>`.
 
 Tests: AgentClipLoopFlagTests 5/5, HandoffWaitPolicyTests 4/4, DeskPolishLogicTests 22/22, AgentWalkPathTests 12/12. New driver: `AgentScripts/DeskDemoHandoffDrive.cs` (`Start`, `Report`, `Stop`).
+
+## 10. Wall art hookup (supersedes section 6)
+
+`art/wall-habitat-fit` (310e070) merged. `HabitatArtManifest` now holds two entries at socket `WallContact`: Full -> `WallHabitat_Complete_3Tier`, Compact -> `WallHabitat_Complete_2Tier` (filled by `AgentScripts/WallArtHookup.cs`, `Apply()` / `Revert()`). Fit check in the main tree: Full 13/13 FIT, Compact 11/11 FIT (docs/Art/WALL_HABITAT_FIT_REPORT.md). Evidence level PLAY (Editor), nothing on a headset.
+
+- Rollback: `useHabitatArt` on the manifest asset (default true); false instantiates no art and hides no proxy. `WallArtHookup.Revert()` empties the entries.
+- Replaced (proxies hidden, not destroyed): `Structure (proxy art)`, the landing doors, stop lights, printer, beacon post; the cabin proxy keeps its GameObject (riders attach to it) with its renderers off. Kept: stage geometry, walkers, collision boxes (art colliders are disabled), the attention beacon and status lights (they carry real state colour), agent avatars.
+- Elevator: `WallHabitatView.DriveArtElevator` poses the art car from the real cabin Y and scrubs the art door and gate clips with the stage's `DoorOpenEased`. The art animators are frozen (speed 0), `MoveCabToStop`, the arrival particles and the art audio are not used, and no wav is wired. Floor indicator gem follows the real cabin floor.
+- Play: `LivingOfficeDrive.RunOffline` 13/13, `RunOfflineWithFailure` 16/16, riders never detached, 0 doorway frames with doors not fully open, 0 console errors. Screenshots in `docs/review_screenshots/wall/` (`living_office_art_full.png`, `_full_elevator.png`, `_compact.png`; Compact was reached by calling `EnsureView(Compact)` by reflection in Play, because the habitat only picks Compact from the room).

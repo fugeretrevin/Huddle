@@ -63,6 +63,63 @@ namespace MuseDesk.Wall
         readonly bool[] _listening = new bool[4];
         readonly bool[] _riding = new bool[4];
         bool _managerHint;
+        List<GameObject> _artRoots;
+        MuseDesk.Art.WallHabitatElevatorVisualController _artLift;
+        Transform _artPivot;
+        float _artPivotRestY, _artOpen = -1f;
+        int _artFloor = -1;
+
+        /// <summary>True when real habitat art replaced the proxies (manifest useHabitatArt on and an entry applied).</summary>
+        public bool UsesArt => _artRoots != null && _artRoots.Count > 0;
+        public MuseDesk.Art.WallHabitatElevatorVisualController ArtElevator => _artLift;
+        public IReadOnlyList<GameObject> ArtRoots => _artRoots;
+
+        // art elevator: presentation only, posed from the REAL cabin and door state (animators are frozen, never self-played)
+
+        void BindArtElevator()
+        {
+            if (_artRoots == null) return;
+            foreach (var g in _artRoots)
+            {
+                if (g == null) continue;
+                _artLift = g.GetComponentInChildren<MuseDesk.Art.WallHabitatElevatorVisualController>(true);
+                if (_artLift != null) break;
+            }
+            if (_artLift == null) return;
+            _artLift.ResolveReferences();
+            _artPivot = _artLift.ElevatorCarPivot;
+            if (_artPivot != null) _artPivotRestY = _artPivot.localPosition.y;
+            if (_artLift.SpineAnimator != null) _artLift.SpineAnimator.speed = 0f;
+            if (_artLift.CabAnimator != null) _artLift.CabAnimator.speed = 0f;
+        }
+
+        static readonly int H_DoorsIdle = Animator.StringToHash("ElevatorDoors_Idle_Closed"), H_DoorsLower = Animator.StringToHash("ElevatorDoors_Open_Lower"),
+            H_DoorsMid = Animator.StringToHash("ElevatorDoors_Open_Mid"), H_DoorsMgr = Animator.StringToHash("ElevatorDoors_Open_Manager"),
+            H_GateOpen = Animator.StringToHash("Cabin_Gate_Open");
+
+        void DriveArtElevator(IHabitatElevator e, int hereFloor, float open)
+        {
+            if (_artLift == null) return;
+            if (_artPivot != null)
+            {
+                Vector3 lp = _artPivot.localPosition;
+                lp.y = _artPivotRestY + (e.CabinY - layout.floors[0].floorY);
+                if (lp != _artPivot.localPosition) _artPivot.localPosition = lp;
+            }
+            if (hereFloor != _artFloor) { _artFloor = hereFloor; if (hereFloor >= 0) _artLift.HighlightFloorIndicator(ArtStopIndex(hereFloor)); }
+            if (Mathf.Abs(open - _artOpen) < 1e-3f) return;
+            _artOpen = open;
+            Animator sp = _artLift.SpineAnimator, cab = _artLift.CabAnimator;
+            if (sp != null)
+            {
+                int n = layout.floors.Count, hash = H_DoorsIdle;
+                if (hereFloor >= 0 && open > 0f) hash = hereFloor == 0 ? H_DoorsLower : (hereFloor == n - 1 ? H_DoorsMgr : H_DoorsMid);
+                if (sp.HasState(0, hash)) sp.Play(hash, 0, hash == H_DoorsIdle ? 0f : open);
+            }
+            if (cab != null && cab.HasState(0, H_GateOpen)) cab.Play(H_GateOpen, 0, open);
+        }
+
+        int ArtStopIndex(int floor) { int n = layout.floors.Count; return floor == 0 ? 0 : (floor == n - 1 ? 2 : 1); }
 
         /// <summary>The carried prop of a running act can be hidden (e.g. on the way UP to collect a card the agent does not hold yet).</summary>
         public void SetPropVisible(HabitatRole r, bool visible) { _propHidden[(int)r] = !visible; }
@@ -175,7 +232,7 @@ namespace MuseDesk.Wall
                 _prop[r].gameObject.SetActive(false);
             }
 
-            if (manifest != null) manifest.ApplyTo(this);
+            if (manifest != null) { _artRoots = manifest.ApplyTo(this); BindArtElevator(); }
             // After the manifest: a proxy it hid stays out of the merged mesh.
             if (BatchStaticStructure) BatchStructure(structure);
             _recordColors = false;
@@ -414,15 +471,18 @@ namespace MuseDesk.Wall
             IHabitatElevator e = stage.lift;
             Vector3 cp = new Vector3(layout.elevatorX, e.CabinY, layout.elevatorZ);
             if (_cabin.localPosition != cp) _cabin.localPosition = cp;
+            int artHere = -1; float artOpen = 0f;
             for (int f = 0; f < layout.floors.Count; f++)
             {
                 bool here = e.CabinFloor == f && Mathf.Abs(e.CabinY - layout.floors[f].floorY) < 1e-3f;
                 float open = here ? e.DoorOpenEased : 0f;
+                if (here) { artHere = f; artOpen = open; }
                 float y = layout.floors[f].floorY + layout.cabinHalf.y;
                 float zd = _doorL[f].localPosition.z;
                 _doorL[f].localPosition = new Vector3(layout.elevatorX - _doorHalf - open * _doorHalf * 1.9f, y, zd);
                 _doorR[f].localPosition = new Vector3(layout.elevatorX + _doorHalf + open * _doorHalf * 1.9f, y, zd);
             }
+            if (_artLift != null) DriveArtElevator(e, artHere, artOpen);
 
             for (int r = 0; r < 4; r++)
             {
