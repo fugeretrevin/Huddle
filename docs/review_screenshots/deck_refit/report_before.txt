@@ -1,0 +1,59 @@
+=== DECK REFIT PROBE & CLEARANCE (BEFORE) ===
+Scene: Assets/MuseDesk/Scenes/MainMRScene.unity (Editor, not headset; read-only)
+
+--- MODE: DESK ---
+  R1 Researcher home -> delivery: len=0.31m min=0.0181 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.272, z=0.026) unex=-0.0514 => PASS
+  R2 Researcher delivery -> home: len=0.31m min=0.0181 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.272, z=0.026) unex=-0.0514 => PASS
+  R3 Researcher home -> Developer: len=0.33m min=0.0177 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.271, z=0.026) unex=-0.0514 => PASS
+  R4 Researcher delivery -> Developer: len=0.15m min=0.0199 @ DevStation/Workstation/Developer_PCTowerWindow (x=-0.123, z=0.094) unex=0.0199 => PASS
+  R5 Researcher Developer stand -> home: len=0.33m min=0.0177 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.271, z=0.026) unex=-0.0514 => PASS
+  R6 Developer home -> Tester: len=0.11m min=0.0190 @ QAStation/Workstation/Testing_ErrorReportSheet (x=0.164, z=-0.013) unex=-0.0630 => PASS
+  R7 Developer Tester stand -> home: len=0.11m min=0.0190 @ QAStation/Workstation/Testing_ErrorReportSheet (x=0.164, z=-0.013) unex=-0.0630 => PASS
+  Summary: routes=7 below 0.015m: 0
+
+--- MODE: FLOOR ---
+SpatialArt_FloorPlatform localPos=(0.0000, 0.0000, 0.1350) | FloorOfficePlatform localPos=(0.0000, -0.0298, 0.0000) localScale=(1.3529, 1.3529, 1.3529)
+  BoxCollider deck bounds (root-local): x[-0.4600, 0.4600] z[-0.1626, 0.4326]
+  Art overall mesh bounds (root-local): x[-0.4871, 0.4871] y[-0.0298, 0.0368] z[-0.1897, 0.4672]
+  Scene ResearchStation: origin=(-0.3660, 0.0950) center=(-0.3619, 0.1897) x[-0.4999, -0.2238] z[0.1236, 0.2557]
+  Scene DevStation: origin=(0.1220, 0.0500) center=(0.1012, 0.1414) x[-0.0236, 0.2260] z[0.0670, 0.2158]
+  Scene QAStation: origin=(0.3850, 0.0000) center=(0.3638, 0.0914) x[0.2386, 0.4890] z[0.0170, 0.1658]
+  Scene InboxTray: origin=(-0.3200, 0.3200) center=(-0.3200, 0.3200) x[-0.3590, -0.2810] z[0.2720, 0.3680]
+  Scene OutboxTray: origin=(0.3200, 0.2500) center=(0.3200, 0.2500) x[0.2810, 0.3590] z[0.2020, 0.2980]
+  R1 Researcher home -> delivery: len=0.31m min=0.0181 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.272, z=0.026) unex=-0.0514 => PASS
+  R2 Researcher delivery -> home: len=0.31m min=0.0181 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.272, z=0.026) unex=-0.0514 => PASS
+  R3 Researcher home -> Developer: len=0.33m min=0.0177 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.271, z=0.026) unex=-0.0514 => PASS
+  R4 Researcher delivery -> Developer: len=0.15m min=0.0199 @ DevStation/Workstation/Developer_PCTowerWindow (x=-0.123, z=0.094) unex=0.0199 => PASS
+  R5 Researcher Developer stand -> home: len=0.33m min=0.0177 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.271, z=0.026) unex=-0.0514 => PASS
+  R6 Developer home -> Tester: len=0.11m min=0.0184 @ SpatialArt_FloorPlatform/FloorOfficePlatform/FloorOfficePlatform_StaticBody (x=0.185, z=-0.045) unex=-0.0630 => PASS
+  R7 Developer Tester stand -> home: len=0.11m min=0.0184 @ SpatialArt_FloorPlatform/FloorOfficePlatform/FloorOfficePlatform_StaticBody (x=0.185, z=-0.045) unex=-0.0630 => PASS
+  Summary: routes=7 below 0.015m: 0
+
+--- MODE: CEILING (Pod_Deployed_Idle) ---
+SpatialArt_CeilingPod localPos=(0.0000, 0.0000, 0.1000) | SuspendedOfficePod localPos=(0.0000, -0.0352, 0.0000) localScale=(1.4663, 1.4663, 1.5294)
+  BoxCollider deck bounds (root-local): x[-0.4399, 0.4399] z[-0.1676, 0.3676]
+  Scene ResearchStation: origin=(-0.3660, 0.0950) center=(-0.3619, 0.1897) x[-0.4999, -0.2238] z[0.1236, 0.2557]
+  Scene DevStation: origin=(0.1220, 0.0500) center=(0.1012, 0.1414) x[-0.0236, 0.2260] z[0.0670, 0.2158]
+  Scene QAStation: origin=(0.3850, 0.0000) center=(0.3638, 0.0914) x[0.2386, 0.4890] z[0.0170, 0.1658]
+  Scene InboxTray: origin=(-0.3200, 0.3200) center=(-0.3200, 0.3200) x[-0.3590, -0.2810] z[0.2720, 0.3680]
+  Scene OutboxTray: origin=(0.3200, 0.2500) center=(0.3200, 0.2500) x[0.2810, 0.3590] z[0.2020, 0.2980]
+CeilingPodArt.offDeckProps: Decor_MiniPlant, Decor_DeskLamp, Decor_BookStack, Decor_MiniClock
+  R1 Researcher home -> delivery: len=0.31m min=0.0181 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.272, z=0.026) unex=-0.0514 => PASS
+  R2 Researcher delivery -> home: len=0.31m min=0.0181 @ ResearchStation/Workstation/Research_Static_WarmWood (x=-0.272, z=0.026) unex=-0.0514 => PASS
+  R3 Researcher home -> Developer: len=0.33m min=0.0175 @ SpatialArt_CeilingPod/SuspendedOfficePod/SuspendedOfficePod_Mesh(skinned) (x=-0.114, z=0.017) unex=-0.0514 => PASS
+  R4 Researcher delivery -> Developer: len=0.15m min=0.0199 @ DevStation/Workstation/Developer_PCTowerWindow (x=-0.123, z=0.094) unex=0.0199 => PASS
+  R5 Researcher Developer stand -> home: len=0.33m min=0.0175 @ SpatialArt_CeilingPod/SuspendedOfficePod/SuspendedOfficePod_Mesh(skinned) (x=-0.114, z=0.017) unex=-0.0514 => PASS
+  R6 Developer home -> Tester: len=0.11m min=0.0190 @ QAStation/Workstation/Testing_ErrorReportSheet (x=0.164, z=-0.013) unex=-0.0630 => PASS
+  R7 Developer Tester stand -> home: len=0.11m min=0.0190 @ QAStation/Workstation/Testing_ErrorReportSheet (x=0.164, z=-0.013) unex=-0.0630 => PASS
+  Summary: routes=7 below 0.015m: 0
+
+--- MASCOT MATERIALS & LINEUP ---
+  Agent_Researcher materials:
+    Agent_Researcher_Body: [Mat_CreamCeramic(#F4EEE4), Mat_WarmBeige(#DFD5C6), Mat_CharcoalVisor(#21242B), Mat_Researcher_Lavender(#8F7CC8), Mat_EyeGlow(#FCFBF0), Mat_CheekBlush(#F59E99), Mat_DarkBoots(#2E3039), Mat_Brass(#D9B047), Mat_Researcher_Teal(#47BBAD), Mat_LeatherSatchel(#85593B), Mat_PaperWarm(#FBF7EC)]
+  Agent_Developer materials:
+    Agent_Developer_Body: [Mat_CreamCeramic(#F4EEE4), Mat_WarmBeige(#DFD5C6), Mat_CharcoalVisor(#21242B), Mat_Developer_Coral(#FA755C), Mat_EyeGlow(#FCFBF0), Mat_CheekBlush(#F59E99), Mat_DarkBoots(#2E3039), Mat_Developer_Amber(#FFCF52), Mat_BrushedMetal(#A6AFB9)]
+  Agent_Tester materials:
+    Agent_Tester_Body: [Mat_CreamCeramic(#F4EEE4), Mat_WarmBeige(#DFD5C6), Mat_CharcoalVisor(#21242B), Mat_Tester_Mint(#4FC896), Mat_EyeGlow(#FCFBF0), Mat_CheekBlush(#F59E99), Mat_DarkBoots(#2E3039), Mat_Tester_SlateBlue(#4A80A8), Mat_BrushedMetal(#A6AFB9), Mat_Tester_LensGlow(#6BEBD1)]
+  Agent_Manager materials:
+    Agent_Manager_Body: [Mat_CreamCeramic(#F4EEE4), Mat_WarmBeige(#DFD5C6), Mat_CharcoalVisor(#21242B), Mat_Tester_SlateBlue(#4A80A8), Mat_EyeGlow(#FCFBF0), Mat_CheekBlush(#F59E99), Mat_DarkBoots(#2E3039), Mat_Brass(#D9B047), Mat_Tester_LensGlow(#6BEBD1), Mat_LeatherSatchel(#85593B), Mat_Developer_Amber(#FFCF52), Mat_BlueprintBlue(#2D629C)]
+  Saved docs/review_screenshots/deck_refit\mascots_before_lineup.png

@@ -44,7 +44,15 @@ PALETTE = {
     "Mat_BrushedMetal":        {"color": (0.650, 0.685, 0.725, 1.0), "roughness": 0.28, "metallic": 0.70, "emission": None},
     "Mat_LeatherSatchel":      {"color": (0.520, 0.350, 0.230, 1.0), "roughness": 0.55, "metallic": 0.0,  "emission": None},
     "Mat_PaperWarm":           {"color": (0.980, 0.960, 0.910, 1.0), "roughness": 0.60, "metallic": 0.0,  "emission": None},
-    # Researcher accents
+    # Soft matte role trim accents (distinct from status teal/amber/green/coral)
+    "Mat_RoleTrim_Researcher":      {"color": (0.663, 0.722, 0.941, 1.0), "roughness": 0.76, "metallic": 0.0, "emission": None},  # #A9B8F0
+    "Mat_RoleTrim_Researcher_Soft": {"color": (0.761, 0.804, 0.965, 1.0), "roughness": 0.78, "metallic": 0.0, "emission": None},  # #C2CDF6
+    "Mat_RoleTrim_Developer":       {"color": (0.824, 0.651, 0.910, 1.0), "roughness": 0.76, "metallic": 0.0, "emission": None},  # #D2A6E8
+    "Mat_RoleTrim_Developer_Soft":  {"color": (0.902, 0.808, 0.957, 1.0), "roughness": 0.78, "metallic": 0.0, "emission": None},  # #E6CEF4
+    "Mat_RoleTrim_Tester":          {"color": (0.941, 0.663, 0.769, 1.0), "roughness": 0.76, "metallic": 0.0, "emission": None},  # #F0A9C4
+    "Mat_RoleTrim_Tester_Soft":     {"color": (0.847, 0.537, 0.659, 1.0), "roughness": 0.76, "metallic": 0.0, "emission": None},  # #D889A8
+    "Mat_RoleTrim_Tester_Lens":     {"color": (0.973, 0.792, 0.863, 1.0), "roughness": 0.72, "metallic": 0.0, "emission": None},  # #F8CADC
+    # Legacy palette entries kept for non-character spatial props
     "Mat_Researcher_Lavender": {"color": (0.560, 0.485, 0.785, 1.0), "roughness": 0.42, "metallic": 0.0,  "emission": None},
     "Mat_Researcher_Teal":     {"color": (0.280, 0.735, 0.680, 1.0), "roughness": 0.30, "metallic": 0.05, "emission": (0.28, 0.74, 0.68), "emission_strength": 0.45},
     # Developer accents
@@ -537,7 +545,7 @@ def build_researcher_accessories():
         # Gentle scalloped hem wave
         if v.co.z < 0.096:
             v.co.z += 0.0025 * math.sin(ang * 8.0)
-    assign_material(cape, "Mat_Researcher_Lavender")
+    assign_material(cape, "Mat_RoleTrim_Researcher")
     assign_z_gradient_weights(cape, [(0.090, "Spine"), (0.118, "Chest")])
     parts.append(cape)
 
@@ -588,7 +596,7 @@ def build_researcher_accessories():
     beret.rotation_euler = (math.radians(-8), math.radians(-12), 0)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(beret)
-    assign_material(beret, "Mat_Researcher_Lavender")
+    assign_material(beret, "Mat_RoleTrim_Researcher")
     assign_single_bone_weight(beret, "Head")
     parts.append(beret)
 
@@ -604,7 +612,7 @@ def build_researcher_accessories():
     for v in stem.data.vertices:
         t = max(0.0, (v.co.z - 0.188) / 0.042)
         v.co.y -= 0.006 * (t * t)
-    assign_material(stem, "Mat_Researcher_Teal")
+    assign_material(stem, "Mat_RoleTrim_Researcher_Soft")
     assign_z_gradient_weights(stem, [(0.192, "Head"), (0.208, "Accessory_Root"), (0.228, "Accessory_Tip")])
     parts.append(stem)
 
@@ -618,7 +626,7 @@ def build_researcher_accessories():
         leaf.rotation_euler = (math.radians(15), math.radians(sx * -28), math.radians(sx * 15))
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(leaf)
-        assign_material(leaf, "Mat_Researcher_Teal")
+        assign_material(leaf, "Mat_RoleTrim_Researcher_Soft")
         assign_single_bone_weight(leaf, "Accessory_Tip")
         parts.append(leaf)
 
@@ -672,11 +680,11 @@ def build_developer_accessories():
         (0.028, 0.125),
     ]
     vest = create_lathe_mesh("Developer_HoodieVest", vest_profile, segments=18, scale_xy=(1.05, 0.95))
-    assign_material(vest, "Mat_Developer_Coral")
+    assign_material(vest, "Mat_RoleTrim_Developer")
     assign_z_gradient_weights(vest, [(0.064, "Hips"), (0.082, "Spine"), (0.112, "Chest")])
     parts.append(vest)
 
-    # Glowing Amber Code Badge on Chest (-Y)
+    # Role-colored Code Badge on Chest (-Y)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.011, -0.038, 0.095))
     badge = bpy.context.active_object
     badge.name = "Developer_CodeBadge"
@@ -684,7 +692,7 @@ def build_developer_accessories():
     badge.rotation_euler = (math.radians(12), 0, math.radians(-14))
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(badge)
-    assign_material(badge, "Mat_Developer_Amber")
+    assign_material(badge, "Mat_RoleTrim_Developer_Soft")
     assign_single_bone_weight(badge, "Chest")
     parts.append(badge)
 
@@ -718,11 +726,11 @@ def build_developer_accessories():
         cup.name = f"HeadphoneCup_{side}"
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(cup)
-        assign_material(cup, "Mat_Developer_Coral")
+        assign_material(cup, "Mat_RoleTrim_Developer")
         assign_single_bone_weight(cup, "Head")
         parts.append(cup)
 
-        # Glowing Amber outer ring on earcup
+        # Soft matte ring on earcup
         bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=8,
                                          major_radius=0.013, minor_radius=0.0022,
                                          location=(sx * 0.060, 0.002, 0.155),
@@ -731,7 +739,7 @@ def build_developer_accessories():
         ring.name = f"HeadphoneGlowRing_{side}"
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(ring)
-        assign_material(ring, "Mat_Developer_Amber")
+        assign_material(ring, "Mat_RoleTrim_Developer_Soft")
         assign_single_bone_weight(ring, "Head")
         parts.append(ring)
 
@@ -753,7 +761,7 @@ def build_developer_accessories():
     mic_tip.name = "HeadphoneMicTip"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(mic_tip)
-    assign_material(mic_tip, "Mat_Developer_Amber")
+    assign_material(mic_tip, "Mat_RoleTrim_Developer_Soft")
     assign_single_bone_weight(mic_tip, "Head")
     parts.append(mic_tip)
 
@@ -767,18 +775,18 @@ def build_developer_accessories():
         fin.scale = (0.65, 1.35, 1.0)
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(fin)
-        assign_material(fin, "Mat_Developer_Coral")
+        assign_material(fin, "Mat_RoleTrim_Developer")
         assign_z_gradient_weights(fin, [(0.192, "Head"), (0.206, "Accessory_Root"), (0.222, "Accessory_Tip")])
         parts.append(fin)
 
-    # Glowing Amber Center Beacon on Crown
+    # Soft matte center beacon on Crown
     bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.007,
                                          location=(0.0, -0.002, 0.202))
     beacon = bpy.context.active_object
     beacon.name = "CyberCrestBeacon"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(beacon)
-    assign_material(beacon, "Mat_Developer_Amber")
+    assign_material(beacon, "Mat_RoleTrim_Developer_Soft")
     assign_single_bone_weight(beacon, "Accessory_Root")
     parts.append(beacon)
 
@@ -805,7 +813,7 @@ def build_developer_accessories():
         cell.name = f"PowerCell_{side}"
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(cell)
-        assign_material(cell, "Mat_Developer_Amber")
+        assign_material(cell, "Mat_RoleTrim_Developer_Soft")
         assign_single_bone_weight(cell, "Chest")
         parts.append(cell)
 
@@ -824,11 +832,11 @@ def build_tester_accessories():
         (0.029, 0.120),
     ]
     harness = create_lathe_mesh("Tester_UtilityVest", harness_profile, segments=18, scale_xy=(1.05, 0.95))
-    assign_material(harness, "Mat_Tester_Mint")
+    assign_material(harness, "Mat_RoleTrim_Tester")
     assign_z_gradient_weights(harness, [(0.065, "Hips"), (0.084, "Spine"), (0.112, "Chest")])
     parts.append(harness)
 
-    # Slate Blue Utility Belt around Waist
+    # Muted Rose Utility Belt around Waist
     bpy.ops.mesh.primitive_torus_add(major_segments=18, minor_segments=8,
                                      major_radius=0.043, minor_radius=0.0045,
                                      location=(0.0, 0.0, 0.064))
@@ -837,7 +845,7 @@ def build_tester_accessories():
     belt.scale = (1.04, 0.94, 1.0)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(belt)
-    assign_material(belt, "Mat_Tester_SlateBlue")
+    assign_material(belt, "Mat_RoleTrim_Tester_Soft")
     assign_single_bone_weight(belt, "Spine")
     parts.append(belt)
 
@@ -851,7 +859,7 @@ def build_tester_accessories():
     hband.scale = (1.03, 0.90, 1.0)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(hband)
-    assign_material(hband, "Mat_Tester_SlateBlue")
+    assign_material(hband, "Mat_RoleTrim_Tester_Soft")
     assign_single_bone_weight(hband, "Head")
     parts.append(hband)
 
@@ -875,11 +883,11 @@ def build_tester_accessories():
         barrel.name = f"LoupeBarrel_{side}"
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(barrel)
-        assign_material(barrel, "Mat_Tester_Mint")
+        assign_material(barrel, "Mat_RoleTrim_Tester")
         assign_single_bone_weight(barrel, "Accessory_Tip")
         parts.append(barrel)
 
-        # Glowing cyan/mint inspection lens
+        # Soft matte inspection lens
         bpy.ops.mesh.primitive_cylinder_add(vertices=14, radius=0.0085, depth=0.011,
                                             location=(sx * 0.015, -0.047, 0.180),
                                             rotation=(math.radians(78), 0, 0))
@@ -887,7 +895,7 @@ def build_tester_accessories():
         lens.name = f"LoupeLens_{side}"
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         shade_smooth(lens)
-        assign_material(lens, "Mat_Tester_LensGlow")
+        assign_material(lens, "Mat_RoleTrim_Tester_Lens")
         assign_single_bone_weight(lens, "Accessory_Tip")
         parts.append(lens)
 
@@ -899,7 +907,7 @@ def build_tester_accessories():
     dish.name = "Tester_CalibrationDish"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(dish)
-    assign_material(dish, "Mat_Tester_SlateBlue")
+    assign_material(dish, "Mat_RoleTrim_Tester_Soft")
     assign_single_bone_weight(dish, "Accessory_Root")
     parts.append(dish)
 
@@ -909,7 +917,7 @@ def build_tester_accessories():
     dish_tip.name = "Tester_DishProbe"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     shade_smooth(dish_tip)
-    assign_material(dish_tip, "Mat_Tester_LensGlow")
+    assign_material(dish_tip, "Mat_RoleTrim_Tester_Lens")
     assign_single_bone_weight(dish_tip, "Accessory_Tip")
     parts.append(dish_tip)
 
@@ -925,7 +933,7 @@ def build_tester_accessories():
     bpy.context.view_layer.objects.active = apack
     bpy.ops.object.modifier_apply(modifier="Bevel")
     shade_smooth(apack)
-    assign_material(apack, "Mat_Tester_SlateBlue")
+    assign_material(apack, "Mat_RoleTrim_Tester_Soft")
     assign_single_bone_weight(apack, "Chest")
     parts.append(apack)
 
@@ -1665,20 +1673,20 @@ def render_character_views(char_name, arm_obj):
 CHARACTER_CONFIGS = [
     {
         "name": "Agent_Researcher",
-        "primary_mat": "Mat_Researcher_Lavender",
-        "secondary_mat": "Mat_Researcher_Teal",
+        "primary_mat": "Mat_RoleTrim_Researcher",
+        "secondary_mat": "Mat_RoleTrim_Researcher_Soft",
         "builder": build_researcher_accessories,
     },
     {
         "name": "Agent_Developer",
-        "primary_mat": "Mat_Developer_Coral",
-        "secondary_mat": "Mat_Developer_Amber",
+        "primary_mat": "Mat_RoleTrim_Developer",
+        "secondary_mat": "Mat_RoleTrim_Developer_Soft",
         "builder": build_developer_accessories,
     },
     {
         "name": "Agent_Tester",
-        "primary_mat": "Mat_Tester_Mint",
-        "secondary_mat": "Mat_Tester_SlateBlue",
+        "primary_mat": "Mat_RoleTrim_Tester",
+        "secondary_mat": "Mat_RoleTrim_Tester_Soft",
         "builder": build_tester_accessories,
     },
 ]

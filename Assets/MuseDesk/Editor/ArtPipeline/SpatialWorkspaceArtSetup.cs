@@ -753,8 +753,8 @@ namespace MuseDesk.Editor.ArtPipeline
         {
             var go = InstantiateModelClean(assetName, matMap);
 
-            float platW = isCompact ? 0.56f : 0.68f;
-            float platD = isCompact ? 0.36f : 0.44f;
+            float platW = isCompact ? 0.56f : 0.764f;
+            float platD = isCompact ? 0.36f : 0.466f;
 
             // Main surface collider (thin, cleanly covering bottom platform slab)
             var baseCol = go.AddComponent<BoxCollider>();
@@ -773,7 +773,7 @@ namespace MuseDesk.Editor.ArtPipeline
 
             // Crisp miniature bottom-front plaque label ("MUSEDESK LAB") following design system TMP rule
             float plaqueY = 0.0185f;
-            float plaqueZ = isCompact ? 0.2055f : 0.2455f;
+            float plaqueZ = isCompact ? 0.2055f : 0.2505f;
             AddWorldTextLabel(go.transform, "Floor_NameplateTMP", "MUSEDESK LAB",
                 new Vector3(0f, plaqueY, plaqueZ), new Vector3(-18f, 0f, 0f), 0.0036f,
                 new Color(0.969f, 0.949f, 0.890f, 1f), new Vector2(18f, 3f));
@@ -794,10 +794,10 @@ namespace MuseDesk.Editor.ArtPipeline
             anim.runtimeAnimatorController = ctrl;
             anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
-            // Low-profile collider matching the pod deck
+            // Low-profile collider matching the pod deck (0.700 x 0.407 m centered at z = +0.0125)
             var bc = go.AddComponent<BoxCollider>();
-            bc.center = new Vector3(0f, 0.020f, 0f);
-            bc.size = new Vector3(0.60f, 0.040f, 0.35f);
+            bc.center = new Vector3(0f, 0.020f, 0.0125f);
+            bc.size = new Vector3(0.700f, 0.040f, 0.407f);
 
             // Small front slate status display TMP readout attached cleanly at InfoDisplaySocket
             Transform dispSock = FindChildRecursive(go.transform, "InfoDisplaySocket");

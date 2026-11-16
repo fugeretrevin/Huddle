@@ -219,64 +219,68 @@ def build_suspended_office_pod():
     add_b("Bone_PodLatch_L",                 ( 0.055, -0.120, 0.245), ( 0.075, -0.120, 0.265), b_yoke)
     add_b("Bone_PodLatch_R",                 (-0.055, -0.120, 0.245), (-0.075, -0.120, 0.265), b_yoke)
     # Both wing hinge bones point along +Y (depth) so local XYZ == world XYZ and Y rotation folds symmetrically upward!
-    b_wl = add_b("Bone_Wing_L",              ( 0.300, 0.000, 0.018), ( 0.300, 0.050, 0.018), b_pod)
-    b_wr = add_b("Bone_Wing_R",              (-0.300, 0.000, 0.018), (-0.300, 0.050, 0.018), b_pod)
+    b_wl = add_b("Bone_Wing_L",              ( 0.356, 0.010, 0.018), ( 0.356, 0.060, 0.018), b_pod)
+    b_wr = add_b("Bone_Wing_R",              (-0.356, 0.010, 0.018), (-0.356, 0.060, 0.018), b_pod)
     b_wl.roll = 0.0
     b_wr.roll = 0.0
-    b_shelf = add_b("Bone_InspectionShelf",  ( 0.000, 0.145, 0.008), ( 0.000, 0.195, 0.008), b_pod)
-    add_b("Bone_ShelfRail_L",                ( 0.105, 0.185, 0.014), ( 0.105, 0.185, 0.032), b_shelf)
-    add_b("Bone_ShelfRail_R",                (-0.105, 0.185, 0.014), (-0.105, 0.185, 0.032), b_shelf)
-    add_b("Bone_InfoDisplay",                (-0.190, 0.140, 0.030), (-0.190, 0.140, 0.070), b_pod)
-    add_b("Bone_BeaconMount",                (-0.255, 0.095, 0.026), (-0.255, 0.095, 0.050), b_pod)
+    b_shelf = add_b("Bone_InspectionShelf",  ( 0.000, 0.175, 0.008), ( 0.000, 0.225, 0.008), b_pod)
+    add_b("Bone_ShelfRail_L",                ( 0.105, 0.215, 0.014), ( 0.105, 0.215, 0.032), b_shelf)
+    add_b("Bone_ShelfRail_R",                (-0.105, 0.215, 0.014), (-0.105, 0.215, 0.032), b_shelf)
+    add_b("Bone_InfoDisplay",                (-0.205, 0.205, 0.030), (-0.205, 0.205, 0.070), b_pod)
+    add_b("Bone_BeaconMount",                (-0.305, 0.185, 0.026), (-0.305, 0.185, 0.050), b_pod)
 
     bpy.ops.object.mode_set(mode='OBJECT')
     for pb in arm_obj.pose.bones:
         pb.rotation_mode = 'XYZ'
 
     parts = []
-    w, d = 0.630, 0.390
+    # MainMRScene CeilingPod scale = (1.4663, 1.4663, 1.5294), holder z = +0.100:
+    #   w = 0.728 (-> Unity +-0.5337m), WoodDeck 0.700 (-> Unity +-0.5132m, clears V2 outer desks -0.4999/+0.4890)
+    #   d = 0.435 at cy = +0.0125 (y[-0.205..+0.230] -> Unity z[-0.2135..+0.4518], inside validated [-0.23..+0.47])
+    #   WoodDeck d = 0.407 at cy = +0.0125 (y[-0.191..+0.216] -> Unity z[-0.1921..+0.4304], clears InboxTray zMax +0.368)
+    w, d, cy = 0.728, 0.435, 0.0125
     deck_z = 0.024
 
     # 1. Sleek rounded capsule hull base + lower acoustic/hover cradle ribs
-    sc.make_rounded_slab(f"{name}_LowerBelly", w - 0.06, d - 0.05, 0.012, 0.095,
-                         (0.0, 0.0, 0.006), "Mat_CharcoalVisor", bevel=0.003,
+    sc.make_rounded_slab(f"{name}_LowerBelly", w - 0.06, d - 0.05, 0.012, 0.072,
+                         (0.0, cy, 0.006), "Mat_CharcoalVisor", bevel=0.003,
                          corner_segs=6, bone_name="Bone_PodRoot", parts_list=parts)
-    sc.make_rounded_slab(f"{name}_MainHull", w, d, 0.016, 0.105,
-                         (0.0, 0.0, 0.016), "Mat_CreamCeramic", bevel=0.004,
+    sc.make_rounded_slab(f"{name}_MainHull", w, d, 0.016, 0.068,
+                         (0.0, cy, 0.016), "Mat_CreamCeramic", bevel=0.004,
                          corner_segs=6, bone_name="Bone_PodRoot", parts_list=parts)
-    sc.make_rounded_slab(f"{name}_WoodDeck", w - 0.044, d - 0.044, 0.003, 0.088,
-                         (0.0, 0.0, deck_z - 0.001), "Mat_WarmWood", bevel=0.0008,
+    sc.make_rounded_slab(f"{name}_WoodDeck", w - 0.028, d - 0.028, 0.003, 0.056,
+                         (0.0, cy, deck_z - 0.001), "Mat_WarmWood", bevel=0.0008,
                          corner_segs=5, bone_name="Bone_PodRoot", parts_list=parts)
 
     # Subtle underside perimeter accent ring (Teal)
-    sc.make_rounded_frame_outline(f"{name}_BellyGlowRing", w - 0.036, d - 0.036, 0.005, 0.003, 0.092,
-                                  (0.0, 0.0, 0.009), "Mat_Researcher_Teal", corner_segs=5,
+    sc.make_rounded_frame_outline(f"{name}_BellyGlowRing", w - 0.036, d - 0.036, 0.005, 0.003, 0.068,
+                                  (0.0, cy, 0.009), "Mat_Researcher_Teal", corner_segs=5,
                                   bone_name="Bone_PodRoot", parts_list=parts)
 
-    # 2. Gentle protective safety rim (rear & side arc, keeping front +Y open for inspection shelf & sightlines)
+    # 2. Gentle protective safety rim (rear & side arc, clear of outer V2 desks and front corners)
     rim_z = deck_z + 0.014
-    sc.make_beveled_box(f"{name}_SafetyRim_Back", (0.42, 0.009, 0.014), (0.0, -d * 0.5 + 0.014, rim_z),
+    sc.make_beveled_box(f"{name}_SafetyRim_Back", (0.58, 0.009, 0.014), (0.0, cy - d * 0.5 + 0.012, rim_z),
                         "Mat_BrushedMetal", bevel_width=0.002, bone_name="Bone_PodRoot", parts_list=parts)
     for side, sx in [("L", 1.0), ("R", -1.0)]:
-        sc.make_beveled_box(f"{name}_SafetyRim_Side_{side}", (0.009, 0.18, 0.012),
-                            (sx * (w * 0.5 - 0.016), -0.05, rim_z),
+        sc.make_beveled_box(f"{name}_SafetyRim_Side_{side}", (0.009, 0.15, 0.012),
+                            (sx * (w * 0.5 - 0.012), -0.095, rim_z),
                             "Mat_BrushedMetal", bevel_width=0.002, bone_name="Bone_PodRoot", parts_list=parts)
         sc.make_cylinder(f"{name}_RimPost_{side}", 0.005, 0.022,
-                         (sx * (w * 0.5 - 0.016), 0.038, deck_z + 0.011),
+                         (sx * (w * 0.5 - 0.012), -0.015, deck_z + 0.011),
                          "Mat_Brass", vertices=12, bone_name="Bone_PodRoot", parts_list=parts)
 
-    # 3. Graceful rear suspension arch + top DockingConnector yoke (connects up to CeilingMount!)
+    # 3. Graceful rear suspension arch + top DockingConnector yoke (arch base pushed back clear of Researcher's lane!)
     for side, sx in [("L", 1.0), ("R", -1.0)]:
-        sc.make_beveled_box(f"{name}_ArchStrut_{side}", (0.014, 0.022, 0.228),
-                            (sx * 0.130, -0.132, 0.125), "Mat_BrushedMetal", bevel_width=0.0025,
-                            rot_deg=(-5.0, sx * -9.0, 0.0), bone_name="Bone_PodRoot", parts_list=parts)
+        sc.make_beveled_box(f"{name}_ArchStrut_{side}", (0.014, 0.022, 0.232),
+                            (sx * 0.143, -0.150, 0.125), "Mat_BrushedMetal", bevel_width=0.0025,
+                            rot_deg=(-11.5, sx * -12.5, 0.0), bone_name="Bone_PodRoot", parts_list=parts)
         sc.make_cylinder(f"{name}_ArchBaseSocket_{side}", 0.015, 0.014,
-                         (sx * 0.146, -0.141, deck_z + 0.006), "Mat_Brass", vertices=14,
+                         (sx * 0.170, -0.174, deck_z + 0.006), "Mat_Brass", vertices=14,
                          bone_name="Bone_PodRoot", parts_list=parts)
         sc.make_cylinder(f"{name}_ArchTopCollar_{side}", 0.014, 0.014,
-                         (sx * 0.112, -0.122, 0.222), "Mat_Brass", vertices=14,
+                         (sx * 0.116, -0.126, 0.222), "Mat_Brass", vertices=14,
                          bone_name="Bone_PodRoot", parts_list=parts)
-    # Top arched crossbar + magnetic DockingConnector cup
+    # Top arched crossbar + magnetic DockingConnector cup (kept plumb at y=-0.120 for MainMRScene mountOffset)
     sc.make_rounded_slab(f"{name}_ArchCrown", 0.275, 0.048, 0.018, 0.020,
                          (0.0, -0.120, 0.232), "Mat_CreamCeramic", bevel=0.003,
                          bone_name="Bone_DockYoke", parts_list=parts)
@@ -293,24 +297,23 @@ def build_suspended_office_pod():
                             (sx, -0.120, 0.252), "Mat_Developer_Amber", bevel_width=0.002,
                             bone_name=bname, parts_list=parts)
 
-    # 4. Folding side stabilizer wings (folded upward in Docked/Transit, open flush in Deployed)
+    # 4. Folding side stabilizer wings (clear outside enlarged deck; fold upward +-56 deg cleanly)
     for side, sx, bname, mat_accent in [
-        ("L",  1.0, "Bone_Wing_L", "Mat_Researcher_Lavender"),
-        ("R", -1.0, "Bone_Wing_R", "Mat_Tester_Mint"),
+        ("L",  1.0, "Bone_Wing_L", "Mat_Tester_Mint"),
+        ("R", -1.0, "Bone_Wing_R", "Mat_Researcher_Lavender"),
     ]:
-        sc.make_rounded_slab(f"{name}_WingPlate_{side}", 0.046, 0.155, 0.008, 0.020,
-                             (sx * 0.322, 0.0, 0.018), "Mat_CreamCeramic", bevel=0.002,
+        sc.make_rounded_slab(f"{name}_WingPlate_{side}", 0.036, 0.150, 0.008, 0.016,
+                             (sx * 0.372, 0.010, 0.018), "Mat_CreamCeramic", bevel=0.002,
                              bone_name=bname, parts_list=parts)
-        sc.make_beveled_box(f"{name}_WingTrim_{side}", (0.007, 0.105, 0.005),
-                            (sx * 0.339, 0.0, 0.022), mat_accent, bevel_width=0.001,
+        sc.make_beveled_box(f"{name}_WingTrim_{side}", (0.006, 0.105, 0.005),
+                            (sx * 0.386, 0.010, 0.022), mat_accent, bevel_width=0.001,
                             bone_name=bname, parts_list=parts)
         sc.make_cylinder(f"{name}_WingHinge_{side}", 0.0065, 0.034,
-                         (sx * 0.300, 0.0, 0.018), "Mat_Brass", vertices=12, rot_deg=(90, 0, 0),
+                         (sx * 0.356, 0.010, 0.018), "Mat_Brass", vertices=12, rot_deg=(90, 0, 0),
                          bone_name="Bone_PodRoot", parts_list=parts)
 
     # 5. Retractable front InspectionShelf (slides out from belly slot!)
-    # Resting tucked position in edit pose: y = 0.135 (mostly tucked under front lip); Deployed slides to +0.105 in Y!
-    shelf_y = 0.135
+    shelf_y = 0.165
     sc.make_rounded_slab(f"{name}_InspectionShelf_Body", 0.240, 0.125, 0.009, 0.024,
                          (0.0, shelf_y, 0.010), "Mat_CreamCeramic", bevel=0.002,
                          bone_name="Bone_InspectionShelf", parts_list=parts)
@@ -321,32 +324,32 @@ def build_suspended_office_pod():
                         (0.0, shelf_y + 0.058, 0.014), "Mat_Brass", bevel_width=0.001,
                         bone_name="Bone_InspectionShelf", parts_list=parts)
     for side, sx, bname in [("L", 0.108, "Bone_ShelfRail_L"), ("R", -0.108, "Bone_ShelfRail_R")]:
-        sc.make_beveled_box(f"{name}_ShelfRail_{side}", (0.006, 0.075, 0.012),
-                            (sx, shelf_y + 0.005, 0.020), "Mat_BrushedMetal", bevel_width=0.001,
+        sc.make_beveled_box(f"{name}_ShelfRail_{side}", (0.006, 0.075, 0.008),
+                            (sx, shelf_y + 0.005, 0.016), "Mat_BrushedMetal", bevel_width=0.001,
                             bone_name=bname, parts_list=parts)
 
-    # 6. Small Task Information Display (front-right angled mini display bezel)
-    sc.make_beveled_box(f"{name}_DisplayStand", (0.016, 0.014, 0.022), (-0.190, 0.140, 0.032),
+    # 6. Small Task Information Display (front-left rim, clear in front of OutboxTray)
+    sc.make_beveled_box(f"{name}_DisplayStand", (0.016, 0.014, 0.022), (-0.205, 0.205, 0.032),
                         "Mat_BrushedMetal", bevel_width=0.0015, bone_name="Bone_InfoDisplay", parts_list=parts)
-    sc.make_beveled_box(f"{name}_DisplayFrame", (0.098, 0.008, 0.048), (-0.190, 0.144, 0.058),
+    sc.make_beveled_box(f"{name}_DisplayFrame", (0.098, 0.008, 0.048), (-0.205, 0.209, 0.058),
                         "Mat_CharcoalVisor", bevel_width=0.002, rot_deg=(-18, 0, -14),
                         bone_name="Bone_InfoDisplay", parts_list=parts)
-    sc.make_beveled_box(f"{name}_DisplayFace", (0.088, 0.009, 0.038), (-0.190, 0.145, 0.058),
+    sc.make_beveled_box(f"{name}_DisplayFace", (0.088, 0.009, 0.038), (-0.205, 0.210, 0.058),
                         "Mat_Spatial_SlateIcon", bevel_width=0.0005, rot_deg=(-18, 0, -14),
                         bone_name="Bone_InfoDisplay", parts_list=parts)
 
-    # 7. Subtle Workstation Pad Rings on Pod Deck (Research / Dev / Test)
-    for lbl, px, py, mat_p in [
-        ("PodResearchPad",  0.185, -0.045, "Mat_Researcher_Lavender"),
-        ("PodDeveloperPad", 0.000, -0.062, "Mat_Developer_Coral"),
-        ("PodTesterPad",   -0.185, -0.045, "Mat_Tester_Mint"),
+    # 7. Subtle Workstation Pad Rings on Pod Deck (centered under each V2 station desk + agent)
+    for lbl, px, py, pw, pd, mat_p in [
+        ("PodResearchPad",  -0.2469,  0.0425, 0.192, 0.140, "Mat_Researcher_Lavender"),
+        ("PodDeveloperPad",  0.0716,  0.0163, 0.182, 0.136, "Mat_Developer_Coral"),
+        ("PodTesterPad",     0.2482, -0.0163, 0.182, 0.136, "Mat_Tester_Mint"),
     ]:
-        sc.make_rounded_slab(f"{name}_{lbl}", 0.135, 0.095, 0.002, 0.014,
+        sc.make_rounded_slab(f"{name}_{lbl}", pw, pd, 0.002, 0.014,
                              (px, py, deck_z + 0.0005), mat_p, bevel=0.0004,
                              bone_name="Bone_PodRoot", parts_list=parts)
 
-    # Beacon pedestal pad on front-right edge
-    sc.make_cylinder(f"{name}_BeaconPad", 0.024, 0.006, (-0.255, 0.095, deck_z + 0.003),
+    # Beacon pedestal pad on front-left outer corner
+    sc.make_cylinder(f"{name}_BeaconPad", 0.024, 0.006, (-0.305, 0.185, deck_z + 0.003),
                      "Mat_CharcoalVisor", vertices=18, bone_name="Bone_BeaconMount", parts_list=parts)
 
     sc.join_parts_to_armature(parts, arm_obj, f"{name}_Mesh")
@@ -579,23 +582,23 @@ def build_suspended_office_pod():
     # Required sockets on Pod (using exact names!)
     sc.make_anchor("PodRoot",                    ( 0.000,  0.000, 0.000), arm_obj)
     sc.make_anchor("DockingConnector",           ( 0.000, -0.120, 0.258), arm_obj)
-    sc.make_anchor("ResearchStationSocket",      ( 0.185, -0.045, deck_z), arm_obj)
-    sc.make_anchor("DeveloperStationSocket",     ( 0.000, -0.062, deck_z), arm_obj)
-    sc.make_anchor("TesterStationSocket",        (-0.185, -0.045, deck_z), arm_obj)
+    sc.make_anchor("ResearchStationSocket",      (-0.2469,  0.0425, deck_z), arm_obj)
+    sc.make_anchor("DeveloperStationSocket",     ( 0.0716,  0.0163, deck_z), arm_obj)
+    sc.make_anchor("TesterStationSocket",        ( 0.2482, -0.0163, deck_z), arm_obj)
     sc.make_anchor("FactorySocket",              ( 0.000,  0.070, deck_z), arm_obj)
-    sc.make_anchor("InfoDisplaySocket",          (-0.190,  0.145, 0.058), arm_obj, rot_deg=(-18, 0, -14))
-    sc.make_anchor("AttentionBeaconSocket",      (-0.255,  0.095, deck_z + 0.006), arm_obj)
-    sc.make_anchor("MailboxSocket",              ( 0.250,  0.095, deck_z), arm_obj)
+    sc.make_anchor("InfoDisplaySocket",          (-0.205,  0.210, 0.058), arm_obj, rot_deg=(-18, 0, -14))
+    sc.make_anchor("AttentionBeaconSocket",      (-0.305,  0.185, deck_z + 0.006), arm_obj)
+    sc.make_anchor("MailboxSocket",              ( 0.250,  0.145, deck_z), arm_obj)
 
     # Shelf-mounted sockets (follow Bone_InspectionShelf cleanly!)
-    shelf_emp = sc.make_anchor("InspectionShelf", (0.0, 0.135, 0.015), arm_obj)
+    shelf_emp = sc.make_anchor("InspectionShelf", (0.0, 0.165, 0.015), arm_obj)
     shelf_emp.parent = arm_obj
     shelf_emp.parent_type = 'BONE'
     shelf_emp.parent_bone = "Bone_InspectionShelf"
     # Note: in Blender, bone-parented empties sit relative to bone tail; we'll place explicit clean
     # sockets on arm_obj too and have Unity prefab normalize/follow Bone_InspectionShelf cleanly!
-    sc.make_anchor("AgentInteractionSocket",     ( 0.060,  0.240, 0.020), arm_obj)
-    sc.make_anchor("DocumentPresentationSocket", (-0.055,  0.240, 0.032), arm_obj)
+    sc.make_anchor("AgentInteractionSocket",     ( 0.060,  0.270, 0.020), arm_obj)
+    sc.make_anchor("DocumentPresentationSocket", (-0.055,  0.270, 0.032), arm_obj)
 
     return sc.export_animated_asset(
         name, [c[0] for c in clip_defs],

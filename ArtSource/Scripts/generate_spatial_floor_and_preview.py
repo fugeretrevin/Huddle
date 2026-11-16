@@ -50,8 +50,9 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
                          bevel=0.0035, corner_segs=5, parent=root)
 
     # 4. Warm Wood inset studio floor deck (flush with top at deck_z)
-    inlay_w = width - 0.042
-    inlay_d = depth - 0.042
+    rim = 0.021 if compact else 0.014
+    inlay_w = width - rim * 2.0
+    inlay_d = depth - rim * 2.0
     sc.make_rounded_slab(f"{name}_WoodDeck", inlay_w, inlay_d, 0.003,
                          corner_r * 0.78, (0, 0, deck_z - 0.001), "Mat_WarmWood",
                          bevel=0.0008, corner_segs=4, parent=root)
@@ -69,69 +70,68 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
     sc.join_static_parts(status_parts, f"{name}_StatusStrip", parent=root)
 
     # 6. Recessed FeltSlate agent navigation walkways linking the 3 stations & courier bay
-    # Blender +X = Unity -X (User's Right: Tester), Blender -X = Unity +X (User's Left: Research)
-    st_x = 0.215 if not compact else 0.172
-    st_y = -0.055 if not compact else -0.045
-    dev_y = -0.075 if not compact else -0.060
-    fac_y = 0.085 if not compact else 0.070
-    disp_x = 0.215 if not compact else 0.170  # Unity -X (or +X: Research side! Let's put Dispatch on +X Unity / -X Blender near front!)
-    disp_y = 0.130 if not compact else 0.105
-
-    # Horizontal walkway spine connecting Research (-X Unity / +X Blender?)
-    # Wait: verify Blender X -> Unity X!
-    # In Blender with axis_forward='-Z', axis_up='Y':
-    #   Blender +X -> Unity -X (User's Right = Tester!)
-    #   Blender -X -> Unity +X (User's Left  = Researcher!)
-    # Let's place Research at Unity -X (or +X? Let's check existing MainMRScene!)
-    # In SPATIAL_INTERACTION_GUIDELINES.md:
-    #   "The user's right is -X; their left is +X."
-    #   "Researcher / Developer / Tester stations: x = -0.30 / 0.00 / +0.30"
-    # Wait: in MainMRScene, Researcher is at Unity x = -0.30 (user's right or left depending on convention) or MuseDeskArtPipeline has Research at -0.34, Tester at +0.34.
-    # Let's keep socket positions symmetric: Research at Unity x = -st_x (Blender +st_x), Tester at Unity x = +st_x (Blender -st_x)!
-    res_bx = +st_x
-    tst_bx = -st_x
-    disp_bx = +st_x * 0.98   # Front-right of platform near Research/Factory output
-    beacon_bx = -st_x * 1.18 # Opposite front corner
+    # Blender +X = Unity -X (User's Right: Research), Blender -X = Unity +X (User's Left: Tester)
+    # Full layout matches MainMRScene V2 station centers (scale = 1.3529412, holder z = +0.135)
+    if compact:
+        res_bx, res_by =  0.172, -0.045
+        dev_bx, dev_by =  0.000, -0.060
+        tst_bx, tst_by = -0.172, -0.045
+        fac_y = 0.070
+        disp_bx, disp_y = 0.172 * 0.98, 0.105
+        beacon_bx = -0.172 * 1.18
+        nav_w = 0.172 * 2.05
+        nav_y = 0.020
+    else:
+        res_bx, res_by = -0.2676,  0.0222   # Unity (-0.362, +0.165)
+        dev_bx, dev_by =  0.0776, -0.0074   # Unity (+0.105, +0.125)
+        tst_bx, tst_by =  0.2691, -0.0443   # Unity (+0.364, +0.075)
+        fac_y = 0.085
+        disp_bx, disp_y = -0.1478, 0.1441   # Unity (-0.200, +0.330)
+        beacon_bx = 0.215 * 1.18
+        nav_w = 0.555
+        nav_y = -0.055                      # Clear behind Researcher/Developer/Tester desks
 
     path_z = deck_z + 0.0006
     # Spine path across stations
-    sc.make_rounded_slab(f"{name}_NavPath_Main", st_x * 2.05, 0.042, 0.0014, 0.018,
-                         (0.0, 0.020, path_z), "Mat_FeltSlate", bevel=0.0003, parent=root)
+    sc.make_rounded_slab(f"{name}_NavPath_Main", nav_w, 0.042, 0.0014, 0.018,
+                         (0.0, nav_y, path_z), "Mat_FeltSlate", bevel=0.0003, parent=root)
     # Branch path to Dispatch Station
-    sc.make_rounded_slab(f"{name}_NavPath_Dispatch", 0.040, 0.125, 0.0014, 0.015,
-                         (disp_bx, 0.075, path_z), "Mat_FeltSlate", bevel=0.0003, parent=root)
+    sc.make_rounded_slab(f"{name}_NavPath_Dispatch", 0.036, 0.130, 0.0014, 0.015,
+                         (disp_bx, 0.095, path_z), "Mat_FeltSlate", bevel=0.0003, parent=root)
 
-    # 7. Modular Workstation Pad Markers (subtle brass/ceramic trim rings flush with deck)
-    for pad_lbl, px, py, mat_pad in [
-        ("ResearchPad",  res_bx, st_y, "Mat_Researcher_Lavender"),
-        ("DeveloperPad", 0.0,    dev_y, "Mat_Developer_Coral"),
-        ("TesterPad",    tst_bx, st_y, "Mat_Tester_Mint"),
-    ]:
-        pad_w = 0.175 if not compact else 0.145
-        pad_d = 0.120 if not compact else 0.100
+    # 7. Modular Workstation Pad Markers (centered under each V2 station desk + agent)
+    pad_specs = [
+        ("ResearchPad",  res_bx, res_by, 0.206 if not compact else 0.145, 0.155 if not compact else 0.100, "Mat_Researcher_Lavender"),
+        ("DeveloperPad", dev_bx, dev_by, 0.190 if not compact else 0.145, 0.148 if not compact else 0.100, "Mat_Developer_Coral"),
+        ("TesterPad",    tst_bx, tst_by, 0.190 if not compact else 0.145, 0.148 if not compact else 0.100, "Mat_Tester_Mint"),
+    ]
+    for pad_lbl, px, py, pad_w, pad_d, mat_pad in pad_specs:
         sc.make_rounded_slab(f"{name}_{pad_lbl}_Rim", pad_w, pad_d, 0.0022, 0.018,
                              (px, py, deck_z + 0.0005), mat_pad, bevel=0.0005, parent=root)
         sc.make_rounded_slab(f"{name}_{pad_lbl}_Mat", pad_w - 0.010, pad_d - 0.010, 0.0026, 0.014,
                              (px, py, deck_z + 0.0007), "Mat_FeltSlate", bevel=0.0004, parent=root)
 
     # 8. Integrated Dispatch Bay Pad + Subtle Flush Beacon Emitting Medallion (no bulky orphan puck when beacon hovers)
-    sc.make_cylinder(f"{name}_DispatchBayRing", 0.058 if not compact else 0.048, 0.0028,
+    sc.make_cylinder(f"{name}_DispatchBayRing", 0.044 if not compact else 0.048, 0.0028,
                      (disp_bx, disp_y, deck_z + 0.0010), "Mat_Brass", vertices=24, parent=root)
     sc.make_cylinder(f"{name}_BeaconInlayRing", 0.024, 0.0016,
                      (beacon_bx, disp_y + 0.010, deck_z + 0.0006), "Mat_Brass", vertices=20, parent=root)
     sc.make_cylinder(f"{name}_BeaconInlayCore", 0.018, 0.0018,
                      (beacon_bx, disp_y + 0.010, deck_z + 0.0008), "Mat_FeltSlate", vertices=18, parent=root)
 
-    # 9. Low Sculpted Back & Side Corner Railings (keep front +Y completely open!)
+    # 9. Low Sculpted Back & Side Corner Railings (keep front +Y completely open and clear of V2 desks/paths)
     rail_z = deck_z + 0.018
     post_h = 0.022
+    back_ry = -depth * 0.455 if not compact else -depth * 0.44
+    side_rx = width * 0.474 if not compact else width * 0.45
+    side_end_y = -depth * 0.215 if not compact else -depth * 0.10
     rail_posts = [
-        (-width * 0.44, -depth * 0.43),
-        (-width * 0.16, -depth * 0.44),
-        ( width * 0.16, -depth * 0.44),
-        ( width * 0.44, -depth * 0.43),
-        (-width * 0.45, -depth * 0.10),
-        ( width * 0.45, -depth * 0.10),
+        (-side_rx * 0.96, back_ry + 0.005),
+        (-width * 0.16,   back_ry),
+        ( width * 0.16,   back_ry),
+        ( side_rx * 0.96, back_ry + 0.005),
+        (-side_rx, side_end_y),
+        ( side_rx, side_end_y),
     ]
     for i, (rx, ry) in enumerate(rail_posts):
         sc.make_cylinder(f"{name}_RailPost_{i+1}", 0.0042, post_h,
@@ -140,12 +140,14 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
                        (rx, ry, deck_z + post_h), "Mat_Brass", segments=12, rings=8, parent=root)
 
     # Back top rail bar
-    sc.make_rounded_slab(f"{name}_BackRailBar", width * 0.89, 0.006, 0.005, 0.0025,
-                         (0.0, -depth * 0.435, rail_z), "Mat_WarmWood", bevel=0.001, parent=root)
-    # Left & Right short side rail bars
+    sc.make_rounded_slab(f"{name}_BackRailBar", side_rx * 1.92, 0.006, 0.005, 0.0025,
+                         (0.0, back_ry, rail_z), "Mat_WarmWood", bevel=0.001, parent=root)
+    # Left & Right short side rail bars (kept behind outer desk front edges)
+    side_bar_len = abs(back_ry - side_end_y)
+    side_bar_cy = 0.5 * (back_ry + side_end_y)
     for side_lbl, sx in [("R", -1.0), ("L", 1.0)]:
-        sc.make_rounded_slab(f"{name}_SideRailBar_{side_lbl}", 0.006, depth * 0.34, 0.005, 0.0025,
-                             (sx * width * 0.445, -depth * 0.265, rail_z), "Mat_WarmWood", bevel=0.001, parent=root)
+        sc.make_rounded_slab(f"{name}_SideRailBar_{side_lbl}", 0.006, side_bar_len, 0.005, 0.0025,
+                             (sx * side_rx, side_bar_cy, rail_z), "Mat_WarmWood", bevel=0.001, parent=root)
 
     # 10. Front-Center Product Nameplate Mark + Minimal Decorative Planters on Back Corners
     sc.make_beveled_box(f"{name}_BrandPlaqueFrame", (0.110, 0.012, 0.011),
@@ -156,8 +158,8 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
                         bevel_width=0.0008, rot_deg=(-18, 0, 0), parent=root)
 
     # Tiny cozy corner succulent pots at far back corners (out of navigation paths)
-    for p_lbl, px in [("Planter_L", width * 0.40), ("Planter_R", -width * 0.40)]:
-        py = -depth * 0.36
+    for p_lbl, px in [("Planter_L", width * 0.42), ("Planter_R", -width * 0.42)]:
+        py = -depth * 0.39
         sc.make_cone(f"{name}_{p_lbl}_Pot", 0.009, 0.012, 0.014, (px, py, deck_z + 0.007),
                      "Mat_CreamCeramic", vertices=14, parent=root)
         sc.make_sphere(f"{name}_{p_lbl}_Plant", (0.011, 0.011, 0.009), (px, py, deck_z + 0.018),
@@ -166,9 +168,9 @@ def _build_floor_platform(name="FloorOfficePlatform", width=0.72, depth=0.48, co
     # 11. Required Sockets (exact names from specification)
     sc.make_anchor("FloorContact",                  (0.0, 0.0, 0.0), root)
     sc.make_anchor("WorkspaceRoot",                 (0.0, 0.0, deck_z), root)
-    sc.make_anchor("ResearchStationSocket",         (res_bx, st_y, deck_z), root)
-    sc.make_anchor("DeveloperStationSocket",        (0.0,    dev_y, deck_z), root)
-    sc.make_anchor("TesterStationSocket",           (tst_bx, st_y, deck_z), root)
+    sc.make_anchor("ResearchStationSocket",         (res_bx, res_by, deck_z), root)
+    sc.make_anchor("DeveloperStationSocket",        (dev_bx, dev_by, deck_z), root)
+    sc.make_anchor("TesterStationSocket",           (tst_bx, tst_by, deck_z), root)
     sc.make_anchor("FactorySocket",                 (0.0,    fac_y, deck_z), root)
     sc.make_anchor("DispatchStationSocket",         (disp_bx, disp_y, deck_z), root)
     sc.make_anchor("StatusBeaconSocket",            (beacon_bx, disp_y + 0.010, deck_z + 0.002), root)
@@ -194,7 +196,7 @@ def _build_placement_ghost_floor():
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
 
-    w, d = 0.72, 0.48
+    w, d = 0.788, 0.490
     parts = []
     # Outer thin translucent ring
     sc.make_rounded_frame_outline(f"{name}_FootprintRing", w, d, 0.016, 0.006, 0.055,
@@ -254,8 +256,8 @@ def _build_placement_ghost_ceiling():
                                   (0, 0, -0.006), "Mat_Spatial_Ghost", corner_segs=6, parent=root, parts_list=parts)
 
     # Subtle suspended pod silhouette outline at docked height (-0.14m below ceiling)
-    sc.make_rounded_frame_outline(f"{name}_PodSilhouette", 0.62, 0.38, 0.012, 0.006, 0.110,
-                                  (0, 0, -0.140), "Mat_Spatial_Ghost", corner_segs=6, parent=root, parts_list=parts)
+    sc.make_rounded_frame_outline(f"{name}_PodSilhouette", 0.728, 0.435, 0.012, 0.006, 0.110,
+                                  (0, 0.0125, -0.140), "Mat_Spatial_Ghost", corner_segs=6, parent=root, parts_list=parts)
 
     # Four thin vertical guide rods showing the docked envelope
     for idx, (vx, vy) in enumerate([(-0.12, -0.08), (0.12, -0.08), (-0.12, 0.08), (0.12, 0.08)]):
@@ -285,7 +287,7 @@ def _build_placement_ghost_ceiling():
 
 def build_all():
     report = [
-        _build_floor_platform("FloorOfficePlatform", width=0.72, depth=0.48, compact=False),
+        _build_floor_platform("FloorOfficePlatform", width=0.788, depth=0.490, compact=False),
         _build_floor_platform("FloorOfficePlatform_Compact", width=0.58, depth=0.40, compact=True),
         _build_placement_ghost_floor(),
         _build_placement_ghost_ceiling(),
