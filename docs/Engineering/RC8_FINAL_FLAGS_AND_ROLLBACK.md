@@ -1,4 +1,4 @@
-# Final flags and rollback (rc9-feedback-1)
+# Final flags and rollback (rc11-polish)
 
 Owner decisions, 2026-11-16: keep every feature ON, including `largeAgentPortal` (the keep-out guard is wired and
 PLAY-verified); hands-free voice needs a name first; the Wall Manager is the dedicated model; the office does not move at
@@ -16,7 +16,7 @@ start-up (only the panels re-seat).
 | wallElevatorVfx | ON | |
 | reducedMotion | OFF (toggle available) | |
 | onboardingHints | ON | |
-| buildLabel | `rc9-feedback-1` | |
+| buildLabel | `rc11-polish` | rc10-overnight + copy/hint polish + Wall perf labels |
 
 ## Code switches (rollback without a rebuild of the logic)
 
@@ -31,14 +31,16 @@ start-up (only the panels re-seat).
 ## Scene builders applied (all idempotent, each has Revert)
 
 In order: `RemoveFactoryV1`, `PaperKeysTrimV1`, `MicToggleV1`, `AgentSelectGrabV1`, `UnifiedModeDockV1`,
-`PaperHoldCenterV1`, `WallManagerModelV1`. Run with `scripts\run_guarded.ps1 -File AgentScripts\<Name>.cs -Entry <Name>.Revert`
+`PaperHoldCenterV1`, `WallManagerModelV1`, `DeskFirstStartV1`, `DockTidyV1`, `CopyFixV1`, `MeetKeyV1`, `DockStatusCopyV1`. Run with `scripts\run_guarded.ps1 -File AgentScripts\<Name>.cs -Entry <Name>.Revert`
 in reverse order to undo.
 
 ## APK rollback order
 
-1. `Builds/MuseDesk_rc9_feedback1.apk` (this candidate), SHA-256 `97AA4094DAC81EE3AD6BFD9E737BA2A927DE47914492739FBDF525B709E2D2A9`
-2. `Builds/MuseDesk_rc8.apk`, SHA-256 `788D4A04...E1428` (verified)
-3. `Builds/MuseDesk_rc7.apk`
-4. `Builds/MuseDesk_rc6_2.apk`
+1. `Builds/MuseDesk_rc11_polish.apk` (this candidate), SHA-256 in `RC8_RELEASE_GATE_MATRIX.md`
+2. `Builds/MuseDesk_rc10_overnight.apk`, SHA-256 `1B43F95AF86A2437B491437B810F9A97688DDE9393B204EA93A54117F3DD89E6`
+3. `Builds/MuseDesk_rc9_feedback1.apk`, SHA-256 `97AA4094DAC81EE3AD6BFD9E737BA2A927DE47914492739FBDF525B709E2D2A9`
+4. `Builds/MuseDesk_rc8.apk`, SHA-256 `788D4A04...E1428` (verified)
+5. `Builds/MuseDesk_rc7.apk`
+6. `Builds/MuseDesk_rc6_2.apk`
 
-`BuildApkTo` refuses to write `MuseDesk.apk` or any path containing rc6, rc7 or rc8.
+`BuildApkTo` refuses to write `MuseDesk.apk` or any path containing rc6, rc7, rc8, rc9 or rc10.

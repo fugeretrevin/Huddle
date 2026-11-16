@@ -1,3 +1,23 @@
+# RC11 (polish, 2026-11-16 morning) — rc10 plus open audit items
+
+Candidate: `Builds/MuseDesk_rc11_polish.apk` (label `rc11-polish`), SHA-256
+`AF34CBE53D559DA44CAD10E42B3422C18FC3480CB9C8486087D39BF83A6284CD`, installed on the Quest (installed hash verified).
+Code: `5c5750f` + `f6a2927` on `feature/rc8-feedback-1`. Rollback: rc10 `1B43F95A...`, then rc9, rc8.
+EditMode **1612 / 1612**.
+
+| Change | Level | Evidence |
+|---|---|---|
+| Dock status names the real keys: desk "Office at your desk" (was "Spaces"); Floor "Place, Next spot, or Cancel"; Ceiling one short line "Ceiling dock on your right. Place, Next spot, or Cancel." | AUTO + PLAY | UnifiedDockDrive 17/17 with the new words on every step |
+| Wall ghost / portal caveat shortened ("Checked against your room scan.") | PLAY | MeetDrive 15/15 |
+| Reset layout is discoverable: after the first panel move, "Pinch a panel's bar and hold still to reset." (ends on Reset layout) | AUTO + PLAY | coach test; PolishHintDrive: shown after a move, cleared by reset |
+| "Hands lost" recovery hint now fires (tracking drops while a paper is in hand) | AUTO | coach test; device behaviour NOT RUN |
+| Device perf log labels Wall scenarios (`wall_preview/active/visit/portal`) | PLAY | MeetDrive run logs `wall_portal` then `wall_active` |
+| Docs: `RC8_PERFORMANCE_RESULTS.md` (rc9 device: 72 fps on Desk and with the Wall placed), `RC8_SUBMISSION_CHECKLIST.md`, `RC8_DEMO_CAPTURE_LEDGER.md` | - | - |
+
+WORN: NOT RUN. Frame rate for rc10/rc11 forest art and the portal: NOT RUN.
+
+---
+
 # RC10 (overnight, 2026-11-16) — answers the owner's rc9 worn report
 
 Candidate: `Builds/MuseDesk_rc10_overnight.apk` (label `rc10-overnight`), SHA-256
