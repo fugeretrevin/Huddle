@@ -23013,6 +23013,7 @@ MonoBehaviour:
   visitCardLocal: {x: 0.26, y: 0.13, z: 0.4}
   planCardLocal: {x: 0.04, y: 0.17, z: 0.32}
   comfortMode: 0
+  restoreOnStart: 0
 --- !u!114 &366174295
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -137764,7 +137765,7 @@ MonoBehaviour:
   useTrackedFloorWithoutRoom: 1
   nearAhead: 0.45
   nearBelowEye: 0.25
-  restoreOnStart: 1
+  restoreOnStart: 0
   restoreTimeoutSeconds: 15
 --- !u!114 &1984667226
 MonoBehaviour:

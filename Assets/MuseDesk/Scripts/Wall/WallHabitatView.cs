@@ -572,7 +572,8 @@ namespace MuseDesk.Wall
         static readonly int S_Thinking = Animator.StringToHash("Thinking"), S_Worried = Animator.StringToHash("Worried"),
             S_Writing = Animator.StringToHash("Writing"), S_Nodding = Animator.StringToHash("Nodding"),
             S_TurnL = Animator.StringToHash("Turn_Left"), S_TurnR = Animator.StringToHash("Turn_Right"), S_Listening = Animator.StringToHash("Listening"),
-            S_MgrLookout = Animator.StringToHash("Manager_Lookout_Idle"), S_MgrReview = Animator.StringToHash("Manager_Review_Plan");
+            S_MgrLookout = Animator.StringToHash("Manager_Lookout_Idle"), S_MgrReview = Animator.StringToHash("Manager_Review_Plan"),
+            S_WalkCarry = Animator.StringToHash("Walk_Carry_Paper");
         readonly float[] _worryUntil = new float[4];
 
         /// <summary>One restrained worried beat for a CONFIRMED failure (task.failed). Desk pose only; never moves the character.</summary>
@@ -613,10 +614,35 @@ namespace MuseDesk.Wall
             }
         }
 
+        static readonly int P_MoveSpeed = Animator.StringToHash("MoveSpeed"), P_Carrying = Animator.StringToHash("IsCarryingPaper");
+        readonly sbyte[] _hasParams = new sbyte[4];   // 0 unknown, 1 yes, -1 no
+
+        /// <summary>
+        /// The shared agent controllers carry their own locomotion transitions (Idle -> Walk_Loop when MoveSpeed &gt; 0.02,
+        /// Walk_Loop -> Idle when MoveSpeed &lt; 0.015, Walk_Loop &lt;-&gt; Walk_Carry_Paper on IsCarryingPaper). The desk agents feed
+        /// those parameters from AgentMovement; a habitat clone has no movement script, so the view must feed them too.
+        /// Without this, every walk cross-fades in and the controller sends it straight back to idle (rc9: "the legs walk
+        /// for a second, then slide").
+        /// </summary>
+        void FeedLocomotion(int r, Animator an, HabitatWalker w, bool carrying)
+        {
+            if (_hasParams[r] == 0)
+            {
+                bool m = false, c = false;
+                foreach (var p in an.parameters) { if (p.nameHash == P_MoveSpeed) m = true; else if (p.nameHash == P_Carrying) c = true; }
+                _hasParams[r] = (sbyte)(m && c ? 1 : m ? 2 : -1);
+            }
+            if (_hasParams[r] < 0) return;
+            bool walking = w.Anim == WalkerAnim.Walk && w.Speed >= 0.01f;
+            an.SetFloat(P_MoveSpeed, walking ? 1f : 0f);
+            if (_hasParams[r] == 1) an.SetBool(P_Carrying, walking && carrying);
+        }
+
         void SetAnim(int r, WalkerAnim anim, HabitatRole role, HabitatWalker w)
         {
             Animator an = _anim[r];
             if (an == null || !an.isActiveAndEnabled || an.runtimeAnimatorController == null) return;
+            FeedLocomotion(r, an, w, _prop[r] != null && _prop[r].gameObject.activeSelf);
             int want;
             switch (anim)
             {
@@ -628,10 +654,18 @@ namespace MuseDesk.Wall
                 case WalkerAnim.Present: want = S_Offer; break;
                 default: want = DeskClip(r, role); break;
             }
-            if (_animState[r] == want) return;
             if (!an.HasState(0, want)) want = an.HasState(0, S_Idle) ? S_Idle : 0;
+            if (want == 0) return;
+            if (_animState[r] == want)
+            {
+                // Re-assert when the controller's own transitions moved off the wanted clip (never fight a running fade).
+                // Walking may legitimately be Walk_Carry_Paper (IsCarryingPaper); a one-shot turn may end on idle.
+                if (an.IsInTransition(0)) return;
+                int cur = an.GetCurrentAnimatorStateInfo(0).shortNameHash;
+                if (cur == want || (want == S_Walk && cur == S_WalkCarry) || want == S_TurnL || want == S_TurnR) return;
+            }
             _animState[r] = want;
-            if (want != 0) an.CrossFadeInFixedTime(want, 0.2f, 0);
+            an.CrossFadeInFixedTime(want, 0.2f, 0);
         }
 
         // ── printed task cards (only ever for canonical, committed task ids) ──

@@ -407,8 +407,32 @@ namespace MuseDesk.Spatial
 
         // ───────────────────────── frame loop (only while something changes) ─────────────────────────
 
+        // Device evidence (rc9: "the panel for choosing the mode was entirely gone"): on every mode change and every 20 s,
+        // one log line with where the console is relative to the head and whether it renders. Cheap; no allocation steady state.
+        WorkspaceMode _diagMode = (WorkspaceMode)(-1);
+        float _diagNext;
+        Renderer[] _diagRenderers;
+
+        void LogWhereabouts()
+        {
+            WorkspaceMode m = SpatialWorkspaceState.Mode;
+            float now = Time.unscaledTime;
+            if (m == _diagMode && now < _diagNext) return;
+            _diagMode = m; _diagNext = now + 20f;
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            if (_diagRenderers == null) _diagRenderers = GetComponentsInChildren<Renderer>(true);
+            int on = 0;
+            for (int i = 0; i < _diagRenderers.Length; i++) if (_diagRenderers[i] != null && _diagRenderers[i].enabled && _diagRenderers[i].gameObject.activeInHierarchy) on++;
+            Vector3 d = transform.position - cam.transform.position;
+            float ang = d.sqrMagnitude > 1e-6f ? Vector3.Angle(cam.transform.forward, d) : 0f;
+            Debug.Log("[MuseDesk.Dock] mode=" + m + " active=" + gameObject.activeInHierarchy + " scale=" + transform.lossyScale.x.ToString("F2")
+                      + " dist=" + d.magnitude.ToString("F2") + "m angleFromGaze=" + ang.ToString("F0") + " renderers=" + on + "/" + _diagRenderers.Length);
+        }
+
         void Update()
         {
+            LogWhereabouts();
             if (!_animating && !_pokeDirty) return;
             float dt = Time.unscaledDeltaTime;
 

@@ -311,6 +311,7 @@ namespace MuseDesk.Wall
             if (_stage != null && WallActive)
             {
                 _stage.Tick(dt, Time.unscaledTime);
+                LogSoftTransfers();
                 TickLiftAudio();
                 TickReactions(Time.unscaledTime);
                 if (Time.unscaledTime >= _statusRefresh) { _statusRefresh = Time.unscaledTime + 0.5f; RefreshStatusColors(); }
@@ -327,8 +328,13 @@ namespace MuseDesk.Wall
             RefreshDockLabels();
         }
 
+        [Tooltip("Re-enter Wall mode at launch when a placement was saved. OFF (owner rc9): every launch starts at the desk so the " +
+                 "user chooses Desk / Floor / Ceiling / Wall and sees the placement flow; the saved wall spot is offered first when Wall is pressed.")]
+        public bool restoreOnStart = false;
+
         void TryRestoreOnStart()
         {
+            if (!restoreOnStart) { _restoreTried = true; return; }
             if (director != null && !director.RestoreSettled) return;
             if (roomService == null || roomService.Walls == null || roomService.Walls.WallAvailability != RoomAvailability.Available)
             {
@@ -347,6 +353,22 @@ namespace MuseDesk.Wall
                 Debug.Log("[MuseDesk.Wall] Saved wall placement not used: " + why);
                 Note("Saved wall spot not used: " + why);
                 PlayerPrefs.SetInt(ActiveKey, 0);
+            }
+        }
+
+        readonly int[] _softSeen = new int[4];
+
+        /// <summary>Device evidence (rc9: "never left the elevator, teleported back to the seat"): every soft transfer
+        /// (fade out, reappear at the desk) is logged once with its reason and where the walker was.</summary>
+        void LogSoftTransfers()
+        {
+            for (int r = 0; r < 4; r++)
+            {
+                HabitatWalker w = _stage.Walker((HabitatRole)r);
+                if (w == null || w.SoftTransfers == _softSeen[r]) continue;
+                _softSeen[r] = w.SoftTransfers;
+                Debug.Log("[MuseDesk.Wall] soft transfer " + (HabitatRole)r + ": " + w.LastBlock + " at " + w.Position.ToString("F3")
+                          + " lift floor=" + _stage.lift.CabinFloor + " door=" + _stage.lift.DoorOpenEased.ToString("F2"));
             }
         }
 
