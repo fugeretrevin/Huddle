@@ -100,7 +100,8 @@ namespace MuseDesk.Wall
             }
 
             // Page mark: in the gap between the stamp zone (or text) and the key rows, so it never sits on a text row.
-            _pageMark = WallUi.MakeText(card.root, "PageMark", font, new Vector3(size.x * 0.5f - 0.045f, PlanPaperGeometry.PageMarkY(size.y), -0.0005f), new Vector2(8f, 0.8f),
+            // rc12: beside the stamp zone on the right (the measured key rows reach up to where the old mark sat).
+            _pageMark = WallUi.MakeText(card.root, "PageMark", font, new Vector3(size.x * 0.5f - 0.045f, _zoneRect.CenterY, -0.0005f), new Vector2(8f, 0.8f),
                                         TypeScale.MinMmAt(readingDistance), soft, TextAlignmentOptions.Right);
             _pageMark.overflowMode = TextOverflowModes.Overflow;
             _pageMark.textWrappingMode = TextWrappingModes.NoWrap;

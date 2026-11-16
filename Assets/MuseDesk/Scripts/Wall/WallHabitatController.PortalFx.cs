@@ -30,6 +30,7 @@ namespace MuseDesk.Wall
         [Range(0f, 1f)] public float portalColumnAlpha = 0.55f;
 
         Transform _portalPad, _portalColumn;
+        MeshRenderer _portalRingSmooth;
         Renderer _portalColumnR;
         Material _portalColumnMat;
         MuseDesk.Art.WallHabitatLargePortalVisualController _portalPadCtl;
@@ -187,11 +188,14 @@ namespace MuseDesk.Wall
         void SetRingVisible(bool on)
         {
             if (_portalRoot == null) return;
+            // The twelve segments only when there is no smooth ring (no unlit accent material).
+            bool segs = on && _portalRingSmooth == null;
             for (int i = 0; i < 12 && i < _portalRoot.childCount; i++)
             {
                 var r = _portalRoot.GetChild(i).GetComponent<Renderer>();
-                if (r != null && r.enabled != on) r.enabled = on;
+                if (r != null && r.enabled != segs) r.enabled = segs;
             }
+            if (_portalRingSmooth != null && _portalRingSmooth.enabled != on) _portalRingSmooth.enabled = on;
         }
 
         /// <summary>The agent's scale factor through the sequence (1 = fully out), and its stretch (y / xz).</summary>

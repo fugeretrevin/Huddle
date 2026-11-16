@@ -236,6 +236,16 @@ public static class PortalFxDrive
         return sb.ToString();
     }
 
+    /// <summary>Press a key on a named card by its label (spaces as underscores).</summary>
+    public static string Key(string spec)
+    {
+        string[] a = spec.Split(':');
+        if (a.Length != 2) return "use Card:Label";
+        var c = C;
+        WallCard card = a[0] == "plan" ? c.PlanCard : a[0] == "visit" ? c.VisitCard : a[0] == "meet" ? c.MeetCard : a[0] == "receipt" ? c.ReceiptCard : null;
+        return Press(card, a[1].Replace('_', ' '));
+    }
+
     public static string PlanCard() { C.PressManager(); return "manager pressed | planOpen"; }
 
     public static string State()

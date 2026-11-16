@@ -790,6 +790,19 @@ namespace MuseDesk.Wall
                     var seg = art.Box(_portalRoot, "Ring" + i, new Vector3(Mathf.Cos(a), 0.003f, Mathf.Sin(a)), new Vector3(0.16f, 0.006f, 0.02f), WallHabitatView.Lavender).transform;
                     seg.localRotation = Quaternion.Euler(0, -a * Mathf.Rad2Deg + 90f, 0);
                 }
+                // rc12: one smooth flat ring (unlit, the cards' accent material) instead of twelve boxes. Made after the twelve
+                // segments (they keep their child indices 0-11, hidden), so the code that walks them is unchanged.
+                if (WallUi.AccentMaterial != null)
+                {
+                    var rg = new GameObject("RingSmooth");
+                    rg.transform.SetParent(_portalRoot, false);
+                    rg.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    rg.AddComponent<MeshFilter>().sharedMesh = RingMesh(1f, 0.9f, 64);
+                    var rr = rg.AddComponent<MeshRenderer>();
+                    rr.sharedMaterial = WallUi.AccentMaterial;
+                    rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; rr.receiveShadows = false;
+                    _portalRingSmooth = rr;
+                }
             }
             PortalCandidate c = _portal.Spot;
             float r = portalSettings.footprintRadius;
@@ -801,6 +814,12 @@ namespace MuseDesk.Wall
                 seg.localPosition = new Vector3(Mathf.Cos(a) * r, 0.003f, Mathf.Sin(a) * r);
                 seg.localScale = new Vector3(r * 0.55f, 0.006f, 0.02f);
                 ArtHelper().Tint(seg.GetComponent<Renderer>(), c.valid ? (c.roomChecked ? WallHabitatView.Lavender : WallHabitatView.Amber) : WallHabitatView.Coral);
+            }
+            if (_portalRingSmooth != null)
+            {
+                _portalRingSmooth.transform.localPosition = Vector3.up * 0.004f;
+                _portalRingSmooth.transform.localScale = new Vector3(r, r, 1f);
+                WallUi.TintPlate(_portalRingSmooth, c.valid ? (c.roomChecked ? WallHabitatView.Lavender : WallHabitatView.Amber) : WallHabitatView.Coral);
             }
             _portalRoot.gameObject.SetActive(true);
         }
