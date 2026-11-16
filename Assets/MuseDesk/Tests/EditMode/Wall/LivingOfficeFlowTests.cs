@@ -369,6 +369,26 @@ namespace MuseDesk.Tests.EditMode.Wall
             Assert.IsFalse(body.Contains("Open issues"));
         }
 
+        // rc14 (E2E gap G-1): a text-only result never reads as executed work.
+        [Test]
+        public void TextOnlyResults_SayWrittenNotRun()
+        {
+            Assert.IsTrue(PlanBoard.IsTextOnlyResult("Proposed change: a 12-character password validator"));
+            Assert.IsTrue(PlanBoard.IsTextOnlyResult("Test plan: boundary cases"));
+            Assert.IsTrue(PlanBoard.IsTextOnlyResult("Research write-up: NIST rules"));
+            Assert.IsFalse(PlanBoard.IsTextOnlyResult("OAuth login scaffold complete; 6 passed / 0 failed"));
+            Assert.IsFalse(PlanBoard.IsTextOnlyResult(""));
+            var b = new PlanBoard();
+            b.AddCommitted("p1", new List<ManagerPrintJob> { new ManagerPrintJob { taskId = "t-a", clientItemId = "a", agentId = "developer", title = "Implement" } });
+            var u = PlanCardUpdate.Of("t-a", "completed", 2);
+            u.resultSummary = "Proposed change: a 12-character password validator";
+            b.Apply(u);
+            Assert.AreEqual("Written, not run · Proposed change: a 12-character password validator", PlanBoard.StatusWords(b.Find("t-a")));
+            Assert.AreEqual("8 of 8 written up (text only, nothing was run)", PlanBoard.ProgressWords(8, 8, 8, 0, 0));
+            Assert.AreEqual("3 of 4 completed (2 as text only) · 1 running", PlanBoard.ProgressWords(3, 4, 2, 1, 0));
+            Assert.AreEqual("2 of 3 completed · 1 FAILED", PlanBoard.ProgressWords(2, 3, 0, 0, 1));
+        }
+
         [Test]
         public void ParsePlanStatus_ReadsReasonsAndSynthesis_AndRetryReply()
         {

@@ -640,7 +640,10 @@ namespace MuseDesk.Wall
             int total = 0;
             for (int i = 0; i < _board.Cards.Count; i++) if (_board.Cards[i].planId == planId) total++;
             int done = _board.CountState(planId, "completed"), failed = _board.CountState(planId, "failed"), running = _board.CountState(planId, "running");
-            string head = done + " of " + total + " completed" + (running > 0 ? " · " + running + " running" : "") + (failed > 0 ? " · " + failed + " FAILED" : "");
+            int textOnly = 0;
+            for (int i = 0; i < _board.Cards.Count; i++)
+                if (_board.Cards[i].planId == planId && _board.Cards[i].state == "completed" && PlanBoard.IsTextOnlyResult(_board.Cards[i].resultSummary)) textOnly++;
+            string head = PlanBoard.ProgressWords(done, total, textOnly, running, failed);
             res.Rows.Add(PlanPaperPager.Row(PlanRowKind.State, head, w, TypeScale.CaptionMm, FontWeightKind.Bold,
                                             failed > 0 ? PlanTone.Coral : done == total && total > 0 ? PlanTone.Success : PlanTone.InfoBlue, 1, d));
             if (!string.IsNullOrEmpty(_managerWarning) && _board.CountState(planId, "queued") > 0)

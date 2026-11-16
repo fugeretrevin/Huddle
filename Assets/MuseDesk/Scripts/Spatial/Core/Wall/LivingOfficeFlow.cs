@@ -142,8 +142,40 @@ namespace MuseDesk.Spatial.Wall
             if (c == null) return "";
             if (c.Failed) return "FAILED: " + (string.IsNullOrEmpty(c.failureReason) ? "no reason was reported" : c.failureReason);
             if (c.Blocked) return string.IsNullOrEmpty(c.blockedReason) ? "Blocked (no reason was reported)" : c.blockedReason;
-            if (c.state == "completed") return string.IsNullOrEmpty(c.resultSummary) ? "Completed" : "Completed: " + c.resultSummary;
+            if (c.state == "completed")
+            {
+                if (string.IsNullOrEmpty(c.resultSummary)) return "Completed";
+                // rc14 (E2E gap G-1): the Manager runner's cards end as model-written text with no tools (a write-up, a
+                // proposed change, a test plan). "Completed" alone would read as finished, executed work.
+                return IsTextOnlyResult(c.resultSummary) ? TextOnlyLead + c.resultSummary : "Completed: " + c.resultSummary;
+            }
             return WallOfflineLogic.StateWords(c.state);
+        }
+
+        public const string TextOnlyLead = "Written, not run · ";
+
+        // The fixed titles the plan runner (backend phase3/runner.py TITLE_FOR_AGENT, and the offline demo board) puts in
+        // front of a text-only result. Nothing behind them was applied or executed.
+        static readonly string[] TextOnlyTitles = { "Research write-up", "Proposed change", "Test plan" };
+
+        /// <summary>True when a completed card's result is model-written text (a write-up, proposal or test plan), not executed work.</summary>
+        public static bool IsTextOnlyResult(string summary)
+        {
+            if (string.IsNullOrEmpty(summary)) return false;
+            string s = summary.TrimStart();
+            for (int i = 0; i < TextOnlyTitles.Length; i++)
+                if (s.StartsWith(TextOnlyTitles[i], StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        /// <summary>The status page's head line: "N of M completed", or, when the finished cards are text only, says so.</summary>
+        public static string ProgressWords(int done, int total, int textOnly, int running, int failed)
+        {
+            string head;
+            if (done > 0 && textOnly >= done) head = done + " of " + total + " written up (text only, nothing was run)";
+            else if (textOnly > 0) head = done + " of " + total + " completed (" + textOnly + " as text only)";
+            else head = done + " of " + total + " completed";
+            return head + (running > 0 ? " · " + running + " running" : "") + (failed > 0 ? " · " + failed + " FAILED" : "");
         }
 
         // ── retry ──
