@@ -40,6 +40,7 @@ namespace MuseDesk.Wall
         public List<GameObject> ApplyTo(WallHabitatView view)
         {
             var placed = new List<GameObject>();
+            LastHiddenCharacterRenderers = 0;
             if (view == null || entries == null || !useHabitatArt) return placed;
             foreach (var e in entries)
             {
@@ -65,8 +66,33 @@ namespace MuseDesk.Wall
                 g.transform.localScale = Vector3.one * e.uniformScale;
                 placed.Add(g);
                 foreach (var c in g.GetComponentsInChildren<Collider>(true)) c.enabled = false;   // art never collides
+                LastHiddenCharacterRenderers += HideBakedCharacters(g.transform);
             }
             return placed;
+        }
+
+        /// <summary>Renderers switched off by the last <see cref="ApplyTo"/> because they belonged to a baked character.</summary>
+        public static int LastHiddenCharacterRenderers;
+
+        /// <summary>
+        /// The complete habitat prefabs embed the four agent prefabs (Agent_Manager, Bay_*_Agent). The walkers are code-driven
+        /// avatar clones, so the baked copies would be a second, differently scaled agent in the same place. Every renderer and
+        /// Animator under a baked-character transform is switched off (kept in the hierarchy, so the art is otherwise unchanged).
+        /// Returns the number of renderers hidden.
+        /// </summary>
+        public static int HideBakedCharacters(Transform artRoot)
+        {
+            if (artRoot == null) return 0;
+            int n = 0;
+            foreach (var t in artRoot.GetComponentsInChildren<Transform>(true))
+            {
+                if (!HabitatArtRules.IsBakedCharacterName(t.name)) continue;
+                foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+                    if (r.enabled) { r.enabled = false; n++; }
+                foreach (var a in t.GetComponentsInChildren<Animator>(true)) a.enabled = false;
+                foreach (var mb in t.GetComponentsInChildren<MonoBehaviour>(true)) if (mb != null) mb.enabled = false;   // no second agent brain either
+            }
+            return n;
         }
 
         static Transform Find(Transform t, string name)
