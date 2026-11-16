@@ -1,3 +1,22 @@
+# RC10 (overnight, 2026-11-16) — answers the owner's rc9 worn report
+
+Candidate: `Builds/MuseDesk_rc10_overnight.apk` (label `rc10-overnight`), SHA-256
+`1B43F95AF86A2437B491437B810F9A97688DDE9393B204EA93A54117F3DD89E6`, installed on the Quest (installed hash verified).
+Rollbacks: rc9 `97AA4094...`, rc8 `788D4A04...`, rc7, rc6_2. EditMode **1609 / 1609** (plus new fixtures run by name).
+
+| Owner rc9 finding | Fix | Level | Evidence |
+|---|---|---|---|
+| Wall legs walk for a second then slide | View feeds the controller's MoveSpeed / IsCarryingPaper; re-asserts the wanted clip | PLAY | walking avatars sampled in Walk_Loop / Walk_Carry_Paper every sample, MoveSpeed=1 |
+| Rider never left the elevator, teleported home | Riders hold in the open cabin then walk out (claims, rider priority), no corridor stops, soft transfer only after 60 s stuck; device log on any soft transfer | AUTO + PLAY | WalkerReliabilityTests 19/19 (30-min seeded stress, both layouts, owner scenario), claim tests 7/7; Living Office 13/13, softTransfers=0 |
+| Portal never used, no way to reach it | Meet key on the Wall dock -> agent chooser -> portal preview; voice "Tester, come here" / "meet the developer"; status line + hint name Meet | AUTO + PLAY | MeetDrive 15/15 (leave/return exactly once, keep-out guard clear, cancel paths); MeetPortalEntryTests 19, PortalVoiceRequestTests 39 |
+| Mode panel / placement flow gone | Desk-first launch (no auto-restore into a mode); stranded-panel seat in every mode; guided Wall card (Look at a wall -> Point and pinch, then Place) | AUTO + PLAY | WallGuideDrive PASS (steps, no duplicate keys, card hides on Place; dock 0.42-0.54 m after a stranded start); UnifiedDockDrive 17/17 |
+| Antigravity forest/treehouse Wall | merged (46/46, 44/44 fit) | PLAY | one agent per role at 0.170 m, art car follows the cabin (gap 0.000) |
+| Audit polish | duplicate push-to-talk key hidden; Mic + Calm motion inside the dock; Wall hint after the core loop; stale copy; duplicate guide keys hidden; greyed Wall says why; voice "wall mode"; elevator VFX flag wired | AUTO + PLAY | dock captures; OnboardingCoach/SpacesDock/VoiceIntentParser tests |
+
+WORN: NOT RUN for every row. Frame rate on device: still to measure with `scripts\quest_perf_watch.ps1` (rc9 logs showed 72 fps on Desk; Wall/portal not yet measured).
+
+---
+
 # RC8 → RC9 release gate matrix
 
 Candidate: `Builds/MuseDesk_rc9_feedback1.apk` (build label `rc9-feedback-1`), SHA-256 `97AA4094DAC81EE3AD6BFD9E737BA2A927DE47914492739FBDF525B709E2D2A9`, from
