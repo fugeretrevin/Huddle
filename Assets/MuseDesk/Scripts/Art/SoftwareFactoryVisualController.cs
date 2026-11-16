@@ -42,8 +42,17 @@ namespace MuseDesk.Art
 
         private void Awake()
         {
-            if (!ShowFactory) { gameObject.SetActive(false); return; }
+            // Hide the visuals only: FactoryEventController shares this GameObject and must keep
+            // listening, because CompletionSequence reads its passing-test evidence.
+            if (!ShowFactory) { HideVisuals(); return; }
             ResolveReferences();
+        }
+
+        void HideVisuals()
+        {
+            foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+            foreach (var a in GetComponentsInChildren<Animator>(true)) a.enabled = false;
+            for (int i = 0; i < transform.childCount; i++) transform.GetChild(i).gameObject.SetActive(false);
         }
 
         public void ResolveReferences()

@@ -74,6 +74,8 @@ public static class RemoveFactoryV1
                     var o = it.objectReferenceValue;
                     if (o is Component c) target = c.transform; else if (o is GameObject g) target = g.transform;
                     if (target == null || target.gameObject.scene != scene) continue;
+                    // Keep references to the event controller (CompletionSequence.factoryEvents reads its test evidence).
+                    if (o is MuseDesk.Art.FactoryEventController) continue;
                     bool pointsIn = false;
                     foreach (var top in tops) if (target.IsChildOf(top)) { pointsIn = true; break; }
                     if (!pointsIn) continue;
@@ -88,15 +90,35 @@ public static class RemoveFactoryV1
         }
 
         // 3. Deactivate + rename.
+        // A top that carries FactoryEventController stays active (its evidence listener must keep running);
+        // its visual children are deactivated and renamed instead, and its own renderers are disabled.
+        int removed = 0;
         foreach (var top in tops)
         {
+            if (top.GetComponent<MuseDesk.Art.FactoryEventController>() != null)
+            {
+                foreach (var r in top.GetComponents<Renderer>()) { r.enabled = false; EditorUtility.SetDirty(r); }
+                var kids = new List<Transform>();
+                for (int i = 0; i < top.childCount; i++) kids.Add(top.GetChild(i));
+                foreach (var k in kids)
+                {
+                    if (k.name.EndsWith(Suffix)) continue;
+                    sb.AppendLine("  removed child: " + Path(k) + (k.gameObject.activeSelf ? " (was active)" : " (was inactive)"));
+                    k.gameObject.SetActive(false);
+                    k.name = k.name + Suffix;
+                    EditorUtility.SetDirty(k.gameObject);
+                    removed++;
+                }
+                continue;
+            }
             sb.AppendLine("  removed: " + Path(top) + (top.gameObject.activeSelf ? " (was active)" : " (was inactive)"));
             top.gameObject.SetActive(false);
             top.name = top.name + Suffix;
             EditorUtility.SetDirty(top.gameObject);
+            removed++;
         }
 
-        sb.AppendLine($"touched={tops.Count} refsNulled={nulled}" + (tops.Count == 0 ? " (nothing left to remove: already applied)" : ""));
+        sb.AppendLine($"removed={removed} refsNulled={nulled}" + (removed == 0 ? " (nothing left to remove: already applied)" : ""));
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         return sb.ToString();
@@ -116,7 +138,10 @@ public static class RemoveFactoryV1
             sb.AppendLine("  restored: " + Path(t)); n++;
         }
         foreach (var fec in Object.FindObjectsByType<MuseDesk.Art.FactoryEventController>(FindObjectsInactive.Include))
+        {
             if (fec.factory == null) { fec.factory = fec.GetComponent<MuseDesk.Art.SoftwareFactoryVisualController>(); EditorUtility.SetDirty(fec); }
+            foreach (var r in fec.GetComponents<Renderer>()) { r.enabled = true; EditorUtility.SetDirty(r); }
+        }
         sb.AppendLine($"restored={n}. Also set SoftwareFactoryVisualController.ShowFactory = true in code. Other nulled refs are not auto-restored.");
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
