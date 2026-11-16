@@ -1,9 +1,9 @@
 # Next device test (about 30 minutes, one person, Quest 3)
 
-Install the polish validation build. The exact file and hash are in `RELEASE_POLISH_CHANGELOG.md`.
+Install the polish2 validation build (it includes everything in the older polish build). The exact file and hash are in `RELEASE_POLISH_CHANGELOG.md`. Nothing in this file has been done on a headset yet.
 
 ```
-adb -s 2G97C5ZHCK037K install -r Builds\MuseDesk_polish_validation.apk
+adb -s 2G97C5ZHCK037K install -r Builds\MuseDesk_polish2_validation.apk
 ```
 
 (Use the adb in the Unity Editor's platform-tools.) Afterwards, put the competition build back:
@@ -47,6 +47,18 @@ Mark each line PASS or FAIL, add a few words, and copy the results into `QUEST_E
 17. **Calm motion key (validation build only; the release has it hidden).** Under the mode console, below the Focus key, there is a small key reading `Calm motion OFF`. Poke it: the label turns to `ON`, the cap turns Teal, and the next walk, card glide and paper unfold are visibly quicker with no overshoot. Poke again: back to `OFF`, Paper cap. Quit the app and start it again: it remembers the last choice. Check that the three label lines are readable at seated distance and that the key is not hit by accident when you reach for Focus. (UI-05)
 18. **Desk walk clearance.** Start the task and watch the Researcher walk to you, then approve and watch the handoffs. Note any step where a body clips a desk edge, the Inbox tray, the book stack, a nameplate or a station prop (the Play Mode check predicts the delivery lane, the corner by the book stack and the stops in front of the Developer and Tester; `S9C_SETTINGS_SAFETY_UI_CHANGES.md`). (MOT-05)
 19. **Bubble footer.** Poke an agent: its speech bubble shows the sentence and a small `SCRIPTED DEMO` line under it (`LIVE` only on a live run), readable and not cut off. (UI-06)
+
+## D. polish2 additions (validation build `MuseDesk_polish2_validation.apk`; EVERYTHING BELOW IS NOT WORN YET)
+
+Install `Builds\MuseDesk_polish2_validation.apk` instead of the polish one (hashes in `RELEASE_POLISH_CHANGELOG.md`). Every line is NOT WORN: only Editor and Play Mode evidence exists. Mark PASS or FAIL.
+
+20. **Wall art.** Enter Wall, place the habitat. It is now the real treehouse art (three tiers, glass elevator on your left, cubicles along the bottom), not grey boxes. Agents stand on the floors (no floating, no sinking), nothing pokes through a railing or desk, the elevator car lines up with each floor and its doors open and close in step with the riders. If it looks wrong, set `useHabitatArt` false on `Wall/HabitatArtManifest` to get the proxies back (needs a rebuild; report what you saw first). Try the small-space layout too if a wall allows it.
+21. **Living Office loop.** On the Manager, ask for a plan. The plan-review paper opens labelled `SCRIPTED DEMO` (or LIVE on a live run). Revise once, then Approve: the paper gets an APPROVED stamp **only after the board shows the cards** (a Reject shows REJECTED the same way, with nothing created). Cards print, each owner rides up, takes its card, carries it to its desk and works. When all are done the summary paper comes down to the desk as a receipt.
+22. **Retry.** In the failure demo the Developer card shows its real blocked or failed reason (`Scripted failure for the demonstration. No model was used and nothing was run.`) and the Tester shows `Blocked: it depends on ...`. Poke Retry twice fast: one retry goes out and the second is refused. The card goes back to queued.
+23. **Onboarding hints.** On first use of each area a short hint appears once and does not come back after you dismiss or use the feature. It must not cover the paper or the keys.
+24. **Calm motion key** (item 17 again, now with the Wall art): with it ON the elevator and walkers move noticeably quicker with no overshoot.
+25. **Desk layout V2 routes.** Start the desk task and watch the Researcher and the other agents walk the new routes (delivery lane, the corner by the book stack, stops in front of the Developer and Tester). Note any step where a body clips a desk edge, the Inbox tray, a prop or a nameplate. (MOT-05)
+26. **Per-agent Listening.** Hold the voice gesture while pointing at one agent: only that agent turns to listen (a small listening pose), the others do not, and it stops when you let go. It must never look like the agent is talking.
 
 ## What to send back
 

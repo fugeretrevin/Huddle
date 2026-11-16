@@ -12,6 +12,17 @@
 
 Both built with 0 errors. **Neither was installed:** nobody was wearing the headset, and the competition install was left alone.
 
+## APKs polish2 (built 2026-11-15 19:12 and 19:17 from the Wall-art hookup commit `6e6a597`)
+
+Built with `AgentScripts/BuildApkTo.cs` (named output path; refuses `Builds/MuseDesk.apk` and anything `rc6`), after `WallValidationConfig.On()` / `.Off()`. The committed `ReleaseConfig` was restored afterwards (all Wall flags 0, reducedMotionToggle 0, onboardingHints 0; `git diff` clean). `Builds/` is git-ignored, so the APKs are not committed. Both succeeded with 0 errors. **Neither was installed and nothing in them has been worn.**
+
+| File | Flags | SHA-256 |
+|---|---|---|
+| `Builds/MuseDesk_polish2_validation.apk` | Wall, Manager, Select, /btw, Portal, Calm motion key, onboarding hints ON; Wall art manifest filled (`useHabitatArt` true) | `BF31B98F862CE667168DA7CA69C7AEE00D313972E601AA7CD1A9E99709D36560` |
+| `Builds/MuseDesk_polish2_flagsoff.apk` | all Wall flags OFF, hints OFF (release-safe check) | `2160B001320A7461466C07AFC1110DDC12F09349340FDCEAFB4B7B4F0F8215A5` |
+
+Competition build check: `Builds/MuseDesk.apk` and `MuseDesk_rc6_2.apk` both still `173C813F4840DD3A7DCA81430E1914B1A9BEBF0A3B4C3375CF1E7FD53DB9B963`. Device steps: `NEXT_DEVICE_TEST.md` section D (all NOT WORN).
+
 ## Commits
 
 | Commit | Sprint | What |
