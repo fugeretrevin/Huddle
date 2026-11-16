@@ -106,22 +106,22 @@ namespace MuseDesk.Art
         // (tests_passed / tests_failed in the payload) is remembered for the completion stage.
         void OnArtifactCreated(EventEnvelope e)
         {
-            if (factory == null) return;
+            // Test evidence is recorded even with the factory removed: CompletionSequence reads it.
             if (e != null && e.Payload != null)
             {
                 int passed = e.Payload.Value<int?>("tests_passed") ?? 0;
                 int failed = e.Payload.Value<int?>("tests_failed") ?? 0;
                 _testsPassedSeen = passed > 0 && failed == 0;
             }
-            factory.PlayArtifactTransport();
+            if (factory != null) factory.PlayArtifactTransport();
         }
 
         // Backend confirms the task is done → green test gate (only if real passing test evidence
         // arrived with the artifact), then the completed artifact is delivered to the shelf.
         void OnTaskCompleted(EventEnvelope e)
         {
-            if (factory == null) return;
-            if (SequencedDelivery) return;   // the completion sequence plays the two beats itself
+            if (SequencedDelivery) return;   // the completion sequence reads the evidence and plays the beats itself
+            if (factory == null) { _testsPassedSeen = false; return; }   // no factory: nothing to show
             if (_delivery != null) StopCoroutine(_delivery);
             _delivery = StartCoroutine(SuccessThenDeliver(_testsPassedSeen));
             _testsPassedSeen = false;
