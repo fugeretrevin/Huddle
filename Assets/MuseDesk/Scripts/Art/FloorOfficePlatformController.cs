@@ -45,7 +45,7 @@ namespace MuseDesk.Art
         public Transform ResearchStationSocket => researchStationSocket;
         public Transform DeveloperStationSocket => developerStationSocket;
         public Transform TesterStationSocket => testerStationSocket;
-        public Transform FactorySocket => factorySocket;
+        public Transform FactorySocket => SoftwareFactoryVisualController.ShowFactory ? factorySocket : null;   // factory removed (rc8 feedback)
         public Transform DispatchStationSocket => dispatchStationSocket;
         public Transform StatusBeaconSocket => statusBeaconSocket;
         public Transform NavigationBounds => navigationBounds;

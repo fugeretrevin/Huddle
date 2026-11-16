@@ -36,8 +36,13 @@ namespace MuseDesk.Art
         public Transform DeliveryOutputSocket => deliveryOutputSocket;
         public Transform FailedReturnSocket => failedReturnSocket;
 
+        /// <summary>THE single off-switch. Owner feedback (rc8): the factory/conveyor looked wonky and made
+        /// no sense, so it is removed from the experience. False = hidden and inert; flip to true to restore.</summary>
+        public static bool ShowFactory = false;
+
         private void Awake()
         {
+            if (!ShowFactory) { gameObject.SetActive(false); return; }
             ResolveReferences();
         }
 
@@ -62,6 +67,7 @@ namespace MuseDesk.Art
 
         public void PlayStageClip(string clipName, float crossfade = 0.2f)
         {
+            if (!ShowFactory) return;
             if (factoryAnimator == null)
             {
                 factoryAnimator = GetComponentInChildren<Animator>();

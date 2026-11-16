@@ -2,6 +2,8 @@
 
 **UPDATE (competition build rc7-living-office): the committed defaults are now ON for every flag in this table except `reducedMotion` (0, a user preference default). `wallElevatorVfx` is 1 but no component reads the resulting `wallElevatorVfxEnabled`, so it gates nothing yet. Where columns below say 'Validation build only' or 'Competition build: Off()', they describe the earlier rc6-2 and polish2 builds.**
 
+**Software Factory removed (post-rc8):** not a ReleaseConfig flag; the single off-switch is the code constant `SoftwareFactoryVisualController.ShowFactory = false`, and `AgentScripts/RemoveFactoryV1.cs` hides the scene objects (`Revert()` restores).
+
 Date: 2026-11-15. Branch `feature/living-world-polish`. Written by the A16-docs workstream from docs and code reads only. Nothing was built, installed or run.
 
 **Single source:** `Assets/MuseDesk/Resources/ReleaseConfig.asset` (committed values below, read 2026-11-15). Class: `Assets/MuseDesk/Scripts/Config/MuseDeskReleaseConfig.cs:11`. Applier: `Assets/MuseDesk/Scripts/Config/ReleaseConfigApplier.cs` (`Awake` at execution order -10000, `Apply` at lines 64-136).
