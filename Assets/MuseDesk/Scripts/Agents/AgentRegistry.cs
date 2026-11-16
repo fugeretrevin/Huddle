@@ -22,6 +22,9 @@ namespace MuseDesk.Agents
         AgentMovement _researcherMove;
         AgentAnimatorBridge _researcherBridge;
         string _deliveredDecisionId;
+        bool _offerExpected;                    // the researcher walked up with a paper and has not been told to lower it
+        float _nextReassertAt;
+        MuseDesk.Documents.HeldPaperController _paper;
 
         void Awake()
         {
@@ -74,6 +77,7 @@ namespace MuseDesk.Agents
             { guard += Time.deltaTime; yield return null; }
             if (_researcherBridge != null)
             {
+                _offerExpected = true;
                 _researcherBridge.PlayOffer();
                 // Polish S9b: the paper has really arrived (the agent stands at the user holding it out) and the
                 // decision is still waiting on them. Quiet; muted under Focus; rate-limited in FeedbackController.
@@ -84,6 +88,7 @@ namespace MuseDesk.Agents
 
         void OnDecisionResolved(string decisionId, string state)
         {
+            _offerExpected = false;
             if (_byId.TryGetValue("researcher", out var r)) r.SetAlert(false);
             // Agent visibly reacts to the REAL backend outcome, then walks home.
             StartCoroutine(ReactAndReturn(state));
@@ -112,6 +117,22 @@ namespace MuseDesk.Agents
         {
             // SessionController builds its gateway asynchronously; bind once the reducer is live.
             if (_reducer == null && controller != null) TryBind();
+            if (_offerExpected) KeepOffering();
+        }
+
+        // The offer is held until the paper is taken or the decision is resolved. If something other than those ended
+        // it (a stray reaction, a pose reset), raise it again; never while the agent walks or the paper is taken.
+        void KeepOffering()
+        {
+            if (Time.unscaledTime < _nextReassertAt) return;
+            _nextReassertAt = Time.unscaledTime + 0.5f;
+            if (_researcherBridge == null || _researcherMove == null || _reducer == null) return;
+            if (_paper == null) _paper = FindAnyObjectByType<MuseDesk.Documents.HeldPaperController>(FindObjectsInactive.Include);
+            bool taken = _paper != null && _paper.IsTaken;
+            if (OfferHoldPolicy.NeedsReassert(true, _reducer.FirstPendingDecision() != null, taken,
+                    _researcherMove.IsMoving, _researcherMove.AtHome, _researcherBridge.IsOffering, _researcherBridge.ReactionPlaying))
+                _researcherBridge.PlayOffer();
+            else if (taken || _reducer.FirstPendingDecision() == null) _offerExpected = false;
         }
 
         void TryBind()
@@ -158,6 +179,7 @@ namespace MuseDesk.Agents
         void OnSessionReset()
         {
             StopAllCoroutines();
+            _offerExpected = false;
             _deliveredDecisionId = null;
             foreach (var a in agents) if (a != null) a.SetAlert(false);
             if (_researcherMove != null && !_researcherMove.AtHome) _researcherMove.ReturnHome();

@@ -391,6 +391,9 @@ namespace MuseDesk.Agents
         {
             float now = Time.time;
             if (!isActiveAndEnabled || HardBusy || Reacting) return false;
+            // Already holding the paper out to the user: the offer pose stays steady until it is taken. A repeated
+            // "here it is" lean read as bringing the paper out again and taking it back.
+            if (!OfferHoldPolicy.AllowPresentGesture(bridge != null && bridge.IsOffering)) return false;
             _awayOk = true;
             bool holding = gaze != null && gaze.IsHoldingPaper;
             if (holding || paper == null)
