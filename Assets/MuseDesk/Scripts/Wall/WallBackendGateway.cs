@@ -51,6 +51,13 @@ namespace MuseDesk.Wall
         OfflineCard _working;
         float _workingUntil;
 
+        /// <summary>Play Mode driver hook: forget the offline plans and the card the demo runner was working (offline only).</summary>
+        public void ResetOfflineForDriver()
+        {
+            if (IsLive) return;
+            _offline.Clear(); _offlineCards.Clear(); _working = null; _failNextAgent = null;
+        }
+
         sealed class OfflinePlan
         {
             public WallTemplatePlan plan;
@@ -574,7 +581,7 @@ namespace MuseDesk.Wall
         {
             Phase2DemoGateway demo = phase2 != null ? phase2.DemoGateway : null;
             if (demo == null) return null;
-            var s = new WallParsedPlanStatus { planId = planId, title = op.plan.title, planStatus = op.status, provenance = op.plan.provenance, sourceMode = "demo", settled = op.synthesized };
+            var s = new WallParsedPlanStatus { planId = planId, title = op.plan.title, planStatus = op.status, provenance = op.plan.provenance, sourceMode = "demo", settled = op.synthesized, revision = op.plan.revision };
             if (op.synthesized) { s.synthesisArtifactId = op.summaryArtifactId; s.synthesisTaskId = op.summaryAnchor; s.synthesisMode = "scripted_demo"; }
             for (int i = 0; i < _offlineCards.Count; i++)
             {

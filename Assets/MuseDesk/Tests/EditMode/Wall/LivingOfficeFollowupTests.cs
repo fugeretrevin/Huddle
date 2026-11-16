@@ -174,6 +174,19 @@ namespace MuseDesk.Tests.EditMode.Wall
         }
 
         [Test]
+        public void Restore_CarriesTheCommittedRevision()
+        {
+            string json = "{\"session_id\":\"s1\",\"plans\":[{\"plan_id\":\"mp-1\",\"title\":\"Login\",\"plan_status\":\"committed\",\"revision\":4,\"total\":1," +
+                          "\"cards\":[{\"task_id\":\"t-a\",\"title\":\"Research\",\"agent_id\":\"researcher\",\"state\":\"running\",\"revision\":1}]}]}";
+            List<WallParsedPlanStatus> plans;
+            Assert.IsTrue(WallOfflineLogic.TryParseManagerStatus(json, out plans));
+            Assert.AreEqual(4, plans[0].revision);
+            var flow = new ManagerPlanFlow();
+            Assert.IsTrue(flow.RestoreCommitted(plans[0].planId, plans[0].title, plans[0].provenance, Jobs(), plans[0].revision));
+            Assert.AreEqual(4, flow.Revision);
+        }
+
+        [Test]
         public void Restore_NeverReplacesAPlanThatIsBeingReviewed()
         {
             var flow = new ManagerPlanFlow();

@@ -54,7 +54,7 @@ namespace MuseDesk.Spatial.Wall
     [Serializable]
     public sealed class WallPlanStatusDto
     {
-        public string plan_id; public string title; public string plan_status; public string provenance; public int total;
+        public string plan_id; public string title; public string plan_status; public string provenance; public int total; public int revision;
         public WallStatusCardDto[] cards; public bool settled; public WallSynthesisDto synthesis; public string source_mode;
     }
 
@@ -68,6 +68,8 @@ namespace MuseDesk.Spatial.Wall
     {
         public string planId, title, planStatus, provenance, sourceMode;
         public bool settled;
+        /// <summary>The plan's committed revision (0 when the source did not say).</summary>
+        public int revision;
         /// <summary>The summary artifact, or null/empty ids when the plan has none yet.</summary>
         public string synthesisArtifactId, synthesisTaskId, synthesisMode;
         public int synthesisCompleted, synthesisTotal;
@@ -536,7 +538,7 @@ namespace MuseDesk.Spatial.Wall
                 var s = new WallParsedPlanStatus
                 {
                     planId = d.plan_id, title = d.title, planStatus = d.plan_status, provenance = d.provenance,
-                    sourceMode = d.source_mode, settled = d.settled,
+                    sourceMode = d.source_mode, settled = d.settled, revision = d.revision,
                 };
                 if (d.synthesis != null && !string.IsNullOrEmpty(d.synthesis.artifact_id))
                 {

@@ -163,3 +163,9 @@ Known observations from PLAY:
 10. Recenter and leaving Wall mode during a ride and during a receipt flight: nobody left between floors, cards end on desks, no stuck paper.
 11. Voice with a live mic: "Manager, ..." opens the paper; only the addressed avatar shows Listening.
 12. Frame time with three pick-up trips and the paper open.
+
+## Update 2026-11-15: resync revision, re-runnable driver
+
+- After a resync the Manager shows the plan's committed revision (backend `manager/status` per-plan `revision`, and the offline demo board's plan revision), not 0.
+- `LivingOfficeDrive` offline runs can be repeated in the same Play session (`ResetForDriver` at the start of a run); a live run does not reset, because the backend is authoritative.
+- The stuck-door elevator scenario test is enabled (see PARALLEL_SPRINT_TEST_RESULTS.md).

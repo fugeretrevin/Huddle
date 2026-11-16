@@ -92,6 +92,8 @@ public static class LivingOfficeDrive
         if (live && !g.IsLive) return "the session is not live: start the backend (scripts\\start_wall_backend.ps1), go live, then call RunLive";
         if (!live && g.IsLive) return "the session is live: use RunLive, or leave the backend off for the offline run";
 
+        // Back-to-back runs: close the paper/visit and forget the previous run's plan, so step 3 starts from a clean Manager.
+        if (!live) c.ResetForDriver();
         _live = live; _withFailure = withFailure;
         _mode = live ? "LIVE BACKEND" : (withFailure ? "OFFLINE (scripted demo) + scripted failure" : "OFFLINE (scripted demo)");
         _steps.Clear(); _log.Clear(); _errors.Clear();

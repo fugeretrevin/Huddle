@@ -317,9 +317,13 @@ namespace MuseDesk.Spatial.Wall
         /// replaced) and only a plan the backend reports as committed. The cards already exist, so nothing is queued to print.
         /// </summary>
         public bool RestoreCommitted(string planId, string title, string provenance, IList<ManagerPrintJob> tasks)
+        { return RestoreCommitted(planId, title, provenance, tasks, 0); }
+
+        /// <summary>As above, also restoring the plan's committed revision (shown on the status page).</summary>
+        public bool RestoreCommitted(string planId, string title, string provenance, IList<ManagerPrintJob> tasks, int revision)
         {
             if (State != ManagerFlowState.Idle || string.IsNullOrEmpty(planId) || tasks == null || tasks.Count == 0) return false;
-            PlanId = planId; CommittedPlanId = planId; Title = title; Provenance = provenance;
+            PlanId = planId; CommittedPlanId = planId; Title = title; Provenance = provenance; Revision = revision;
             for (int i = 0; i < tasks.Count; i++)
             {
                 if (string.IsNullOrEmpty(tasks[i].taskId)) continue;

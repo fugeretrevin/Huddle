@@ -459,6 +459,20 @@ namespace MuseDesk.Wall
             _board.DismissReceipt();
         }
 
+        /// <summary>Play Mode driver hook: back to a clean Manager between back-to-back runs. Closes the paper and any visit, forgets the
+        /// plan flow, the board and (offline) the demo gateway's plans. Unlike a session reset it does NOT rebuild from the backend.</summary>
+        public void ResetForDriver()
+        {
+            _restoreToken++;                                     // a rebuild still in flight must not bring the old plan back
+            if (_planCardOpen && _planCard != null) { _planCardOpen = false; _planCard.Show(false); }
+            if (_visit != null && _visit.Busy) _visit.Return(VisitEndReason.Cancelled);
+            if (_portal != null) _portal.Interrupt("Driver reset");
+            if (_manager != null) _manager.Reset();
+            ResetLivingOffice();
+            _page = 0; _stepWindow = 0; _riskStep = false; _rejectBusy = false; _stampHoldUntil = 0f;
+            if (_backend is WallBackendGateway g) g.ResetOfflineForDriver();
+        }
+
         void ResetLivingOffice()
         {
             _board.Reset();
@@ -498,7 +512,7 @@ namespace MuseDesk.Wall
                     _board.AddCommitted(s.planId, jobs);
                     for (int i = 0; i < s.cards.Count; i++) _board.Apply(s.cards[i]);
                     if (!string.IsNullOrEmpty(s.synthesisArtifactId) && _board.OnSynthesis(s.synthesisArtifactId, s.synthesisTaskId, "")) _board.DismissReceipt();
-                    if (p == plans.Count - 1) _manager.RestoreCommitted(s.planId, s.title, s.provenance, jobs);
+                    if (p == plans.Count - 1) _manager.RestoreCommitted(s.planId, s.title, s.provenance, jobs, s.revision);
                 }
                 _statusPollAt = 0f; _statusFails = 0; _showCommittedPlan = false;
                 PlanRestores++;
