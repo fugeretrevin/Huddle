@@ -528,6 +528,9 @@ namespace MuseDesk.Wall
         {
             var keys = new List<KeyValuePair<string, Action>>();
             string mode = _tasks != null ? _tasks.SourceModeLabel : "";
+            // The Manager runner is sequential and text-only (work_provenance model_text_no_tools, see
+            // docs/Engineering/RC8_LIVE_AGENT_EVIDENCE.md): a bare "LIVE" would read as live tool execution.
+            if (mode == "LIVE") mode = "LIVE model · text only, no code tools";
             ManagerFlowState st = _manager.State;
             bool committed = st == ManagerFlowState.Delegating || st == ManagerFlowState.Monitoring;
 
