@@ -77,8 +77,14 @@ _VERBS = ("cancel|stop|abort|halt|switch|change|modify|redo|rewrite|delete|remov
           "publish|push|merge|revert|undo|restart|rerun|re-run|replace|rename|add|install|run|"
           "execute|fix|update|use|make|set|skip|pause|resume|reassign|approve|commit|create|"
           "send|write|implement|ship|accept|reject|bypass|disable|ignore")
-_LEAD = (r"(?:please|can you|could you|would you|will you|just|now|then|also|let'?s|go ahead and|"
-         r"i want you to|i'd like you to|you should|you need to|you must|i need you to)")
+# Lead-ins before the verb, each optionally followed by a comma. rc14 (E2E journey D6): spoken requests start with a
+# softener or the agent's name ("Actually, change the password rule to 12 characters", "Developer, change ...");
+# before, the comma broke the match and such a request was answered as a status question (still read-only, but no
+# proposed action was offered for confirmation).
+_LEAD = (r"(?:(?:please|can you|could you|would you|will you|just|now|then|also|let'?s|go ahead and|"
+         r"i want you to|i'd like you to|you should|you need to|you must|i need you to|"
+         r"actually|ok(?:ay)?|oh|so|wait|hey|hmm|"
+         r"researcher|developer|tester|manager|musedesk)\s*,?)")
 _NEG = r"(?:don'?t|do not|never|no need to|shouldn'?t|should not|must not|mustn'?t)"
 _AMEND_RE = re.compile(
     rf"(?:^|[.!?;]\s+)(?:{_LEAD}\s+)*(?:{_VERBS})\b"

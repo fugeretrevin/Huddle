@@ -50,6 +50,11 @@ def test_intent_classifier(q, intent):
     ("I don't want you to skip the tests", "keep_tests", True),
     ("never stop", "keep_running", True),
     ("Don't use Redis", "change", False),
+    # rc14: spoken lead-ins with a comma (E2E journey D6)
+    ("Actually, change the password rule to 12 characters.", "change", False),
+    ("Developer, change the password rule to 12 characters", "change", False),
+    ("OK, stop for now", "stop", False),
+    ("Manager, don't approve it", "withhold_approval", True),
 ])
 def test_change_requests_and_negation(q, kind, negated):
     c = classify(q)
@@ -58,7 +63,9 @@ def test_change_requests_and_negation(q, kind, negated):
 
 def test_questions_about_changes_stay_read_only():
     for q in ["Why did you not approve it?", "Did you skip the tests?", "Have you stopped?",
-              "What would approving do?", "Are the tests passing?"]:
+              "What would approving do?", "Are the tests passing?",
+              "Developer, what are you working on right now?", "Actually, why did you pick that?",
+              "So, have all the tests passed?", "Tester, what failed?"]:
         assert not is_change_request(q), q
 
 
