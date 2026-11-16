@@ -622,7 +622,7 @@ namespace MuseDesk.Wall
             Color col = !c.valid ? WallHabitatView.Coral : c.needsReview ? WallHabitatView.Amber : WallHabitatView.Teal;
             for (int i = 0; i < _ghostEdges.Length; i++) _ghostArt.Tint(_ghostEdges[i], col);
             string words = c.valid ? (c.needsReview ? "Check this spot: " + c.reason : "Fits: " + c.reason) : "Can't place: " + c.reason;
-            words += c.roomChecked ? "\nChecked against the room scan. Things not in the scan were not checked." : "\nNo room scan here: nothing around it was checked.";
+            words += c.roomChecked ? "\nChecked against your room scan." : "\nNo room scan here, so not checked.";
             _ghostLabel.text = words;
             _ghostLabel.color = WallHabitatView.Ink;
             if (!_ghost.gameObject.activeSelf) _ghost.gameObject.SetActive(true);

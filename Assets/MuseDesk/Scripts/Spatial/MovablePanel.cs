@@ -105,6 +105,8 @@ namespace MuseDesk.Spatial
         public static readonly List<MovablePanel> All = new List<MovablePanel>(8);
         /// <summary>Raised after <see cref="ResetAll"/>.</summary>
         public static event Action LayoutReset;
+        /// <summary>Raised when a drag that really moved the panel ends (first-use hint for Reset layout).</summary>
+        public static event Action PanelMoved;
 
         /// <summary>Raised when a drag starts (true) or ends (false).</summary>
         public event Action<bool> DragChanged;
@@ -271,6 +273,11 @@ namespace MuseDesk.Spatial
             Save(_settleToPos, _settleToRot);
             _resumePokesAt = Time.unscaledTime + ResumePokesAfter;
             DragChanged?.Invoke(false);
+            if (_movedFar)
+            {
+                try { PanelMoved?.Invoke(); }
+                catch (Exception ex) { Debug.LogError("[MuseDesk] panel-moved listener error: " + ex.Message); }
+            }
         }
 
         /// <summary>Where the panel may rest, given where it is now (world position of the panel object).</summary>
@@ -468,6 +475,7 @@ namespace MuseDesk.Spatial
             Vector3 p = transform.TransformPoint(pivotLocal);
             BeginDrag(p);
             DragTo(p + worldDelta, 1f);
+            _movedFar = worldDelta.sqrMagnitude > stillRadius * stillRadius;   // as the hand-held path decides it
             EndDrag(true);
             ResumePokes();
         }

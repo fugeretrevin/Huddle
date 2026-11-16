@@ -125,11 +125,11 @@ namespace MuseDesk.Spatial
         public string requestedTitle = "Scanning";
         public string requestedBody = "Keep looking at the spot";
         public string floorPreviewTitle = "Place the office";
-        public string floorPreviewBody = "Press Place here, or pinch and drag the outline";
-        public string floorDraggingBody = "Let go on a clear spot, then press Place here";
-        public string floorReadyBody = "Press Place here to move it, or drag it again";
+        public string floorPreviewBody = "Press Place, or drag the outline";
+        public string floorDraggingBody = "Let go on a clear spot, then press Place";
+        public string floorReadyBody = "Press Place to move it here";
         public string ceilingPreviewTitle = "Mount it here?";
-        public string ceilingPreviewBody = "Confirm to mount it here, or Next spot";
+        public string ceilingPreviewBody = "Press Place to mount it here";
 
         const int RingSegments = 48;
         static readonly int IdColor = Shader.PropertyToID("_BaseColor");

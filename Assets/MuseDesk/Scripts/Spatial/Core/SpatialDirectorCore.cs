@@ -526,9 +526,18 @@ namespace MuseDesk.Spatial
             PreviewValid = true;
             _previewOrigin = _previewCeiling.InspectionPose;
             PreviewPose = _previewOrigin;       // the outline shows where the office will come down
-            StatusText = _previewCeiling.explanation + ". The outline shows where it comes down. Confirm or Cancel.";
+            StatusText = ShortCeilingWords(_previewCeiling.explanation) + ". Place, Next spot, or Cancel.";
             Touch();
             return true;
+        }
+
+        /// <summary>The dock's status line is one line: keep the side ("Ceiling dock on your right") and drop the
+        /// measurements, which stay on <see cref="CeilingPlacement.explanation"/>.</summary>
+        static string ShortCeilingWords(string explanation)
+        {
+            if (string.IsNullOrEmpty(explanation)) return "Ceiling dock found";
+            int comma = explanation.IndexOf(',');
+            return comma > 0 && explanation.StartsWith("Ceiling dock on your", StringComparison.Ordinal) ? explanation.Substring(0, comma) : explanation;
         }
 
         RootPose ManualPose(SeatedUser user)
@@ -541,7 +550,7 @@ namespace MuseDesk.Spatial
 
         string DetectedStatus()
         {
-            return string.Format(CultureInfo.InvariantCulture, "Detected floor spot {0} of {1}. Place here, Other spot, or Cancel.",
+            return string.Format(CultureInfo.InvariantCulture, "Detected floor spot {0} of {1}. Place, Next spot, or Cancel.",
                                  _index + 1, _candidates.Count);
         }
 
@@ -558,7 +567,7 @@ namespace MuseDesk.Spatial
                     // Nothing on the other side: keep the dock already shown.
                     _ceilingSide = -_ceilingSide;
                     _previewCeiling = shown;
-                    StatusText = "No other ceiling dock found. Confirm or Cancel.";
+                    StatusText = "No other ceiling dock found. Place or Cancel.";
                     Touch();
                 }
                 return;
@@ -626,7 +635,7 @@ namespace MuseDesk.Spatial
                     _previewShort = PreviewValid ? null : check.Words("The way there");
                     _previewRouteBlocked = !PreviewValid;   // the spot is clear; only the way there is not
                 }
-                StatusText = PreviewValid ? "Detected floor, adjusted by hand. Place here or Cancel." : _previewProblem;
+                StatusText = PreviewValid ? "Detected floor, adjusted by hand. Place or Cancel." : _previewProblem;
             }
             else
             {
@@ -733,7 +742,7 @@ namespace MuseDesk.Spatial
                 return RefusePreview((string.IsNullOrEmpty(AimProblem) ? "That spot is not clear" : AimProblem) + ". Move it to a clear spot first.", AimProblem);
             // rc6: a spot is chosen by letting go of the outline, then confirmed. Never in the middle of a drag.
             if (_aimDragging)
-                return RefusePreview("Let go of the outline first, then press Place here.", "Let go first, then press Place here");
+                return RefusePreview("Let go of the outline first, then press Place.", "Let go first, then press Place");
             // A spot whose way there was refused is planned again below (the user may have moved);
             // any other spot that is not clear is refused here.
             if (!PreviewValid && !_previewRouteBlocked)
@@ -903,15 +912,15 @@ namespace MuseDesk.Spatial
         string _aimRouteWords;
         const float AimRouteReuseDistance = 0.02f, AimRouteReuseDegrees = 2f;
 
-        const string AimDragWords = "Move your hand to slide it across the floor. Let go on a clear spot, then press Place here.";
-        const string AimConfirmHint = "Press Place here to move it, drag it again, or Cancel.";
+        const string AimDragWords = "Move your hand to slide it across the floor. Let go on a clear spot, then press Place.";
+        const string AimConfirmHint = "Press Place to move it, drag it again, or Cancel.";
         /// <summary>Footprint words during a drag over a spot whose floor and way are both clear.</summary>
         public const string ReadyWords = "Clear spot, clear way. Let go to choose it";
         public const string ReadyHandWords = "Let go to choose it. Not checked against your room";
         /// <summary>Footprint words at rest on a clear spot: the Place here key is shown.</summary>
-        public const string ConfirmWords = "Press Place here to move it here";
-        public const string ConfirmHandWords = "Press Place here. Not checked against your room";
-        public const string IdleWords = "Press Place here, or pinch and drag it";
+        public const string ConfirmWords = "Press Place to move it here";
+        public const string ConfirmHandWords = "Press Place. Not checked against your room";
+        public const string IdleWords = "Press Place, or pinch and drag it";
         public const string MovingWords = "Moving there. Stop brings it back";
         public const string ReturningWords = "Stopped: going back";
         public const string PlacedWords = "Placed";

@@ -226,6 +226,7 @@ namespace MuseDesk.Documents
             }
 
             bool nowHeld = !_filing && _selCount() > 0;
+            if (nowHeld) s_lastHeld = Time.unscaledTime;
 
             if (nowHeld && !_held) OnGrabbed();
             else if (!nowHeld && _held) OnReleased();
@@ -246,6 +247,13 @@ namespace MuseDesk.Documents
 
         /// <summary>A hand took hold of a decision paper (also raised by TakeNow). Used by first-use hints only.</summary>
         public static event System.Action<HeldPaperController> PaperGrabbed;
+
+        static float s_lastHeld = -100f;
+        /// <summary>Unscaled time of the last frame any decision paper was in a hand (-100 before the first).
+        /// First-use hints read it: ISDK ends a grab the moment its hand is lost, so "while holding" needs a look back.</summary>
+        public static float LastHeldTime => s_lastHeld;
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetHeldClock() { s_lastHeld = -100f; }
 
         void OnGrabbed()
         {

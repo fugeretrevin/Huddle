@@ -27,6 +27,8 @@ namespace MuseDesk.Spatial.Onboarding
         RecoverWorkspaceMoved,
         RecoverTrackingLost,
         RecoverNoUndo,
+        // Appended (the store keys progress by number, so new ids go last).
+        ResetLayout,
     }
 
     /// <summary>What a hint points at. The display layer maps this to a transform.</summary>
@@ -63,9 +65,11 @@ namespace MuseDesk.Spatial.Onboarding
         PaperReturned,         // needs event
         WorkspaceMovedByAccident, // needs event
         WorkspaceReturnedToDesk,  // needs event
-        TrackingLostWhileHolding, // GrabTrackingWatch (Core) is the source
-        TrackingRegained,      // needs event
-        UndoAttempted,         // needs event
+        TrackingLostWhileHolding, // a hand stopped tracking while a paper was in hand (OnboardingHintPresenter polls HandVisual)
+        TrackingRegained,      // the lost hand is tracked again (same poll)
+        UndoAttempted,         // needs event (voice already has an undo window, so the hint stays unwired)
+        PanelMoved,            // MovablePanel.PanelMoved: a panel was carried by its grab bar and let go
+        LayoutReset,           // MovablePanel.LayoutReset (the Reset layout chip)
     }
 
     /// <summary>Which build features are on. Hints needing a feature are never shown without it.</summary>
@@ -157,6 +161,10 @@ namespace MuseDesk.Spatial.Onboarding
             new HintDef(HintId.CalmMotion, "Optional: Calm motion shortens animations.", HintAnchorKind.Plaque,
                 OnboardingEvent.TaskCompleted, E(OnboardingEvent.CalmMotionToggled),
                 OnboardingFlags.CalmToggle, HintId.ReceiptDelivered, 8f, 10f, 1, false, false),
+            // After the first panel move: the Reset layout chip is otherwise undiscoverable (a still 1.5 s pinch on the bar).
+            new HintDef(HintId.ResetLayout, "Pinch a panel's bar and hold still to reset.", HintAnchorKind.Plaque,
+                OnboardingEvent.PanelMoved, E(OnboardingEvent.LayoutReset),
+                OnboardingFlags.None, HintId.None, 2f, 10f, 1, false, false),
             // Flag-gated.
             new HintDef(HintId.WallPlace, "Optional: press Wall on the Spaces dock.", HintAnchorKind.Plaque,
                 OnboardingEvent.TaskCompleted, E(OnboardingEvent.WallPlaced),

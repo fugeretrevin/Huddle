@@ -643,7 +643,7 @@ namespace MuseDesk.Wall
             string body;
             if (_portal.State == PortalState.Preview || _portal.State == PortalState.AwaitConfirm)
             {
-                body = _portal.Message + (_portal.Spot.roomChecked ? "\nChecked against the room scan; things not in the scan were not checked." : "");
+                body = _portal.Message + (_portal.Spot.roomChecked ? "\nChecked against your room scan." : "");
                 if (PortalSpotIsFallback) body += "\n" + PortalSpotAdapter.NotEnoughSpace + " for a large visitor; a small one can still come.";
                 keys.Add(new KeyValuePair<string, Action>(_portal.State == PortalState.AwaitConfirm ? "Open here" : null, () => _portal.Confirm()));
                 keys.Add(new KeyValuePair<string, Action>("Other spot", NextPortalSpot));

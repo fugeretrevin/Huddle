@@ -23220,6 +23220,9 @@ MonoBehaviour:
     queueWaitTimeout: 90
     faceDoorTolerance: 8
     tripTimeout: 45
+    stuckTimeout: 60
+    laneWaitTimeout: 300
+    maxTripSeconds: 600
   useElevatorDispatcher: 1
   dockLocal: {x: -0.19, y: 0.045, z: 0.5}
   dockTiltBack: 35
@@ -86154,7 +86157,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Spaces
+  m_text: Office at your desk
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 1d85f0e8fbeaabd4087dc09ad958fef4, type: 2}
   m_sharedMaterial: {fileID: 3255995288093549690, guid: 1d85f0e8fbeaabd4087dc09ad958fef4, type: 2}
@@ -142508,7 +142511,7 @@ MonoBehaviour:
   nextWords: Next spot
   otherSpotWords: Next spot
   statusLabel: {fileID: 1289809606}
-  deskWords: Spaces
+  deskWords: Office at your desk
   floorModeWords: Office on the floor
   ceilingModeWords: Office at the ceiling
   wallModeWords: Office on the wall

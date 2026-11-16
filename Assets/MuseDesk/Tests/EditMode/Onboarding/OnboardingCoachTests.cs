@@ -289,6 +289,46 @@ namespace MuseDesk.Tests.EditMode.Onboarding
             Assert.AreEqual(HintId.MoveWorkspace, Cur());
         }
 
+        [Test]
+        public void ResetLayoutHintFollowsTheFirstPanelMoveAndEndsOnReset()
+        {
+            Run(10);
+            Assert.IsNull(_coach.Current, "nothing before a panel is moved");
+            _coach.Observe(OnboardingEvent.PanelMoved);
+            Run(1);
+            Assert.IsNull(_coach.Current, "waits a moment after the release");
+            Run(1.5);
+            Assert.AreEqual(HintId.ResetLayout, Cur());
+            StringAssert.Contains("reset", HintCatalog.Get(HintId.ResetLayout).Text);
+            _coach.Observe(OnboardingEvent.LayoutReset);
+            Run(0.5);
+            Assert.AreNotEqual(HintId.ResetLayout, Cur());
+            Assert.IsTrue(_store.IsDone(HintId.ResetLayout));
+            _coach.Observe(OnboardingEvent.PanelMoved);
+            Run(5);
+            Assert.AreNotEqual(HintId.ResetLayout, Cur(), "shown once");
+        }
+
+        [Test]
+        public void TrackingLostHintShowsWhileHoldingAndEndsWhenHandsReturn()
+        {
+            Ctx(busy: true);
+            _coach.Observe(OnboardingEvent.TrackingLostWhileHolding);
+            Run(1);
+            Assert.AreEqual(HintId.RecoverTrackingLost, Cur(), "shown even with the hands busy");
+            _coach.Observe(OnboardingEvent.TrackingRegained);
+            Run(0.5);
+            Assert.AreNotEqual(HintId.RecoverTrackingLost, Cur());
+        }
+
+        [Test]
+        public void NewHintIdsAreAppendedSoSavedProgressKeepsItsMeaning()
+        {
+            // PlayerPrefsOnboardingStore keys progress by the id's number: existing ids must never shift.
+            Assert.AreEqual(16, (int)HintId.RecoverNoUndo);
+            Assert.AreEqual(17, (int)HintId.ResetLayout);
+        }
+
         // ---- dismiss, skip, timeout, reset ----
 
         [Test]

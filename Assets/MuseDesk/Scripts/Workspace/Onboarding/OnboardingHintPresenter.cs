@@ -136,7 +136,10 @@ namespace MuseDesk.Workspace
             MuseDesk.Wall.WallEvents.ManagerPlanApproved += OnPlanApproved;
             MuseDesk.Wall.WallEvents.AgentSelected += OnAgentPicked;
             MuseDesk.Wall.WallEvents.PortalOpened += OnPortalOpened;
+            MovablePanel.PanelMoved += OnPanelMoved;
+            MovablePanel.LayoutReset += OnLayoutReset;
             _runEdge.Reset(); _modeEdge.Reset(); _handoff.Reset();
+            _lostMask = 0; _prevTracked0 = _prevTracked1 = true;
         }
 
         void Deactivate()
@@ -152,6 +155,8 @@ namespace MuseDesk.Workspace
             MuseDesk.Wall.WallEvents.ManagerPlanApproved -= OnPlanApproved;
             MuseDesk.Wall.WallEvents.AgentSelected -= OnAgentPicked;
             MuseDesk.Wall.WallEvents.PortalOpened -= OnPortalOpened;
+            MovablePanel.PanelMoved -= OnPanelMoved;
+            MovablePanel.LayoutReset -= OnLayoutReset;
             UnbindSession();
             // Hide any visible card without touching the persisted progress.
             if (_built) { _fader.Snap(false); ApplyFactor(); }
@@ -257,6 +262,54 @@ namespace MuseDesk.Workspace
         void OnPlanApproved() { Obs(OnboardingEvent.ManagerPlanApproved); }
         void OnAgentPicked() { Obs(OnboardingEvent.AgentSelected); }
         void OnPortalOpened() { Obs(OnboardingEvent.PortalOpened); }
+        void OnPanelMoved() { Obs(OnboardingEvent.PanelMoved); }
+        void OnLayoutReset() { Obs(OnboardingEvent.LayoutReset); }
+
+        // Hand tracking lost while a paper is in hand (recovery hint). ISDK drops the grab on the same frame the hand is
+        // lost, so a paper held within HeldLookback counts. Regained once every hand that was lost is tracked again.
+        // A hand visual that cannot be found reads as tracked (Editor without a rig): nothing fires there.
+        const float HeldLookback = 0.35f;
+        static Oculus.Interaction.HandVisual s_left, s_right;
+        static float s_nextHandSearch;
+        int _lostMask;
+        bool _prevTracked0 = true, _prevTracked1 = true;
+
+        static void ReadHandsTracked(out bool left, out bool right)
+        {
+            if ((s_left == null || s_right == null) && Time.unscaledTime >= s_nextHandSearch)
+            {
+                s_nextHandSearch = Time.unscaledTime + 1f;
+                var all = FindObjectsByType<Oculus.Interaction.HandVisual>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var v = all[i];
+                    if (v == null || v.Hand == null) continue;
+                    if (v.Hand.Handedness == Oculus.Interaction.Input.Handedness.Left) { if (s_left == null) s_left = v; }
+                    else if (s_right == null) s_right = v;
+                }
+            }
+            left = s_left == null || s_left.Hand == null || s_left.Hand.IsTrackedDataValid;
+            right = s_right == null || s_right.Hand == null || s_right.Hand.IsTrackedDataValid;
+        }
+
+        void PollTracking()
+        {
+            ReadHandsTracked(out bool t0, out bool t1);
+            int justLost = (!t0 && _prevTracked0 ? 1 : 0) | (!t1 && _prevTracked1 ? 2 : 0);
+            _prevTracked0 = t0; _prevTracked1 = t1;
+            if (_lostMask == 0)
+            {
+                if (justLost != 0 && Time.unscaledTime - HeldPaperController.LastHeldTime <= HeldLookback)
+                {
+                    _lostMask = justLost;
+                    Obs(OnboardingEvent.TrackingLostWhileHolding);
+                }
+                return;
+            }
+            _lostMask |= justLost;
+            int stillLost = (t0 ? 0 : 1) | (t1 ? 0 : 2);
+            if ((stillLost & _lostMask) == 0) { _lostMask = 0; Obs(OnboardingEvent.TrackingRegained); }
+        }
 
         // The office changing mode (Desk/Floor/Ceiling/Wall) is polled: the director has no event, and the first value is
         // only a baseline so the starting mode never counts as the user moving it.
@@ -285,6 +338,7 @@ namespace MuseDesk.Workspace
             if (!_boundSession) TryBindSession();
             _clock.Time = Time.unscaledTimeAsDouble;
             PollMode();
+            PollTracking();
 
             var reg = HandClaimRegistry.Shared;
             var ctx = new OnboardingContext

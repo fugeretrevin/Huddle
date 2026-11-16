@@ -388,7 +388,7 @@ public static class UnifiedModeDockV1
         console.confirmWords = SpacesDockLogic.Place; console.placeHereWords = SpacesDockLogic.Place;
         console.nextWords = SpacesDockLogic.NextSpot; console.otherSpotWords = SpacesDockLogic.NextSpot;
         console.sendBackWords = SpacesDockLogic.SendBack;
-        console.deskWords = "Spaces";
+        console.deskWords = "Office at your desk";   // DockStatusCopyV1: a status, not a title
         Words(console.confirmKey.label, SpacesDockLogic.Place);
         Words(console.nextKey.label, SpacesDockLogic.NextSpot);
         Words(console.cancelKey.label, SpacesDockLogic.Cancel);
