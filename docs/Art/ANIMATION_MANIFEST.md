@@ -1,8 +1,8 @@
 # MuseDesk — Character & Factory Animation Manifest
 
-## 1. Shared Character Animation Library (65 Clips)
+## 1. Shared Character Animation Library (65 Base Clips; 77 Total in RC8)
 
-All **65 clips** are authored at **24 FPS** on the shared **Pipkin Sprite** 26-bone armature (`Agent_*_ArmatureData`) in `ArtSource/Scripts/generate_characters.py` (`build_shared_animation_library`) and baked identically into all four mascot `.fbx` / `.prefab` assets (`Agent_Researcher`, `Agent_Developer`, `Agent_Tester`, and `Agent_Manager`). Both `Assets/MuseDesk/Art/Controllers/MuseDesk_Agent.controller` and `Assets/MuseDesk/Art/Controllers/WallHabitat/MuseDesk_WallAgent.controller` wire this shared 65-state library.
+All **65** base clips shown below (plus **12** living-world personality/interaction clips documented in [ULTIMATE_ANIMATION_MANIFEST.md](./ULTIMATE_ANIMATION_MANIFEST.md), for **77** shared clips total) are authored at **24 FPS** on the shared **Pipkin Sprite** 26-bone armature (`Agent_*_ArmatureData`) in `ArtSource/Scripts/generate_characters.py` (`build_shared_animation_library`) and baked identically into all four mascot `.fbx` / `.prefab` assets (`Agent_Researcher`, `Agent_Developer`, `Agent_Tester`, and `Agent_Manager`). Both `Assets/MuseDesk/Art/Controllers/MuseDesk_Agent.controller` and `Assets/MuseDesk/Art/Controllers/WallHabitat/MuseDesk_WallAgent.controller` wire this shared 77-state library.
 
 > [!NOTE]
 > Duration shown below is computed as `(end_frame - 1) / 24` seconds (Blender 1-indexed span at 24 FPS) alongside the inclusive Blender keyframe range `1–N`.
@@ -130,4 +130,4 @@ Driven deterministically by canonical backend state via `FactoryController` and 
 | `MuseDesk_WallTaskPrinter.controller` | `WallHabitat_TaskPrinter.prefab` | `Printer_Idle`, `Printer_Print_TaskCard`, `Printer_Dispatch_Card`, `Printer_Queue_Pulse` |
 | `MuseDesk_WallDeskPerch.controller` | `WallHabitat_DeskVisitPerch.prefab` | `Perch_Deploy`, `Perch_Active_Idle`, `Perch_Conversing_Idle`, `Perch_Dismiss` |
 | `MuseDesk_WallLargePortal.controller` | `WallHabitat_LargeAgentPortal.prefab` | `Portal_Hidden_Idle`, `Portal_Open_Expand`, `Portal_Active_Idle`, `Portal_Close_Collapse` |
-| `MuseDesk_WallAgent.controller` | `Agent_Manager.prefab` | Full 65-clip shared character library + `IsCarryingPaper` & Wall/Portal/Elevator parameters |
+| `MuseDesk_WallAgent.controller` | `Agent_Manager.prefab` | Full 77-clip shared character library + `IsCarryingPaper` & Wall/Portal/Elevator parameters |
