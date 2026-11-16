@@ -98,6 +98,16 @@ namespace MuseDesk.Editor.ArtPipeline
             new MatSpec("Mat_LampGlow",            1.000f, 0.950f, 0.800f, 0.15f, 0.00f, true, 1.10f, 1.00f, 0.80f),
             new MatSpec("Mat_StampInk_Approve",    0.102f, 0.420f, 0.239f, 0.72f, 0.00f),
             new MatSpec("Mat_StampInk_Reject",     0.620f, 0.161f, 0.129f, 0.72f, 0.00f),
+            // Soft matte character role trim accents
+            new MatSpec("Mat_RoleTrim_Researcher",      0.663f, 0.722f, 0.941f, 0.76f, 0.00f), // #A9B8F0
+            new MatSpec("Mat_RoleTrim_Researcher_Soft", 0.761f, 0.804f, 0.965f, 0.78f, 0.00f), // #C2CDF6
+            new MatSpec("Mat_RoleTrim_Developer",       0.824f, 0.651f, 0.910f, 0.76f, 0.00f), // #D2A6E8
+            new MatSpec("Mat_RoleTrim_Developer_Soft",  0.902f, 0.808f, 0.957f, 0.78f, 0.00f), // #E6CEF4
+            new MatSpec("Mat_RoleTrim_Tester",          0.941f, 0.663f, 0.769f, 0.76f, 0.00f), // #F0A9C4
+            new MatSpec("Mat_RoleTrim_Tester_Soft",     0.847f, 0.537f, 0.659f, 0.76f, 0.00f), // #D889A8
+            new MatSpec("Mat_RoleTrim_Tester_Lens",     0.973f, 0.792f, 0.863f, 0.72f, 0.00f), // #F8CADC
+            new MatSpec("Mat_RoleTrim_Manager",         0.294f, 0.310f, 0.612f, 0.76f, 0.00f), // #4B4F9C
+            new MatSpec("Mat_RoleTrim_Manager_Soft",    0.475f, 0.490f, 0.761f, 0.78f, 0.00f), // #797DC2
         };
 
         [MenuItem("MuseDesk/Art Pipeline/Rebuild Characters & Agent Controller")]
@@ -314,7 +324,7 @@ namespace MuseDesk.Editor.ArtPipeline
             Debug.Log("[MuseDeskArtPipeline] Priority 3 Stamp Juice built & verified.");
         }
 
-        private static Dictionary<string, Material> LoadExistingMaterialsOrCreate()
+        internal static Dictionary<string, Material> LoadExistingMaterialsOrCreate()
         {
             Dictionary<string, Material> map = new Dictionary<string, Material>();
             bool createdAny = false;

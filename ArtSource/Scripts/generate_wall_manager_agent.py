@@ -19,6 +19,8 @@ gc.BLEND_DIR = wh.BLEND_WALL_DIR
 gc.FBX_DIR = wh.FBX_WALL_DIR
 gc.PREVIEW_DIR = wh.PREVIEW_WALL_DIR
 gc.PALETTE.setdefault("Mat_BlueprintBlue", {"color": (0.175, 0.385, 0.610, 1.0), "roughness": 0.45, "metallic": 0.0, "emission": None})
+gc.PALETTE.setdefault("Mat_RoleTrim_Manager", {"color": (0.294, 0.310, 0.612, 1.0), "roughness": 0.76, "metallic": 0.0, "emission": None})       # #4B4F9C
+gc.PALETTE.setdefault("Mat_RoleTrim_Manager_Soft", {"color": (0.475, 0.490, 0.761, 1.0), "roughness": 0.78, "metallic": 0.0, "emission": None})  # #797DC2
 
 
 def build_manager_accessories():
@@ -44,7 +46,7 @@ def build_manager_accessories():
         (0.000, 0.116),
     ]
     vest = gc.create_lathe_mesh("Manager_Waistcoat", vest_profile, segments=18, scale_xy=(1.04, 0.94))
-    gc.assign_material(vest, "Mat_Tester_SlateBlue")
+    gc.assign_material(vest, "Mat_RoleTrim_Manager")
     gc.assign_z_gradient_weights(vest, [(0.050, "Hips"), (0.078, "Spine"), (0.106, "Chest")])
     parts.append(vest)
 
@@ -111,11 +113,11 @@ def build_manager_accessories():
     comp_dial.name = "Manager_CompassDial"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     gc.shade_smooth(comp_dial)
-    gc.assign_material(comp_dial, "Mat_Tester_LensGlow")
+    gc.assign_material(comp_dial, "Mat_RoleTrim_Manager_Soft")
     gc.assign_single_bone_weight(comp_dial, "Spine")
     parts.append(comp_dial)
 
-    # 2. Brass Architect Monocle on Right Eye (-X) + delicate ear stem
+    # 2. Soft Matte Indigo Architect Monocle on Right Eye (-X) + delicate ear stem
     bpy.ops.mesh.primitive_torus_add(
         major_segments=16, minor_segments=8,
         major_radius=0.0125, minor_radius=0.0018,
@@ -126,7 +128,7 @@ def build_manager_accessories():
     monocle.name = "Manager_BrassMonocle"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     gc.shade_smooth(monocle)
-    gc.assign_material(monocle, "Mat_Brass")
+    gc.assign_material(monocle, "Mat_RoleTrim_Manager_Soft")
     gc.assign_single_bone_weight(monocle, "Head")
     parts.append(monocle)
 
@@ -151,7 +153,7 @@ def build_manager_accessories():
         (0.000, 0.210),
     ]
     cap = gc.create_lathe_mesh("Manager_ArchitectCap", cap_profile, segments=20, scale_xy=(1.04, 0.96))
-    gc.assign_material(cap, "Mat_Tester_SlateBlue")
+    gc.assign_material(cap, "Mat_RoleTrim_Manager")
     gc.assign_single_bone_weight(cap, "Head")
     parts.append(cap)
 
@@ -200,7 +202,7 @@ def build_manager_accessories():
     beacon_orb.name = "Manager_CrestBeaconOrb"
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     gc.shade_smooth(beacon_orb)
-    gc.assign_material(beacon_orb, "Mat_Developer_Amber")
+    gc.assign_material(beacon_orb, "Mat_RoleTrim_Manager_Soft")
     gc.assign_single_bone_weight(beacon_orb, "Accessory_Tip")
     parts.append(beacon_orb)
 
@@ -391,7 +393,7 @@ def generate_manager():
 
     cname = "Agent_Manager"
     arm_obj = gc.create_character_armature(cname)
-    shared_parts = gc.build_shared_body_parts("Mat_Tester_SlateBlue", "Mat_Brass")
+    shared_parts = gc.build_shared_body_parts("Mat_RoleTrim_Manager", "Mat_RoleTrim_Manager_Soft")
     mgr_parts = build_manager_accessories()
     mesh_obj = gc.join_and_bind_to_armature(shared_parts + mgr_parts, arm_obj, f"{cname}_Body")
 
