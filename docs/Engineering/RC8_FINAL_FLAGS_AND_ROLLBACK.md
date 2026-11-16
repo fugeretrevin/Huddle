@@ -36,7 +36,7 @@ in reverse order to undo.
 
 ## APK rollback order
 
-1. `Builds/MuseDesk_rc9_feedback1.apk` (this candidate), SHA-256 `__APK_SHA__`
+1. `Builds/MuseDesk_rc9_feedback1.apk` (this candidate), SHA-256 `97AA4094DAC81EE3AD6BFD9E737BA2A927DE47914492739FBDF525B709E2D2A9`
 2. `Builds/MuseDesk_rc8.apk`, SHA-256 `788D4A04...E1428` (verified)
 3. `Builds/MuseDesk_rc7.apk`
 4. `Builds/MuseDesk_rc6_2.apk`

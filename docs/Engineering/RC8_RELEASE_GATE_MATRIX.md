@@ -1,7 +1,7 @@
 # RC8 → RC9 release gate matrix
 
-Candidate: `Builds/MuseDesk_rc9_feedback1.apk` (build label `rc9-feedback-1`), SHA-256 `__APK_SHA__`, from
-`feature/rc8-feedback-1` at `__COMMIT__`. Rollbacks: `MuseDesk_rc8.apk` (788D4A04...E1428), then `MuseDesk_rc7.apk`, then `MuseDesk_rc6_2.apk`.
+Candidate: `Builds/MuseDesk_rc9_feedback1.apk` (build label `rc9-feedback-1`), SHA-256 `97AA4094DAC81EE3AD6BFD9E737BA2A927DE47914492739FBDF525B709E2D2A9`, from
+`feature/rc8-feedback-1` at `4180895 (code) / 2c7aadd (label + docs)`. Rollbacks: `MuseDesk_rc8.apk` (788D4A04...E1428), then `MuseDesk_rc7.apk`, then `MuseDesk_rc6_2.apk`.
 
 Evidence levels: **AUTO** (EditMode tests), **PLAY** (Editor Play Mode driver, synthetic room, simulated hands, no
 headset), **WORN** (the owner wearing the Quest and reporting the specific interaction). Nothing below is WORN yet:
