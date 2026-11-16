@@ -660,24 +660,32 @@ namespace MuseDesk.Wall
         TMP_Text _dockStatus;
         WallKey _kWall, _kDesk, _kPlace, _kOther, _kLayout, _kCancel, _kMove, _kSelect, _kManager;
 
+        // UnifiedModeDockV1: when the director's Spaces dock (ModeConsole) carries the Wall keys it sets ExternalDock, and
+        // this controller builds and shows NO dock of its own; it only reports changes (DockChanged). Without it (an older
+        // scene) the fallback dock below is built as before, with the same short one-word labels as the Spaces dock.
+        bool _externalDock;
+        string _dockSig;
+
         void EnsureDock()
         {
+            if (_externalDock) { HideDockIfAny(); return; }
             if (_dock != null || nearUserRig == null || keyTemplate == null) return;
             _dock = new GameObject("WallDock").transform;
             _dock.SetParent(nearUserRig, false);
             var art = ArtHelper();
-            float p = 0.032f;
+            // The keys are clones of the console's 36 mm segment key (a 42 mm housing): 46 mm apart so they do not overlap.
+            float p = 0.046f;
             art.Box(_dock, "DockPlate", new Vector3(0, 0.004f, 0.006f), new Vector3(p * 4f + 0.012f, 0.085f, 0.004f), WallHabitatView.Paper);
-            _kWall = WallUi.MakeKey(keyTemplate, _dock, "Key_Wall", "Wall", new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressWall);
-            _kPlace = WallUi.MakeKey(keyTemplate, _dock, "Key_PlaceHere", "Place here", new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressPlaceHere);
-            _kOther = WallUi.MakeKey(keyTemplate, _dock, "Key_Other", "Other spot", new Vector3(-0.5f * p, 0.016f, 0), keyScale, PressTryAnother);
-            _kLayout = WallUi.MakeKey(keyTemplate, _dock, "Key_Layout", "Compact", new Vector3(0.5f * p, 0.016f, 0), keyScale, PressLayout);
-            _kCancel = WallUi.MakeKey(keyTemplate, _dock, "Key_Cancel", "Cancel", new Vector3(1.5f * p, 0.016f, 0), keyScale, PressCancel);
-            _kMove = WallUi.MakeKey(keyTemplate, _dock, "Key_Move", "Move", new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressMove);
-            _kDesk = WallUi.MakeKey(keyTemplate, _dock, "Key_Desk", "Desk", new Vector3(1.5f * p, 0.016f, 0), keyScale, PressDesk);
-            _kSelect = WallUi.MakeKey(keyTemplate, _dock, "Key_Select", "Select agents", new Vector3(-0.5f * p, -0.016f, 0), keyScale, PressSelectAgents);
-            _kManager = WallUi.MakeKey(keyTemplate, _dock, "Key_Manager", "Manager", new Vector3(0.5f * p, -0.016f, 0), keyScale, PressManager);
-            _dockStatus = WallUi.MakeText(_dock, "DockStatus", font, new Vector3(0, 0.036f, -0.0005f), new Vector2(13.5f, 1.2f), 4.2f, WallHabitatView.Ink, TextAlignmentOptions.Center);
+            _kWall = WallUi.MakeKey(keyTemplate, _dock, "Key_Wall", SpacesDockLogic.Wall, new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressWall);
+            _kPlace = WallUi.MakeKey(keyTemplate, _dock, "Key_PlaceHere", SpacesDockLogic.Place, new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressPlaceHere);
+            _kOther = WallUi.MakeKey(keyTemplate, _dock, "Key_Other", SpacesDockLogic.NextSpot, new Vector3(-0.5f * p, 0.016f, 0), keyScale, PressTryAnother);
+            _kLayout = WallUi.MakeKey(keyTemplate, _dock, "Key_Layout", SpacesDockLogic.Compact, new Vector3(0.5f * p, 0.016f, 0), keyScale, PressLayout);
+            _kCancel = WallUi.MakeKey(keyTemplate, _dock, "Key_Cancel", SpacesDockLogic.Cancel, new Vector3(1.5f * p, 0.016f, 0), keyScale, PressCancel);
+            _kMove = WallUi.MakeKey(keyTemplate, _dock, "Key_Move", SpacesDockLogic.Move, new Vector3(-1.5f * p, 0.016f, 0), keyScale, PressMove);
+            _kDesk = WallUi.MakeKey(keyTemplate, _dock, "Key_Desk", SpacesDockLogic.Desk, new Vector3(1.5f * p, 0.016f, 0), keyScale, PressDesk);
+            _kSelect = WallUi.MakeKey(keyTemplate, _dock, "Key_Select", SpacesDockLogic.Select, new Vector3(-0.5f * p, -0.016f, 0), keyScale, PressSelectAgents);
+            _kManager = WallUi.MakeKey(keyTemplate, _dock, "Key_Manager", SpacesDockLogic.Manager, new Vector3(0.5f * p, -0.016f, 0), keyScale, PressManager);
+            _dockStatus = WallUi.MakeText(_dock, "DockStatus", font, new Vector3(0, 0.036f, -0.0005f), new Vector2(p * 400f, 1.2f), 4.2f, WallHabitatView.Ink, TextAlignmentOptions.Center);
             PlaceDock();
             RefreshDock();
         }
@@ -699,6 +707,13 @@ namespace MuseDesk.Wall
 
         void RefreshDock()
         {
+            if (_externalDock)
+            {
+                HideDockIfAny();
+                _dockSig = DockSignature();
+                RaiseDockChanged();
+                return;
+            }
             if (_dock == null) return;
             bool on = flags.wallHabitatEnabled || WallActive || WallPreviewing;
             if (_dock.gameObject.activeSelf != on) _dock.gameObject.SetActive(on);
@@ -719,15 +734,78 @@ namespace MuseDesk.Wall
 
         void RefreshDockLabels()
         {
+            if (_externalDock)
+            {
+                // The Spaces dock shows these: tell it only when something it shows changed (a cheap compare per frame).
+                string sig = DockSignature();
+                if (sig != _dockSig) { _dockSig = sig; RaiseDockChanged(); }
+                return;
+            }
             if (_dock == null || !_dock.gameObject.activeSelf) return;
-            _kLayout.SetLabel(_flow.Layout == WallLayoutKind.Full ? "Compact" : "Full");
-            _kSelect.SetLabel(_visit.IsArmed ? "Stop selecting" : "Select agents");
-            bool canPlace = _flow.HasShown && _flow.Shown.valid;
+            _kLayout.SetLabel(WallLayoutFull ? SpacesDockLogic.Compact : SpacesDockLogic.Full);
+            _kSelect.SetLabel(WallSelecting ? SpacesDockLogic.Done : SpacesDockLogic.Select);
+            bool canPlace = WallCanPlace;
             if (_kPlace.shown && _kPlace.enabled != canPlace) _kPlace.Show(true, canPlace);
-            string s = StatusLine;
-            if (string.IsNullOrEmpty(s)) s = WallActive ? (_flow.Suspended ? "Room changed: habitat paused" : "Office on the wall") : "Wall mode";
+            string s = WallStatus;
             if (_dockStatus.text != s) _dockStatus.text = s;
         }
+
+        string DockSignature()
+        {
+            if (_flow == null) return "";
+            return (WallEnabled ? "E" : "e") + (WallActive ? "A" : "a") + (WallPreviewing ? "P" : "p") + (WallCanPlace ? "C" : "c")
+                 + (WallLayoutFull ? "F" : "f") + (WallSelecting ? "S" : "s") + (WallSelectEnabled ? "1" : "0") + (WallManagerEnabled ? "1" : "0")
+                 + "|" + WallStatus;
+        }
+
+        void RaiseDockChanged()
+        {
+            Action h = DockChanged;
+            if (h == null) return;
+            try { h(); } catch (Exception e) { Debug.LogException(e); }
+        }
+
+        // ── IWallModeHost: the unified Spaces dock ──
+
+        public event Action DockChanged;
+
+        public bool ExternalDock
+        {
+            get { return _externalDock; }
+            set
+            {
+                if (_externalDock == value) return;
+                _externalDock = value;
+                if (value) HideDockIfAny();
+                else { EnsureDock(); }
+                RefreshDock();
+            }
+        }
+
+        public bool WallCanPlace => _flow != null && _flow.HasShown && _flow.Shown.valid;
+        public bool WallLayoutFull => _flow != null && _flow.Layout == WallLayoutKind.Full;
+        public bool WallSelecting => _visit != null && _visit.IsArmed;
+        public bool WallSelectEnabled => flags.agentSelectEnabled;
+        public bool WallManagerEnabled => flags.wallManagerEnabled;
+
+        public string WallStatus
+        {
+            get
+            {
+                string s = StatusLine;
+                if (!string.IsNullOrEmpty(s)) return s;
+                if (WallActive && !WallPreviewing) return _flow != null && _flow.Suspended ? "Room changed: habitat paused" : "Office on the wall";
+                return WallPreviewing ? "Choose a wall spot" : "Wall mode";
+            }
+        }
+
+        public void WallPlace() { if (WallPreviewing) PressPlaceHere(); }
+        public void WallNextSpot() { if (WallPreviewing) PressTryAnother(); }
+        public void WallToggleLayout() { if (WallPreviewing) PressLayout(); }
+        public void WallCancel() { if (WallPreviewing) PressCancel(); }
+        public void WallMove() { if (WallActive && !WallPreviewing) PressMove(); }
+        public void WallSelect() { if (WallActive && !WallPreviewing && flags.agentSelectEnabled) PressSelectAgents(); }
+        public void WallManager() { if (WallActive && !WallPreviewing && flags.wallManagerEnabled) PressManager(); }
 
         // ───────────────────────── events from the reducers ─────────────────────────
 
