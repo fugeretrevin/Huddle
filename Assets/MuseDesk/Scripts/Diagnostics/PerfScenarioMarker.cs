@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -27,6 +27,8 @@ namespace MuseDesk.Diagnostics
             desk_idle, desk_task_running, paper_held, paper_expanded, board_open,
             floor_preview, floor_moving, floor_active,
             ceiling_scan, ceiling_descending, ceiling_deployed, ceiling_retracting, ceiling_docked,
+            // Wall habitat (rc10 polish): the device log could not tell a Wall session from the desk before.
+            wall_preview, wall_active, wall_visit, wall_portal,
         }
 
         [Tooltip("Seconds between scenario polls (0.25 = four per second).")]
@@ -40,6 +42,7 @@ namespace MuseDesk.Diagnostics
         SessionController _session;
         DocumentDeliveryController _delivery;
         HeldPaperController _held;
+        MuseDesk.Wall.WallHabitatController _wall;
         float _nextBind, _nextPoll, _nextBeat;
 
         Scenario _current = (Scenario)(-1);
@@ -72,6 +75,7 @@ namespace MuseDesk.Diagnostics
             if (_dock == null) _dock = FindAnyObjectByType<TaskDock>(FindObjectsInactive.Include);
             if (_session == null) _session = FindAnyObjectByType<SessionController>(FindObjectsInactive.Include);
             if (_delivery == null) _delivery = FindAnyObjectByType<DocumentDeliveryController>(FindObjectsInactive.Include);
+            if (_wall == null) _wall = FindAnyObjectByType<MuseDesk.Wall.WallHabitatController>(FindObjectsInactive.Include);
             if (_held == null && _delivery != null && _delivery.paperRoot != null)
                 _held = _delivery.paperRoot.GetComponent<HeldPaperController>();
         }
@@ -96,7 +100,7 @@ namespace MuseDesk.Diagnostics
             if (now >= _nextPoll)
             {
                 _nextPoll = now + pollSeconds;
-                if (_director == null || _dock == null || _session == null || _delivery == null || _held == null)
+                if (_director == null || _dock == null || _session == null || _delivery == null || _held == null || _wall == null)
                 {
                     if (now >= _nextBind) { _nextBind = now + 1f; Bind(); }
                 }
@@ -142,6 +146,15 @@ namespace MuseDesk.Diagnostics
             var core = _director != null ? _director.Core : null;
             PlacementMode mode = core != null ? core.Mode : (PlacementMode)(int)SpatialWorkspaceState.Mode;
             bool transitioning = core != null ? core.IsTransitioning : SpatialWorkspaceState.IsTransitioning;
+
+            // Wall habitat first: while it is the office the director sits in Desk, so Desk scenarios would mislabel it.
+            if (_wall != null && _wall.isActiveAndEnabled)
+            {
+                if (_wall.Portal != null && _wall.Portal.State != MuseDesk.Spatial.Wall.PortalState.Hidden) return Scenario.wall_portal;
+                if (_wall.Visit != null && _wall.Visit.Busy) return Scenario.wall_visit;
+                if (_wall.WallPreviewing) return Scenario.wall_preview;
+                if (_wall.WallActive) return Scenario.wall_active;
+            }
 
             // A placement preview is open: the scan grid is up.
             if (core != null && core.HasPreview)
