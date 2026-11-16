@@ -336,6 +336,7 @@ namespace MuseDesk.Wall
                 Color beacon; bool pulse;
                 BeaconState(out beacon, out pulse);
                 _view.Apply(_stage, dt, _visit.IsArmed, _hoverRole, _away, _statusColors, beacon, pulse && !Comfort);
+                TickAwayHiding();
                 _suppressor.Tick();
             }
 

@@ -85,6 +85,61 @@ namespace MuseDesk.Wall
             }
         }
 
+        // ───────────── Select Agents ray (owner rc13: "no indicator ... a ray from your hand that shows which one you're hovering") ─────────────
+
+        bool _selectAimShown;
+        readonly int[] _selectAimTarget = { -1, -1 };
+
+        /// <summary>For drivers: the agent a hand's select ray is on (-1 none), and whether that ray is drawn.</summary>
+        public int SelectAimTarget(int hand) { return hand >= 0 && hand < 2 ? _selectAimTarget[hand] : -1; }
+        public bool SelectAimShown => _selectAimShown;
+
+        /// <summary>
+        /// While Select Agents is armed (and nothing is carried), each tracked free hand gets the placement beam. On an
+        /// agent (the same forgiving target and per-hand lock the pinch uses) it bends to that agent's chest in teal, a
+        /// ring sits in front of it and a chip says "Pinch to pick up Developer". Pointing at nothing it is a dim grey beam
+        /// ending on the habitat's face. Presentation only: the pinch path is unchanged.
+        /// </summary>
+        void TickSelectAim(bool picking)
+        {
+            if (!picking || _view == null || _habitatRoot == null)
+            {
+                if (_selectAimShown) { HideAim(0); HideAim(1); _selectAimShown = false; }
+                _selectAimTarget[0] = _selectAimTarget[1] = -1;
+                return;
+            }
+            if (_aimRoot == null) BuildAim();
+            _selectAimShown = true;
+            Vector3 eye = ResolveHead() != null ? ResolveHead().position : (_samples[0].tracked ? _samples[0].origin : _habitatRoot.position + _habitatRoot.forward);
+            float scale = _habitatRoot.lossyScale.y;
+            for (int i = 0; i < 2; i++)
+            {
+                AimHandSample s = _samples[i];
+                if (!s.tracked || i == _carryHand) { HideAim(i); _selectAimTarget[i] = -1; continue; }
+                int target = useSelectGrabV2 ? _lock.Locked(i) : (RayPickAgent(s.origin, s.direction));
+                if (target >= 0 && useSelectGrabV2 && !_targetEligible[target]) target = -1;
+                _selectAimTarget[i] = target;
+                if (target >= 0)
+                {
+                    Transform a = _view.Avatar((HabitatRole)target);
+                    Vector3 chest = a.position + _habitatRoot.up * (_view.AvatarHeight * 0.5f * scale);
+                    Vector3 toEye = (eye - chest); toEye = toEye.sqrMagnitude > 1e-6f ? toEye.normalized : _habitatRoot.forward;
+                    // The ring sits just in front of the chest (toward the user), so the body does not hide half of it.
+                    Vector3 hit = chest + toEye * (_view.AvatarHeight * 0.22f * scale);
+                    DrawAim(i, s.origin, s.direction, hit, toEye, WallHabitatView.Teal, "Pinch to pick up " + (HabitatRole)target, eye);
+                }
+                else
+                {
+                    // Nothing under the ray: end it on the habitat's face (or 1 m out), grey, no words.
+                    Vector3 n = _habitatRoot.forward;
+                    float den = Vector3.Dot(s.direction, -n);
+                    float t = den > 0.05f ? Vector3.Dot(s.origin - _habitatRoot.position, n) / den : -1f;
+                    if (t < 0.2f || t > 6f) t = 1f;
+                    DrawAim(i, s.origin, s.direction, s.origin + s.direction * t, den > 0.05f ? n : -s.direction, WallHabitatView.Grey, null, eye);
+                }
+            }
+        }
+
         void DrawAim(int i, Vector3 origin, Vector3 dir, Vector3 hit, Vector3 normal, Color col, string words, Vector3 eye)
         {
             LineRenderer ray = _aimRays[i];

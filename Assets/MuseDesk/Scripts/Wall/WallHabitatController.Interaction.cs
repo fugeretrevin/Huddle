@@ -141,6 +141,7 @@ namespace MuseDesk.Wall
                 _lock.Reset();
                 _pinchPending[0] = _pinchPending[1] = false;
                 TickWallAim(false, dt);
+                TickSelectAim(false);
                 TickProxy(dt);
                 TickPortalVisual(dt);
                 RefreshVisitCard();
@@ -266,6 +267,7 @@ namespace MuseDesk.Wall
             }
             if (!aimMode && _aimHand >= 0) { _arb.Relinquish(_aimHand); _aimHand = -1; }
             TickWallAim(aimMode, dt);
+            TickSelectAim(picking && !aimMode && _carryHand < 0);
 
             TickProxy(dt);
             TickPortalVisual(dt);
@@ -562,6 +564,21 @@ namespace MuseDesk.Wall
         }
 
         bool _proxyGreeted;
+
+        /// <summary>
+        /// Owner rc13: no second copy. While an agent's projection is out (carried / on the desk perch / flying home, or
+        /// the portal visitor), its habitat avatar is not drawn; it reappears the moment the projection is gone.
+        /// </summary>
+        void TickAwayHiding()
+        {
+            if (_view == null) return;
+            int visitRole = _proxy != null && _visit.Agent != null ? (int)RoleOf(_visit.Agent) : -1;
+            int portalRole = _portalAvatar != null && _portal.Agent != null ? (int)RoleOf(_portal.Agent) : -1;
+            for (int r = 0; r < 4; r++) _view.SetHidden((HabitatRole)r, r == visitRole || r == portalRole);
+        }
+
+        /// <summary>For drivers: whether the habitat avatar of this role is hidden while its projection is out.</summary>
+        public bool AvatarHidden(HabitatRole r) { return _view != null && _view.IsHidden(r); }
 
         void DestroyProxy()
         {
@@ -889,7 +906,8 @@ namespace MuseDesk.Wall
             float s = _portalAvatarScale * grow;
             float xz = s / Mathf.Sqrt(Mathf.Max(0.2f, stretch));
             _portalAvatar.localScale = new Vector3(xz, s * stretch, xz);
-            if (_portalLife != null) _portalLife.grow = grow;
+            if (_portalLife != null) { _portalLife.grow = grow; _portalLife.liftWorld = _platformLift; }
+            else _portalAvatar.localPosition = Vector3.up * _platformLift;     // on the hover platform
         }
 
         // ───────────────────────── hands ─────────────────────────

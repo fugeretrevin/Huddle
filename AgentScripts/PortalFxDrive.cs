@@ -285,7 +285,42 @@ public static class PortalFxDrive
           .Append(" h=").Append(c.Portal.Spot.avatarHeight.ToString("F2")).Append(" valid=").Append(c.Portal.Spot.valid)
           .Append(" pad=").Append(c.PortalPadShown).Append(" column=").Append(c.PortalColumnAlpha.ToString("F2"))
           .Append(" avatar=").Append(c.HasPortalAvatar);
-        if (c.PortalLife != null) sb.Append(" | life ").Append(c.PortalLife.Describe()).Append(" pokes=").Append(c.PortalLife.Pokes);
+        if (c.PortalLife != null) sb.Append(" | life ").Append(c.PortalLife.Describe()).Append(" pokes=").Append(c.PortalLife.Pokes)
+                                     .Append(" headYaw=").Append(c.PortalLife.HeadYawFromBody.ToString("F0")).Append(" restores=").Append(c.PortalLife.Restores);
+        sb.Append(" | platform=").Append(c.PortalPlatformShown).Append(" lift=").Append(c.PortalPlatformLift.ToString("F3"));
+        sb.Append(" | hidden:");
+        for (int r = 0; r < 4; r++) if (c.AvatarHidden((HabitatRole)r)) sb.Append(' ').Append((HabitatRole)r);
+        sb.Append(" | visit=").Append(c.Visit.State).Append(" proxy=").Append(c.HasProxy);
         return sb.ToString();
+    }
+
+    /// <summary>Select ray: arm Select Agents and point a simulated right hand at a role (or "none" = off to the side).</summary>
+    public static string SelectAim(string role)
+    {
+        var c = C;
+        if (!c.Visit.IsArmed) c.PressSelectAgents();
+        Vector3 o = HandO(), at;
+        if (role == "none")
+        {
+            Vector3 f = Camera.main != null ? Camera.main.transform.forward : Vector3.forward; f.y = 0; f.Normalize();
+            c.SimulateHand(1, o, (f * 0.3f + Vector3.down).normalized, false);   // at the floor in front: nothing to pick
+        }
+        else
+        {
+            HabitatRole r = (HabitatRole)System.Enum.Parse(typeof(HabitatRole), role, true);
+            if (!c.TryGetAvatarCenter(r, out at)) return "no " + role;
+            c.SimulateHand(1, o, at - o, false);
+        }
+        return "armed=" + c.Visit.IsArmed + " rayShown=" + c.SelectAimShown + " target=" + c.SelectAimTarget(1) + " beam=" + c.AimBeamShown(1) + " chip='" + c.AimChipText(1) + "'";
+    }
+
+    /// <summary>Stress the look: switch the visitor's Animator off (it stops rewriting the bones) and report how far the
+    /// head is from the body, which must stay bounded (before rc14 it grew every frame: the spin).</summary>
+    public static string Freeze(string on)
+    {
+        var life = C.PortalLife ?? C.ProxyLife; if (life == null) return "no visitor";
+        var an = life.GetComponentInChildren<Animator>();
+        if (an != null) an.enabled = on == "off";      // Freeze on = Animator off (bones left alone); Freeze off = back on
+        return "animator enabled=" + (an != null && an.enabled) + " headYaw=" + life.HeadYawFromBody.ToString("F1") + " restores=" + life.Restores + " | " + life.Describe();
     }
 }

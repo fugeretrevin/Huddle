@@ -74,6 +74,12 @@ public static class Shot
             case "dock":
                 if (dock == null) return false;
                 look = dock.position; pos = eye; fov = 45f; return true;
+            case "pod":     // the office wherever it is (lowered ceiling pod), from the user's eye
+                if (ws == null) return false;
+                look = ws.TransformPoint(new Vector3(0, 0.05f, 0f)); pos = eye; fov = 50f; return true;
+            case "podtop":  // the same office from above and in front, to see its deck layout
+                if (ws == null) return false;
+                look = ws.TransformPoint(new Vector3(0, 0.0f, 0f)); pos = ws.TransformPoint(new Vector3(0, 0.75f, 0.55f)); fov = 50f; return true;
             case "user":
                 look = eye + (main != null ? main.transform.forward : Vector3.forward); pos = eye; fov = 80f; return true;
         }

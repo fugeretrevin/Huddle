@@ -35,7 +35,7 @@ namespace MuseDesk.Wall
         public float maxYaw = 65f, maxPitch = 35f;
         [Tooltip("Largest slide away from a pushing hand, as a share of the height.")]
         public float maxPush = 0.07f;
-        public float maxLean = 16f;
+        public float maxLean = 12f;
         [Tooltip("A hand closer than this share of the height to the agent's head draws its gaze.")]
         public float handNotice = 0.55f;
 
@@ -109,6 +109,9 @@ namespace MuseDesk.Wall
             if (_an != null)
             {
                 _an.applyRootMotion = false;
+                // rc14: the bones must be rewritten every frame (the additive look/lean below is applied on top of the
+                // clip); an Animator culled on the headset would leave last frame's pose and the additions would pile up.
+                _an.cullingMode = AnimatorCullingMode.AlwaysAnimate;
                 if (_an.runtimeAnimatorController != null)
                     foreach (var c in _an.runtimeAnimatorController.animationClips) if (c != null && !_len.ContainsKey(c.name)) _len[c.name] = c.length;
             }
@@ -177,7 +180,67 @@ namespace MuseDesk.Wall
             else if (_oneShotUntil < 0f && !_leaving) RefreshLoop();
         }
 
+        // ───────────── bone guard (owner rc13: "the head keeps spinning around in circles", "the body easily rolls") ─────────────
+        // Every procedural rotation here is ADDED to the bone's current pose. If the Animator did not rewrite a bone this
+        // frame (a clip without curves for it, a culled Animator, a stalled cross-fade), the current pose is still last
+        // frame's result and the additions accumulate: the head turns a little more every frame and the lean rolls the
+        // body over. So each bone remembers the pose it was given before the additions and the pose it was left in; if it
+        // is still exactly as it was left, the Animator did not touch it and the remembered base is put back first.
+        struct BoneGuard { public Transform t; public Quaternion baseRot, left; public bool has; }
+        BoneGuard[] _guards;
+
+        void GuardBones()
+        {
+            if (_guards == null)
+            {
+                var list = new List<Transform>();
+                foreach (var b in new[] { _neck, _head, _chest, _spine }) if (b != null && !list.Contains(b)) list.Add(b);
+                _guards = new BoneGuard[list.Count];
+                for (int i = 0; i < list.Count; i++) _guards[i].t = list[i];
+            }
+            for (int i = 0; i < _guards.Length; i++)
+            {
+                Transform t = _guards[i].t;
+                if (t == null) continue;
+                Quaternion now = t.localRotation;
+                if (_guards[i].has && Quaternion.Angle(now, _guards[i].left) < 0.01f) { t.localRotation = _guards[i].baseRot; now = _guards[i].baseRot; Restores++; }
+                _guards[i].baseRot = now;
+            }
+        }
+
+        void SealBones()
+        {
+            if (_guards == null) return;
+            for (int i = 0; i < _guards.Length; i++)
+            {
+                if (_guards[i].t == null) continue;
+                _guards[i].left = _guards[i].t.localRotation;
+                _guards[i].has = true;
+            }
+        }
+
+        /// <summary>Frames on which a bone was found un-animated and put back (driver evidence; 0 when the clip owns it).</summary>
+        public int Restores { get; private set; }
+
+        /// <summary>Head bone's angle from the body's forward, in degrees (driver evidence: never above maxYaw + a clip's own turn).</summary>
+        public float HeadYawFromBody
+        {
+            get
+            {
+                if (_head == null) return 0f;
+                Vector3 f = _head.forward; f.y = 0f; Vector3 b = transform.forward; b.y = 0f;
+                return f.sqrMagnitude < 1e-6f || b.sqrMagnitude < 1e-6f ? 0f : Vector3.Angle(f, b);
+            }
+        }
+
         void LateUpdate()
+        {
+            GuardBones();
+            try { Life(); }
+            finally { SealBones(); }
+        }
+
+        void Life()
         {
             float dt = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
             if (eye == null && Camera.main != null) eye = Camera.main.transform;
@@ -216,11 +279,15 @@ namespace MuseDesk.Wall
                 Vector3 fwd = transform.forward; fwd.y = 0f; if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward; fwd.Normalize();
                 Vector3 d = _lookAt - headPos;
                 Vector3 flat = new Vector3(d.x, 0f, d.z);
-                float yaw = flat.sqrMagnitude > 1e-6f ? Mathf.Clamp(Vector3.SignedAngle(fwd, flat, up), -maxYaw, maxYaw) : 0f;
+                // A target well behind the shoulder is let go (the head comes back to the front) instead of clamped: a
+                // clamp flips from +maxYaw to -maxYaw as the target crosses behind, and the head whips round.
+                float rawYaw = flat.sqrMagnitude > 1e-6f ? Vector3.SignedAngle(fwd, flat, up) : 0f;
+                float yaw = Mathf.Abs(rawYaw) > maxYaw + 35f ? 0f : Mathf.Clamp(rawYaw, -maxYaw, maxYaw);
                 float pitch = Mathf.Clamp(-Mathf.Atan2(d.y, Mathf.Max(0.05f, flat.magnitude)) * Mathf.Rad2Deg, -maxPitch, maxPitch);
                 Vector3 right = Vector3.Cross(up, Quaternion.AngleAxis(yaw, up) * fwd);
                 Quaternion want = Quaternion.AngleAxis(pitch, right) * Quaternion.AngleAxis(yaw, up);
-                _look = Quaternion.Slerp(_look, want, 1f - Mathf.Exp(-dt * 6f));
+                // Eased, and never faster than a calm head turn (240 deg/s).
+                _look = Quaternion.RotateTowards(_look, Quaternion.Slerp(_look, want, 1f - Mathf.Exp(-dt * 6f)), 240f * dt);
                 Quaternion w = Quaternion.Slerp(Quaternion.identity, _look, _lookWeight);
                 if (_neck != null) _neck.rotation = Quaternion.Slerp(Quaternion.identity, w, 0.35f) * _neck.rotation;
                 _head.rotation = Quaternion.Slerp(Quaternion.identity, w, _neck != null ? 0.65f : 1f) * _head.rotation;
@@ -237,16 +304,19 @@ namespace MuseDesk.Wall
             }
             float leanTarget = _touching ? _leanGoal : 0f;
             _lean = Mathf.SmoothDamp(_lean, leanTarget, ref _leanVel, _touching ? 0.08f : 0.25f, Mathf.Infinity, dt);
+            _lean = Mathf.Clamp(_lean, -maxLean, maxLean);
             if (_spine != null && Mathf.Abs(_lean) > 0.01f) _spine.rotation = Quaternion.AngleAxis(_lean, _leanAxis) * _spine.rotation;
 
             // The slide (kinematic rubber band), in the parent's space so the portal's own pose is untouched.
             Vector3 pushGoal = _touching ? _pushGoal : Vector3.zero;
             _push = Vector3.SmoothDamp(_push, pushGoal, ref _pushVel, _touching ? 0.06f : 0.3f, Mathf.Infinity, dt);
-            if (moveRoot && transform.parent != null) transform.localPosition = _baseLocal + transform.parent.InverseTransformVector(_push);
+            if (moveRoot && transform.parent != null) transform.localPosition = _baseLocal + transform.parent.InverseTransformVector(_push + Vector3.up * liftWorld);
         }
 
         /// <summary>How far grown the avatar is (0..1; the portal sets it while the agent appears): radii follow it.</summary>
         [System.NonSerialized] public float grow = 1f;
+        /// <summary>World metres the feet stand above the root's rest point (the portal's hover platform top).</summary>
+        [System.NonSerialized] public float liftWorld;
 
         bool _nearHand;
         Vector3 _nearHandPos, _pushGoal;

@@ -134,6 +134,27 @@ namespace MuseDesk.Wall
 
         /// <summary>Visual-only avatar for a role (null when no source mesh was available).</summary>
         public Transform Avatar(HabitatRole r) { return _avatar[(int)r]; }
+
+        // Owner rc13: "when you grab an agent or ask to meet with them it makes a copy, so there's one next to you and one
+        // still working, which is weird". While its projection (desk visitor or portal visitor) is out, the habitat avatar is
+        // not drawn: the agent is visibly AWAY from its desk (the station keeps its visit marker), and comes back into view
+        // when the projection is gone. Its walker, task and animator keep running; only drawing stops (forceRenderingOff,
+        // which nothing else in the project uses, so it is put back exactly).
+        readonly bool[] _hidden = new bool[4];
+        readonly Renderer[][] _avatarRenderers = new Renderer[4][];
+
+        public bool IsHidden(HabitatRole r) { return _hidden[(int)r]; }
+
+        public void SetHidden(HabitatRole role, bool hidden)
+        {
+            int r = (int)role;
+            if (r < 0 || r >= 4 || _hidden[r] == hidden) return;
+            Transform a = _avatar[r];
+            if (a == null) { _hidden[r] = false; return; }
+            _hidden[r] = hidden;
+            if (_avatarRenderers[r] == null || hidden) _avatarRenderers[r] = a.GetComponentsInChildren<Renderer>(true);
+            foreach (var rr in _avatarRenderers[r]) if (rr != null) rr.forceRenderingOff = hidden;
+        }
         public float AvatarHeight => layout.agentHeight;
 
         /// <summary>True when the Manager avatar is the dedicated Agent_Manager model (not the dressed Developer placeholder).</summary>
@@ -426,6 +447,8 @@ namespace MuseDesk.Wall
             float factor = srcH > 1e-4f ? (height * parentScale) / srcH : 1f;
             Vector3 srcWorld = source.transform.lossyScale;
             clone.transform.localScale = srcWorld * factor / Mathf.Max(1e-5f, parentScale);
+            // A clone is meant to be seen even if its source is hidden while away (SetHidden).
+            foreach (var r in clone.GetComponentsInChildren<Renderer>(true)) r.forceRenderingOff = false;
             clone.SetActive(true);
             return clone.transform;
         }

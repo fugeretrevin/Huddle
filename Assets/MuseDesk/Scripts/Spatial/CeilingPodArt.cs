@@ -1,3 +1,4 @@
+﻿using System.Collections.Generic;
 using UnityEngine;
 using MuseDesk.Art;
 using MuseDesk.Workspace;
@@ -41,6 +42,20 @@ namespace MuseDesk.Spatial
         [Header("Props with nowhere to stand on the pod")]
         [Tooltip("Loose desk props that stand beside the office on the real desk, outside the pod's deck (measured by the builder). On the pod they would hang in the air beside it or over the folding wings, so they are scaled away while the mode is Ceiling and put back afterwards. Their physics state is not touched.")]
         public Transform[] offDeckProps;
+
+        [Header("Deck rugs (owner rc13: two pads intersect)")]
+        [Tooltip("The pod model's station rugs are parts of one mesh. The Tester's and the Developer's overlap by about 7 mm at the same height, so they flicker where they meet. At load a copy of the mesh is made and each side rug is slid away from the middle one until there is this gap between them (a share of the rug's width). 0 turns it off; the model asset is never changed.")]
+        [Range(0f, 0.2f)] public float rugGapShare = 0.10f;
+        public string centreRugMaterial = "Mat_Developer_Coral";
+        public string[] sideRugMaterials = { "Mat_Tester_Mint", "Mat_Researcher_Lavender" };
+        /// <summary>How many side rugs were moved at load (0 when nothing overlapped).</summary>
+        public int RugsSeparated { get; private set; }
+
+        [Header("Paper hand-over on the lowered pod (owner rc13)")]
+        [Tooltip("While the pod is down (Engaged), a decision paper is handed over at the pod's front shelf (its AgentInteractionSocket) instead of at the front of the desks.")]
+        public bool handOverAtShelf = true;
+        [Tooltip("How far in from the shelf socket the agent stands (m, office scale 1), so its toes stay on the shelf.")]
+        public float shelfInset = 0.045f;
 
         Vector3[] _propScales;
         bool _propsHidden;
@@ -87,8 +102,113 @@ namespace MuseDesk.Spatial
             {
                 _ease.Init(podVisual, ScaleEase.ResolveFull(podVisual, podShownScale), revealSeconds, false);
                 podVisual.gameObject.SetActive(false);
+                try { SeparateRugs(); }
+                catch (System.Exception ex) { Debug.LogWarning("[CeilingPodArt] rug separation skipped: " + ex.Message); }
+                if (handOverAtShelf && GetComponent<CeilingShelfHandOver>() == null) gameObject.AddComponent<CeilingShelfHandOver>().art = this;
             }
             _ready = true;
+        }
+
+        // â”€â”€ deck rugs â”€â”€
+
+        void SeparateRugs()
+        {
+            if (podVisual == null || rugGapShare <= 0f || sideRugMaterials == null) return;
+            var smr = podVisual.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            if (smr == null || smr.sharedMesh == null || !smr.sharedMesh.isReadable) return;
+            Mesh src = smr.sharedMesh;
+            Material[] mats = smr.sharedMaterials;
+            int centre = SubmeshOf(mats, centreRugMaterial, src.subMeshCount);
+            if (centre < 0) return;
+            Vector3[] v = src.vertices;
+            List<int> cPiece = LargestFlatPiece(src, centre, v);
+            if (cPiece == null) return;
+            Bounds cb = BoundsOf(cPiece, v);
+            int flat = FlatAxis(cb.size);
+            int moved = 0;
+            foreach (string name in sideRugMaterials)
+            {
+                int s = SubmeshOf(mats, name, src.subMeshCount);
+                if (s < 0 || s == centre) continue;
+                List<int> piece = LargestFlatPiece(src, s, v);
+                if (piece == null) continue;
+                Bounds sb = BoundsOf(piece, v);
+                // Overlap on both deck axes? Push along the deck axis where the centres are farther apart.
+                int a0 = (flat + 1) % 3, a1 = (flat + 2) % 3;
+                if (!Overlaps(sb, cb, a0) || !Overlaps(sb, cb, a1)) { if (!Near(sb, cb, a0, a1, rugGapShare)) continue; }
+                int axis = Mathf.Abs(sb.center[a0] - cb.center[a0]) >= Mathf.Abs(sb.center[a1] - cb.center[a1]) ? a0 : a1;
+                float dir = Mathf.Sign(sb.center[axis] - cb.center[axis]);
+                float gap = rugGapShare * sb.size[axis];
+                float shift = dir > 0f ? (cb.max[axis] + gap) - sb.min[axis] : (cb.min[axis] - gap) - sb.max[axis];
+                if (Mathf.Abs(shift) < 1e-9f || Mathf.Sign(shift) != dir) continue;     // already clear by the gap
+                Vector3 d = Vector3.zero; d[axis] = shift;
+                foreach (int i in piece) v[i] += d;
+                moved++;
+            }
+            if (moved == 0) return;
+            Mesh copy = Instantiate(src);
+            copy.name = src.name + " (rugs separated)";
+            copy.vertices = v;
+            smr.sharedMesh = copy;
+            RugsSeparated = moved;
+        }
+
+        static bool Overlaps(Bounds a, Bounds b, int axis) { return a.min[axis] < b.max[axis] && b.min[axis] < a.max[axis]; }
+        static bool Near(Bounds a, Bounds b, int a0, int a1, float share)
+        {
+            // Touching (within the wanted gap) on one axis while overlapping on the other also counts.
+            float g0 = share * a.size[a0], g1 = share * a.size[a1];
+            bool o0 = a.min[a0] < b.max[a0] + g0 && b.min[a0] < a.max[a0] + g0;
+            bool o1 = a.min[a1] < b.max[a1] + g1 && b.min[a1] < a.max[a1] + g1;
+            return o0 && o1;
+        }
+        static int FlatAxis(Vector3 s) { return s.x <= s.y && s.x <= s.z ? 0 : s.y <= s.z ? 1 : 2; }
+
+        static int SubmeshOf(Material[] mats, string name, int count)
+        {
+            if (string.IsNullOrEmpty(name) || mats == null) return -1;
+            for (int i = 0; i < mats.Length && i < count; i++) if (mats[i] != null && mats[i].name == name) return i;
+            return -1;
+        }
+
+        static Bounds BoundsOf(List<int> idx, Vector3[] v)
+        {
+            var b = new Bounds(v[idx[0]], Vector3.zero);
+            for (int i = 1; i < idx.Count; i++) b.Encapsulate(v[idx[i]]);
+            return b;
+        }
+
+        /// <summary>The submesh's connected piece (triangles, welded by position) with the largest deck area.</summary>
+        static List<int> LargestFlatPiece(Mesh m, int sub, Vector3[] v)
+        {
+            int[] t = m.GetTriangles(sub);
+            if (t.Length == 0) return null;
+            var parent = new Dictionary<int, int>();
+            int Find(int x) { int p; if (!parent.TryGetValue(x, out p)) { parent[x] = x; return x; } while (p != x) { int g = parent[p]; parent[x] = g; x = p; p = g; } return x; }
+            void Union(int a, int b) { a = Find(a); b = Find(b); if (a != b) parent[b] = a; }
+            for (int i = 0; i < t.Length; i += 3) { Union(t[i], t[i + 1]); Union(t[i], t[i + 2]); }
+            var weld = new Dictionary<Vector3Int, int>();
+            foreach (int k in new List<int>(parent.Keys))
+            {
+                var key = Vector3Int.RoundToInt(v[k] * 1e6f);
+                int o; if (weld.TryGetValue(key, out o)) Union(o, k); else weld[key] = k;
+            }
+            var groups = new Dictionary<int, List<int>>();
+            foreach (int k in new List<int>(parent.Keys))
+            {
+                int r = Find(k); List<int> g;
+                if (!groups.TryGetValue(r, out g)) groups[r] = g = new List<int>();
+                g.Add(k);
+            }
+            List<int> best = null; float bestArea = -1f;
+            foreach (var g in groups.Values)
+            {
+                Vector3 s = BoundsOf(g, v).size;
+                int f = FlatAxis(s);
+                float area = s[(f + 1) % 3] * s[(f + 2) % 3];
+                if (area > bestArea) { bestArea = area; best = g; }
+            }
+            return best;
         }
 
         void OnEnable()

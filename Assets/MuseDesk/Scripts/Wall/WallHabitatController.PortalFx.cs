@@ -147,8 +147,150 @@ namespace MuseDesk.Wall
                 }
             }
 
+            TickPlatform(st, k, h, padScale);
+
             // The conversation drives the visitor: thinking while a question is out, gesturing when the answer lands.
             if (st == PortalState.Conversing) TickLifeConversation(_portalLife, ref _portalHeard, ref _portalAsking);
+        }
+
+        // ───────────── hover platform (owner rc13: "a floating platform underneath them so they aren't fully floating") ─────────────
+        // In passthrough a virtual figure on the real floor casts no contact shadow and reads as floating. The visitor now
+        // stands on a small hovering disc (dark body, teal rim, a soft glow on the floor under it) inside the pad, so the
+        // hover is deliberate. It rises with the pad, bobs gently, and sinks away when the portal closes. Inside the cleared
+        // footprint (smaller than the pad), so the keep-out checks are unchanged.
+        [Header("Visitor platform (rc14)")]
+        [Range(0f, 1f)] public float platformRadiusShare = 0.62f;
+        public float platformHoverBase = 0.045f;
+        [Tooltip("Extra hover per metre of visitor height.")]
+        public float platformHoverPerHeight = 0.04f;
+
+        Transform _platform, _platformBody, _platformRim, _platformGlow;
+        Renderer _platformBodyR, _platformRimR, _platformGlowR;
+        Material _platformGlowMat;
+        float _platformLift;
+        /// <summary>For drivers: the platform's top above the floor (m, world) and whether it is on show.</summary>
+        public float PortalPlatformLift => _platformLift;
+        public bool PortalPlatformShown => _platform != null && _platform.gameObject.activeInHierarchy;
+
+        void EnsurePlatform()
+        {
+            if (_platform != null || _portalRoot == null) return;
+            _platform = new GameObject("VisitorPlatform").transform;
+            _platform.SetParent(_portalRoot, false);
+            Mesh disc = CylinderMesh(40);
+            var body = new GameObject("Body");
+            body.transform.SetParent(_platform, false);
+            body.AddComponent<MeshFilter>().sharedMesh = disc;
+            var br = body.AddComponent<MeshRenderer>();
+            br.sharedMaterial = WallUi.PlateMaterial != null ? WallUi.PlateMaterial : ResolveMaterial();
+            br.shadowCastingMode = ShadowCastingMode.Off; br.receiveShadows = false;
+            _platformBody = body.transform; _platformBodyR = br;
+            WallUi.TintPlate(br, WallCard.DarkRim);
+
+            var rim = new GameObject("Rim");
+            rim.transform.SetParent(_platform, false);
+            rim.AddComponent<MeshFilter>().sharedMesh = RingMesh(1f, 0.86f, 40);
+            var rr = rim.AddComponent<MeshRenderer>();
+            rr.sharedMaterial = WallUi.AccentMaterial != null ? WallUi.AccentMaterial : br.sharedMaterial;
+            rr.shadowCastingMode = ShadowCastingMode.Off; rr.receiveShadows = false;
+            _platformRim = rim.transform; _platformRimR = rr;
+            WallUi.TintPlate(rr, WallHabitatView.Teal);
+
+            var glow = new GameObject("FloorGlow");
+            glow.transform.SetParent(_platform, false);
+            glow.AddComponent<MeshFilter>().sharedMesh = GlowDiscMesh(32);
+            var gr = glow.AddComponent<MeshRenderer>();
+            gr.shadowCastingMode = ShadowCastingMode.Off; gr.receiveShadows = false;
+            _platformGlowMat = _portalColumnMat != null ? new Material(_portalColumnMat) : new Material(ResolveMaterial());
+            _platformGlowMat.name = "VisitorPlatform_Glow";
+            gr.sharedMaterial = _platformGlowMat;
+            _platformGlow = glow.transform; _platformGlowR = gr;
+            _platform.gameObject.SetActive(false);
+        }
+
+        void TickPlatform(PortalState st, float k, float h, float padScale)
+        {
+            EnsurePlatform();
+            if (_platform == null) return;
+            // How far up (0..1) and how big: it comes up with the pad, stays while the agent is out, goes after it leaves.
+            float show;
+            switch (st)
+            {
+                case PortalState.Opening: show = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(k * 1.25f)); break;
+                case PortalState.Emerging:
+                case PortalState.Conversing:
+                case PortalState.Returning: show = 1f; break;
+                case PortalState.Closing: show = Mathf.SmoothStep(1f, 0f, Mathf.Clamp01(k * 1.4f)); break;
+                default: show = 0f; break;
+            }
+            bool on = show > 0.005f;
+            if (_platform.gameObject.activeSelf != on) _platform.gameObject.SetActive(on);
+            if (!on) { _platformLift = 0f; return; }
+            float radius = portalSettings.footprintRadius * padScale * platformRadiusShare;
+            float thick = 0.012f + 0.018f * Mathf.Clamp01(h);
+            float hover = (platformHoverBase + platformHoverPerHeight * h) * show;
+            float bob = Mathf.Sin(Time.unscaledTime * 1.7f) * 0.004f * Mathf.Clamp(h, 0.4f, 1.2f) * show;
+            float bottom = hover + bob;
+            float sc = Mathf.Lerp(0.35f, 1f, show);
+            // _portalRoot sits on the floor with unit scale; everything below is in its local metres.
+            _platformBody.localPosition = new Vector3(0f, bottom, 0f);
+            _platformBody.localScale = new Vector3(radius * sc, thick, radius * sc);
+            _platformRim.localPosition = new Vector3(0f, bottom + thick + 0.0015f, 0f);
+            _platformRim.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            _platformRim.localScale = Vector3.one * (radius * sc);
+            // The floor glow: brighter the closer the disc is to it, and a touch with the bob.
+            _platformGlow.localPosition = new Vector3(0f, 0.004f, 0f);
+            _platformGlow.localScale = new Vector3(radius * 1.35f * sc, 1f, radius * 1.35f * sc);
+            Color g = Color.Lerp(WallHabitatView.Teal, Color.white, 0.25f);
+            g.a = 0.42f * show * (1f - Mathf.Clamp01(bob * 40f));
+            _platformGlowMat.SetColor(FxBaseColor, g);
+            if (_platformGlowMat.HasProperty(FxColor)) _platformGlowMat.SetColor(FxColor, g);
+            _platformLift = bottom + thick;
+        }
+
+        /// <summary>A closed cylinder (unit radius, height 0..1), both windings so it reads from any side.</summary>
+        static Mesh CylinderMesh(int seg)
+        {
+            var v = new System.Collections.Generic.List<Vector3>();
+            var t = new System.Collections.Generic.List<int>();
+            void Tri(int a, int b, int c) { t.Add(a); t.Add(b); t.Add(c); t.Add(a); t.Add(c); t.Add(b); }
+            int top = v.Count; v.Add(new Vector3(0, 1, 0));
+            int bot = v.Count; v.Add(Vector3.zero);
+            int ring = v.Count;
+            for (int i = 0; i <= seg; i++)
+            {
+                float a = i / (float)seg * Mathf.PI * 2f;
+                float x = Mathf.Cos(a), z = Mathf.Sin(a);
+                v.Add(new Vector3(x, 1, z)); v.Add(new Vector3(x, 0, z));
+            }
+            for (int i = 0; i < seg; i++)
+            {
+                int t0 = ring + i * 2, b0 = t0 + 1, t1 = t0 + 2, b1 = t0 + 3;
+                Tri(top, t0, t1); Tri(bot, b0, b1); Tri(t0, b0, t1); Tri(t1, b0, b1);
+            }
+            var m = new Mesh { name = "VisitorPlatformDisc" };
+            m.SetVertices(v); m.SetTriangles(t, 0);
+            m.RecalculateNormals(); m.RecalculateBounds();
+            return m;
+        }
+
+        /// <summary>A flat disc on XZ (unit radius) whose vertex alpha fades from the centre to the edge.</summary>
+        static Mesh GlowDiscMesh(int seg)
+        {
+            var v = new Vector3[seg + 2];
+            var c = new Color[v.Length];
+            var t = new int[seg * 6];
+            v[0] = Vector3.zero; c[0] = new Color(1, 1, 1, 1);
+            for (int i = 0; i <= seg; i++)
+            {
+                float a = i / (float)seg * Mathf.PI * 2f;
+                v[i + 1] = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                c[i + 1] = new Color(1, 1, 1, 0);
+            }
+            for (int i = 0; i < seg; i++) { int k = i * 6; t[k] = 0; t[k + 1] = i + 1; t[k + 2] = i + 2; t[k + 3] = 0; t[k + 4] = i + 2; t[k + 5] = i + 1; }
+            var m = new Mesh { name = "VisitorPlatformGlow", vertices = v, colors = c, triangles = t };
+            m.RecalculateBounds();
+            return m;
         }
 
         /// <summary>Thinking while a question is out, gesturing for a while when its answer lands (portal and desk visitor).</summary>

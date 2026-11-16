@@ -69,6 +69,43 @@ namespace MuseDesk.Agents
             if (_researcherBridge != null) StartCoroutine(OfferWhenArrived());
         }
 
+        /// <summary>
+        /// The hand-over spot changed (the ceiling pod's shelf opened) while the Researcher is out with a pending,
+        /// untaken paper: walk to the new <see cref="deliveryAnchor"/> and hold the paper out there again. Standing at the
+        /// old spot, it walks straight over and remembers the old spot as the first step of its way home; mid-walk, the
+        /// walk is restarted along the usual lane. Never while the paper is held or taken, or once the decision is answered.
+        /// Returns true when a walk was started.
+        /// </summary>
+        public bool Redeliver(Transform previousAnchor)
+        {
+            if (_reducer == null || _researcherMove == null || deliveryAnchor == null) return false;
+            var pending = _reducer.FirstPendingDecision();
+            if (pending == null || pending.DecisionId != _deliveredDecisionId) return false;
+            if (_paper == null) _paper = FindAnyObjectByType<MuseDesk.Documents.HeldPaperController>(FindObjectsInactive.Include);
+            if (_paper != null && (_paper.IsTaken || _paper.IsHeld)) return false;
+            if (_researcherMove.IsReturning || _researcherMove.AtHome && !_researcherMove.IsMoving) return false;
+            if ((_researcherMove.transform.position - deliveryAnchor.position).sqrMagnitude < 1e-4f) return false;
+            StopAllCoroutines();
+            if (_researcherBridge != null) _researcherBridge.EndOffer();
+            _offerExpected = false;
+            if (_researcherMove.IsMoving || previousAnchor == null) _researcherMove.DeliverTo(deliveryAnchor, null, true);
+            else
+            {
+                var lane = _researcherMove.exitWaypoints;
+                int n = lane != null ? lane.Length : 0;
+                var home = new Transform[n + 1];
+                home[0] = previousAnchor;
+                for (int i = 0; i < n; i++) home[i + 1] = lane[n - 1 - i];
+                _researcherMove.WalkRoute(deliveryAnchor, null, home, null);
+            }
+            Redeliveries++;
+            if (_researcherBridge != null) StartCoroutine(OfferWhenArrived());
+            return true;
+        }
+
+        /// <summary>Walks started by <see cref="Redeliver"/> (evidence for a Play Mode driver).</summary>
+        public int Redeliveries { get; private set; }
+
         IEnumerator OfferWhenArrived()
         {
             // Wait for the delivery walk to finish, then present the paper.
