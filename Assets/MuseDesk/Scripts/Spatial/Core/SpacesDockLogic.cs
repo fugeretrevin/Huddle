@@ -24,6 +24,8 @@ namespace MuseDesk.Spatial
         /// <summary>The preview shows the Full layout (the layout key then offers Compact).</summary>
         public bool wallLayoutFull;
         public bool wallSelectEnabled, wallManagerEnabled, wallSelecting;
+        /// <summary>The large-agent portal flag is on: Meet is offered while the office is on the wall (MeetKeyV1).</summary>
+        public bool wallMeetEnabled;
     }
 
     /// <summary>Which keys of the Spaces dock apply, how the four place keys look, and the words on the shared keys.</summary>
@@ -33,7 +35,7 @@ namespace MuseDesk.Spatial
         public int active;
         public bool deskDisabled, floorDisabled, ceilingDisabled, wallDisabled;
         // Context row. The Next / Place / Cancel keys are shared by every preview (Floor, Ceiling, Wall).
-        public bool next, confirm, cancel, stop, pod, bring, status, layout, move, select, manager;
+        public bool next, confirm, cancel, stop, pod, bring, status, layout, move, select, manager, meet;
         /// <summary>Place is on show but not armed (a wall spot that does not fit): it looks disabled and cannot be poked.</summary>
         public bool confirmDisabled;
         /// <summary>The shared preview keys act on the wall preview, not on the director's.</summary>
@@ -55,7 +57,7 @@ namespace MuseDesk.Spatial
     ///   the office is moving ..... Stop
     ///   Floor, at rest ........... Bring, Status
     ///   Ceiling, at rest ......... Lower / Raise, Status
-    ///   Wall, at rest ............ Move, Select (flag), Manager (flag)
+    ///   Wall, at rest ............ Move, Select (flag), Manager (flag), Meet (portal flag; in the Layout key's slot)
     /// Placement is armed ONLY while a preview is open: no Place key exists outside one.
     /// </summary>
     public static class SpacesDockLogic
@@ -64,14 +66,14 @@ namespace MuseDesk.Spatial
         public const string NextSpot = "Next spot", Place = "Place", Cancel = "Cancel", Stop = "Stop";
         public const string Bring = "Bring", Status = "Status", Full = "Full", Compact = "Compact";
         public const string WallFromDeskNote = "Wall: go back to Desk first";
-        public const string Move = "Move", Select = "Select", Done = "Done", Manager = "Manager";
+        public const string Move = "Move", Select = "Select", Done = "Done", Manager = "Manager", Meet = "Meet";
 
         /// <summary>Every word a dock key can show (the label-fit test walks this list).</summary>
         public static readonly string[] AllWords =
         {
             Desk, Floor, Ceiling, Wall, SendBack, NextSpot, Place, Cancel, Stop,
             ModeConsoleLogic.Lower, ModeConsoleLogic.Raise, ModeConsoleLogic.Waiting,
-            Bring, Status, Full, Compact, Move, Select, Done, Manager,
+            Bring, Status, Full, Compact, Move, Select, Done, Manager, Meet,
         };
 
         /// <summary>Cap width of a dock key (the console's segment key, BuildModeConsoleV1.SegCapWidth), millimetres.</summary>
@@ -119,7 +121,7 @@ namespace MuseDesk.Spatial
                 k.confirmDisabled = !i.wallCanPlace;
                 k.cancel = true;
                 k.layout = true;
-                k.stop = k.pod = k.bring = k.status = k.move = k.select = k.manager = false;
+                k.stop = k.pod = k.bring = k.status = k.move = k.select = k.manager = k.meet = false;
                 k.wallDisabled = false;
                 return k;
             }
@@ -131,6 +133,7 @@ namespace MuseDesk.Spatial
                 k.move = true;
                 k.select = i.wallSelectEnabled;
                 k.manager = i.wallManagerEnabled;
+                k.meet = i.wallMeetEnabled;
                 k.deskDisabled = moving;
                 k.floorDisabled = moving || !i.floorEnabled;
                 k.ceilingDisabled = moving || !i.ceilingEnabled;

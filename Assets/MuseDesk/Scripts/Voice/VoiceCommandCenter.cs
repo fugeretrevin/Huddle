@@ -446,6 +446,11 @@ namespace MuseDesk.Voice
         /// null when the Manager is not available (the request then falls through to "Not understood").</summary>
         public static Func<string, string> ManagerRequestHandler;
 
+        /// <summary>Set by the Wall habitat while it is on the wall with the portal flag on (Meet). Given the agent a sentence such
+        /// as "Researcher, come here" or "meet the developer" names (<see cref="PortalVoiceRequest"/>); returns the line to show, or
+        /// null when it is not handled (the sentence then goes through the normal grammar, exactly as before).</summary>
+        public static Func<VoiceAgentTarget, string> PortalRequestHandler;
+
         void HandleFinal(string transcript)
         {
             string heard = VoiceAnswers.Ascii(transcript ?? "").Trim();
@@ -458,6 +463,11 @@ namespace MuseDesk.Voice
 
             VoiceIntent intent = VoiceIntentParser.Parse(heard, CurrentContext());
 
+            // Wall portal (Meet): "Researcher, come here" / "meet the developer". Only while the Wall registered for it.
+            VoiceAgentTarget meetWho;
+            bool meetAsked = PortalVoiceRequest.Routes(heard, PortalRequestHandler != null, _pending != Pending.None, out meetWho);
+            bool meetOnlyAddress = false;     // hands-free: the sentence passed the name rule only as a portal request
+
             // Hands-free sentences must start with a name ("Researcher, ...", "Hey MuseDesk, ..."), unless they halt
             // something or answer a conversation the user already opened. The name itself is not a command, so when the
             // whole sentence parses to nothing, the words after the name are tried.
@@ -469,7 +479,8 @@ namespace MuseDesk.Voice
                 if (addressed && intent.Kind == VoiceIntentKind.None && rest.Length > 0)
                     intent = VoiceIntentParser.Parse(rest, CurrentContext());
                 bool halting = intent.Kind == VoiceIntentKind.Stop || intent.Kind == VoiceIntentKind.Cancel;
-                if (!WakeWord.Allows(addressed, _pending != Pending.None, halting))
+                meetOnlyAddress = meetAsked && !WakeWord.Allows(addressed, _pending != Pending.None, halting);
+                if (!PortalVoiceRequest.AllowsHandsFree(addressed, _pending != Pending.None, halting, meetAsked))
                 {
                     LastIntent = "Unaddressed";
                     _actedOnPartial = VoiceIntentKind.None;
@@ -493,6 +504,31 @@ namespace MuseDesk.Voice
 
             // While a decision counts down, only words about it matter; chatter does not stop the clock.
             if (_pending == Pending.Decision && intent.Kind == VoiceIntentKind.None) { ShowPrompt(); ScheduleRelisten(); return; }
+
+            // Meet: the Wall opens the portal PREVIEW for that agent (nothing opens until Open here is pressed). It comes before
+            // the grammar because "come here" is also the office's Bring here: while the habitat is on the wall (the only time a
+            // handler is registered), a sentence that names one agent and asks it to come means that agent.
+            if (meetAsked && _pending == Pending.None)
+            {
+                string reply = PortalRequestHandler != null ? PortalRequestHandler(meetWho) : null;
+                if (reply != null)
+                {
+                    LastIntent = "PortalRequest";
+                    LastMessage = reply;
+                    if (policy != null) policy.NotifyHeard(LastMessage);
+                    Result("Heard: " + VoiceAnswers.Clip(heard, 60), reply, VoiceTone.Good, 4f);
+                    RefreshMic();
+                    return;
+                }
+                if (meetOnlyAddress)
+                {
+                    // Nobody took it, and without the portal exception this hands-free sentence was not addressed: stay quiet, as before.
+                    LastIntent = "Unaddressed";
+                    if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                    RefreshMic();
+                    return;
+                }
+            }
 
             // "Manager, <goal>": the local grammar has no such command; the A12 classifier recognises it. It is handed to whoever
             // registered as the Manager (the Wall habitat, when it is active and its flag is on). It only ASKS for a plan:

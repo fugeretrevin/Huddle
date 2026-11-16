@@ -229,6 +229,49 @@ namespace MuseDesk.Spatial.Wall
             return true;
         }
 
+        /// <summary>
+        /// Meet (the dock's Meet key, its chooser card, or "Researcher, come here"): make way for a large-portal preview of
+        /// <paramref name="agent"/> WITHOUT a hand carry. The caller then opens the preview with <see cref="PortalFlow.BeginPreview"/>,
+        /// which reserves the agent in the registry (one presentation per agent, one agent away at a time), so the agent leaves
+        /// home once and comes home once; no transient desk visit is created on the way.
+        ///   Off ........................ nothing to do.
+        ///   Armed ...................... Select Agents is switched off (the user chose the other way in).
+        ///   Perched, the same agent .... the desk visit hands over (<see cref="HandOverToPortal"/>, no fly-home);
+        ///                                <paramref name="handedOver"/> is true and the caller keeps the conversation.
+        ///   Perched, another agent ..... refused: one visit at a time; nothing is sent home behind the user's back.
+        ///   Carrying / Returning ....... refused with words.
+        /// Never touches the backend task.
+        /// </summary>
+        public bool PrepareMeet(string agent, out bool handedOver)
+        {
+            handedOver = false;
+            if (string.IsNullOrEmpty(agent)) { Message = "No agent"; return false; }
+            switch (State)
+            {
+                case VisitState.Off:
+                    return true;
+                case VisitState.Armed:
+                    Go(VisitState.Off);
+                    Message = "";
+                    return true;
+                case VisitState.Perched:
+                    if (Agent == agent)
+                    {
+                        string a;
+                        handedOver = HandOverToPortal(out a);
+                        return handedOver;
+                    }
+                    Message = "Send " + AgentPresentationRegistry.Pretty(Agent) + " back first";
+                    return false;
+                case VisitState.Carrying:
+                    Message = "Finish the current visit first";
+                    return false;
+                default:
+                    Message = "Wait until " + AgentPresentationRegistry.Pretty(Agent) + " is home";
+                    return false;
+            }
+        }
+
         void BeginReturn(VisitEndReason why, string msg)
         {
             LastEnd = why;
@@ -271,6 +314,61 @@ namespace MuseDesk.Spatial.Wall
             State = s;
             var h = StateChanged; if (h != null) h(s);
         }
+    }
+
+    /// <summary>What the Meet key does now (<see cref="MeetEntry.Decide"/>).</summary>
+    public enum MeetKeyAction { Refuse = 0, OpenChooser = 1, CloseChooser = 2, MeetPerched = 3 }
+
+    /// <summary>
+    /// The Meet key's table, free of scene access (rc9: "the agents never used the portal and there was no way to access
+    /// that as an option"). One poke on the dock while the habitat is on the wall:
+    ///   portal flag off / not on the wall / choosing a wall spot .... refused (words)
+    ///   the chooser is open .......................................... closes it (the key is a toggle)
+    ///   a portal is open or previewed ................................ refused: finish or cancel that one first
+    ///   an agent sits on the desk perch .............................. that agent steps out (no chooser)
+    ///   an agent is being carried or flying home ..................... refused: finish the current visit first
+    ///   otherwise (Select Agents armed or not) ....................... the chooser opens
+    /// </summary>
+    public static class MeetEntry
+    {
+        public static MeetKeyAction Decide(bool portalEnabled, bool wallActive, bool wallPreviewing, bool choosing,
+                                           PortalState portal, VisitState visit, out string reason)
+        {
+            reason = null;
+            if (!portalEnabled) { reason = MeetCopy.PortalOff; return MeetKeyAction.Refuse; }
+            if (!wallActive || wallPreviewing) { reason = MeetCopy.PlaceFirst; return MeetKeyAction.Refuse; }
+            if (choosing) return MeetKeyAction.CloseChooser;
+            if (portal != PortalState.Hidden)
+            {
+                reason = portal == PortalState.Preview || portal == PortalState.AwaitConfirm ? MeetCopy.AnswerCardFirst : MeetCopy.SendBackFirst;
+                return MeetKeyAction.Refuse;
+            }
+            if (visit == VisitState.Perched) return MeetKeyAction.MeetPerched;
+            if (visit == VisitState.Carrying || visit == VisitState.Returning) { reason = MeetCopy.FinishVisitFirst; return MeetKeyAction.Refuse; }
+            return MeetKeyAction.OpenChooser;
+        }
+    }
+
+    /// <summary>The Meet feature's words (one place, so the tests can hold them to "one short sentence").</summary>
+    public static class MeetCopy
+    {
+        /// <summary>The dock's status line right after the habitat is placed.</summary>
+        public const string PlacedHint = "Press Meet to see an agent beside you.";
+        public const string ChooserTitle = "Meet an agent";
+        public const string ChooserBody = "Who should step out beside you?\nIt is a projection: their work carries on.";
+        public const string ChooserFoot = "Nothing opens until you press Open here.";
+        public const string PortalOff = "The portal is switched off in this build";
+        public const string PlaceFirst = "Place the habitat on a wall first";
+        public const string AnswerCardFirst = "Choose Open here or Cancel on the card first";
+        public const string SendBackFirst = "Send the visiting agent back first";
+        public const string FinishVisitFirst = "Finish the current visit first";
+        public const string Cancel = "Cancel";
+        public const string ChooseOnCard = "Choose an agent on the card";
+        /// <summary>The chooser's agents, in key order (agent ids as the registry uses them).</summary>
+        public static readonly string[] Agents = { "researcher", "developer", "tester", "manager" };
+
+        /// <summary>The voice card's answer when the preview opened.</summary>
+        public static string VoiceOpened(string prettyName) { return prettyName + " can step out: press Open here on the card, or Cancel."; }
     }
 
     public enum SideAskState { Idle = 0, Asking = 1, Answered = 2, Failed = 3 }

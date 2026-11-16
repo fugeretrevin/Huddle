@@ -269,7 +269,7 @@ namespace MuseDesk.Tests.EditMode.Onboarding
         public void PortalHintNeedsPortalFlag()
         {
             Ctx(flags: OnboardingFlags.Wall);
-            _coach.Observe(OnboardingEvent.AgentSelected);
+            _coach.Observe(OnboardingEvent.WallPlaced);      // MeetKeyV1: the Meet hint follows the habitat being placed
             Run(5);
             Assert.IsNull(_coach.Current);
             Ctx(flags: OnboardingFlags.Wall | OnboardingFlags.Portal);
