@@ -1,8 +1,9 @@
 # Quest user acceptance QA (owner script, rc14)
 
-Build: `Builds/MuseDesk_rc14_owner_fixes.apk`, label `rc14-owner-fixes`, SHA-256 `3CD37ED9…EB0657`, **installed and
-hash-verified** on the Quest (2026-11-16). Rollback: `Builds/MuseDesk_rc13_lively_polish.apk` (then rc11).
-Before putting it on: `scripts\quest_perf_watch.ps1 -Label rc14_worn` in a terminal (logcat FPS + hitches).
+Build: `Builds/MuseDesk_rc15_honest_status.apk`, label `rc15-honest-status` (= rc14 fixes + "Written, not run" status
+wording), SHA-256 `047DD408…BB62B15`, **installed and hash-verified** on the Quest (2026-11-16). Rollbacks: rc14
+(`3CD37ED9…`), rc13, rc11.
+Before putting it on: `scripts\quest_perf_watch.ps1 -Label rc15_worn` in a terminal (logcat FPS + hitches).
 Mark each line PASS / FAIL / NOTE. Only these observations can make anything WORN.
 
 ## 1. rc14 fixes (your rc13 report)

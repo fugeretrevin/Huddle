@@ -1,126 +1,199 @@
-# MuseDesk: project state for expert review (2026-11-16)
+# MuseDesk: project state for expert review (2026-11-16, evening)
 
-This brief is for an expert reviewer. It says what MuseDesk is, what is finished, what is in progress, what has been
-proven and how, and where we most want feedback. It is written to be honest about evidence: most of the recent work is
-proven in the Unity Editor and by automated tests, and **only some has been worn on the headset**.
+This brief is for an expert reviewer. It covers:
+- what MuseDesk is;
+- what is finished and what is in progress;
+- what has been proven, and how;
+- the honest limits;
+- where we most want feedback.
 
-Competition: Meta VR Start Developer Competition 2026, Productivity track. **Hard deadline 2026-11-18, 12:00 PT.**
-Building started 2026-11-10. Device: Meta Quest 3. Engine: Unity 6000.6.8f1, URP 17.6, Meta XR SDK 209 (ISDK hands,
-MRUK room scan), IL2CPP/ARM64/Vulkan. Backend: Python FastAPI (REST + WebSocket), optional live model provider (Meta).
+It is strict about evidence. Most recent work is proven in the Unity Editor, by automated tests and against the real
+backend. **Only the owner wearing the headset counts as worn proof.**
+
+Competition: Meta VR Start Developer Competition 2026, Productivity track. **Hard deadline 2026-11-18, 12:00 PT**
+(about 40 hours away). Building started 2026-11-10.
+
+Technical stack:
+- **Device:** Meta Quest 3.
+- **Engine:** Unity 6000.6.8f1, URP 17.6, Meta XR SDK 209 (ISDK hands, MRUK room scan), IL2CPP / ARM64 / Vulkan.
+- **Backend:** Python FastAPI (REST + WebSocket), with the Meta model API as the live provider.
 
 ---
 
 ## 1. What MuseDesk is
 
-A mixed-reality workplace for supervising AI agents. A miniature team (Researcher, Developer, Tester, and a Manager)
-lives on the user's real desk, or on the floor, a ceiling pod, or a treehouse "habitat" on a real wall. The agents do
-work; when a step needs a human decision, an agent walks up holding a **decision paper**. The user takes the paper,
-reads it, and **stamps** it (approve / reject). Work then visibly moves between agents and ends in a receipt.
-Hands-first throughout; voice is optional.
+MuseDesk is a mixed-reality workplace for supervising a small team of AI agents: Researcher, Developer, Tester and a
+Manager. The team lives where the user chooses:
+- on the real desk, as a miniature office;
+- on the floor;
+- in a ceiling pod that lowers beside the user;
+- in a treehouse habitat on a real wall, with an elevator.
 
-Two modes, always labelled on screen:
-- **Offline scripted demo** (the judge build runs standalone on Quest; every scripted artifact says SCRIPTED DEMO).
-- **Live** (a PC backend; the Manager drafts real plans with a Meta model, the backend validates them, a runner works
-  the cards; sandboxed tool execution exists behind the approval gate). Never shown as live when it is scripted.
+The work loop:
+1. The user gives the team an objective.
+2. The Manager drafts a plan, or a Researcher brings a decision **paper**.
+3. The user reads it and **stamps** it, approve or reject. The mark appears only after the backend confirms.
+4. Cards move between agents (on the Wall, the agents ride the elevator to collect them).
+5. The user can pull an agent onto the desk, or call it into a full-size **portal**, and ask it questions on the side
+   (`/btw`). These questions are read-only.
+6. The work ends in a receipt.
 
-Invariants we hold: no fake "live" claims; the backend authorises decisions (a local animation is not approval); hands
-work without controllers or voice; the judge build works with no PC.
+Interaction is hands-first. Voice is optional: it uses Wit.ai, needs the network, and a request must start with the
+agent's name.
 
-## 2. Evidence levels used below
+The app has two modes, and the mode is always shown on screen:
+- **Offline scripted demo.** This is the judge build: standalone on the Quest, with no PC needed. Everything in it is
+  labelled SCRIPTED DEMO.
+- **Live.** The backend runs on a PC and the Quest connects to it over USB (`adb reverse`).
 
-- **AUTO**: EditMode unit tests (pure logic, synthetic rooms). Currently **1617 / 1617 pass**. Backend pytest 327 pass, 1 skip.
-- **PLAY**: Unity Editor Play Mode drivers (scripted steps, synthetic room, simulated hands; no headset, no passthrough).
-- **WORN**: the owner wore that build on the Quest and reported on the specific interaction. Only the owner can make
-  something WORN.
+Invariants we hold:
+- Never present scripted work as live.
+- The backend authorises every decision; a local animation never counts as approval.
+- Every flow works with hands alone.
+- The judge build runs with no PC.
 
-## 3. Build history and owner worn rounds
+## 2. Evidence levels
 
-| Build | Date | What the owner reported when worn (summary) | Answered in |
+- **AUTO** — automated tests:
+  - Unity EditMode **1620 / 1620** pass.
+  - Backend pytest **331 passed, 1 skipped**. The skip is a symlink test that can't run on this Windows account.
+- **PLAY** — Unity Editor Play Mode drivers on the real production scene, with a synthetic room and simulated hands.
+  There is no headset or passthrough at this level.
+- **LIVE** — scripts that call the same HTTP and WebSocket routes as the Quest client, against a real backend using
+  the Meta model:
+  - `backend/scripts/live_e2e.py`: **71 / 71**;
+  - `backend/scripts/live_journey.py`: **17 / 17**.
+- **WORN** — the owner wore that build and reported on the specific interaction. Only the owner can make something WORN.
+
+## 3. Builds and worn rounds
+
+| Build | Worn | What the owner reported | Answered in |
 |---|---|---|---|
-| rc6_2 | 11-13 | Desk/Floor/Ceiling basics worked; earlier grab and text-mirroring issues fixed in rc-feedback rounds | rc7 |
-| rc8 | 11-15 night | 10 findings W1-W10: Wall agents doubled; Manager paper key labels truncated and no stamp zone; panels far at start; remove factory belt; Floor/Ceiling unreachable from the Wall dock; select-agent grab broken; offering agent looped give/take-back; paper keys should be More + Revise only; hands-free mic wanted | rc9 |
-| rc9 | 11-16 | Wall legs walk then slide; an agent rode the elevator and teleported home; portal never used / unreachable; the mode panel and placement flow were gone | rc10 |
-| rc10 / rc11 | 11-16 | rc11 worn: Wall placement too strict (only far spots, missed good ones); wanted the Floor-style beam and reasons; portal "just an agent growing from nothing"; the portal agent should be lively (look at you and your hand, react, be talkable); buttons/cards after opening the Manager paper or Meet look poor | **rc13 (this build)** |
+| rc6_2 | yes | Desk, Floor and Ceiling basics worked; earlier grab and text-mirroring issues | rc7 |
+| rc8 | yes | 10 findings:<br>• doubled Wall agents<br>• Manager paper key labels truncated, no stamp zone<br>• panels too far away at start-up<br>• remove the factory belt<br>• Floor and Ceiling not reachable from the Wall dock<br>• select-agent grab broken<br>• offering agent kept giving and taking back the paper<br>• paper keys should be More and Revise only<br>• wanted hands-free mic | rc9 |
+| rc9 | yes | Wall walkers slid instead of walking; an elevator rider teleported home; the portal was unreachable; the mode panel and placement flow had gone | rc10 |
+| rc11 | yes | 72 fps on Wall and the small portal. Asks:<br>• Wall placement too strict<br>• wanted the Floor-style beam with reasons<br>• the portal was "just growing"<br>• the visitor should be lively<br>• cards looked poor | rc13 |
+| rc13 | yes ("much better") | Six asks:<br>• Ceiling desk rugs intersect<br>• the paper should be handed over at the pod's end dock<br>• portal visitors float, so add a platform<br>• grabbing or meeting an agent makes a second copy<br>• the visitor's head spins and its body rolls<br>• no indicator when selecting agents | **rc14** |
+| **rc14** | superseded by rc15 before it was worn (rollback) | — | — |
+| **rc15** (current) | **installed, hash-verified (047DD408…BB62B15), not yet worn** | rc14 + honest status wording (see §5) | — |
 
-Device performance (in-app heartbeat + compositor, owner sessions): **72 fps steady** on Desk idle, board open, task
-running, paper held, Wall preview, Wall active and with the (small) portal open (rc9 and rc11 sessions). One-off frame
-hitches of 60-150 ms on scenario changes (board open, paper grab) and a ~1 s load hitch at app start. Memory ~385-398 MB.
-Not yet measured: rc13's new portal art and column, Floor/Ceiling on rc10+, a 15-minute soak, thermals.
-Details: `docs/Engineering/RC8_PERFORMANCE_RESULTS.md`.
-
-Current candidate: **`Builds/MuseDesk_rc13_lively_polish.apk`** (label `rc13-lively-polish`, branch
-`feature/rc8-feedback-1`, commit `42efeff`, SHA-256 `3DAF3AE6...BBF6AD`, installed on the Quest, hash verified).
-Rollbacks kept: rc11, rc10, rc9, rc8, rc7, rc6_2. EditMode 1619 / 1619.
+Device performance, measured in the owner's sessions with the in-app heartbeat and compositor stats:
+- **72 fps steady** on Desk idle, board open, task running, paper held, Wall preview and Wall active, with the small
+  portal open (rc9 and rc11).
+- One-off hitches of 60–150 ms on scene changes, a ~1 s hitch at app start, about 385–398 MB of memory.
+- **Not measured yet:**
+  - the rc13+ portal art (arch, particles, light column);
+  - the rc14 hover platform;
+  - a 15-minute soak and thermals.
 
 ## 4. Feature inventory
 
-| Area | What it does now | State | Evidence | Known gaps / risk |
-|---|---|---|---|---|
-| Desk office | Three cute rigged agents (77 Antigravity clips) at workstations on the real desk; idle life, gaze, poke/wave/duck reactions, squishy push, status chips, speech bubbles | Done | WORN (earlier rounds) + PLAY | Reaction tuning is subjective |
-| Decision paper | Agent walks up, offers the paper and holds until taken (no take-back loop); grab expands it; More / Revise keys; physical stamps approve/reject; backend confirms before the stamp mark lands | Done | AUTO + PLAY; WORN for grab/stamp in rc6-rc8; hold-until-taken fix NOT WORN | Finger-wrap grab poses not authored (wrist snap only) |
-| Task dock + board | Start, board with cards (assign/pause/priority/new), receipt with artifact, Focus mode, Calm motion | Done | WORN (basic) + AUTO | Board card poke/grab coexistence only lightly worn |
-| Spaces dock | One dock: Desk / Floor / Ceiling / Wall + context keys (Place, Next spot, Cancel, Stop, Lower/Raise, Bring, Status, Move, Select, Manager, Meet), mic toggle, Calm motion | Done | PLAY 17/17; WORN in rc11 (used) | Wall only from Desk (fail-closed); status says why |
-| Floor office | Guided look card, scan grid, pointing arc to the floor, pinch-drag footprint with colours and reasons, Place moves the office along a swept clear route; Stop reverses | Done | WORN (rc6) + AUTO + PLAY | Desks overhang the floor deck by 3-6 cm |
-| Ceiling pod | Ceiling dock spot, pod descends beside you, Lower/Raise, pull gesture | Done | WORN (rc6) + PLAY | - |
-| Wall habitat | Antigravity treehouse (Full 3-tier / Compact 2-tier) on a scanned wall; one agent per role; walkers with routed corridors; elevator with dispatcher, claims, rider priority, hold-in-cabin; Manager on top floor | Done | AUTO (30-min seeded stress, 0 teleports) + PLAY; WORN rc11 (placed, agents walked) | Elevator "no teleport" fix not yet confirmed worn |
-| Wall placement | **rc13**: Floor-style beam per hand, ring cursor, chip "Pinch to move it here" / "Can't: covers a door"; pinch-drag the ghost; letting go on a refused spot snaps to the nearest spot that fits; rules loosened (closer, higher above the desk/screen, finer search) | New in rc13 | AUTO (5 new tests) + PLAY | **NOT WORN**; rules still conservative by design (doors, windows, furniture, edge-on view) |
-| Manager plan paper | Pick a goal, the Manager drafts a plan (live model or scripted), paper with rows + framed "Stamp here" zone, stamp approves, cards print, owners ride the elevator, work, report back; receipt | Done | PLAY (13 steps, stamp variant); LIVE-backend plan PASS (Meta model, 13 s); WORN partially (rc8 paper seen) | Live Manager runner is sequential and text-only (honestly labelled) |
-| Select agents + /btw | Point at a habitat agent and pinch to carry it to a desk perch beside the task dock; ask preset questions (read-only side conversation); put back. **rc13**: it dangles while carried, then perches with the same look/touch/talk life as the portal visitor | Done | AUTO 19 + PLAY 12/12 | **Hand carry is the real test: not yet worn on rc10+** |
-| Meet + large portal | **rc13**: Meet key / voice ("Tester, come here") opens a portal preview with keep-out-checked spot; Antigravity's floor portal opens into an arch, a light column rises, the agent pops in and steps out (Portal_Emerge_Step), leaves with a turn-and-wave into the column; small-visitor fallback when no large spot; wider spot search | New in rc13 | AUTO (keep-out 24+, portal entry 19) + PLAY (stages captured) | **NOT WORN**; rc11 worn session got only the small-visitor fallback (no large spot in that room) |
-| Portal visitor life | **rc13**: faces you; head/neck look at you, a nearby hand, or the finger that touched it; breathing; leans and slides away from a fingertip (kinematic, springs back); startled hop on a jab; waves back; thinks while a question is out; gestures while answering | New in rc13 | PLAY (simulated touch: poke reaction, look-at-finger, push) | **NOT WORN**; wave detection assumes the ISDK fingertip order |
-| Wall cards | **rc13**: visit / Meet / receipt cards in the task dock's dark unlit style with rim and teal accent; Manager plan as cream paper; keys measured from the real key and laid out evenly (they used to overlap into one bar) | New in rc13 | PLAY (captures) | NOT WORN; key caps are the console's grey keys |
-| Voice | Hands-free mic (muted by default, dock toggle); wake word: sentences must start with an agent name or "MuseDesk"; "stop" always heard; mode words; portal requests; decisions still need the paper opened + an undo window | Done | AUTO (wake word 21, voice 39+) + PLAY | Needs Wit.ai + network: never in the offline judge path |
-| Onboarding hints | One hint at a time, event-driven (first paper, stamp, receipt, Spaces, Wall, Manager, Meet, Reset layout, hands-lost) | Done | AUTO + PLAY | Some recovery hints deliberately unwired (copy did not fit) |
-| Panels | Movable panels (pinch the bar), reset layout, panels re-seat near the user at start-up in any mode; office never moves on its own | Done | AUTO + PLAY; WORN rc11 (dock in reach) | - |
-| Backend | REST + WS, sessions, idempotency, v2 board, Manager plans with validation/retry, plan runner, side questions, sandboxed workers behind the approval gate | Done | AUTO 327; LIVE-backend runs | Symlink traversal test skipped on this Windows account |
+| Area | What it does now | Evidence | Known gaps |
+|---|---|---|---|
+| Desk office | Three rigged agents using 77 animation clips, with idle life, gaze, poke / wave / duck reactions, status chips and speech bubbles | WORN + PLAY | Reaction tuning is subjective |
+| Decision paper | The agent walks up, offers the paper and holds it until taken. Grabbing expands it. More / Revise keys. Physical stamps; the backend confirms before the mark lands. Replays are idempotent; a conflicting second answer gets 409 | WORN (stamp, rc6–rc8) + AUTO + PLAY + LIVE | Hold-until-taken not worn; wrist-snap grab poses only (no finger-wrap) |
+| Task dock and board | Start, a board with cards (assign / pause / priority / new), receipt with the artifact, Focus mode, Calm motion | WORN (basic) + AUTO + LIVE | — |
+| Spaces dock | One dock for Desk / Floor / Ceiling / Wall, plus context keys and the mic toggle | WORN (rc11) + PLAY | — |
+| Floor office | Guide card, scan grid, pointing arc, pinch-drag footprint with colours and reasons; Place moves the office along a clear route | WORN (rc6) + AUTO + PLAY | Desks overhang the deck by 3–6 cm |
+| Ceiling pod | Dock spot, pod lowers beside the user, Lower / Raise, pull gesture. **rc14:**<br>• deck rugs no longer overlap (the app separates them at load; the art file is unchanged)<br>• with the pod lowered, the Researcher hands the paper over at the pod's front shelf | WORN (rc6); rc14 PLAY | rc14 not worn |
+| Wall habitat | Antigravity's treehouse (Full or Compact) on a scanned wall; one agent per role; routed walkers; elevator with dispatcher, claims and rider priority; Manager on the top floor | AUTO (30-minute seeded stress, 0 teleports) + PLAY; WORN rc11 (placed, walked) | Elevator no-teleport fix not yet confirmed worn |
+| Wall placement | Floor-style beam per hand, ring cursor, reason chip; pinch-drag the ghost; release on a refused spot snaps to the nearest valid one; loosened rules | AUTO + PLAY | Not worn on rc13+ |
+| Manager plan | Pick a goal. The Manager drafts a plan (live: written by the Meta model and validated by the backend), shown on a paper with steps, owners, dependencies, risks and provenance, and a framed "Stamp here". Revise works; stale revisions are refused. A risky step needs a separate OK. The stamp approves exactly once; cards print; owners ride the elevator; the Manager synthesises a receipt. **rc15:** results read "Written, not run" | PLAY 13/13 + LIVE 17/17 | Live runner is sequential and **text-only** (§6) |
+| Select agents and `/btw` | **rc14:** pointing beam, target ring and "Pinch to pick up \<Agent\>". The carried projection dangles, lands on the desk perch and comes alive. **The original is hidden while it visits (no second copy).** Read-only questions are grounded in the task's real events and artifacts; change requests become proposals that are never applied | AUTO + PLAY 12/12 + LIVE | Hand carry not worn on rc10+ |
+| Meet and large portal | Meet key or voice opens a preview at a spot checked against the user's keep-out zone (or a small-visitor fallback). The floor portal opens, a light column rises, and the agent steps out. **rc14:** it stands on a hovering platform; the original is hidden. It leaves with a turn and a wave | AUTO (keep-out 24+, entry 19) + PLAY (MeetDrive 15/15) | Not worn as a large visitor; in the owner's room it fell back to the small visitor; device FPS unmeasured |
+| Visitor life | Faces the user; head and neck follow the user, a nearby hand or the touching finger; breathes; leans away from a fingertip and springs back; hops when poked; waves back; thinks while a question is pending; gestures while answering. **rc14:**<br>• Animator always updates<br>• a target behind the agent is released, not flipped to<br>• head turn capped at 240°/s<br>• lean capped at 12°<br>• bone guard against accumulated rotation | PLAY (head stays within ~13° of the body even with the Animator off) | The worn head spin was **not reproduced in the Editor**; fixes are defensive and need a worn check |
+| Voice | Hands-free mic, muted by default; requests start with a name; "stop" is always heard; mode words; portal requests | AUTO + PLAY | Online only; never in the judge path |
+| Backend | Sessions, idempotency, v2 board, Manager plans with validation and retry, plan runner, side questions, sandboxed workers behind the approval gate | AUTO 331 + LIVE | See §6 |
 
-## 5. In progress / not verified
+## 5. What changed today (rc14 / rc15)
 
-- **Everything new in rc13/rc13 is unworn:** Wall beam and snap, loosened rules, the portal sequence and visitor life, and the
-  new card style.
-- **Device FPS for the rc13 portal art** (arch, particles, transparent column) and a 15-minute soak with thermals.
-- **The large portal in a real seated room:** the planner needs a clear spot 50-120 degrees to the side, 1.0-1.85 m away,
-  clear of screens, the desk front, furniture and walls. The owner's room produced only the small visitor. We widened
-  the search but kept the safety margins.
-- **Select-agent hand carry, Wall elevator trips, paper hold-until-taken:** fixes are PLAY/AUTO only.
-- **Demo video:** not shot (`docs/Engineering/RC8_DEMO_CAPTURE_LEDGER.md` has the shot list).
-- **Submission** (Meta dashboard Competition channel, Devpost page, video upload): owner tasks, not started.
-  Checklist: `docs/Engineering/RC8_SUBMISSION_CHECKLIST.md`.
+- **The owner's six rc13 asks:** all fixed in rc14 (see §3 and §4). rc14 is installed, and the installed copy's hash
+  matches the build.
+- **Official Unity tooling audit:**
+  - Our `unity` command **is** the official Unity CLI (1.0.0-beta.17), with `com.unity.pipeline` 1.0.0-pre.1 and Unity's
+    official agent plugin installed.
+  - All our wrappers already run on top of it.
+  - Decision: keep the current setup. We will also use its read-only inspection commands
+    (gameobject find, component get_fields, animator get_controller, clip get) without writing new code.
+  - Nothing was installed. See `UNITY_OFFICIAL_TOOLING_CAPABILITY_AUDIT.md`.
+- **End-to-end journeys:**
+  - The canonical request ("Build me a login page with email validation, password requirements, and tests.") was run
+    live, through plan, revise, approve-once, run and side questions.
+  - One real bug was found and fixed: "Actually, change the password rule to 12 characters" was answered as a status
+    question. It is still read-only, but it now produces a suggested change that waits for confirmation.
+  - Docs: `END_TO_END_USER_JOURNEY_SPEC.md`, `E2E_SCENARIO_MATRIX.md` (30 scenarios), `LIVE_WORKFLOW_VALIDATION.md`,
+    `QUEST_USER_ACCEPTANCE_QA.md` (the owner's headset script), `JUDGE_DEMO_VALIDATION.md`,
+    `END_TO_END_GAPS_AND_FIXES.md`.
+- **rc15:** text-only plan results no longer say "Completed". The status page reads "N of M written up (text only,
+  nothing was run)", and each card reads "Written, not run · Proposed change: …". This is a display change only; the
+  backend state is unchanged.
 
-## 6. Known limitations we are choosing to ship with
+## 6. Honest limits we are choosing to ship with
 
+- **The live Manager runner writes text; it executes nothing.** For the login request it produced:
+  - a research write-up;
+  - three "Proposed change" descriptions (including the revised 12-character rule);
+  - four test *plans*.
+
+  No code was written and no tests were run on this path. This is now labelled at the paper footer, the status head
+  line and each card.
+- **The executed path is the desk auth task.** After approval, the Developer writes real files into a per-session
+  sandbox and the Tester runs real pytest (6 passed / 0 failed). The artifact has real counts and a diff. However:
+  - the code is a **fixed OAuth scaffold**, not written from the user's request;
+  - the research proposal before it is a labelled template.
 - Voice is online-only (Wit.ai); the hands path covers everything.
-- The live Manager runner is sequential and text-only; labelled as such.
-- Grab poses are wrist-snap (no finger-wrap poses authored).
-- The portal visitor is a visual projection of the agent; its replies come from the same read-only side conversation
-  (scripted offline, model-backed live), labelled.
+- Grab poses are wrist-snap only.
+- Portal and desk visitors are visual projections of the agent; its task is unchanged. Their replies come from the same
+  read-only side conversation (scripted offline, model-backed live, labelled).
 - Wall placement refuses doors, windows, furniture, steep view angles and spots that would hide the screen. Without a
-  room scan it offers an amber, unchecked spot and says so.
+  room scan it offers an amber, unchecked spot.
 
-## 7. Where we want expert feedback
+## 7. Not verified yet (the risk list)
 
-1. **Scope for the last ~40 hours:** freeze now and spend the time on worn verification, the video and submission, or
-   push one more interaction pass? Which one feature, if it misbehaves when worn, should be switched off rather than fixed?
-2. **Portal:** is pop-in inside a light column plus a step-out clip convincing enough in passthrough, or should the
-   agent grow from the miniature (desk-size) into full size so it reads as the same character?
-3. **Visitor liveliness:** which reactions matter most for a judge in a 3-minute demo (gaze-follow of the hand, poke
-   reaction, wave-back, talking gestures)? Any comfort concerns with a 1.2 m agent beside a seated user?
-4. **Wall placement rules:** we allow it above the monitor when the bottom edge clears eye level. Is that acceptable
-   ergonomically, or should straight-ahead stay forbidden?
-5. **UI consistency:** Wall cards now use the dark task-dock style and the plan uses cream paper. Should the visit card
-   also be paper (a "note" from the agent) for consistency with the desk decision paper?
-6. **Demo narrative** (2:50): Desk delegation → paper → stamp → handoff → receipt → Wall reveal with the Manager plan →
-   Meet portal. Too much? What would you cut?
-7. **Honesty labelling:** is "SCRIPTED DEMO" plus "a projection; the real agent keeps working" clear enough on the
-   portal card, or is it noise?
+1. **Everything new in rc13–rc15 is unworn:**
+   - Wall beam and snap;
+   - portal sequence, platform and visitor life (especially the head-spin fix);
+   - Select ray and the hidden original;
+   - Ceiling rug and shelf hand-over;
+   - card style.
+2. Device FPS for the portal art, column and platform; a 15-minute soak; thermals.
+3. The large portal in a real seated room. The owner's room produced only the small visitor.
+4. The full live chain driven *from the headset* (Level 5); so far it has only been proven over the API.
+5. App restart and network drop on the device.
+6. Demo video (not shot) and submission (dashboard, Devpost): owner tasks.
 
-## 8. Pointers
+## 8. Where we want expert feedback
 
-- Release gate matrix (per build, evidence, hashes): `docs/Engineering/RC8_RELEASE_GATE_MATRIX.md`
-- Flags and rollback: `docs/Engineering/RC8_FINAL_FLAGS_AND_ROLLBACK.md`
-- Owner worn findings: `docs/Engineering/RC8_HARDWARE_EVIDENCE.md`
-- Live backend evidence: `docs/Engineering/RC8_LIVE_AGENT_EVIDENCE.md`
-- Performance: `docs/Engineering/RC8_PERFORMANCE_RESULTS.md`
-- Code: `Assets/MuseDesk/Scripts/` (Wall: `Wall/` runtime, `Spatial/Core/Wall/` pure logic; portal: `Wall/WallHabitatController.PortalFx.cs`,
-  `Wall/PortalVisitorLife.cs`; Wall aim: `Wall/WallHabitatController.Aim.cs`; cards: `Wall/WallUi.cs`); scene builders and
-  Play Mode drivers in `AgentScripts/`; backend in `backend/`.
+1. **The last ~40 hours:** freeze after the rc14/rc15 worn check and spend the rest on video and submission, or one more
+   interaction pass? Which feature should be switched off, rather than fixed, if it misbehaves when worn? Candidates:
+   large portal, Select carry, Ceiling.
+2. **Honesty framing:** the strongest *executed* proof is the desk auth task (real files and tests, fixed scaffold). The
+   strongest *intelligent* proof is the live Manager plan (a real model plan, revise and approve, text-only results).
+   How should the video present these two without over-claiming? Is "Written, not run" clear?
+3. **Should the Manager runner execute anything before the deadline?** For example, re-use the sandboxed Developer and
+   Tester workers for one bounded "validation module + tests" template keyed on the objective. Or does that add risk
+   for little judge value?
+4. **Portal:** is a pop-in inside a light column, then stepping off a hovering platform, convincing in passthrough? Or
+   should the agent grow from its miniature so it reads as the same character?
+5. **Visitor liveliness:** which reactions matter most in a 3-minute demo? Any comfort concerns about a 1.2 m agent
+   beside a seated user?
+6. **Demo narrative (2:50):** Desk delegation → paper → stamp → handoff → receipt → Wall reveal with the Manager plan →
+   Meet portal. What would you cut?
+7. **Is the scenario matrix the right acceptance bar**, or is something judges will try missing from it?
+
+## 9. Pointers
+
+- Journeys and evidence: the six E2E docs listed in §5; owner headset script `QUEST_USER_ACCEPTANCE_QA.md`.
+- Tooling: `UNITY_OFFICIAL_TOOLING_CAPABILITY_AUDIT.md`.
+- Release gates, flags, rollback: `RC8_RELEASE_GATE_MATRIX.md`, `RC8_FINAL_FLAGS_AND_ROLLBACK.md`.
+- Worn findings: `RC8_HARDWARE_EVIDENCE.md`.
+- Live backend evidence: `RC8_LIVE_AGENT_EVIDENCE.md`, `LIVE_WORKFLOW_VALIDATION.md`.
+- Performance: `RC8_PERFORMANCE_RESULTS.md`.
+- Code:
+  - Wall runtime: `Assets/MuseDesk/Scripts/Wall/`;
+  - pure logic: `Assets/MuseDesk/Scripts/Spatial/Core/`;
+  - portal: `Wall/WallHabitatController.PortalFx.cs`, `Wall/PortalVisitorLife.cs`;
+  - aim and Select ray: `Wall/WallHabitatController.Aim.cs`;
+  - Ceiling: `Spatial/CeilingPodArt.cs`, `Spatial/CeilingShelfHandOver.cs`;
+  - backend: `backend/app/` (`phase3/` is the Manager, runner and `/btw`).
+- Builders and Play Mode drivers: `AgentScripts/`.
