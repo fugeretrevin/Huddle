@@ -8,7 +8,7 @@ namespace MuseDesk.Tests.AgentInteraction
         [Test]
         public void Words_FollowTheRunMode_AndAreNullWhenUnknown()
         {
-            Assert.AreEqual("LIVE", BubbleProvenance.Words(true, true));
+            Assert.IsNull(BubbleProvenance.Words(true, true));       // rc20: live needs no tag (owner: clutter)
             Assert.AreEqual("SCRIPTED DEMO", BubbleProvenance.Words(true, false));
             Assert.IsNull(BubbleProvenance.Words(false, true));      // an unknown mode is never reported as live
             Assert.IsNull(BubbleProvenance.Words(false, false));
@@ -29,7 +29,7 @@ namespace MuseDesk.Tests.AgentInteraction
         public void MaxLines_AllowsOneMoreForTheFooter()
         {
             Assert.AreEqual(3, BubbleProvenance.MaxLines(null));
-            Assert.AreEqual(4, BubbleProvenance.MaxLines("LIVE"));
+            Assert.AreEqual(4, BubbleProvenance.MaxLines("SCRIPTED DEMO"));
         }
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using TMPro;
 using UnityEngine;
 using MuseDesk.Workspace;
@@ -49,6 +50,15 @@ namespace MuseDesk.Voice
         public TMP_Text confirmLabel;
         public TMP_Text cancelLabel;
 
+        /// <summary>rc20 (owner, worn rc19: "the panel with what was heard was intersecting with the panel, bring that bit
+        /// out"). Set by whoever shows cards near the user (the Wall habitat): given the readout's world bounds, the world
+        /// offset that brings it out in front of anything it would cut into (zero when it is clear).</summary>
+        public static Func<Bounds, Vector3> Clearance;
+        Vector3 _readoutRest, _confirmRest, _cancelRest, _nudge;
+        bool _restSet;
+        /// <summary>For drivers: how far the readout is brought out right now (m).</summary>
+        public float NudgeMetres => _nudge.magnitude;
+
         readonly ScaleEase _readoutEase = new ScaleEase();
         readonly ScaleEase _confirmEase = new ScaleEase();
         readonly ScaleEase _cancelEase = new ScaleEase();
@@ -96,6 +106,7 @@ namespace MuseDesk.Voice
                 if (cancelKey != null && _cancelEase.Shown) cancelKey.BroadcastMessage("SyncToCurrentScale", SendMessageOptions.DontRequireReceiver);
             }
             _wasAnimating = animating;
+            KeepClear(dt);
 
             if (halo == null) return;
             float target;
@@ -108,6 +119,39 @@ namespace MuseDesk.Voice
             if (Mathf.Abs(next - _levelShown) < 0.0005f) return;
             _levelShown = next;
             halo.localScale = haloRestScale * (1f + haloSwell * _levelShown);
+        }
+
+        void KeepClear(float dt)
+        {
+            if (readout == null) return;
+            if (!_restSet)
+            {
+                _readoutRest = readout.localPosition;
+                if (confirmKey != null) _confirmRest = confirmKey.localPosition;
+                if (cancelKey != null) _cancelRest = cancelKey.localPosition;
+                _restSet = true;
+            }
+            Vector3 want = Vector3.zero;
+            if (Clearance != null && _readoutEase.Shown)
+            {
+                // The readout's bounds at its rest place (the nudge is taken off first so it does not chase itself).
+                var rs = readout.GetComponentsInChildren<Renderer>();
+                if (rs.Length > 0)
+                {
+                    Bounds b = rs[0].bounds;
+                    for (int i = 1; i < rs.Length; i++) b.Encapsulate(rs[i].bounds);
+                    b.center -= _nudge;
+                    try { want = Clearance(b); } catch (Exception) { want = Vector3.zero; }
+                }
+            }
+            Vector3 next = Vector3.Lerp(_nudge, want, 1f - Mathf.Exp(-dt * 10f));
+            if ((next - _nudge).sqrMagnitude < 1e-10f && want.sqrMagnitude == _nudge.sqrMagnitude) return;
+            _nudge = next;
+            Transform p = readout.parent;
+            Vector3 local = p != null ? p.InverseTransformVector(_nudge) : _nudge;
+            readout.localPosition = _readoutRest + local;
+            if (confirmKey != null) confirmKey.localPosition = _confirmRest + (confirmKey.parent == p ? local : (confirmKey.parent != null ? confirmKey.parent.InverseTransformVector(_nudge) : _nudge));
+            if (cancelKey != null) cancelKey.localPosition = _cancelRest + (cancelKey.parent == p ? local : (cancelKey.parent != null ? cancelKey.parent.InverseTransformVector(_nudge) : _nudge));
         }
 
         /// <summary>Microphone level 0..1 while listening.</summary>

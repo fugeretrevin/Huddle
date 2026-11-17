@@ -250,7 +250,7 @@ namespace MuseDesk.Workspace
 
         void ApplyMode()
         {
-            if (modeText != null) modeText.text = _eventLive ? "LIVE" : "SCRIPTED DEMO";
+            if (modeText != null) modeText.text = _eventLive ? "" : "SCRIPTED DEMO";      // rc20 (owner): no LIVE tag
             if (modeStrip != null)
                 OfficeTokens.Tint(modeStrip, _block, _eventLive ? OfficeTokens.Success : OfficeTokens.Amber);
             // Run again is valid only while the session itself is the scripted demo.

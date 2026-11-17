@@ -94,6 +94,14 @@ namespace MuseDesk.Wall
                 _manager.OnProposed(r.planId, r.revision, r.title, r.provenance, r.items);
                 _manager.SetPlanNotes(r.objective, r.assumptions, r.risks);
                 _workExecution = r.workExecution ?? "";
+                int n = r.items != null ? r.items.Count : 0;
+                string spokenTitle = (r.title ?? "").Trim();
+                if (spokenTitle.StartsWith("Plan:", StringComparison.OrdinalIgnoreCase)) spokenTitle = spokenTitle.Substring(5).Trim();
+                spokenTitle = spokenTitle.TrimEnd('…', '.', ' ');
+                MuseDesk.Voice.AgentSpeech.Say("manager",
+                    "Here is my plan" + (spokenTitle.Length == 0 ? "" : ": " + spokenTitle) + ". " + n + (n == 1 ? " step" : " steps")
+                    + ". Untick anything you don't want, then stamp Approve.",
+                    _planCard != null && _planCard.Visible ? _planCard.root.position : SpeechSpot());
             });
             return true;
         }
@@ -102,7 +110,9 @@ namespace MuseDesk.Wall
         /// it did not understand); otherwise the words to show.</summary>
         public string RequestPlanByVoice(string objective)
         {
-            if (!flags.wallManagerEnabled || !WallActive || _backend == null) return null;
+            if (!flags.wallManagerEnabled || _backend == null) return null;
+            // rc20: not on the Wall used to fall through to the board's "new task" (a card nobody planned or worked).
+            if (!WallActive) return "The Manager works on the Wall. Open the Wall, then tell the Manager your goal again.";
             EnsurePlanCard();
             if (_paper != null && !_planCardOpen) PressManager();
             return RequestPlan(objective) ? "The Manager is drafting a plan. Nothing starts until you approve it." : _manager.Message;
@@ -486,6 +496,8 @@ namespace MuseDesk.Wall
                         _receiptCard.Show(true);
                     }
                     if (_audio != null) _audio.Play(WallCue.Land, true);
+                    // rc20 (owner): the Manager says it, not only the paper.
+                    MuseDesk.Voice.AgentSpeech.Say("manager", "All done. " + _receiptTitle, _receiptCard != null ? _receiptCard.root.position : ReceiptTarget());
                     Debug.Log("[MuseDesk.Wall] Plan summary receipt delivered to the desk (artifact " + _board.Receipt.artifactId + ").");
                 }
             }
@@ -587,8 +599,9 @@ namespace MuseDesk.Wall
         /// <summary>The live plan paper's footer for the backend's declared work mode.</summary>
         public static string PlanFooter(string workExecution)
         {
-            return workExecution == "sandbox" ? "LIVE model · code + tests really run in a sandbox"
-                                              : "LIVE model · text only, no code tools";
+            // rc20 (owner: no LIVE tags). Says what really happens; "restricted workspace", never "sandbox" (honesty rule).
+            return workExecution == "sandbox" ? "Code and tests really run in a restricted workspace on your PC"
+                                              : "Model text only, no code tools";
         }
 
         readonly List<bool> _approvedScratch = new List<bool>();

@@ -576,7 +576,11 @@ namespace MuseDesk.Voice
             // registered as the Manager (the Wall habitat, when it is active and its flag is on). It only ASKS for a plan:
             // nothing is created until the user approves the plan paper.
             // (Hands-free: only when the sentence was addressed by name, e.g. "Manager, plan a login page".)
-            if ((!ambient || addressed) && intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
+            // rc20 (worn rc19): "Manager, build a program that prints stars" parsed as the board's "new task" command
+            // (CreateTask) and never reached the Manager. A sentence that NAMES the Manager is the Manager's, unless it halts.
+            bool managerMayTake = intent.Kind == VoiceIntentKind.None || intent.Kind == VoiceIntentKind.CreateTask
+                                  || intent.Kind == VoiceIntentKind.Start || intent.Kind == VoiceIntentKind.AskAgent;
+            if ((!ambient || addressed) && managerMayTake && _pending == Pending.None && ManagerRequestHandler != null)
             {
                 VoiceClassification c = VoiceIntentClassifier.Classify(heard);
                 if (c.Kind == VoiceAction.ManagerRequest && !string.IsNullOrEmpty(c.Question) && c.Question.Trim().Length >= 3)
@@ -1072,7 +1076,7 @@ namespace MuseDesk.Voice
 
         // ───────────────────────── readout ─────────────────────────
 
-        string ModeWord() { return _office.IsLive ? "LIVE" : "SCRIPTED DEMO"; }
+        string ModeWord() { return _office.IsLive ? "" : "SCRIPTED DEMO"; }      // rc20 (owner): no LIVE tag
 
         string TrySaying() { return VoiceAnswers.TrySaying(_office.HelpState(CurrentContext())); }
 

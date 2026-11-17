@@ -1066,7 +1066,7 @@ namespace MuseDesk.Agents
                     if (want)
                     {
                         AgentView v = p.view;
-                        chip.SetContent(_roles[i], live ? "LIVE" : "SCRIPTED DEMO",
+                        chip.SetContent(_roles[i], live ? null : "SCRIPTED DEMO",      // rc20: no LIVE tag
                             WorkstationStatusDisplay.ActivityWords(v != null ? v.State : null, PendingOn(i)),
                             RoleColor(_roles[i]));
                         if (!chip.Wanted) chip.Show();

@@ -228,7 +228,7 @@ namespace MuseDesk.Spatial
             }
             if (progressText != null)
                 progressText.text = string.IsNullOrEmpty(agent.Progress) ? "" : agent.Progress;
-            if (modeText != null) modeText.text = live ? "LIVE" : "SCRIPTED DEMO";
+            if (modeText != null) modeText.text = live ? "" : "SCRIPTED DEMO";      // rc20 (owner): no LIVE tag
             if (roleStrip != null) OfficeTokens.Tint(roleStrip, _block, RoleColor(_agentId));
         }
 

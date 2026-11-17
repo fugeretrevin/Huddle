@@ -243,11 +243,15 @@ namespace MuseDesk.Wall
             for (int r = 0; r < 4; r++)
             {
                 HabitatSocket w = layout.Socket((HabitatRole)r + ".WorkPose");
-                _status[r] = Box(root, "StatusLight_" + (HabitatRole)r, w.position + new Vector3(0, layout.agentHeight + 0.03f, 0), new Vector3(0.014f, 0.014f, 0.014f), Grey);
+                // rc20 (owner, worn rc19: "the blocks above the agents' heads are kinda weird"): the state light is a small
+                // round lamp on the back wall above the desk (a brass plate and a coloured glass dome), not a cube in the air.
+                Vector3 lamp = new Vector3(w.position.x, w.position.y + layout.agentHeight + 0.03f, LampZ);
+                Disc(root, "StatusLamp_Plate_" + (HabitatRole)r, lamp - Vector3.forward * 0.0015f, Vector3.forward, 0.0105f, 0.003f, new Color(0.78f, 0.62f, 0.3f));
+                _status[r] = Disc(root, "StatusLight_" + (HabitatRole)r, lamp + Vector3.forward * 0.002f, Vector3.forward, 0.0075f, 0.0045f, Grey);
                 _selectRing[r] = Box(root, "SelectRing_" + (HabitatRole)r, w.position + new Vector3(0, 0.002f, 0), new Vector3(0.075f, 0.003f, 0.075f), Teal).transform;
                 _selectRingR[r] = _selectRing[r].GetComponent<Renderer>();
                 _selectRing[r].gameObject.SetActive(false);
-                _visitMarker[r] = Box(root, "OnVisitMarker_" + (HabitatRole)r, w.position + new Vector3(0, layout.agentHeight + 0.055f, 0), new Vector3(0.03f, 0.008f, 0.008f), Lavender).transform;
+                _visitMarker[r] = Box(root, "OnVisitMarker_" + (HabitatRole)r, new Vector3(w.position.x, w.position.y + layout.agentHeight + 0.052f, LampZ), new Vector3(0.03f, 0.007f, 0.004f), Lavender).transform;
                 _visitMarker[r].gameObject.SetActive(false);
             }
 
@@ -401,6 +405,65 @@ namespace MuseDesk.Wall
         }
 
         bool _recordColors = true;   // only the constructor's structure boxes are batch candidates
+
+        /// <summary>Habitat-local z of things mounted on the back wall (the back panels end at z 0.015-0.019).</summary>
+        const float LampZ = 0.0225f;
+
+        static Mesh _cylinder;
+
+        /// <summary>A unit cylinder (radius 0.5, height 1, along Y) with caps; built once.</summary>
+        static Mesh UnitCylinder()
+        {
+            if (_cylinder != null) return _cylinder;
+            const int sides = 20;
+            var v = new List<Vector3>(); var n = new List<Vector3>(); var tri = new List<int>();
+            for (int cap = 0; cap < 2; cap++)
+            {
+                float y = cap == 0 ? -0.5f : 0.5f; Vector3 nn = cap == 0 ? Vector3.down : Vector3.up;
+                int c0 = v.Count; v.Add(new Vector3(0, y, 0)); n.Add(nn);
+                for (int i = 0; i <= sides; i++) { float a = i * Mathf.PI * 2f / sides; v.Add(new Vector3(Mathf.Cos(a) * 0.5f, y, Mathf.Sin(a) * 0.5f)); n.Add(nn); }
+                for (int i = 0; i < sides; i++)
+                {
+                    if (cap == 1) { tri.Add(c0); tri.Add(c0 + i + 2); tri.Add(c0 + i + 1); }
+                    else { tri.Add(c0); tri.Add(c0 + i + 1); tri.Add(c0 + i + 2); }
+                }
+            }
+            int s0 = v.Count;
+            for (int i = 0; i <= sides; i++)
+            {
+                float a = i * Mathf.PI * 2f / sides; Vector3 d = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
+                v.Add(d * 0.5f + Vector3.down * 0.5f); n.Add(d);
+                v.Add(d * 0.5f + Vector3.up * 0.5f); n.Add(d);
+            }
+            for (int i = 0; i < sides; i++)
+            {
+                int a = s0 + i * 2, b = a + 2;
+                tri.Add(a); tri.Add(a + 1); tri.Add(b + 1);
+                tri.Add(a); tri.Add(b + 1); tri.Add(b);
+            }
+            _cylinder = new Mesh { name = "WallHabitat_UnitCylinder" };
+            _cylinder.SetVertices(v); _cylinder.SetNormals(n); _cylinder.SetTriangles(tri, 0);
+            _cylinder.RecalculateBounds();
+            return _cylinder;
+        }
+
+        /// <summary>A round disc / short cylinder of <paramref name="radius"/> and <paramref name="thickness"/> whose axis is
+        /// <paramref name="axis"/> (habitat-local), centred on <paramref name="localCenter"/>.</summary>
+        public Renderer Disc(Transform parent, string name, Vector3 localCenter, Vector3 axis, float radius, float thickness, Color c)
+        {
+            var g = new GameObject(name);
+            g.transform.SetParent(parent, false);
+            g.transform.localPosition = localCenter;
+            g.transform.localRotation = Quaternion.FromToRotation(Vector3.up, axis.sqrMagnitude > 1e-8f ? axis.normalized : Vector3.up);
+            g.transform.localScale = new Vector3(radius * 2f, thickness, radius * 2f);
+            g.AddComponent<MeshFilter>().sharedMesh = UnitCylinder();
+            var mr = g.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = _mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            Tint(mr, c);
+            return mr;
+        }
 
         public void Tint(Renderer r, Color c)
         {
@@ -941,7 +1004,87 @@ namespace MuseDesk.Wall
                 Color brass = new Color(0.78f, 0.62f, 0.3f);
                 Box(go.transform, "Collar_In", pts[0], new Vector3(TubeRadius * 2.8f, 0.005f, TubeRadius * 2.8f), brass);
                 Box(go.transform, "Collar_Out", pts[pts.Length - 1], new Vector3(TubeRadius * 2.8f, 0.005f, TubeRadius * 2.8f), brass);
+                PassThroughCollars(go.transform, pts, brass);
             }
+        }
+
+        /// <summary>For drivers: brass collars placed where the tubes pass through a slab or a wall.</summary>
+        public int TubeCollars { get; private set; }
+
+        /// <summary>
+        /// rc20 (owner, worn rc19: "the pipes shouldn't go through the floors and walls, add holes for them"): wherever a tube
+        /// passes through a floor slab, the roof, a partition or a wall, a brass flange sits on each face it crosses, with a
+        /// dark ring inside it (the hole), so the tube reads as fitted through the slab, not cut into it.
+        /// </summary>
+        void PassThroughCollars(Transform parent, Vector3[] pts, Color brass)
+        {
+            Color hole = new Color(0.10f, 0.08f, 0.07f);
+            var hits = new List<Vector3>(); var dirs = new List<Vector3>();
+            // The solid things a tube can pass: the layout's decks, roof, partitions and walls, plus each floor's ceiling slab
+            // across the floor's full width (the art's ceilings span wider than the layout's walkable decks).
+            var solids = new List<KeyValuePair<Vector3, Vector3>>();
+            float back = 0.015f, depth = layout.size.z;
+            for (int b = 0; b < layout.boxes.Count; b++)
+            {
+                HabitatBox box = layout.boxes[b];
+                if (box.kind == HabitatBoxKind.Deck || box.kind == HabitatBoxKind.Roof || box.kind == HabitatBoxKind.EndWall
+                    || box.kind == HabitatBoxKind.ShaftWall)
+                    solids.Add(new KeyValuePair<Vector3, Vector3>(box.Min, box.Max));
+                else if (box.kind == HabitatBoxKind.Partition)
+                {
+                    // In the art the bay walls run up to the bay ceiling (the layout's partition is only the walk blocker).
+                    Vector3 mx = box.Max;
+                    if (box.floor >= 0 && box.floor < layout.floors.Count) mx.y = Mathf.Max(mx.y, layout.floors[box.floor].ceilingY);
+                    solids.Add(new KeyValuePair<Vector3, Vector3>(box.Min, mx));
+                }
+            }
+            for (int f = 0; f < layout.floors.Count; f++)
+            {
+                // Calibrated against the art (screenshots, rc20): the lower floor's cubicle bays have their own ceiling
+                // just BELOW the layout's ceiling line; the upper floors' ceilings are the slab ABOVE it.
+                HabitatFloor fl = layout.floors[f];
+                float y0 = f == 0 ? fl.ceilingY - 0.021f : fl.ceilingY, y1 = f == 0 ? fl.ceilingY : fl.ceilingY + 0.02f;
+                solids.Add(new KeyValuePair<Vector3, Vector3>(new Vector3(fl.xMin, y0, back), new Vector3(fl.xMax, y1, depth)));
+            }
+            for (int b = 0; b < solids.Count; b++)
+            {
+                Vector3 mn = solids[b].Key, mx = solids[b].Value;
+                for (int i = 1; i < pts.Length; i++)
+                {
+                    Vector3 a = pts[i - 1], d = pts[i] - pts[i - 1];
+                    float t0, t1;
+                    if (!SegmentBox(a, d, mn, mx, out t0, out t1)) continue;
+                    Vector3 dir = d.normalized;
+                    if (t0 > 0f) { hits.Add(a + d * t0); dirs.Add(dir); }     // enters through a face on this segment
+                    if (t1 < 1f) { hits.Add(a + d * t1); dirs.Add(dir); }     // leaves through a face on this segment
+                }
+            }
+            for (int k = 0; k < hits.Count; k++)
+            {
+                // Two hits closer than a flange are one crossing seen from two boxes that touch.
+                bool dup = false;
+                for (int j = 0; j < k && !dup; j++) dup = (hits[j] - hits[k]).sqrMagnitude < 0.006f * 0.006f;
+                if (dup) continue;
+                Disc(parent, "PassCollar_" + k, hits[k], dirs[k], TubeRadius * 1.5f, 0.0032f, brass);
+                Disc(parent, "PassHole_" + k, hits[k], dirs[k], TubeRadius * 1.22f, 0.004f, hole);
+                TubeCollars++;
+            }
+        }
+
+        /// <summary>Slab test: the part [t0, t1] of segment a + d*t (t in 0..1) inside the box. False when it misses.</summary>
+        static bool SegmentBox(Vector3 a, Vector3 d, Vector3 mn, Vector3 mx, out float t0, out float t1)
+        {
+            t0 = 0f; t1 = 1f;
+            for (int ax = 0; ax < 3; ax++)
+            {
+                float o = a[ax], v = d[ax];
+                if (Mathf.Abs(v) < 1e-7f) { if (o < mn[ax] || o > mx[ax]) return false; continue; }
+                float u0 = (mn[ax] - o) / v, u1 = (mx[ax] - o) / v;
+                if (u0 > u1) { float s = u0; u0 = u1; u1 = s; }
+                t0 = Mathf.Max(t0, u0); t1 = Mathf.Min(t1, u1);
+                if (t0 > t1) return false;
+            }
+            return t1 - t0 > 1e-5f || (t0 > 0f && t0 < 1f);
         }
 
         static Mesh TubeMesh(Vector3[] pts, float radius, int sides)

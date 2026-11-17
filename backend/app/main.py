@@ -18,7 +18,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from . import __version__
 from .auth import hash_token, new_token, verify_token
@@ -182,6 +182,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse(status="ok", version=__version__)
+
+    # ─────────────────────── PC screen panel (rc20) ───────────────────────
+    @app.get("/v2/sessions/{session_id}/screen/frame")
+    async def screen_frame(session_id: str, request: Request, w: int = 1280,
+                           authorization: str | None = Header(default=None)) -> Response:
+        """The PC's primary screen for the headset's screen panel: BGRA pixels, top row first, zlib-compressed.
+        Off unless the backend was started with MUSEDESK_SCREEN_SHARE=true; a paired session only."""
+        from . import screen_capture
+        await require_session(session_id, request, authorization)
+        if not screen_capture.enabled():
+            raise HTTPException(status_code=403, detail="screen sharing is off on the PC")
+        try:
+            f = await asyncio.to_thread(screen_capture.capture, w, True)
+        except Exception:  # noqa: BLE001 - never leak capture internals
+            raise HTTPException(status_code=503, detail="the screen could not be read")
+        return Response(content=f.data, media_type="application/octet-stream",
+                        headers={"X-Width": str(f.width), "X-Height": str(f.height), "X-Format": "BGRA32",
+                                 "X-Compression": "zlib", "Cache-Control": "no-store"})
 
     # ─────────────────────── sessions ───────────────────────
     @app.post("/v1/sessions", response_model=SessionCreated, status_code=201)

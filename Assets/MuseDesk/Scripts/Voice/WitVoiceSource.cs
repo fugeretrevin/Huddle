@@ -28,6 +28,10 @@ namespace MuseDesk.Voice
         public float maxRecordingSeconds = 6f;
         [Tooltip("Silence after speech that ends the request (s).")]
         public float silenceSeconds = 1.4f;
+        /// <summary>A pause this long between words still belongs to the same sentence.</summary>
+        public const float WordGapSeconds = 2.2f;
+        /// <summary>A sentence (a goal for the Manager) may run this long.</summary>
+        public const float MinSentenceSeconds = 15f;
 
         public event Action<string> PartialTranscript;
         public event Action<string> FinalTranscript;
@@ -90,8 +94,11 @@ namespace MuseDesk.Voice
                 var rc = appVoice.RuntimeConfiguration;
                 if (rc != null)
                 {
-                    if (maxRecordingSeconds > 0f) rc.maxRecordingTime = maxRecordingSeconds;
-                    if (silenceSeconds > 0f) rc.minKeepAliveTimeInSeconds = silenceSeconds;
+                    // rc20 (worn rc19): the request stopped between two words and the sentence came back half said. The SDK
+                    // closes the request 1 s after the last new word by default; a goal for the Manager needs pauses to think.
+                    if (maxRecordingSeconds > 0f) rc.maxRecordingTime = Mathf.Max(maxRecordingSeconds, MinSentenceSeconds);
+                    if (silenceSeconds > 0f) rc.minKeepAliveTimeInSeconds = Mathf.Max(silenceSeconds, WordGapSeconds);
+                    rc.minTranscriptionKeepAliveTimeInSeconds = WordGapSeconds;
                 }
                 var ev = appVoice.VoiceEvents;
                 ev.OnPartialTranscription.AddListener(SdkPartial);

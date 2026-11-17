@@ -165,6 +165,8 @@ namespace MuseDesk.Wall
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted -= OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded -= OnVoiceListeningEnded;
             if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
+            if (MuseDesk.Voice.VoiceHud.Clearance == (System.Func<Bounds, Vector3>)ReadoutClearance) MuseDesk.Voice.VoiceHud.Clearance = null;
+            MuseDesk.Voice.AgentSpeech.StopAll();
             ClearMeetVoiceHook();          // Meet (WallHabitatController.Meet.cs): re-registered per frame while Wall is active
             Unhook();
             ResetPlanStamp();
@@ -198,6 +200,7 @@ namespace MuseDesk.Wall
         void SyncVoiceManagerHook()
         {
             bool want = isActiveAndEnabled && flags.wallManagerEnabled && flags.wallHabitatEnabled;
+            if (isActiveAndEnabled) MuseDesk.Voice.VoiceHud.Clearance = ReadoutClearance;     // rc20: readout steps out of the cards
             if (want) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = RequestPlanByVoice;
             else if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
         }

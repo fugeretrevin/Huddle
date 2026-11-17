@@ -10,11 +10,13 @@ namespace MuseDesk.Agents
         /// <summary>Footer size relative to the bubble text: 6.5 mm text gives a 5.5 mm footer (the type floor).</summary>
         public const int FooterPercent = 85;
 
-        /// <summary>"LIVE" or "SCRIPTED DEMO" for a known mode, null for an unknown one (no footer).</summary>
+        /// <summary>"SCRIPTED DEMO" in the scripted demo; null (no footer) when live or when the mode is not known.
+        /// rc20 (owner, worn rc19): "we don't need the LIVE tags, they intersect with things and add clutter". Live is the
+        /// normal case and needs no tag; the scripted demo is always labelled.</summary>
         public static string Words(bool modeKnown, bool live)
         {
-            if (!modeKnown) return null;
-            return live ? "LIVE" : "SCRIPTED DEMO";
+            if (!modeKnown || live) return null;
+            return "SCRIPTED DEMO";
         }
 
         /// <summary>The bubble text with its footer on a new line (small, InkSoft grey). No footer: the text unchanged.</summary>

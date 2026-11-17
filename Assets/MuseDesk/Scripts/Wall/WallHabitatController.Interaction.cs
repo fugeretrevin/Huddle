@@ -707,7 +707,7 @@ namespace MuseDesk.Wall
         {
             Transform h = ResolveHead();
             Vector3 eye = h != null ? h.position : (nearUserRig != null ? nearUserRig.TransformPoint(new Vector3(0, 0.30f, 0.62f)) : Vector3.zero);
-            if (_visitCard != null && nearUserRig != null) _visitCard.Place(nearUserRig.TransformPoint(visitCardLocal), eye, 12f);
+            if (_visitCard != null && nearUserRig != null) _visitCard.Place(CardSpot(_visitCard, nearUserRig.TransformPoint(visitCardLocal)), eye, 12f);
             // The plan paper is taller than the old plan card: it grows UP from the old card's bottom edge, so it stays clear of
             // the stamps and the desk things the old card was placed above.
             if (_planCard != null && nearUserRig != null)
@@ -738,12 +738,27 @@ namespace MuseDesk.Wall
             _lastQuestionLabel = question;
             SideConversationSession session = _side;
             _backend.AskSide(_side.agentId, taskId, _side.visitSessionId, question, _side.contextRevision >= 0 ? _side.contextRevision : rev, rid, key,
-                reply => { if (session == _side) session.Complete(reply); });
+                reply =>
+                {
+                    if (session != _side || !session.Complete(reply)) return;
+                    // rc20 (owner, worn rc19): the agent says its answer, not only the card.
+                    if (reply.status == "answered" || reply.status == "amendment_suggested")
+                        MuseDesk.Voice.AgentSpeech.Say(session.agentId, reply.reply, SpeechSpot());
+                });
             return true;
+        }
+
+        /// <summary>Where a visiting agent's voice comes from: its card (beside the agent), else in front of the user.</summary>
+        Vector3 SpeechSpot()
+        {
+            if (_visitCard != null && _visitCard.Visible) return _visitCard.root.position;
+            Transform h = ResolveHead();
+            return h != null ? h.position + h.forward * 0.6f : Vector3.zero;
         }
 
         public void PressReturn()
         {
+            MuseDesk.Voice.AgentSpeech.StopAll();
             if (_portal.State != PortalState.Hidden) { _portal.SendBack(); return; }
             _visit.Return(VisitEndReason.UserReturn);
         }
@@ -795,7 +810,10 @@ namespace MuseDesk.Wall
             // rc12: one short line (it wrapped into the keys), and the mode only once ("SCRIPTED DEMO · SCRIPTED DEMO").
             string said = _side != null && _side.History.Count > 0 ? (!string.IsNullOrEmpty(_side.History[_side.History.Count - 1].label) ? _side.History[_side.History.Count - 1].label : ProvenanceWords(_side.History[_side.History.Count - 1].provenance)) : "";
             string modeLabel = _tasks != null ? _tasks.SourceModeLabel : "";
-            string foot = (string.IsNullOrEmpty(said) || said == modeLabel ? modeLabel : said + " · " + modeLabel) + " · a projection; the real agent keeps working";
+            if (modeLabel == "LIVE") modeLabel = "";            // rc20 (owner): no LIVE tag; the demo stays labelled
+            string lead = string.IsNullOrEmpty(said) || said == modeLabel ? modeLabel
+                        : string.IsNullOrEmpty(modeLabel) ? said : said + " · " + modeLabel;
+            string foot = string.IsNullOrEmpty(lead) ? "The real agent keeps working" : lead + " · the real agent keeps working";
             _visitCard.SetText(name + (_portal.State != PortalState.Hidden ? " is here" : " visiting"), body, foot);
             // A suggested change that can be applied takes the third question's place: "Apply change" (the one key that
             // changes anything from a visit, and only after this explicit press).

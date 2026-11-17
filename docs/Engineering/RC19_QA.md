@@ -18,6 +18,26 @@ plan paper ticks driven and captured (tick, cross, struck-through title); portal
 | 5 | Manager paper: too many buttons; "a check box or an x next to each work item" | Each work item has a small tick key beside its title: a green check keeps it, a red cross skips it (its title is struck through). The Keep 1 / Keep 2 / Skip 3 keys are gone: the paper's keys are More, Revise, Close (and Confirm risk only when a risky step is ticked). Approve / Reject are still the stamps | Manager -> plan: poke a tick, it flips to a cross | |
 | 6 | "When the agents are bringing up their papers they should use the tubes too; elevators only for a question" | A finished result (Researcher), a problem report (any agent, red sheet) and a hand-off to an agent on another floor now ride the tubes: the sheet lifts off the desk, rolls up, goes up the tube to the Manager's tray (and on down the other agent's tube for a hand-off). The Manager's plan summary flies straight from the printer to you (no ride down, about 20 s saved). The elevator is left for a question to you (approval). A hand-off on the same floor is still a short walk | Run a plan: nobody rides the elevator; the summary arrives within seconds of the last card | |
 
+### Owner's words after wearing rc19 live (2026-11-17 afternoon, transcribed; no per-line PASS/FAIL given)
+
+> "i said manag3r build a program to outrput starrs to the console and it wass added as a task to the board but wasnt done
+> for like the manager and wasnt started on. also the voice thing should give more buffer time before stopping it llike i
+> was inbetweeeern words and it stopped listening and was like start buiulkding? but it was only half filled in. also that
+> panel with the thing that was heard was intersecting with the panekl so maybe bring thatt bit out. we also donmt neeed
+> the lkike 'live' tags bnecause they intersect with things and it just adds clutter. the agents should also not just
+> answer on the card (this card should be movable by the way) but be voicing things. like we need text to speech for
+> those. so liek the main flow works but we need polish and ease of use and to actualy be able to create new things like i
+> need to give the manager a new, not scripted plan, so it then creates the context needed and makes an actual plan etc.
+> also the pipes shgouldnt go through the floors and walls it looks weird. add like holes for those pipes to go through or
+> something/ also the blocks above the agents heads are kinda weird no? lets fix that up. the agents looks a bit softer
+> yes but still plasticy. should we add like soft textures there or sopmething? should i ask antigravity to do work on
+> that? also we need a way for the computer screen to have an overlay on the computer screen so the user can see their
+> screen as like a panelt rather than strictly through just passthrough"
+
+Read against the table above (the owner's words only): line 1 NOTE ("a bit softer yes but still plasticy"); line 2 NOTE
+(pipes pass through floors and walls); the main flow works ("the main flow works"). The rest were not commented on.
+Everything raised is handled in rc20 (`RC20_QA.md`).
+
 ## "Build something real" (your note 7)
 
 The live check uses the real Meta model and the real restricted workspace on the PC (Developer writes files, Tester runs

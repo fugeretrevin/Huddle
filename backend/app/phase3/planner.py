@@ -21,7 +21,15 @@ PLANNER_SYSTEM = (
     "research; developer for code/implement; tester for test/verify; researcher or developer for "
     "doc), depends_on (list of client_item_ids of earlier items), acceptance_criteria (list of "
     "short strings), required_permission (one of none, read_repo, workspace_write, run_tests). "
-    "The manager never owns items. Do not invent tools, credentials or deployments. Max 12 items."
+    "The manager never owns items. Do not invent tools, credentials or deployments. Max 12 items. "
+    # rc20 (owner, worn rc19): the user gives the Manager NEW goals by voice ("build a program that prints stars to
+    # the console"). The plan must fit that goal, not a template: name the real module, size it to the goal.
+    "The objective is the user's own words, usually spoken: read it for what they really want "
+    "built. The team works in a fresh Python folder (the Developer writes modules and pytest "
+    "tests; the Tester adds tests and runs them), so plan concrete Python modules and name them "
+    "in the titles. Size the plan to the objective: a small program needs 2 to 4 items, a "
+    "larger feature up to 8. In assumptions, state the context you decided on (inputs, outputs, "
+    "file names) so the user can check it before approving."
 )
 
 

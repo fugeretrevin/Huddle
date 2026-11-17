@@ -279,6 +279,17 @@ namespace MuseDesk.Wall
 
         static bool IsTimeout(string net) { return net != null && net.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0; }
 
+        /// <summary>rc20: a request for one frame of the PC's screen (the Screen panel), or null when not live. The caller
+        /// sends and disposes it. Raw BGRA, zlib-compressed; sizes in the X-Width / X-Height headers.</summary>
+        public UnityWebRequest ScreenFrameRequest(int width)
+        {
+            if (!IsLive) return null;
+            var req = UnityWebRequest.Get(session.ApiBaseUrl.TrimEnd('/') + "/v2/sessions/" + Sid + "/screen/frame?w=" + width);
+            req.SetRequestHeader("Authorization", "Bearer " + session.LiveToken);
+            req.timeout = 5;
+            return req;
+        }
+
         string Sid { get { return Uri.EscapeDataString(session.LiveSessionId); } }
 
         static string Key(string given, string fallbackPrefix, string id)

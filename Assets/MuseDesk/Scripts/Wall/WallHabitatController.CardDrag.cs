@@ -60,9 +60,11 @@ namespace MuseDesk.Wall
 
         void TickCardDrag(float dt)
         {
+            TickScreen(dt);                                      // rc20: the PC screen panel (WallHabitatController.Screen.cs)
             if (!movableCards || nearUserRig == null) return;
             if (_planCard != null) DragFor(_planCard);
             if (_receiptCard != null) DragFor(_receiptCard);
+            if (_visitCard != null) DragFor(_visitCard);       // rc20 (worn rc19): "this card should be movable"
             if (_cardDrags.Count == 0) return;
 
             Transform h = ResolveHead();
@@ -93,7 +95,7 @@ namespace MuseDesk.Wall
                     {
                         d.hand = i;
                         d.offset = d.card.root.position - s.origin;
-                        Note("Moving the " + (d.card == _receiptCard ? "summary" : "plan"));
+                        Note("Moving the " + (d.card == _receiptCard ? "summary" : d.card == _visitCard ? "card" : "plan"));
                     }
                 }
             }
@@ -115,6 +117,36 @@ namespace MuseDesk.Wall
             }
         }
 
+        /// <summary>rc20: the voice readout's way out of the Wall's cards (see VoiceHud.Clearance). For each visible card
+        /// the readout overlaps (in the card's plane, within 6 cm of it), the offset that puts the readout 5 cm in front of
+        /// the card, toward the eyes. Zero when it is clear.</summary>
+        Vector3 ReadoutClearance(Bounds b)
+        {
+            Transform h = ResolveHead();
+            if (h == null) return Vector3.zero;
+            Vector3 best = Vector3.zero;
+            WallCard[] cards = { _planCard, _visitCard, _receiptCard };
+            for (int i = 0; i < cards.Length; i++)
+            {
+                WallCard c = cards[i];
+                if (c == null || c.root == null || !c.Visible) continue;
+                Transform t = c.root;
+                Vector3 toEye = h.position - t.position;
+                if (toEye.sqrMagnitude < 1e-6f) continue;
+                toEye.Normalize();
+                Vector3 local = t.InverseTransformPoint(b.center);
+                Vector2 half = c.Size * 0.5f;
+                Vector3 ext = b.extents;
+                float rx = Mathf.Abs(Vector3.Dot(t.right, Vector3.right)) * ext.x + Mathf.Abs(Vector3.Dot(t.right, Vector3.forward)) * ext.z;
+                if (Mathf.Abs(local.x) > half.x + rx || Mathf.Abs(local.y) > half.y + ext.y) continue;
+                float ahead = Vector3.Dot(b.center - t.position, toEye);        // how far in front of the card it already is
+                if (ahead > 0.06f || ahead < -0.06f) continue;
+                Vector3 need = toEye * (0.05f - ahead);
+                if (need.sqrMagnitude > best.sqrMagnitude) best = need;
+            }
+            return best;
+        }
+
         bool HandBusyWithCard(int hand)
         {
             for (int k = 0; k < _cardDrags.Count; k++) if (_cardDrags[k].hand == hand) return true;
@@ -129,9 +161,13 @@ namespace MuseDesk.Wall
         }
 
         /// <summary>For drivers: move a card by a simulated pinch from its handle by <paramref name="delta"/> (world metres).</summary>
-        public bool DriverDragCard(bool receipt, Vector3 delta)
+        public bool DriverDragCard(bool receipt, Vector3 delta) => DriverDragCard(receipt ? _receiptCard : _planCard, delta);
+
+        /// <summary>For drivers: the same for the visit card (rc20).</summary>
+        public bool DriverDragVisitCard(Vector3 delta) => DriverDragCard(_visitCard, delta);
+
+        bool DriverDragCard(WallCard c, Vector3 delta)
         {
-            WallCard c = receipt ? _receiptCard : _planCard;
             if (c == null || !c.Visible) return false;
             CardDrag d = DragFor(c);
             Transform h = ResolveHead();

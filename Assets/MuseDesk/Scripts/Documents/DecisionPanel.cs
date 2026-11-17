@@ -166,12 +166,12 @@ namespace MuseDesk.Documents
             if (c == null) return;
             Revision = revision < 0 ? 0 : revision;
             bool live = string.Equals(sourceMode ?? c.SourceMode, SourceModes.Live, System.StringComparison.OrdinalIgnoreCase);
-            string mode = live ? "LIVE" : "SCRIPTED DEMO";
+            string mode = live ? "" : "SCRIPTED DEMO";        // rc20 (owner): no LIVE tag; the demo stays labelled
             string needs = Revision > 0 ? "Revised proposal " + Revision + ". Needs your decision" : "Needs your decision";
             Color bandText = live ? liveBandText : demoBandText;
             if (badge)
             {
-                badge.text = needsLabel ? mode : mode + "    " + needs;
+                badge.text = needsLabel ? mode : (mode.Length == 0 ? needs : mode + "    " + needs);
                 badge.color = bandText;
             }
             // With a From line the header is printed on paper, so its words are ink; without one

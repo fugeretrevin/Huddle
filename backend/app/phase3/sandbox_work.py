@@ -93,7 +93,14 @@ DEV_SYSTEM = (
     "the code must actually work. Include a pytest file named test_<module>.py with focused "
     "tests for this step's acceptance criteria. Extend the files already in the folder when "
     "they exist (write the whole updated file). When you rewrite an existing test file, keep "
-    "every test already in it and add yours. " + RULES)
+    "every test already in it and add yours. "
+    # rc20 (live run, "a program that prints a triangle of stars"): the plan promised a CLI and the change asked to "let
+    # the user choose the character", but __main__ ignored its arguments and always printed 5 stars.
+    # sys and argparse are NOT allowed in the restricted workspace (on purpose), so the inputs go through main(argv).
+    "When the code is a program the user runs, every input the step mentions (sizes, options, "
+    "characters) must be a real option of def main(argv=None), parsed by hand from the list of "
+    "strings (sys and argparse are not available here), and tested by calling main([...]) and "
+    "checking the printed output. " + RULES)
 
 # rc19 (owner, live run on a new objective): a later step rewrote a test file and the folder went from 51 to 45 tests
 # with nobody told. When a step leaves FEWER tests than the folder had before it, the Developer gets one chance to put the
