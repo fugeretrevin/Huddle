@@ -392,9 +392,21 @@ namespace MuseDesk.Wall
             _receiptCard = new WallCard(nearUserRig, "WallReceiptCard", keyTemplate, font, ArtHelper(), new Vector2(0.18f, 0.20f), keyScale);
         }
 
+        bool _receiptFlightDeferred;
+        Vector3 _receiptDeferredFrom;
+
         void StartReceiptFlight(Vector3 fromWorld)
         {
             if (_receiptFlyer != null || _board.Receipt.stage == ReceiptStage.None || _board.Receipt.stage == ReceiptStage.OnDesk) return;
+            // Acts are dropped while the habitat is being switched off (leaving Wall mode): no object may be parented under it
+            // then (Unity: "Cannot set the parent ... while activating or deactivating"). Fly the receipt once it is active again.
+            if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            {
+                _receiptFlightDeferred = true;
+                _receiptDeferredFrom = fromWorld;
+                return;
+            }
+            _receiptFlightDeferred = false;
             _board.SetReceiptStage(ReceiptStage.ComingDown);
             _receiptFrom = fromWorld;
             _receiptFlyer = ArtHelper().Box(transform, "ReceiptFlyer", Vector3.zero, Vector3.one, Color.Lerp(WallHabitatView.Lavender, WallHabitatView.Paper, 0.55f)).transform;
@@ -406,6 +418,7 @@ namespace MuseDesk.Wall
 
         void TickReceipt(float dt)
         {
+            if (_receiptFlightDeferred && _receiptFlyer == null) StartReceiptFlight(_receiptDeferredFrom);
             if (_receiptFlyer != null)
             {
                 bool done = _receiptClock.Step(dt) || !_receiptClock.Running;
@@ -480,6 +493,7 @@ namespace MuseDesk.Wall
             _board.Reset();
             if (_view != null) _view.ClearCards();
             if (_receiptFlyer != null) { Destroy(_receiptFlyer.gameObject); _receiptFlyer = null; }
+            _receiptFlightDeferred = false;
             if (_receiptCard != null) _receiptCard.Show(false);
             _managerWarning = ""; _statusFails = 0; _statusBusy = false; _askMode = false; _showCommittedPlan = false;
         }
