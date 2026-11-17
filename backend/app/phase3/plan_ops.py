@@ -36,7 +36,8 @@ SYNTH_SYSTEM = (
 
 LABEL_SCRIPTED = "[SCRIPTED DEMO] No model was used; this is a roll-up of the scripted steps."
 LABEL_ROLLUP = "Deterministic roll-up of the recorded step results. No model was used."
-LABEL_MODEL = "Model-written from the recorded step results, no tools: nothing was run or applied."
+LABEL_MODEL = ("Model-written from the recorded step results (this summary used no tools; any "
+               "code and test runs are the ones the steps record).")
 
 
 class PlanOps:
@@ -157,6 +158,7 @@ class PlanOps:
                 # Additive resync fields: enough to rebuild the Wall plan after a reconnect.
                 "revision": plan["revision"], "objective": plan.get("objective", ""),
                 "items": plan.get("items", []),
+                "work_execution": plan.get("work_execution", "text_only"),
                 "synthesis_artifact_id": (synthesis or {}).get("artifact_id")}
 
     def manager_status(self, session_id: str) -> dict[str, Any]:

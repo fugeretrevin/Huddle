@@ -93,6 +93,7 @@ namespace MuseDesk.Wall
                 if (r == null || !r.ok) { _manager.OnProposeFailed(r == null ? "no reply" : (r.error ?? r.errorCode)); return; }
                 _manager.OnProposed(r.planId, r.revision, r.title, r.provenance, r.items);
                 _manager.SetPlanNotes(r.objective, r.assumptions, r.risks);
+                _workExecution = r.workExecution ?? "";
             });
             return true;
         }
@@ -155,6 +156,7 @@ namespace MuseDesk.Wall
                 {
                     _manager.OnProposed(r.planId, r.revision, r.title, r.provenance, r.items);
                     _manager.SetPlanNotes(r.objective, r.assumptions, r.risks);
+                    _workExecution = r.workExecution ?? "";
                     _page = 0; _stepWindow = 0; _riskStep = false;
                 }
                 else _manager.OnReviseFailed(r != null ? r.errorCode : "NO_REPLY", r != null ? r.error : "No reply");
@@ -512,7 +514,7 @@ namespace MuseDesk.Wall
                     _board.AddCommitted(s.planId, jobs);
                     for (int i = 0; i < s.cards.Count; i++) _board.Apply(s.cards[i]);
                     if (!string.IsNullOrEmpty(s.synthesisArtifactId) && _board.OnSynthesis(s.synthesisArtifactId, s.synthesisTaskId, "")) _board.DismissReceipt();
-                    if (p == plans.Count - 1) _manager.RestoreCommitted(s.planId, s.title, s.provenance, jobs, s.revision);
+                    if (p == plans.Count - 1) { _manager.RestoreCommitted(s.planId, s.title, s.provenance, jobs, s.revision); _workExecution = s.workExecution ?? ""; }
                 }
                 _statusPollAt = 0f; _statusFails = 0; _showCommittedPlan = false;
                 PlanRestores++;
@@ -522,15 +524,24 @@ namespace MuseDesk.Wall
 
         // ───────────────────────── the paper ─────────────────────────
 
+        string _workExecution = "";
+
+        /// <summary>The live plan paper's footer for the backend's declared work mode.</summary>
+        public static string PlanFooter(string workExecution)
+        {
+            return workExecution == "sandbox" ? "LIVE model · code + tests really run in a sandbox"
+                                              : "LIVE model · text only, no code tools";
+        }
+
         static void Key(List<KeyValuePair<string, Action>> keys, string label, Action a) { keys.Add(new KeyValuePair<string, Action>(label, a)); }
 
         void RefreshPlanPaper()
         {
             var keys = new List<KeyValuePair<string, Action>>();
             string mode = _tasks != null ? _tasks.SourceModeLabel : "";
-            // The Manager runner is sequential and text-only (work_provenance model_text_no_tools, see
-            // docs/Engineering/RC8_LIVE_AGENT_EVIDENCE.md): a bare "LIVE" would read as live tool execution.
-            if (mode == "LIVE") mode = "LIVE model · text only, no code tools";
+            // A bare "LIVE" would read as live tool execution, so the footer says what the backend really does with the cards:
+            // "sandbox" = Developer/Tester write real files and run real pytest on the PC; otherwise model text only.
+            if (mode == "LIVE") mode = PlanFooter(_workExecution);
             ManagerFlowState st = _manager.State;
             bool committed = st == ManagerFlowState.Delegating || st == ManagerFlowState.Monitoring;
 

@@ -55,7 +55,7 @@ namespace MuseDesk.Spatial.Wall
     public sealed class WallPlanStatusDto
     {
         public string plan_id; public string title; public string plan_status; public string provenance; public int total; public int revision;
-        public WallStatusCardDto[] cards; public bool settled; public WallSynthesisDto synthesis; public string source_mode;
+        public WallStatusCardDto[] cards; public bool settled; public WallSynthesisDto synthesis; public string source_mode; public string work_execution;
     }
 
     [Serializable]
@@ -66,7 +66,7 @@ namespace MuseDesk.Spatial.Wall
 
     public sealed class WallParsedPlanStatus
     {
-        public string planId, title, planStatus, provenance, sourceMode;
+        public string planId, title, planStatus, provenance, sourceMode, workExecution = "";
         public bool settled;
         /// <summary>The plan's committed revision (0 when the source did not say).</summary>
         public int revision;
@@ -80,6 +80,7 @@ namespace MuseDesk.Spatial.Wall
     public sealed class WallPlanDto
     {
         public string plan_id; public string title; public string objective; public string provenance; public string provenance_note;
+        public string work_execution;
         public string status; public int revision; public string[] assumptions; public string[] risks;
         public WallPlanItemDto[] items; public WallCommittedTaskDto[] committed_tasks;
     }
@@ -104,7 +105,7 @@ namespace MuseDesk.Spatial.Wall
 
     public sealed class WallParsedPlan
     {
-        public string planId, title, provenance, provenanceNote, status, objective;
+        public string planId, title, provenance, provenanceNote, status, objective, workExecution;
         public string[] assumptions = new string[0], risks = new string[0];
         public int revision;
         public List<ManagerPlanItemView> items = new List<ManagerPlanItemView>();
@@ -419,7 +420,7 @@ namespace MuseDesk.Spatial.Wall
             var p = new WallParsedPlan
             {
                 planId = d.plan_id, title = d.title, provenance = d.provenance, provenanceNote = d.provenance_note,
-                status = d.status, revision = d.revision, objective = d.objective,
+                status = d.status, revision = d.revision, objective = d.objective, workExecution = d.work_execution ?? "",
                 assumptions = S(d.assumptions), risks = S(d.risks),
             };
             if (d.items != null) for (int i = 0; i < d.items.Length; i++) if (d.items[i] != null) p.items.Add(MapItem(d.items[i]));
@@ -538,7 +539,7 @@ namespace MuseDesk.Spatial.Wall
                 var s = new WallParsedPlanStatus
                 {
                     planId = d.plan_id, title = d.title, planStatus = d.plan_status, provenance = d.provenance,
-                    sourceMode = d.source_mode, settled = d.settled, revision = d.revision,
+                    sourceMode = d.source_mode, settled = d.settled, revision = d.revision, workExecution = d.work_execution ?? "",
                 };
                 if (d.synthesis != null && !string.IsNullOrEmpty(d.synthesis.artifact_id))
                 {

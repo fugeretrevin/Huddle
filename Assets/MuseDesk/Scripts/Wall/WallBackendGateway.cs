@@ -393,7 +393,8 @@ namespace MuseDesk.Wall
         static ManagerPlanResult PlanOk(WallParsedPlan p)
         {
             var r = new ManagerPlanResult { ok = true, planId = p.planId, revision = p.revision, title = p.title, provenance = p.provenance,
-                                            objective = p.objective, assumptions = p.assumptions, risks = p.risks };
+                                            objective = p.objective, assumptions = p.assumptions, risks = p.risks,
+                                            workExecution = p.workExecution ?? "" };
             r.items = p.items;
             return r;
         }

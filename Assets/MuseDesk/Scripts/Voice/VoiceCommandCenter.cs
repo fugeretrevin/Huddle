@@ -352,7 +352,7 @@ namespace MuseDesk.Voice
 
         void OnPartial(string text)
         {
-            _partial = VoiceAnswers.Ascii(text ?? "").Trim();
+            _partial = WakeWord.Canonical(VoiceAnswers.Ascii(text ?? "").Trim());
             // Hands-free: the card only appears once the sentence starts with a name (WakeWord); chatter stays silent.
             if (_partial.Length > 0) { _mic.NotifyPartial(); if (_ambientQuiet && (_pending != Pending.None || WakeWord.IsAddressed(_partial))) PromoteAmbient(); }
             if (_display == Display.Listening && hud != null) hud.SetBody(Quote(VoiceAnswers.Clip(_partial, 90)));
@@ -453,7 +453,8 @@ namespace MuseDesk.Voice
 
         void HandleFinal(string transcript)
         {
-            string heard = VoiceAnswers.Ascii(transcript ?? "").Trim();
+            // A leading name the service misheard ("Research your why") is read as the name ("Researcher, why").
+            string heard = WakeWord.Canonical(VoiceAnswers.Ascii(transcript ?? "").Trim());
             _office.Find(true);
             HandledCount++;
             LastTranscript = heard;
@@ -485,7 +486,14 @@ namespace MuseDesk.Voice
                     LastIntent = "Unaddressed";
                     _actedOnPartial = VoiceIntentKind.None;
                     _partial = "";
-                    if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                    if (WakeWord.MentionsAgent(heard))
+                    {
+                        // Worn rc15: a sentence about an agent that did not START with its name used to vanish silently.
+                        // Nothing is acted on; the user is only told what was heard and how to address it.
+                        LastIntent = "UnaddressedHint";
+                        Result("Heard: " + VoiceAnswers.Clip(heard, 60), WakeWord.Hint, VoiceTone.Neutral, 3.5f);
+                    }
+                    else if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
                     RefreshMic();
                     return;
                 }

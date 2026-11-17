@@ -7,11 +7,14 @@ Scope and trust model:
 - A card is picked up only when it is ``queued`` (dependencies completed). One plan card runs
   at a time per session. ``pipeline_busy`` can hold the runner (not wired by default: a
   pipeline decision can wait for the human indefinitely and must not block plan work).
-- The work is TEXT ONLY. In live mode the configured model writes the step's deliverable
-  (findings, a proposed change, a test plan) with no tools: nothing is executed, no file is
-  written and no repository is touched. Every artifact says so. In demo mode the
-  deliverable is scripted and labelled ``[SCRIPTED DEMO]``. In live mode with no model,
-  cards are left queued and one warning is published.
+- Research cards are TEXT ONLY: the configured model writes the findings with no tools, and
+  the artifact says so. Developer and Tester cards are text only too unless
+  ``p3_execute_code`` is on (scripts/start_wall_backend.ps1 turns it on for LIVE runs): then
+  they do REAL work in the plan's sandbox folder (``sandbox_work.SandboxWork``): files are
+  written, pytest really runs, and the card completes only on a clean run (one bounded fix
+  attempt). No repository outside that folder is touched. In demo mode the deliverable is
+  scripted and labelled ``[SCRIPTED DEMO]``. In live mode with no model, cards are left
+  queued and one warning is published.
 - If the user pauses or cancels a card while it is being worked, the result is discarded.
 - A model failure, refusal or timeout fails the card (dependents stay blocked).
 - After a restart, a plan card left ``running`` is failed (nothing is driving it).
@@ -31,6 +34,7 @@ from ..phase2.sanitize import sanitize_text
 from ..phase2.store import Phase2Store
 from .plan_ops import PlanOps
 from .provider import ModelProvider
+from .sandbox_work import SandboxWork
 from .store import Phase3Store
 
 log = logging.getLogger("musedesk.phase3.runner")
@@ -111,6 +115,7 @@ class PlanRunner:
         self._warned: set[str] = set()
         self._stop = asyncio.Event()
         self._ops_cache: PlanOps | None = None
+        self._sandbox_cache: SandboxWork | None = None
 
     @property
     def ops(self) -> PlanOps:
@@ -238,10 +243,86 @@ class PlanRunner:
             out.append(f"--- From '{dep['title']}' ({dep['agent_id']}) ---\n{text}")
         return "\n\n".join(out) or "(no earlier steps)"
 
+    def _executes(self, agent: str, provider: ModelProvider | None) -> bool:
+        return (provider is not None and bool(getattr(self._settings, "p3_execute_code", False))
+                and agent in ("developer", "tester"))
+
+    def _sandbox(self) -> SandboxWork:
+        if self._sandbox_cache is None:
+            self._sandbox_cache = SandboxWork(
+                self._settings.workspace_root,
+                test_timeout=int(getattr(self._settings, "p3_sandbox_test_timeout_seconds", 60)),
+                fix_attempts=int(getattr(self._settings, "p3_sandbox_fix_attempts", 1)))
+        return self._sandbox_cache
+
+    def _step_prompt(self, plan: dict, item: dict, row: dict) -> str:
+        return (f"Objective: {plan.get('objective', '')}\nPlan: {plan.get('title', '')}\n\n"
+                f"Your step: {item.get('title', row['title'])}\nKind: {item.get('kind', '')}\n"
+                "Acceptance criteria:\n" + "\n".join(
+                    f"- {c}" for c in item.get("acceptance_criteria") or []) +
+                f"\n\nInputs from earlier steps:\n{self._dependency_inputs(row)}")
+
+    async def _work_sandbox(self, sid: str, plan: dict, item: dict, row: dict, agent: str,
+                            provider: ModelProvider) -> None:
+        """Developer / Tester card, for real: files written into the plan's sandbox folder,
+        pytest really run. Card completes only on a clean run (or files with no tests yet)."""
+        budget = float(self._settings.p3_work_timeout_seconds)
+
+        async def complete(system: str, prompt: str) -> str:
+            text = await asyncio.wait_for(
+                provider.complete(system=system, messages=[{"role": "user", "content": prompt}],
+                                  max_tokens=8000, purpose="work"), timeout=budget)
+            return sanitize_text(text or "")
+
+        try:
+            out = await self._sandbox().run(agent, plan["plan_id"], self._step_prompt(plan, item, row),
+                                            complete)
+        except asyncio.TimeoutError:
+            await self._fail_if_running(row["id"], "MODEL_TIMEOUT",
+                                        "The model did not finish this step in time.")
+            return
+        except Exception:  # noqa: BLE001 - provider/sandbox details never leak to the client
+            log.exception("sandbox work failed for %s", row["id"])
+            await self._fail_if_running(row["id"], "SANDBOX_ERROR",
+                                        "The sandbox could not work this step.")
+            return
+
+        current = self._s2.get_task_v2(row["id"])
+        if current is None or current["task_state"] != TaskStateV2.running.value:
+            log.info("plan card %s changed while worked (%s); result discarded", row["id"],
+                     current and current["task_state"])
+            return
+        artifacts = ArtifactService(self._s2, self._bus, self._mode, self._settings.workspace_root)
+        art = await artifacts.create_artifact(
+            sid, row["id"], out.kind, out.summary, out.pages, source_mode=self._mode,
+            work_provenance="sandbox_execution" if out.tests_ran else "sandbox_files")
+        extra = {"artifact_id": art.artifact_id, "plan_id": plan["plan_id"], "work_mode": "sandbox",
+                 "files_changed": out.files, "tests_passed": out.passed,
+                 "tests_failed": out.failed, "tests_ran": out.tests_ran, "attempts": out.attempts}
+        if out.ok:
+            await self._finish(current, TaskStateV2.completed, EventTypeV2.task_completed,
+                               out.summary, extra)
+            await self._board.release_dependents(sid, row["id"])
+            await self._handoffs(sid, plan, row["id"], agent, art.artifact_id)
+        else:
+            await self._finish(current, TaskStateV2.failed, EventTypeV2.task_failed,
+                               out.fail_reason or out.summary, {**extra, "code": out.fail_code})
+        await self._after_card_ended(row["id"])
+
     async def _work(self, sid: str, plan: dict, entry: dict, item: dict,
                     provider: ModelProvider | None) -> None:
         row = self._s2.get_task_v2(entry["task_id"])
         agent = row["agent_id"] or item.get("proposed_agent") or "developer"
+        if self._executes(agent, provider):
+            row = self._s2.update_task_v2(row["id"], task_state=TaskStateV2.running.value,
+                                          now=utcnow_iso())
+            await self._bus.publish(sid, EventTypeV2.task_started, {
+                "revision": row["revision"], "task_state": row["task_state"],
+                "plan_id": plan["plan_id"], "work_mode": "sandbox", "source_mode": self._mode},
+                task_id=row["id"], agent_id=agent,
+                event_id=f"evt2-plan-{row['id']}-r{row['revision']}-started")
+            await self._work_sandbox(sid, plan, item, row, agent, provider)
+            return
         work_mode = "model_text" if provider else "scripted"
         row = self._s2.update_task_v2(row["id"], task_state=TaskStateV2.running.value,
                                       now=utcnow_iso())
@@ -256,11 +337,7 @@ class PlanRunner:
                 await asyncio.sleep(float(self._settings.p3_runner_demo_step_seconds))
                 text = _scripted(agent, item, plan.get("objective", ""))
             else:
-                prompt = (f"Objective: {plan.get('objective', '')}\nPlan: {plan.get('title', '')}\n\n"
-                          f"Your step: {item.get('title', row['title'])}\nKind: {item.get('kind', '')}\n"
-                          "Acceptance criteria:\n" + "\n".join(
-                              f"- {c}" for c in item.get("acceptance_criteria") or []) +
-                          f"\n\nInputs from earlier steps:\n{self._dependency_inputs(row)}")
+                prompt = self._step_prompt(plan, item, row)
                 text = await asyncio.wait_for(
                     provider.complete(system=WORKER_SYSTEM.get(agent, WORKER_SYSTEM["developer"])
                                       + COMMON_RULES,

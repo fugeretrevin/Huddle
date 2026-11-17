@@ -20,6 +20,8 @@ namespace MuseDesk.Wall
         public string objective;
         public string[] assumptions = new string[0];
         public string[] risks = new string[0];
+        /// <summary>How committed cards are worked: "sandbox" (real files + real pytest), "text_only", "scripted"; empty = unknown (older backend: text only).</summary>
+        public string workExecution = "";
     }
 
     /// <summary>Answer to a Retry poke on a failed plan card.</summary>

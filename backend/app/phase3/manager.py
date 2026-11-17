@@ -40,7 +40,8 @@ def public_plan(plan: dict[str, Any]) -> dict[str, Any]:
 class ManagerPlanService:
     def __init__(self, store2: Phase2Store, store3: Phase3Store, bus: Phase2EventBus,
                  source_mode: str, provider: ModelProvider | None = None,
-                 plan_timeout: float = 20.0) -> None:
+                 plan_timeout: float = 20.0, execute_code: bool = False) -> None:
+        self._execute_code = execute_code
         self._s2 = store2
         self._s3 = store3
         self._bus = bus
@@ -118,6 +119,8 @@ class ManagerPlanService:
             "title": self._text(raw.get("title"), 120) or "Plan",
             "objective": objective, "created_at": now, "provenance": provenance,
             "provenance_note": note,
+            "work_execution": ("scripted" if demo else
+                               "sandbox" if self._execute_code else "text_only"),
             "assumptions": self._text_list(raw.get("assumptions")),
             "risks": self._text_list(raw.get("risks")),
             "items": res.items, "status": "proposed", "revision": 1,

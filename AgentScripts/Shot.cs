@@ -27,6 +27,24 @@ public static class Shot
         return "aimed __ShotCam at " + target;
     }
 
+    /// <summary>Aim __ShotCam from a point to a point in the local space of a named root (WorkspaceRoot / WallHabitatRoot).</summary>
+    public static string AimAt(string root, float px, float py, float pz, float lx, float ly, float lz, float fov)
+    {
+        Transform r = Find(root);
+        if (r == null) return "no " + root;
+        var go = GameObject.Find("__ShotCam");
+        if (go == null) go = new GameObject("__ShotCam");
+        var cam = go.GetComponent<Camera>();
+        if (cam == null) cam = go.AddComponent<Camera>();
+        cam.enabled = true; cam.depth = -100f;
+        Vector3 pos = r.TransformPoint(new Vector3(px, py, pz)), look = r.TransformPoint(new Vector3(lx, ly, lz));
+        cam.transform.position = pos;
+        cam.transform.rotation = Quaternion.LookRotation(look - pos, Vector3.up);
+        cam.fieldOfView = fov; cam.nearClipPlane = 0.01f; cam.farClipPlane = 30f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.33f, 0.34f, 0.36f);
+        return "aimed";
+    }
+
     public static string Take(string target)
     {
         Vector3 pos, look; float fov = 40f;

@@ -96,7 +96,8 @@ def register_phase3_routes(app: FastAPI) -> None:
         st = request.app.state
         return ManagerPlanService(st.phase2_store, st.phase3_store, st.phase2_bus,
                                   st.settings.state_source_mode, get_provider(request.app),
-                                  st.settings.p3_plan_timeout_seconds)
+                                  st.settings.p3_plan_timeout_seconds,
+                                  execute_code=bool(st.settings.p3_execute_code))
 
     def plan_lock(request: Request, plan_id: str) -> asyncio.Lock:
         st = request.app.state

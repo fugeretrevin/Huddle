@@ -43,8 +43,54 @@ namespace MuseDesk.Workspace
         /// when it is at most this many characters (the plate holds about that many at 5.5 mm).</summary>
         public const int MaxProgressChars = 28;
 
+        [Header("Turn toward the viewer")]
+        [Tooltip("Owner (worn rc15): plates should tilt naturally toward the user instead of sitting at a fixed angle. The plate " +
+                 "turns (yaw) and tilts (pitch) toward the head, damped and clamped around its rest pose.")]
+        public bool faceViewer = true;
+        [Range(0f, 90f)] public float maxYaw = 60f;
+        [Range(0f, 60f)] public float maxPitch = 35f;
+        [Tooltip("How quickly it follows (1/s); low = lazy and natural.")]
+        public float followRate = 4f;
+
+        Quaternion _rest;
+        bool _restSet;
+        public bool FacingActive { get; private set; }
+
+        /// <summary>The plate's local rotation that shows its readable face (the side opposite its forward) to a viewer
+        /// in direction <paramref name="toViewerLocal"/> (parent space), clamped to ±maxYaw / ±maxPitch around the rest
+        /// yaw (pitch is measured from level). Pure: used by the plate every frame and by EditMode tests.</summary>
+        public static Quaternion TiltToward(Quaternion rest, Vector3 toViewerLocal, float maxYaw, float maxPitch)
+        {
+            if (toViewerLocal.sqrMagnitude < 1e-8f) return rest;
+            Vector3 away = -toViewerLocal.normalized;
+            float restYaw = rest.eulerAngles.y;
+            float yaw = Mathf.Atan2(away.x, away.z) * Mathf.Rad2Deg;
+            float dYaw = Mathf.Clamp(Mathf.DeltaAngle(restYaw, yaw), -maxYaw, maxYaw);
+            float flat = new Vector2(away.x, away.z).magnitude;
+            float pitch = -Mathf.Atan2(away.y, flat) * Mathf.Rad2Deg;    // + = forward tips down = face tips up to a viewer above
+            pitch = Mathf.Clamp(pitch, -maxPitch, maxPitch);
+            return Quaternion.Euler(pitch, restYaw + dYaw, 0f);
+        }
+
+        void LateUpdate()
+        {
+            FacingActive = false;
+            if (!faceViewer) return;
+            if (!_restSet) { _rest = transform.localRotation; _restSet = true; }
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            Transform parent = transform.parent;
+            Vector3 to = cam.transform.position - transform.position;
+            if (parent != null) to = parent.InverseTransformDirection(to);
+            Quaternion target = TiltToward(_rest, to, maxYaw, maxPitch);
+            float k = 1f - Mathf.Exp(-Mathf.Max(0.1f, followRate) * Mathf.Min(Time.deltaTime, 0.1f));
+            transform.localRotation = Quaternion.Slerp(transform.localRotation, target, k);
+            FacingActive = true;
+        }
+
         void Awake()
         {
+            _rest = transform.localRotation; _restSet = true;
             _ease.Init(transform, ScaleEase.ResolveFull(transform, shownScale), 0.2f, true);
             if (roleText != null && roleText.text != roleName) roleText.text = roleName;
             TintRoleStrips();

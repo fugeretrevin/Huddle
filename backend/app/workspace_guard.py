@@ -55,6 +55,21 @@ class WorkspaceGuard:
         shutil.copytree(self.template, ws)
         return ws
 
+    def open_workspace(self, name: str) -> Path:
+        """A persistent, initially empty workspace (Manager plan folders): created once with
+        only a pytest.ini that anchors rootdir; never wiped, so later steps build on it."""
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:64]
+        ws = (self.root / safe).resolve()
+        if (os.path.commonpath([str(ws), str(self.root)]) != str(self.root)
+                or ws == self.root):
+            raise WorkspaceError("workspace path escapes root")
+        ws.mkdir(parents=True, exist_ok=True)
+        ini = ws / "pytest.ini"
+        if not ini.exists():
+            ini.write_text("[pytest]\n# Anchors pytest's rootdir to this sandbox folder.\n",
+                           encoding="utf-8")
+        return ws
+
     def destroy_workspace(self, ws: Path) -> None:
         ws = Path(ws).resolve()
         if os.path.commonpath([str(ws), str(self.root)]) == str(self.root) and ws != self.root:

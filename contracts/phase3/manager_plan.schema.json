@@ -12,6 +12,7 @@
     "created_at": {"type":"string"},
     "provenance": {"enum":["LIVE_MODEL","TEMPLATE_PLAN","SCRIPTED_DEMO"]},
     "provenance_note": {"type":"string"},
+    "work_execution": {"enum":["sandbox","text_only","scripted"], "description":"Optional. How committed cards will be worked: sandbox = Developer/Tester write real files and run real pytest in the plan's sandbox folder; text_only = model text, nothing run; scripted = demo."},
     "assumptions": {"type":"array","items":{"type":"string"}},
     "risks": {"type":"array","items":{"type":"string"}},
     "items": {"type":"array","minItems":1,"maxItems":12,"items": {"type":"object","additionalProperties":false,"required":["client_item_id","title","kind","proposed_agent","depends_on","acceptance_criteria","required_permission","dangerous","danger_reasons"],"properties":{"client_item_id":{"type":"string","pattern":"^[A-Za-z0-9_.-]{1,40}$"},"title":{"type":"string","minLength":1,"maxLength":120},"kind":{"enum":["research","code","implement","test","verify","doc"]},"proposed_agent":{"enum":["researcher","developer","tester"]},"depends_on":{"type":"array","items":{"type":"string"}},"acceptance_criteria":{"type":"array","maxItems":8,"items":{"type":"string","maxLength":200}},"required_permission":{"enum":["none","read_repo","workspace_write","run_tests"]},"dangerous":{"type":"boolean"},"danger_reasons":{"type":"array","items":{"type":"string"}}}} },

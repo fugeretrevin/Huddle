@@ -1,6 +1,6 @@
 # E2E scenario matrix
 
-2026-11-16. Evidence: **AUTO** (EditMode 1619/1619; backend pytest 331 passed / 1 skipped), **PLAY** (Unity Editor
+2026-11-16 (updated evening: rc15 worn, rc16 real work). Evidence: **AUTO** (EditMode 1619/1619; backend pytest 331 passed / 1 skipped), **PLAY** (Unity Editor
 Play Mode driver, synthetic room, simulated hands), **LIVE** (real backend + Meta model over HTTP/WS:
 `backend/scripts/live_e2e.py` 71/71, `backend/scripts/live_journey.py` 17/17), **WORN** (owner on the Quest — only the
 owner can grant it). Nothing below is marked passed because code exists.
@@ -22,20 +22,28 @@ Status values: PASS / FAIL / BLOCKED / NOT RUN. "Today" = this session; older ev
 | 11 | Unsupported question | PASS | LIVE today | "What is the weather tomorrow?" | honest limit | "I do not have that information in the context provided." | D5 | — | — |
 | 12 | Read-only /btw | PASS | LIVE + AUTO + PLAY | any question | no mutation | plan/tasks byte-identical before/after | D (before==after) | visit card (PLAY) | — |
 | 13 | Proposed task change | PASS (after rc14 fix) | LIVE today + AUTO | "Actually, change the password rule to 12 characters." | proposal, needs confirmation, not applied | first run: answered as status (safe, no proposal) → fixed → `amendment_suggested`, `applied=false` | D6 | — | Confirming an amendment from the visit card is not a UI flow (proposal is shown, change goes through Revise) |
-| 14 | Agent distance grab | PASS (PLAY) / NOT WORN | PLAY today (AgentSelectGrabDrive 12/12, PortalFxDrive SelectAim) | Select → point → pinch | target clear, carry | rc14 beam + "Pinch to pick up Developer"; carry; original hidden | — | capture select_ray.png | WORN needed |
+| 14 | Agent distance grab | PASS (WORN rc15: beam) | PLAY today (AgentSelectGrabDrive 12/12, PortalFxDrive SelectAim) | Select → point → pinch | target clear, carry | rc14 beam + "Pinch to pick up Developer"; carry; original hidden | — | capture select_ray.png | WORN needed |
 | 15 | Agent desk visit | PASS (PLAY) | PLAY today | release over perch | lands, faces user | perched, lively, poke reacts | — | Perch drive | WORN needed |
 | 16 | Agent return | PASS (PLAY) | PLAY today | Return / throw back | one leave, one return, no copies | registry 1/1; avatar reappears | — | MeetDrive 8–9 | — |
 | 17 | Decision approval (desk) | PASS | LIVE + PLAY + WORN (rc6–rc8 stamp) | stamp Approve | one approval, work resumes | approve applied, replay no-op, conflict 409, real build | live_e2e [approve] | OfferHoldDrive PASS | hold-until-taken not WORN |
 | 18 | Decision rejection | PASS | LIVE + PLAY | stamp Reject | nothing built, cancelled branch | "Rejected: no OAuth files written", no artifact | live_e2e [reject] | — | — |
-| 19 | Actual task execution | PASS (desk auth task) | LIVE | approve | real files, real run | 2 files written, artifact retrievable, labelled live | live_e2e | receipt (PLAY) | Code is a fixed scaffold, not request-specific (gaps G-2) |
-| 20 | Test pass | PASS | LIVE | — | real counts | 6 passed / 0 failed | live_e2e artifact | — | — |
+| 19 | Actual task execution | PASS (desk auth task; Manager plan cards since rc16) | LIVE (`live_real_work.py` 9/9: 7 cards, 116 tests passed, independent re-run matched) | approve | real files, real run | 2 files written, artifact retrievable, labelled live | live_e2e | receipt (PLAY) | Code is a fixed scaffold, not request-specific (gaps G-2) |
+| 20 | Test pass | PASS | LIVE (desk 6/0; plan Tester cards 61/0, 79/0, 106/0) | — | real counts | 6 passed / 0 failed | live_e2e artifact | — | — |
 | 21 | Test failure | PASS (AUTO/PLAY) | AUTO + PLAY (RunOfflineWithFailure) | — | failure shown, bounded retry | backend retest loop tests; offline failure branch drive | pytest | LivingOfficeDrive failure variant (rc13) | — |
 | 22 | Artifact inspection | PASS (desk) | LIVE + PLAY | Receipt | files + tests visible | artifact 200 with files_changed, counts, diff excerpt | live_e2e | receipt card | Manager-plan "artifacts" are text results |
 | 23 | Wall elevator | PASS (AUTO/PLAY) | AUTO 30-min stress (0 teleports) + PLAY; WORN rc11 (walked) | — | no teleports/clipping | — | — | — | rc10+ teleport fix not confirmed WORN |
-| 24 | Portal | PASS (PLAY) | PLAY today (MeetDrive 15/15, PortalFxDrive) | Meet → agent → Open here | safe spot, emerge, platform, return | stages + platform + hidden original captured | — | portal_platform_*.png | WORN + device FPS needed |
+| 24 | Portal | PASS (WORN rc15: Open here, platform, head/body; 72 fps) | PLAY today (MeetDrive 15/15, PortalFxDrive) | Meet → agent → Open here | safe spot, emerge, platform, return | stages + platform + hidden original captured | — | portal_platform_*.png | WORN + device FPS needed |
 | 25 | Workspace switching | PASS (PLAY) | PLAY (UnifiedDockDrive 0 failed today) | Spaces dock | session kept | — | — | — | — |
 | 26 | Backend disconnect / resync | PASS | LIVE (resume after_seq no duplicates) + PLAY (ResyncCheck rc13) | — | no lost/duplicated state | dense seq, no dupes on resume | live_e2e | LivingOfficeDrive ResyncCheck | Device-level network drop NOT RUN |
 | 27 | App restart | NOT RUN on device | AUTO (snapshot projection) | — | state restored from snapshot | — | — | — | Run on Quest |
 | 28 | Offline fallback | PASS (PLAY), WORN earlier builds | PLAY + WORN (rc6–rc11 offline judge build) | no PC | full desk demo offline | — | — | — | — |
-| 29 | Ceiling hand-over at the shelf | PASS (PLAY) | PLAY today (PodProbe Shelf) | pod lowered with a pending paper | Researcher walks to the front shelf | at (0.088, 0.468), offering | — | ceil_pod2.png | WORN needed |
+| 29 | Ceiling hand-over at the shelf | PASS (WORN rc15) | PLAY today (PodProbe Shelf) | pod lowered with a pending paper | Researcher walks to the front shelf | at (0.088, 0.468), offering | — | ceil_pod2.png | WORN needed |
 | 30 | 15-minute idle soak | NOT RUN | — | — | stable | — | — | — | Owner session with quest_perf_watch |
+
+## Added rc16
+
+| # | Scenario | Status | Evidence | Remaining issue |
+|---|---|---|---|---|
+| 31 | Manager plan cards do real work (Developer writes code, Tester writes tests, pytest runs) | PASS (LIVE) | `backend/scripts/live_real_work.py` 9/9 with the Meta model; pytest 337/1 skip incl. refusal + fix-loop cases | Headset view of the rows: wear rc16 (QA §3) |
+| 32 | Desk agents face their monitors; nameplates turn to the viewer | PASS (PLAY) | DeskClearanceDrive 7/7 (min 0.026 m), OfferHoldDrive PASS, NameplateCheck 8/8 | WORN on rc16 |
+| 33 | Hands-free "Researcher, why?" | FAIL on rc15 (WORN) → fixed, PASS (PLAY/AUTO) | WitProbe (real speech, token OK); WakeWord tests; HandsFreeVoiceDrive | WORN on rc16 |

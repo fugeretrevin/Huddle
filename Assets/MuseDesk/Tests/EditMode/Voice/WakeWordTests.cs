@@ -62,6 +62,53 @@ namespace MuseDesk.Tests.Voice
             Assert.AreEqual("", r.rest);
         }
 
+        // Worn rc15: Wit heard a fast "Researcher why" as "Research your why"; hands-free dropped it silently.
+        [TestCase("Research your why", VoiceAgentTarget.Researcher, "why", "Researcher, why")]
+        [TestCase("Research, why?", VoiceAgentTarget.Researcher, "why?", "Researcher, why?")]
+        [TestCase("research why is that", VoiceAgentTarget.Researcher, "why is that", "Researcher, why is that")]
+        [TestCase("Hey research her, come here", VoiceAgentTarget.Researcher, "come here", "Researcher, come here")]
+        [TestCase("develop her what are you working on", VoiceAgentTarget.Developer, "what are you working on", "Developer, what are you working on")]
+        [TestCase("Test her, have the tests passed?", VoiceAgentTarget.Tester, "have the tests passed?", "Tester, have the tests passed?")]
+        [TestCase("manage her plan a login page", VoiceAgentTarget.Manager, "plan a login page", "Manager, plan a login page")]
+        [TestCase("Testers, status", VoiceAgentTarget.Tester, "status", "Tester, status")]
+        public void SoundAlikeName_IsAddressed_AndCanonical(string s, VoiceAgentTarget who, string rest, string canonical)
+        {
+            var r = P(s);
+            Assert.IsTrue(r.ok, s);
+            Assert.AreEqual(who, r.who);
+            Assert.AreEqual(rest, r.rest);
+            Assert.AreEqual(canonical, WakeWord.Canonical(s));
+        }
+
+        [TestCase("research shows the login works")]     // a bare stem followed by ordinary words is speech, not a name
+        [TestCase("test the login page")]                 // "test" needs a sound-alike tail
+        [TestCase("manage the plan for me")]
+        [TestCase("I think research your idea")]          // not at the start
+        public void SoundAlike_NeedsTheStartAndAPause(string s)
+        {
+            Assert.IsFalse(WakeWord.IsAddressed(s), s);
+            Assert.AreEqual(s, WakeWord.Canonical(s));
+        }
+
+        [Test]
+        public void Canonical_LeavesExactNamesAndChatterAlone()
+        {
+            Assert.AreEqual("Researcher, why this source?", WakeWord.Canonical("Researcher, why this source?"));
+            Assert.AreEqual("approve", WakeWord.Canonical("approve"));
+            Assert.AreEqual("", WakeWord.Canonical(""));
+            Assert.IsNull(WakeWord.Canonical(null));
+        }
+
+        [Test]
+        public void MentionsAgent_ForTheHint()
+        {
+            Assert.IsTrue(WakeWord.MentionsAgent("why researcher"));
+            Assert.IsTrue(WakeWord.MentionsAgent("tell the developer to stop"));
+            Assert.IsTrue(WakeWord.MentionsAgent("what does the research say"));
+            Assert.IsFalse(WakeWord.MentionsAgent("what's for lunch"));
+            Assert.IsFalse(WakeWord.MentionsAgent(null));
+        }
+
         [Test]
         public void Allows_Unaddressed_OnlyHaltingOrOpenConversation()
         {

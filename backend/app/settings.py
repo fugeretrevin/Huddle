@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     p3_runner_poll_seconds: float = 2.0
     # Scripted (demo-mode) runner pacing per card. Tests set 0.
     p3_runner_demo_step_seconds: float = 4.0
+    # Real work for plan cards (live mode with a model): Developer steps write real files
+    # into <workspace_root>/plans/<plan_id> and Tester steps write real pytest tests; the
+    # tests really run (statically checked first, timeout, no credentials in the env).
+    # OFF by default; scripts/start_wall_backend.ps1 turns it on for LIVE runs.
+    p3_execute_code: bool = False
+    p3_sandbox_test_timeout_seconds: int = 60
+    p3_sandbox_fix_attempts: int = 1
     # Model used when MUSEDESK_MODEL_PROVIDER=anthropic (key: MUSEDESK_PROVIDER_API_KEY or
     # ANTHROPIC_API_KEY). Effort per purpose: low | medium | high | xhigh | max.
     p3_model: str = "claude-opus-5-5"
