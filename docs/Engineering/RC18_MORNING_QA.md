@@ -64,6 +64,18 @@ Evidence so far for all of them: PLAY (Unity Editor, synthetic room) and EditMod
 passthrough alpha (a black background) and nobody could check that on the headset overnight. If you want it after seeing
 the lighting, it is a 20-minute change plus one look on the headset.
 
+## Owner's rc18 notes (2026-11-17, owner's words; no per-line PASS/FAIL was given)
+
+> "maybe ever so slightly less reflections it looks a little too toy like. the paper tubes should also not be so distracting
+> like they should go over the back wall not in front. also when meeting an agent the floating platform is too high so their
+> head intersects with the top of the portal and their headphones are too wide for the portal so maybe we make the portal a
+> bit bigger. also for the manager paper there are too many buttons. maybe its better to do like a check box or an x next to
+> each work item rather than keep 1 keep 2 etc, so its just a little check. also when the agents are bringing up their papers
+> they should use the tubes too no? those elevators should only be used for like a question otherwise its slow. also we need
+> to get this production ready so like lets try to test this with building something real after this is done"
+
+All six are answered in rc19: `RC19_QA.md`. Nothing above is marked WORN from these notes (the owner gave no line results).
+
 ## Performance
 
 Start `scripts\quest_perf_watch.ps1 -Label rc18_worn` before putting it on. Pass = steady 72 fps. rc17 worn baseline:

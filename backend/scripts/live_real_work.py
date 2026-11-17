@@ -19,7 +19,10 @@ import httpx
 BASE = sys.argv[1].rstrip("/")
 OUT = sys.argv[2] if len(sys.argv) > 2 else "live_real_work_evidence.json"
 ROOT = Path(sys.argv[3] if len(sys.argv) > 3 else Path(__file__).resolve().parents[1] / "sandbox_workspaces")
-OBJECTIVE = "Build me a login page with email validation, password requirements, and tests."
+# Any real objective can be run (owner, rc18: "test this with building something real"): MUSEDESK_REAL_OBJECTIVE and the
+# follow-up change request MUSEDESK_REAL_CHANGE (worded to finish "Developer, can you ...?"). The defaults are the canonical demo.
+OBJECTIVE = os.environ.get("MUSEDESK_REAL_OBJECTIVE") or "Build me a login page with email validation, password requirements, and tests."
+CHANGE = os.environ.get("MUSEDESK_REAL_CHANGE") or "change the password minimum to 12 characters"
 evidence, results = {"objective": OBJECTIVE, "steps": []}, []
 
 
@@ -152,7 +155,7 @@ with httpx.Client(base_url=BASE, timeout=240) as c:
     # ── R8/R9: a change request is only a suggestion; Apply change adds ONE step that is really worked ──
     r = c.post(f"/v2/sessions/{sid}/agents/developer/side-question", headers=h, json={
         "schema_version": 2, "request_id": "real-change", "task_id": dev_task, "visit_session_id": "visit-real",
-        "question": "Developer, can you change the password minimum to 12 characters?", "idempotency_key": key("change")})
+        "question": f"Developer, can you {CHANGE}?", "idempotency_key": key("change")})
     ans8 = keep("R8 change request", r)
     amend_txt = ((ans8.get("proposed_amendment") or {}).get("summary") if isinstance(ans8, dict) else None)
     st8 = c.get(f"/v2/sessions/{sid}/manager/plans/{pid}/status", headers=h).json()
@@ -161,7 +164,7 @@ with httpx.Client(base_url=BASE, timeout=240) as c:
     plan_now = c.get(f"/v2/sessions/{sid}/manager/plans/{pid}", headers=h).json()
     t_apply = time.time()
     akey = key("apply")
-    body = {"schema_version": 2, "revision": plan_now.get("revision"), "summary": amend_txt or "change the password minimum to 12 characters",
+    body = {"schema_version": 2, "revision": plan_now.get("revision"), "summary": amend_txt or CHANGE,
             "agent_id": "developer", "after_task_id": dev_task, "idempotency_key": akey}
     r = c.post(f"/v2/sessions/{sid}/manager/plans/{pid}/amend", headers=h, json=body)
     applied = keep("R9 apply change", r)
