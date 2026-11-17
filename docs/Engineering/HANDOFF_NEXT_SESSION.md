@@ -1,5 +1,20 @@
 ﻿# Handoff for the next session
 
+## UPDATE 2026-11-17 day (read this first)
+
+- **The owner wore rc18** and gave six notes (verbatim in `RC18_MORNING_QA.md`; no per-line PASS/FAIL, so nothing marked WORN).
+- **rc19 INSTALLED:** `Builds/MuseDesk_rc19_release.apk`, label rc19-release, release-signed, versionCode 3,
+  `F197F662…5EFD57`, hash-verified on the Quest (installed with `-r`, settings kept). Protected in `BuildApkTo.cs`; the next
+  build is rc20 with versionCode 4. Owner check: **`RC19_QA.md`** (one line per note).
+  - plan paper: a tick key per work item (no Keep/Skip keys); tubes on the back wall, fainter; results / problem reports /
+    cross-floor hand-offs ride the tubes, the summary flies straight from the printer (elevator only for questions);
+    portal 1.2x, platform lower; less gloss (27 materials x0.82 smoothness, sky reflections 0.55, key light 0.85).
+- **Live real build on a NEW objective (expense tracker): 13/13** (`RC19_QA.md`). It exposed a gap: a change step rewrote a
+  test file and the folder went 51 -> 45 tests silently. **Fixed in the backend (no APK needed):** a step that leaves fewer
+  tests is asked once to restore them, else its card says "N fewer tests than before (a -> b)". Backend 375 passed.
+- The live script takes any objective: `MUSEDESK_REAL_OBJECTIVE`, `MUSEDESK_REAL_CHANGE`.
+- Repo note: `git commit` printed "bad object refs/stash" (background repack failed). Commits are fine; not touched.
+
 ## UPDATE 2026-11-17 overnight (read this first; the older text below is the rc17 state)
 
 - **Release key: DONE.** The owner ran `scripts\make_release_keystore.ps1` (a NEW key; there was never an old password).
