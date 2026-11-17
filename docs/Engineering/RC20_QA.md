@@ -32,6 +32,24 @@ command before the Manager could take it. That card is not a plan step, so nobod
   overlaps the paper, 0 when clear; 11 tube collars; status lamps and collars captured; the Screen panel showed this PC's
   screen (27 frames in about 5 s, upright, with the pointer), its key on the dock's right end.
 
+## Owner's words after wearing rc20 live (2026-11-17 evening, transcribed; no per-line PASS/FAIL given)
+
+> "few thinhgs : 1 we can remove the focus button its just distradting. 2 the panel for speech is still clipping, and its
+> not waiting and reading my like full sentence. also the agents when they walk wiht hteir paper the paper isnt like
+> attached to their hands fully so when they movce up down or side side the paper stays same orientation and not too
+> attached and theyll walk to the elevator and then stand there and then just rurn around and its not clear at all what
+> theyre doing. also there should be little indicators of whjat the papers say as they are being pushed down through the
+> pipes maybe like small opopups at the piopes. also the text to speech thing should be made cuter and a b8t more robotic
+> but like not just like a voice assistaqnt like a bit more unique but not annoying. also nice jobn on the screen overlay,
+> but the framerate could definitely be improved for the screen lioke in the headset its fine but using the panel for the
+> computer screen feels slow. also when meeting agents the asnwer shouldnt just be on the card, there should be a little
+> speech bubble that pops up too when agents are talking so you know who is, and maybe they can have a small head bobv
+> animation while they talk too. so the focus button can be replaced by the screen button."
+
+Read against the table above (owner's words only): line 3 FAIL ("the panel for speech is still clipping"); line 2 FAIL
+("its not waiting and reading my like full sentence"); line 10 PASS with a NOTE ("nice job on the screen overlay, but the
+framerate could definitely be improved"). Everything raised goes into rc21.
+
 ## Results
 
 (Filled in from runs and from your words only.)

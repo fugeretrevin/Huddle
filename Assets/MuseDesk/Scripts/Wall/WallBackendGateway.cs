@@ -281,10 +281,11 @@ namespace MuseDesk.Wall
 
         /// <summary>rc20: a request for one frame of the PC's screen (the Screen panel), or null when not live. The caller
         /// sends and disposes it. Raw BGRA, zlib-compressed; sizes in the X-Width / X-Height headers.</summary>
-        public UnityWebRequest ScreenFrameRequest(int width)
+        public UnityWebRequest ScreenFrameRequest(int width, int since = -1)
         {
             if (!IsLive) return null;
-            var req = UnityWebRequest.Get(session.ApiBaseUrl.TrimEnd('/') + "/v2/sessions/" + Sid + "/screen/frame?w=" + width);
+            var req = UnityWebRequest.Get(session.ApiBaseUrl.TrimEnd('/') + "/v2/sessions/" + Sid + "/screen/frame?w=" + width
+                                          + (since >= 0 ? "&since=" + since : ""));
             req.SetRequestHeader("Authorization", "Bearer " + session.LiveToken);
             req.timeout = 5;
             return req;

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using MuseDesk.Spatial.Wall;
 
@@ -278,6 +279,7 @@ namespace MuseDesk.Wall
                 _anim[r] = a.GetComponentInChildren<Animator>();
                 if (_anim[r] != null) { _anim[r].applyRootMotion = false; _anim[r].cullingMode = AnimatorCullingMode.CullUpdateTransforms; }
                 _animState[r] = 0;
+                ResolveCarryBones(r, a);
                 _prop[r] = Box(a, "CarriedProp", Vector3.zero, Vector3.one, Paper).transform;
                 _propR[r] = _prop[r].GetComponent<Renderer>();
                 _prop[r].gameObject.SetActive(false);
@@ -632,10 +634,11 @@ namespace MuseDesk.Wall
                 {
                     float h = layout.agentHeight;
                     float inv = 1f / Mathf.Max(1e-5f, a.lossyScale.y / Mathf.Max(1e-5f, root.lossyScale.y));
-                    _prop[r].localPosition = new Vector3(0, h * 0.5f, h * 0.22f) * inv;
                     _prop[r].localScale = new Vector3(h * 0.32f, h * 0.24f, 0.004f) * inv;
+                    PoseCarried(r, a, w, dt);
                     Tint(_propR[r], act.prop == "warning" ? Amber : act.prop == "blueprint" ? Hex(0x6FB3E0) : act.prop == "receipt" ? Color.Lerp(Lavender, Paper, 0.55f) : Paper);
                 }
+                TickLiftCue(r, w);
 
                 if (statusColors != null && r < statusColors.Length) Tint(_status[r], statusColors[r]);
                 bool ring = selectArmed || (_managerHint && r == (int)HabitatRole.Manager);
@@ -656,6 +659,7 @@ namespace MuseDesk.Wall
 
             for (int i = _cards.Count - 1; i >= 0; i--) StepCard(_cards[i], dt);
             StepAllMail(dt);
+            StepLabels(stage, dt);
         }
 
         /// <summary>
@@ -671,6 +675,152 @@ namespace MuseDesk.Wall
             if (w.Anim == WalkerAnim.Walk)
                 want = Mathf.Clamp(w.Speed / Mathf.Max(1e-4f, w.settings.walkSpeed), 0.35f, 1.15f);
             if (Mathf.Abs(an.speed - want) > 0.01f) an.speed = want;
+        }
+
+        // ── the carried paper is held IN THE HAND (rc21; owner, worn rc20: "the paper isn't attached to their hands fully, so
+        //    when they move up/down or side to side the paper stays the same orientation"). It used to sit at a fixed point in
+        //    front of the avatar root, so it ignored the arms and the body's bob. Now it rides the right hand bone with a fixed
+        //    grip offset (position AND rotation), blended 80 % hand / 20 % chest so a swinging arm reads as held, not flailing.
+        //    The grip is measured once per avatar from the carry walk itself (the mean hand pose over half a second of
+        //    Walk_Carry_Paper), so it needs no knowledge of the rig's bone axes. Clamps keep the sheet in front of the body
+        //    (never through it) and within 40 degrees of upright. No bone found (placeholder avatar): the old fixed pose. ──
+
+        public const float CarryHandWeight = 0.8f, CarryTiltLimit = 40f, CarryBaseTilt = -20f, CarryForwardMin = 0.2f;
+        public const float CarryCalibrateSeconds = 0.5f, CarryBlendSeconds = 0.25f, CarryAnyWalkAfter = 2.5f;
+        static readonly string[] HandNames = { "RightHand_Attach", "TaskCardHold", "Hand_R", "hand_r", "Hand.R", "hand.R", "RightHand", "mixamorig:RightHand" };
+        static readonly string[] OtherHandNames = { "LeftHand_Attach", "Hand_L", "hand_l", "Hand.L", "hand.L", "LeftHand", "mixamorig:LeftHand" };
+        static readonly string[] ChestNames = { "Chest", "chest", "Spine2", "mixamorig:Spine2", "Spine1", "Spine", "spine" };
+        readonly Transform[] _gripHand = new Transform[4], _gripOther = new Transform[4], _gripChest = new Transform[4];
+        readonly bool[] _gripReady = new bool[4];
+        readonly float[] _gripSampleT = new float[4], _gripWaitT = new float[4], _gripBlend = new float[4];
+        readonly int[] _gripSamples = new int[4];
+        readonly Vector3[] _gripSumHand = new Vector3[4], _gripSumOther = new Vector3[4], _gripSumChest = new Vector3[4];
+        readonly Vector4[] _gripSumHandQ = new Vector4[4], _gripSumChestQ = new Vector4[4];
+        readonly Vector3[] _gripHandPos = new Vector3[4], _gripChestPos = new Vector3[4];
+        readonly Quaternion[] _gripHandRot = new Quaternion[4], _gripChestRot = new Quaternion[4];
+
+        /// <summary>For drivers: the hand bone the paper rides (null = old fixed pose) and whether its grip is measured.</summary>
+        public string CarryHandName(HabitatRole r) { Transform t = _gripHand[(int)r]; return t != null ? t.name : null; }
+        public bool CarryGripReady(HabitatRole r) { return _gripReady[(int)r]; }
+        /// <summary>For drivers: the carried paper's transform (active only while carrying).</summary>
+        public Transform CarriedProp(HabitatRole r) { return _prop[(int)r]; }
+
+        void ResolveCarryBones(int r, Transform a)
+        {
+            _gripHand[r] = FindNamed(a, HandNames);
+            _gripOther[r] = FindNamed(a, OtherHandNames);
+            _gripChest[r] = FindNamed(a, ChestNames);
+        }
+
+        static Transform FindNamed(Transform root, string[] names)
+        {
+            if (root == null) return null;
+            Transform[] all = root.GetComponentsInChildren<Transform>(true);
+            for (int n = 0; n < names.Length; n++)
+                for (int i = 0; i < all.Length; i++)
+                    if (all[i] != root && all[i].name == names[n]) return all[i];
+            return null;
+        }
+
+        static void AddQ(ref Vector4 sum, Quaternion q)
+        {
+            var v = new Vector4(q.x, q.y, q.z, q.w);
+            if (Vector4.Dot(sum, v) < 0f) v = -v;     // same hemisphere: a mean of nearby rotations
+            sum += v;
+        }
+
+        static Quaternion MeanQ(Vector4 sum)
+        {
+            if (sum.sqrMagnitude < 1e-12f) return Quaternion.identity;
+            Vector4 n = sum.normalized;
+            return new Quaternion(n.x, n.y, n.z, n.w);
+        }
+
+        /// <summary>The carry walk is playing steadily (not cross-fading, at cruise): the hand pose is a good grip sample.</summary>
+        bool CarryPoseSettled(int r, HabitatWalker w)
+        {
+            if (w.Anim != WalkerAnim.Walk || w.Speed < 0.6f * w.settings.walkSpeed) return false;
+            Animator an = _anim[r];
+            if (an == null || !an.isActiveAndEnabled || an.runtimeAnimatorController == null) return true;
+            if (an.IsInTransition(0)) return false;
+            int cur = an.GetCurrentAnimatorStateInfo(0).shortNameHash;
+            if (cur == S_WalkCarry) return true;
+            // A controller without the carry clip (or one that never switched to it) samples the plain walk.
+            return cur == S_Walk && (!an.HasState(0, S_WalkCarry) || _gripWaitT[r] > CarryAnyWalkAfter);
+        }
+
+        void PoseCarried(int r, Transform a, HabitatWalker w, float dt)
+        {
+            Transform prop = _prop[r];
+            // Avatar-local units: positions below are in the avatar's own space (InverseTransformPoint), so they do not
+            // change with the arrive/soft-transfer scale.
+            float hl = layout.agentHeight / Mathf.Max(1e-5f, _avatarScale[r].y);
+            Vector3 basePos = new Vector3(0f, hl * 0.5f, hl * 0.22f);
+            Quaternion baseRot = Quaternion.Euler(CarryBaseTilt, 0f, 0f);      // upright, the face tipped up a little
+            Transform hand = _gripHand[r];
+            if (hand == null) { prop.localPosition = basePos; prop.localRotation = baseRot; return; }
+
+            Quaternion toA = Quaternion.Inverse(a.rotation);
+            Vector3 hp = a.InverseTransformPoint(hand.position);
+            Quaternion hq = toA * hand.rotation;
+            Transform chest = _gripChest[r];
+            Vector3 cp = chest != null ? a.InverseTransformPoint(chest.position) : new Vector3(0f, hl * 0.5f, 0f);
+            Quaternion cq = chest != null ? toA * chest.rotation : Quaternion.identity;
+
+            if (!_gripReady[r])
+            {
+                if (w.Anim == WalkerAnim.Walk) _gripWaitT[r] += dt;
+                if (CarryPoseSettled(r, w))
+                {
+                    _gripSamples[r]++;
+                    _gripSampleT[r] += dt;
+                    _gripSumHand[r] += hp; _gripSumChest[r] += cp;
+                    if (_gripOther[r] != null) _gripSumOther[r] += a.InverseTransformPoint(_gripOther[r].position);
+                    AddQ(ref _gripSumHandQ[r], hq); AddQ(ref _gripSumChestQ[r], cq);
+                    if (_gripSampleT[r] >= CarryCalibrateSeconds && _gripSamples[r] >= 3) CalibrateGrip(r, hl, baseRot);
+                }
+                prop.localPosition = basePos; prop.localRotation = baseRot;
+                return;
+            }
+
+            Vector3 ph = hp + hq * _gripHandPos[r];
+            Quaternion qh = hq * _gripHandRot[r];
+            Vector3 pc = cp + cq * _gripChestPos[r];
+            Quaternion qc = cq * _gripChestRot[r];
+            Vector3 p = Vector3.Lerp(pc, ph, CarryHandWeight);
+            Quaternion q = Quaternion.Slerp(qc, qh, CarryHandWeight);
+            float ang = Quaternion.Angle(baseRot, q);
+            if (ang > CarryTiltLimit) q = Quaternion.Slerp(baseRot, q, CarryTiltLimit / ang);
+            float minZ = cp.z + CarryForwardMin * hl;                       // in front of the body, never through it
+            if (p.z < minZ) p.z = minZ;
+            p.y = Mathf.Clamp(p.y, 0.22f * hl, 0.85f * hl);
+            _gripBlend[r] = Mathf.MoveTowards(_gripBlend[r], 1f, dt / CarryBlendSeconds);
+            float k = _gripBlend[r];
+            prop.localPosition = Vector3.Lerp(basePos, p, k);
+            prop.localRotation = Quaternion.Slerp(baseRot, q, k);
+        }
+
+        /// <summary>Measure the grip from the mean carry pose: the sheet sits just above and in front of the hands (between
+        /// them when both hands hold it), upright; that offset is then fixed in the hand's and the chest's own frames.</summary>
+        void CalibrateGrip(int r, float hl, Quaternion baseRot)
+        {
+            float n = Mathf.Max(1, _gripSamples[r]);
+            Vector3 mh = _gripSumHand[r] / n, mc = _gripSumChest[r] / n;
+            Quaternion qh = MeanQ(_gripSumHandQ[r]), qc = MeanQ(_gripSumChestQ[r]);
+            Vector3 hold = mh;
+            if (_gripOther[r] != null)
+            {
+                Vector3 mo = _gripSumOther[r] / n;
+                if ((mo - mh).magnitude < 0.35f * hl) hold = (mh + mo) * 0.5f;   // both hands on the sheet
+            }
+            Vector3 want = hold + new Vector3(0f, 0.05f * hl, 0.03f * hl);
+            want.z = Mathf.Max(want.z, mc.z + CarryForwardMin * hl);
+            want.y = Mathf.Clamp(want.y, 0.3f * hl, 0.75f * hl);
+            Quaternion ih = Quaternion.Inverse(qh), ic = Quaternion.Inverse(qc);
+            _gripHandPos[r] = ih * (want - mh); _gripHandRot[r] = ih * baseRot;
+            _gripChestPos[r] = ic * (want - mc); _gripChestRot[r] = ic * baseRot;
+            _gripReady[r] = true;
+            _gripBlend[r] = 0f;
         }
 
         // ── presentation driven by authoritative state ──
@@ -1161,6 +1311,7 @@ namespace MuseDesk.Wall
             public Transform t; public Renderer r;
             public int[] legs; public bool[] up;
             public Vector3 start, end; public float time; public bool spent;
+            public HabitatRole to; public bool acked, landed;
         }
         readonly List<TubeMail> _mail = new List<TubeMail>();
         public const float MailHold = 1.4f, MailFade = 0.35f;
@@ -1170,7 +1321,11 @@ namespace MuseDesk.Wall
 
         /// <summary>Send a sheet from <paramref name="from"/>'s desk up its tube to the Manager (<paramref name="to"/> =
         /// Manager), or through the Manager's hub on down to another agent's desk. False when there is no tube for it.</summary>
-        public bool SendUpTube(HabitatRole from, HabitatRole to, Color tint)
+        public bool SendUpTube(HabitatRole from, HabitatRole to, Color tint) { return SendUpTube(from, to, tint, null); }
+
+        /// <summary>Same, with a small label (rc21) that rides along in front of the tube and waits at the destination for
+        /// <see cref="LabelHold"/> s, e.g. "Researcher → Manager: Findings: login options". Null/empty: no label.</summary>
+        public bool SendUpTube(HabitatRole from, HabitatRole to, Color tint, string label)
         {
             int f = (int)from, g = (int)to;
             if (f < 0 || f >= 3 || f == g) return false;              // the Manager has no tube of its own: its papers print
@@ -1186,9 +1341,11 @@ namespace MuseDesk.Wall
                 up = relay ? new[] { true, false } : new[] { true },
                 start = r.transform.localPosition,
                 end = relay ? DeskSlot(to, CardsOnDesk(to)) + Vector3.up * 0.003f : TraySlot(CardsInTrayTotal()) + Vector3.up * 0.003f,
+                to = relay ? to : HabitatRole.Manager,
             };
             _mail.Add(m);
             MailSent++;
+            if (!string.IsNullOrEmpty(label)) ShowTubeLabel(m, label, tint == Paper ? Teal : tint);
             return true;
         }
 
@@ -1237,6 +1394,7 @@ namespace MuseDesk.Wall
             int last = m.legs.Length - 1;
             Vector3 exit = LegEnd(m.legs[last], m.up[last], false);
             float q = Mathf.Clamp01(t / TubeDrop);
+            if (!m.acked) { m.acked = true; Acknowledge(m.to, 0.9f); }       // rc21: whoever it is for nods as it pops out
             if (q < 1f)
             {
                 // Pops out, unrolls and settles onto the tray (or the other desk).
@@ -1247,11 +1405,189 @@ namespace MuseDesk.Wall
                 return;
             }
             t -= TubeDrop;
+            m.landed = true;
             m.t.localPosition = m.end; m.t.localRotation = Quaternion.identity;
             if (t < MailHold) { m.t.localScale = full; return; }
             float f = Mathf.Clamp01((t - MailHold) / MailFade);
             m.t.localScale = Vector3.Lerp(full, new Vector3(full.x, full.y, full.z) * 0.2f, f);
             if (f >= 1f) { Object.Destroy(m.t.gameObject); m.spent = true; }
+        }
+
+        // ── Little labels (rc21; owner, worn rc20: "there should be little indicators of what the papers say as they are being
+        //    pushed through the pipes, maybe small popups at the pipes"). A small dark rounded label in front of the habitat,
+        //    tucked under the ceiling of the floor the sheet is on (above every head, never over a face), follows the sheet
+        //    along its tube, waits at the destination for LabelHold s, then shrinks away. At most MaxTubeLabels at once (the
+        //    oldest goes). The same label shows an agent's question while it walks out to you, and "Waiting for the lift"
+        //    while a rider waits for the cabin. Text comes only from the real event (agent names, the task's own title). ──
+
+        enum LabelKind { Tube = 0, Question = 1, Lift = 2 }
+
+        sealed class Label
+        {
+            public LabelKind kind; public Transform t; public TMP_Text text;
+            public TubeMail mail; public int role = -1, slot;
+            public float age, held, fade = -1f, maxAge, width;
+            public bool placed, leftHome; public Vector3 pos;
+        }
+
+        readonly List<Label> _labels = new List<Label>();
+        /// <summary>Font and unlit plate material for the labels (set by the controller; null = Inter fallback / lit box).</summary>
+        public TMP_FontAsset labelFont;
+        public Material labelPlateMaterial;
+        public const int MaxTubeLabels = 3;
+        public const float LabelHold = 2f, LabelIn = 0.18f, LabelOut = 0.35f, LabelFontMm = 5.2f, LabelH = 0.019f, LabelMaxCm = 15f;
+        /// <summary>For drivers: labels created so far, alive now (tube ones), and the last label's text.</summary>
+        public int LabelsShown { get; private set; }
+        public int TubeLabelsLive { get { int n = 0; for (int i = 0; i < _labels.Count; i++) if (_labels[i].kind == LabelKind.Tube) n++; return n; } }
+        public int LabelsLive => _labels.Count;
+        public string LastLabel { get; private set; }
+
+        float RootScale => Mathf.Max(1e-4f, root.lossyScale.y);
+
+        Label MakeLabel(LabelKind kind, string name, string text, Color accent)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(root, false);
+            go.transform.localScale = Vector3.zero;                         // grows in on the first step
+            var l = new Label { kind = kind, t = go.transform };
+            TMP_Text tx = WallUi.MakeText(go.transform, "Text", labelFont, new Vector3(0.002f, 0f, -0.0016f), new Vector2(LabelMaxCm, 2f), LabelFontMm, Paper, TextAlignmentOptions.Center);
+            tx.textWrappingMode = TextWrappingModes.NoWrap;
+            tx.overflowMode = TextOverflowModes.Ellipsis;
+            if (text.IndexOf('→') >= 0 && (tx.font == null || !tx.font.HasCharacter('→', true, true))) text = text.Replace("→", "->");
+            tx.text = text;
+            float wCm = Mathf.Clamp(tx.GetPreferredValues(text).x + 0.2f, 3f, LabelMaxCm);
+            tx.rectTransform.sizeDelta = new Vector2(wCm, 2f);
+            l.text = tx;
+            l.width = wCm * 0.01f + 0.014f;
+            WallUi.Plate(go.transform, "Plate", Vector3.zero, l.width, LabelH, LabelH * 0.45f, Ink, labelPlateMaterial, this);
+            // A small accent dot on the left in the paper's colour (teal result, coral problem, lavender question).
+            WallUi.Plate(go.transform, "Accent", new Vector3(-l.width * 0.5f + 0.0055f, 0f, -0.0012f), 0.0045f, 0.0045f, 0.00225f, accent, labelPlateMaterial, this);
+            _labels.Add(l);
+            LabelsShown++;
+            LastLabel = text;
+            return l;
+        }
+
+        void KillLabel(int i)
+        {
+            if (_labels[i].t != null) Object.Destroy(_labels[i].t.gameObject);
+            _labels.RemoveAt(i);
+        }
+
+        void ShowTubeLabel(TubeMail m, string text, Color accent)
+        {
+            // Never more than MaxTubeLabels: the oldest tube label goes at once (labels are oldest first in the list).
+            int live = TubeLabelsLive;
+            for (int i = 0; i < _labels.Count && live >= MaxTubeLabels; i++)
+                if (_labels[i].kind == LabelKind.Tube) { KillLabel(i); i--; live--; }
+            var used = new bool[MaxTubeLabels];
+            for (int i = 0; i < _labels.Count; i++) if (_labels[i].kind == LabelKind.Tube && _labels[i].slot < MaxTubeLabels) used[_labels[i].slot] = true;
+            int slot = 0;
+            while (slot < MaxTubeLabels - 1 && used[slot]) slot++;
+            Label l = MakeLabel(LabelKind.Tube, "TubeLabel_" + m.t.name, text, accent);
+            l.mail = m; l.slot = slot; l.maxAge = 20f;
+        }
+
+        /// <summary>A label over an agent's head while it walks out with a question for the user; it goes once the agent is
+        /// back at its desk (or after <paramref name="maxSeconds"/>). One per agent.</summary>
+        public void ShowQuestionLabel(HabitatRole role, string text, float maxSeconds = 30f)
+        {
+            int r = (int)role;
+            if (r < 0 || r >= 4 || string.IsNullOrEmpty(text)) return;
+            for (int i = _labels.Count - 1; i >= 0; i--) if (_labels[i].kind == LabelKind.Question && _labels[i].role == r) KillLabel(i);
+            Label l = MakeLabel(LabelKind.Question, "QuestionLabel_" + role, text, Lavender);
+            l.role = r; l.maxAge = maxSeconds;
+        }
+
+        /// <summary>"Waiting for the lift" over a rider that has been waiting for the cabin for a moment (rc21: a wait has a
+        /// visible reason instead of an agent standing still at the doors).</summary>
+        void TickLiftCue(int r, HabitatWalker w)
+        {
+            if (w.State != WalkerState.WaitingElevator || w.WaitSeconds < 0.6f) return;
+            for (int i = 0; i < _labels.Count; i++) if (_labels[i].kind == LabelKind.Lift && _labels[i].role == r) return;
+            Label l = MakeLabel(LabelKind.Lift, "LiftLabel_" + (HabitatRole)r, "Waiting for the lift", Brass);
+            l.role = r; l.slot = 1; l.maxAge = 600f;
+        }
+
+        /// <summary>The floor whose storey contains habitat-local height <paramref name="y"/>.</summary>
+        int FloorAt(float y)
+        {
+            int f = 0;
+            for (int i = 0; i < layout.floors.Count; i++) if (y >= layout.floors[i].floorY - 0.01f) f = i;
+            return f;
+        }
+
+        /// <summary>Where a tube label sits for a sheet at <paramref name="at"/>: same x, in front of the habitat, just under
+        /// the ceiling of that floor (the lower bays' own ceiling is 2.1 cm lower, as the tube collars found), stacked down by
+        /// slot but never lower than a head plus a margin.</summary>
+        Vector3 TubeLabelSpot(Vector3 at, Label l)
+        {
+            float rs = RootScale, half = LabelH * 0.5f / rs, hw = l.width * 0.5f / rs;
+            HabitatFloor fl = layout.floors[FloorAt(at.y)];
+            float top = fl.ceilingY - 0.006f - half - (fl.index == 0 ? 0.021f : 0f);
+            float y = Mathf.Max(top - l.slot * (2f * half + 0.004f / rs), fl.floorY + layout.agentHeight + 0.012f + half);
+            float x = Mathf.Clamp(at.x, -layout.size.x * 0.5f + hw, layout.size.x * 0.5f - hw);
+            return new Vector3(x, y, layout.size.z + 0.008f + 0.002f * l.slot);
+        }
+
+        void StepLabels(HabitatStage stage, float dt)
+        {
+            if (_labels.Count == 0) return;
+            Camera cam = Camera.main;
+            float rs = RootScale, half = LabelH * 0.5f / rs;
+            for (int i = _labels.Count - 1; i >= 0; i--)
+            {
+                Label l = _labels[i];
+                if (l.t == null) { _labels.RemoveAt(i); continue; }
+                l.age += dt;
+                Vector3 target;
+                bool keep;
+                if (l.kind == LabelKind.Tube)
+                {
+                    TubeMail m = l.mail;
+                    bool flying = m != null && !m.spent && !m.landed && m.t != null;
+                    if (!flying) l.held += dt;
+                    target = TubeLabelSpot(flying ? m.t.localPosition : (m != null ? m.end : l.pos), l);
+                    keep = l.held < LabelHold;
+                }
+                else
+                {
+                    HabitatWalker w = stage != null ? stage.Walker((HabitatRole)l.role) : null;
+                    Transform a = _avatar[l.role];
+                    Vector3 feet = a != null ? root.InverseTransformPoint(a.position) : (w != null ? w.Position : Vector3.zero);
+                    target = feet + new Vector3(0f, layout.agentHeight + 0.014f + half + l.slot * (2f * half + 0.003f / rs), 0.01f);
+                    if (l.kind == LabelKind.Lift) keep = w != null && w.State == WalkerState.WaitingElevator;
+                    else
+                    {
+                        if (w != null && !w.AtHome) l.leftHome = true;
+                        keep = w != null && !(l.leftHome && w.AtHome) && !(!l.leftHome && l.age > 12f);
+                    }
+                }
+                if (l.age > l.maxAge) keep = false;
+                if (!keep && l.fade < 0f) l.fade = 0f;
+
+                l.pos = l.placed ? Vector3.Lerp(l.pos, target, 1f - Mathf.Exp(-dt * 12f)) : target;
+                l.placed = true;
+                l.t.localPosition = l.pos;
+                if (cam != null) l.t.rotation = WallUi.FacingEye(l.t.position, cam.transform.position);
+                else l.t.localRotation = Quaternion.Euler(0f, 180f, 0f);   // TMP reads from local -Z; the user is at +Z
+
+                float s, alpha;
+                if (l.fade >= 0f)
+                {
+                    l.fade += dt;
+                    float k = Mathf.Clamp01(l.fade / LabelOut);
+                    if (k >= 1f) { KillLabel(i); continue; }
+                    s = 1f - k * k; alpha = 1f - k;
+                }
+                else
+                {
+                    float k = Mathf.Clamp01(l.age / LabelIn), e = 1f - (1f - k) * (1f - k) * (1f - k);
+                    s = 0.6f + 0.4f * e; alpha = e;
+                }
+                l.t.localScale = Vector3.one * (s / rs);                    // absolute size whatever the habitat's scale
+                if (l.text != null) l.text.alpha = alpha;
+            }
         }
 
         void StepAllMail(float dt)
@@ -1320,6 +1656,8 @@ namespace MuseDesk.Wall
             for (int i = 0; i < _cards.Count; i++) if (_cards[i].t != null) Object.Destroy(_cards[i].t.gameObject);
             for (int i = 0; i < _mail.Count; i++) if (_mail[i].t != null) Object.Destroy(_mail[i].t.gameObject);
             _mail.Clear();
+            for (int i = _labels.Count - 1; i >= 0; i--)
+                if (_labels[i].kind == LabelKind.Tube) { if (_labels[i].t != null) Object.Destroy(_labels[i].t.gameObject); _labels.RemoveAt(i); }
             _cards.Clear(); _cardById.Clear(); _trayStack.Clear(); _deskStack.Clear();
         }
 

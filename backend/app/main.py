@@ -185,21 +185,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ─────────────────────── PC screen panel (rc20) ───────────────────────
     @app.get("/v2/sessions/{session_id}/screen/frame")
-    async def screen_frame(session_id: str, request: Request, w: int = 1280,
+    async def screen_frame(session_id: str, request: Request, w: int = 1280, since: int | None = None,
                            authorization: str | None = Header(default=None)) -> Response:
         """The PC's primary screen for the headset's screen panel: BGRA pixels, top row first, zlib-compressed.
-        Off unless the backend was started with MUSEDESK_SCREEN_SHARE=true; a paired session only."""
+        Off unless the backend was started with MUSEDESK_SCREEN_SHARE=true; a paired session only. rc21: the latest frame
+        is held by a capture thread that runs only while frames are asked for; ``since`` is the X-Seq the caller already
+        has: a newer frame is returned at once, or after a short wait, and 304 means the picture has not changed."""
         from . import screen_capture
         await require_session(session_id, request, authorization)
         if not screen_capture.enabled():
             raise HTTPException(status_code=403, detail="screen sharing is off on the PC")
         try:
-            f = await asyncio.to_thread(screen_capture.capture, w, True)
+            f = await asyncio.to_thread(screen_capture.streamer().get, w, since, 0.25 if since is not None else 2.0)
         except Exception:  # noqa: BLE001 - never leak capture internals
             raise HTTPException(status_code=503, detail="the screen could not be read")
+        if f is None:
+            if since is None:
+                raise HTTPException(status_code=503, detail="the screen could not be read")
+            return Response(status_code=304, headers={"X-Seq": str(since), "Cache-Control": "no-store"})
         return Response(content=f.data, media_type="application/octet-stream",
                         headers={"X-Width": str(f.width), "X-Height": str(f.height), "X-Format": "BGRA32",
-                                 "X-Compression": "zlib", "Cache-Control": "no-store"})
+                                 "X-Compression": "zlib", "X-Seq": str(f.seq), "Cache-Control": "no-store"})
 
     # ─────────────────────── sessions ───────────────────────
     @app.post("/v1/sessions", response_model=SessionCreated, status_code=201)

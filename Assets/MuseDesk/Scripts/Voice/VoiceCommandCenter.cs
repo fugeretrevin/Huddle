@@ -96,6 +96,35 @@ namespace MuseDesk.Voice
 
         public VoiceOffice Office => _office;
         public bool IsListening => _listening;
+        /// <summary>rc21: the longest the microphone stays open for one sentence, pauses included.</summary>
+        public float ListenCapSeconds => Mathf.Max(maxListenSeconds, SentenceStitcher.DefaultMaxSeconds + 2f);
+
+        /// <summary>rc21: given the words so far of a piece the speech service called final, whether they already read as a
+        /// whole command (act now: "stop", "approve", "floor mode"), clearly go on ("Manager," alone; "new task" with no
+        /// title), or neither (the stitcher waits a short grace for more words when the piece is more than two words).</summary>
+        public PieceVerdict SentenceVerdict(string text)
+        {
+            string heard = WakeWord.Canonical(VoiceAnswers.Ascii(text ?? "").Trim());
+            if (heard.Length == 0) return PieceVerdict.Unknown;
+            if (_pending != Pending.None) return PieceVerdict.Complete;          // an open question: answers are short
+            VoiceAgentTarget who; string rest;
+            bool named = WakeWord.Parse(heard, out who, out rest);
+            if (named && string.IsNullOrWhiteSpace(rest)) return PieceVerdict.Incomplete;   // "Manager," then a pause
+            VoiceIntent intent = VoiceIntentParser.Parse(heard, CurrentContext());
+            if (intent.Kind == VoiceIntentKind.None && named) intent = VoiceIntentParser.Parse(rest, CurrentContext());
+            switch (intent.Kind)
+            {
+                case VoiceIntentKind.None:
+                case VoiceIntentKind.AskAgent:
+                case VoiceIntentKind.AskWhy:
+                case VoiceIntentKind.Start:
+                    return PieceVerdict.Unknown;                                 // free speech: may go on
+                case VoiceIntentKind.CreateTask:
+                    return string.IsNullOrEmpty(intent.Text) ? PieceVerdict.Incomplete : PieceVerdict.Unknown;
+                default:
+                    return PieceVerdict.Complete;                                // a closed command
+            }
+        }
         public bool HasPendingQuestion => _pending != Pending.None;
 
         // ───────────────────────── hands-free mic ─────────────────────────
@@ -209,7 +238,7 @@ namespace MuseDesk.Voice
             _source.MicLevelChanged += OnLevel;
             _source.Problem += OnProblem;
             var wit = sourceBehaviour as WitVoiceSource;
-            if (wit != null) wit.ToggleHandler = PressMic;
+            if (wit != null) { wit.ToggleHandler = PressMic; wit.SentenceVerdict = SentenceVerdict; }
             _hooked = true;
         }
 
@@ -223,6 +252,7 @@ namespace MuseDesk.Voice
             _source.Problem -= OnProblem;
             var wit = sourceBehaviour as WitVoiceSource;
             if (wit != null && wit.ToggleHandler == (Action)PressMic) wit.ToggleHandler = null;
+            if (wit != null && wit.SentenceVerdict == (Func<string, PieceVerdict>)SentenceVerdict) wit.SentenceVerdict = null;
             _hooked = false;
         }
 
@@ -232,8 +262,10 @@ namespace MuseDesk.Voice
             _office.Find(false);
             VoiceAddressing.Shared.Tick(now);
 
-            // The microphone never stays open longer than one sentence.
-            if (_listening && now - _listenStart > maxListenSeconds && _source != null) _source.EndRequest();
+            // The microphone never stays open longer than one sentence. rc21 (worn rc20, "it's not waiting for my full sentence"):
+            // the scene's maxListenSeconds (6) ended every request after 6 s, mid-goal, whatever the speech service did. A
+            // sentence may now run as long as the stitcher allows (pauses included); this cap is only the backstop.
+            if (_listening && now - _listenStart > ListenCapSeconds && _source != null) _source.EndRequest();
 
             // The speech service never keeps the readout on "Thinking" for ever.
             if (_thinking && now - _thinkStart > maxThinkSeconds)

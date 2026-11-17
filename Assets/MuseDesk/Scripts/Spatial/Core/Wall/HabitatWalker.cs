@@ -239,6 +239,40 @@ namespace MuseDesk.Spatial.Wall
 
         void FaceDesk(float dt) { Yaw = MuseDesk.Motion.Damped.FollowAngle(Yaw, 0f, ref _yawVel, settings.turnSmoothTime, dt); }
 
+        /// <summary>
+        /// rc21 (owner, worn rc20: "they walk to the elevator and then stand there and then just turn around, it's not clear
+        /// what they're doing"): a walker used to present its paper facing whatever way it had walked in (along the corridor,
+        /// at the lift). While it dwells it now turns IN PLACE to whom the trip is for: at the dispatch spot it faces the user
+        /// (out of the wall, yaw 0: the question is for you); at a colleague's door or the Manager's hand-off spot it faces that
+        /// character's desk. Rotation only: the position does not change, nothing else is reserved.
+        /// </summary>
+        void FacePresentTarget(float dt)
+        {
+            float yaw;
+            if (!PresentYaw(out yaw)) return;
+            Yaw = MuseDesk.Motion.Damped.FollowAngle(Yaw, yaw, ref _yawVel, settings.turnSmoothTime, dt);
+        }
+
+        /// <summary>The yaw a walker presents at on its current node, or false when the node has no one to face.</summary>
+        public bool PresentYaw(out float yaw)
+        {
+            yaw = 0f;
+            if (_at < 0 || _at >= _L.nav.nodes.Count) return false;
+            HabitatNavNode n = _L.nav.nodes[_at];
+            if (n.kind == HabitatNodeKind.Dispatch) return true;          // the user is out of the wall (+Z)
+            HabitatRole who;
+            if (n.kind == HabitatNodeKind.Handoff) who = HabitatRole.Manager;
+            else if (n.kind != HabitatNodeKind.Door || n.id == null || !n.id.StartsWith("Door_")
+                     || !Enum.TryParse(n.id.Substring(5), out who)) return false;
+            int desk = _L.nav.IndexOf(HabitatLayout.WorkNode(who));
+            if (desk < 0) return false;
+            Vector3 d = _L.nav.nodes[desk].position - Position;
+            d.y = 0f;
+            if (d.sqrMagnitude < 1e-8f) return false;
+            yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+            return true;
+        }
+
         public void Tick(float dt)
         {
             if (dt < 0f) dt = 0f;
@@ -304,6 +338,7 @@ namespace MuseDesk.Spatial.Wall
 
                 case WalkerState.Dwelling:
                     Anim = WalkerAnim.Present;
+                    FacePresentTarget(dt);
                     _dwellTimer += dt;
                     if (_dwellTimer < _dwell) return;
                     if (_pendingTarget != null) { StartPending(); return; }

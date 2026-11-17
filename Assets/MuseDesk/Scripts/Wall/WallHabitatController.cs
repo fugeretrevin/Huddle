@@ -866,7 +866,14 @@ namespace MuseDesk.Wall
         void OnHabitatEvent(HabitatEvent e)
         {
             if (_stage == null || !WallActive) return;
-            if (!SendPaperByTube(e)) _stage.Accept(e, Time.unscaledTime);
+            bool walks = !SendPaperByTube(e) && _stage.Accept(e, Time.unscaledTime);
+            // rc21 (owner, worn rc20: "it's not clear at all what they're doing"): the one trip left with the tubes on is a
+            // question for you. A small label over the agent says so while it walks out, presents (facing you) and comes back.
+            if (walks && e.kind == HabitatEventKind.ApprovalRequested && _view != null)
+            {
+                PrepareLabels();
+                _view.ShowQuestionLabel(e.agent, PrettyRole(e.agent) + ": a question for you");
+            }
             // One restrained reaction for a CONFIRMED completion or failure (the event came from the reducer), through the
             // arbiter: never over a walk or a ride, never repeated inside its cooldown.
             if (e.kind == HabitatEventKind.TaskCompleted) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.CompletionNod);
@@ -891,11 +898,11 @@ namespace MuseDesk.Wall
                 case HabitatEventKind.Handoff:
                     if (!e.hasTarget || e.target == e.agent || e.agent == HabitatRole.Manager) return false;
                     to = e.target;
-                    if (to != HabitatRole.Manager)
-                    {
-                        bool ride;
-                        if (!_stage.Walker(e.agent).CanRoute(HabitatLayout.DoorNode(to), out ride) || !ride) return false;
-                    }
+                    // rc21 (owner, worn rc20: "they walk to the elevator and then stand there and then just turn around"): a
+                    // same-floor hand-off used to be a walk to the colleague's corridor door. The Tester's door is beside the
+                    // lift, so the Developer walked up to the lift, held its paper out to nobody and walked back. Every
+                    // hand-off now goes by tube (through the Manager's hub, like the cross-floor ones); the walk stays only
+                    // for a question to you.
                     break;
                 case HabitatEventKind.TaskCompleted:
                     if (e.agent != HabitatRole.Researcher) return false;     // the others celebrate in place (as before)
@@ -915,10 +922,53 @@ namespace MuseDesk.Wall
                 _tubeSeen.Add(e.eventId);
             }
             EnsureCardTubes();                                                // the glass material first (never an opaque tube)
-            if (!_view.SendUpTube(e.agent, to, tint)) return false;
+            PrepareLabels();
+            if (!_view.SendUpTube(e.agent, to, tint, TubeLabelText(e, to))) return false;
             _view.Acknowledge(e.agent, 0.9f);                                 // a small nod as it sends the sheet off
             PapersByTube++;
             return true;
+        }
+
+        void PrepareLabels()
+        {
+            if (_view == null) return;
+            if (_view.labelFont == null) _view.labelFont = font;
+            if (_view.labelPlateMaterial == null) _view.labelPlateMaterial = WallUi.PlateMaterial;
+        }
+
+        string PrettyRole(HabitatRole r) { return AgentPresentationRegistry.Pretty(AgentId(r)); }
+
+        /// <summary>rc21: the words on a tube label. Only real facts: who sends it to whom (the event), and the task's own title
+        /// (the committed plan card, else the agent's current task when it IS this event's task); otherwise the kind of paper.</summary>
+        string TubeLabelText(HabitatEvent e, HabitatRole to)
+        {
+            string head = PrettyRole(e.agent) + " → " + PrettyRole(to) + ": ";
+            string title = ShortTitle(PaperTitle(e), 40);
+            switch (e.kind)
+            {
+                case HabitatEventKind.TaskFailed: return head + (title != null ? "Problem: " + title : "Problem report");
+                case HabitatEventKind.TaskCompleted: return head + (title != null ? title : "Result");
+                default: return head + (title != null ? title : "Hand-off");
+            }
+        }
+
+        string PaperTitle(HabitatEvent e)
+        {
+            if (string.IsNullOrEmpty(e.taskId)) return null;
+            PlanCardView c = _board != null ? _board.Find(e.taskId) : null;
+            if (c != null && !string.IsNullOrEmpty(c.title)) return c.title;
+            string tid, title, state; int rev;
+            if (_tasks != null && _tasks.TryGetAgentTask(AgentId(e.agent), out tid, out title, out state, out rev) && tid == e.taskId && !string.IsNullOrEmpty(title))
+                return title;
+            return null;
+        }
+
+        static string ShortTitle(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            s = s.Replace("\r", " ").Replace("\n", " ").Trim();
+            if (s.Length == 0) return null;
+            return s.Length <= max ? s : s.Substring(0, max - 3).TrimEnd() + "...";
         }
 
         void OnSessionReset()

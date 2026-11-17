@@ -16,7 +16,7 @@ public static class BuildApkTo
     {
         string p = (path ?? "").Replace('\\', '/');
         if (string.IsNullOrEmpty(path) || p.EndsWith("Builds/MuseDesk.apk")) return "REFUSED: protected path";
-        foreach (var rc in new[] { "rc6", "rc7", "rc8", "rc9", "rc10", "rc11", "rc12", "rc13", "rc14", "rc15", "rc16", "rc17", "rc18", "rc19", "rc20" })
+        foreach (var rc in new[] { "rc6", "rc7", "rc8", "rc9", "rc10", "rc11", "rc12", "rc13", "rc14", "rc15", "rc16", "rc17", "rc18", "rc19", "rc20", "rc21" })
             if (p.Contains(rc + "_") || p.Contains(rc + ".")) return "REFUSED: protected path (" + rc + ")";
         if (File.Exists(path)) return "REFUSED: " + path + " exists (never overwrite a build)";
         return null;

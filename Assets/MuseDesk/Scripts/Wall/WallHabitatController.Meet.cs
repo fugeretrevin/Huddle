@@ -161,6 +161,7 @@ namespace MuseDesk.Wall
 
         void TickMeet(float dt)
         {
+            TickTalkBubble(dt);   // rc21: speech bubble + head bob (WallHabitatController.TalkBubble.cs)
             SyncMeetVoiceHook();
 
             // The status line names Meet once each time the habitat comes to rest on a wall (placed, or restored).

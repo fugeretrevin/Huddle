@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.IO.Compression;
 using System.Threading.Tasks;
@@ -26,7 +26,7 @@ namespace MuseDesk.Wall
         [Tooltip("Where the panel opens, in the near-user rig (the eye is about (0, 0.30, 0.62); -Z is away from the user).")]
         public Vector3 screenPanelLocal = new Vector3(0f, 0.36f, -0.30f);
         [Tooltip("Frames asked for per second while the panel is open.")]
-        public float screenFps = 5f;
+        public float screenFps = 20f;
         [Tooltip("Width in pixels asked of the PC (the PC scales the screen down to this).")]
         public int screenPixels = 1280;
 
@@ -43,8 +43,17 @@ namespace MuseDesk.Wall
         int _screenHand = -1;
         Vector3 _screenGrabOffset;
         readonly bool[] _screenPrevPinch = new bool[2];
-        volatile byte[] _screenPixels;
+        // rc21: frames come through reused buffers (no per-frame arrays): two for the compressed bytes, three for decoded pixels.
+        readonly byte[][] _screenZ = new byte[2][];
+        readonly byte[][] _screenPx = new byte[3][];
+        int _screenZWrite;
+        volatile int _screenReady = -1, _screenHold = -1;
+        volatile bool _screenDecoding;
+        int _screenSeq = -1, _screenFpsCount;
+        float _screenFpsAt;
         int _screenW, _screenH;
+        /// <summary>For drivers: frames uploaded per second, measured over the last second while the panel is open.</summary>
+        public float ScreenFps { get; private set; }
         string _screenProblem;
 
         /// <summary>For drivers: the panel is open / frames shown / the last reason nothing shows.</summary>
@@ -64,6 +73,7 @@ namespace MuseDesk.Wall
             {
                 PlaceScreen();
                 _screenNextAt = 0f;
+                _screenSeq = -1;
                 if (_backend == null || !_backend.IsLive) ShowScreenWords("Your PC screen shows here when MuseDesk is connected to the PC app.");
             }
             if (_kScreen != null) _kScreen.SetLabel(_screenOpen ? "Hide" : "Screen");
@@ -131,6 +141,7 @@ namespace MuseDesk.Wall
             else local = dockLocal + new Vector3(0.14f, 0f, 0f);
             _kScreen = WallUi.MakeKey(keyTemplate, parent, "Key_Screen", "Screen", local, keyScale, PressScreen);
             _kScreen.Show(true, true);
+            MoveScreenKeyToFocusSlot();          // rc21: the Focus key's slot, when the dock has one
         }
 
         void PlaceScreen()
@@ -160,14 +171,17 @@ namespace MuseDesk.Wall
         {
             if (!screenPanelEnabled) return;
             if (_kScreen == null && nearUserRig != null && keyTemplate != null) EnsureScreen();
+            HideFocusKey();
             if (!_screenOpen || _screenRoot == null) return;
             TickScreenDrag(dt);
 
-            // A decoded frame is waiting: upload it (main thread), then ask for the next one.
-            byte[] px = _screenPixels;
-            if (px != null)
+            // A decoded frame is waiting: upload it (main thread). The next request is already on its way.
+            int ready = _screenReady;
+            if (ready >= 0)
             {
-                _screenPixels = null;
+                _screenHold = ready;
+                _screenReady = -1;
+                byte[] px = _screenPx[ready];
                 if (_screenTex == null || _screenTex.width != _screenW || _screenTex.height != _screenH)
                 {
                     if (_screenTex != null) Destroy(_screenTex);
@@ -182,73 +196,191 @@ namespace MuseDesk.Wall
                     float aspect = _screenW / (float)Mathf.Max(1, _screenH);
                     if (Mathf.Abs(aspect - _screenAspect) > 0.01f) ResizeScreen(aspect);
                 }
-                if (px.Length == _screenW * _screenH * 4)
+                if (px != null && px.Length == _screenW * _screenH * 4)
                 {
                     _screenTex.LoadRawTextureData(px);
                     _screenTex.Apply(false, false);
                     ScreenFrames++;
+                    _screenFpsCount++;
                     if (!string.IsNullOrEmpty(_screenProblem)) ShowScreenWords("");
                 }
+                _screenHold = -1;
             }
+            float now = Time.unscaledTime;
+            if (now - _screenFpsAt >= 1f) { ScreenFps = _screenFpsCount / (now - _screenFpsAt); _screenFpsCount = 0; _screenFpsAt = now; }
 
-            if (_screenBusy || Time.unscaledTime < _screenNextAt) return;
+            if (_screenBusy || now < _screenNextAt) return;
             var gateway = _backend as WallBackendGateway;
-            UnityWebRequest req = gateway != null ? gateway.ScreenFrameRequest(screenPixels) : null;
+            UnityWebRequest req = gateway != null ? gateway.ScreenFrameRequest(screenPixels, _screenSeq) : null;
             if (req == null)
             {
                 ShowScreenWords("Your PC screen shows here when MuseDesk is connected to the PC app.");
-                _screenNextAt = Time.unscaledTime + 1f;
+                _screenNextAt = now + 1f;
                 return;
             }
             _screenBusy = true;
-            _screenNextAt = Time.unscaledTime + 1f / Mathf.Max(0.5f, screenFps);
+            // A scene saved with the rc20 default (5) would hold the panel back: anything under 10 means "the new default".
+            _screenNextAt = now + 1f / (screenFps < 10f ? 20f : screenFps);
+            // The compressed frame lands in a reused buffer (no per-frame array); one is decoding while the other fills.
+            int zi = _screenZWrite;
+            var dl = new ScreenDownload(_screenZ[zi]);
+            req.downloadHandler = dl;
             var op = req.SendWebRequest();
             op.completed += _ =>
             {
                 long code = req.responseCode;
                 bool ok = req.result == UnityWebRequest.Result.Success;
-                byte[] data = ok ? req.downloadHandler.data : null;
-                int w = 0, h = 0;
-                int.TryParse(req.GetResponseHeader("X-Width") ?? "", out w);
-                int.TryParse(req.GetResponseHeader("X-Height") ?? "", out h);
+                int w = 0, h = 0, seq = -1;
+                if (ok && code == 200)
+                {
+                    int.TryParse(req.GetResponseHeader("X-Width") ?? "", out w);
+                    int.TryParse(req.GetResponseHeader("X-Height") ?? "", out h);
+                    int.TryParse(req.GetResponseHeader("X-Seq") ?? "", out seq);
+                }
+                int len = dl.Length;
+                _screenZ[zi] = dl.Buffer;
                 req.Dispose();
                 if (this == null) return;
-                if (!ok || data == null || w <= 0 || h <= 0)
+                if (ok && code == 304)
+                {
+                    _screenBusy = false;                 // the picture has not changed: ask again
+                    _screenNextAt = Time.unscaledTime;
+                    return;
+                }
+                if (!ok || len <= 0 || w <= 0 || h <= 0)
                 {
                     _screenBusy = false;
+                    _screenSeq = -1;
                     ShowScreenWords(code == 403 ? "Screen sharing is off on the PC (the backend was started with -NoScreen)."
                                   : "The PC screen could not be read" + (code > 0 ? " (" + code + ")." : "."));
                     _screenNextAt = Time.unscaledTime + 1.5f;
                     return;
                 }
-                // Inflate off the main thread; the upload happens in TickScreen.
+                _screenSeq = seq;
+                _screenBusy = false;                      // the next request goes out now, while this frame decodes
+                if (_screenDecoding) return;              // still decoding the last one: drop this frame
+                _screenDecoding = true;
+                _screenZWrite = zi ^ 1;
+                byte[] z = _screenZ[zi];
                 Task.Run(() =>
                 {
-                    byte[] raw = null;
-                    try { raw = Inflate(data, w * h * 4); } catch (Exception) { raw = null; }
-                    if (raw != null) { _screenW = w; _screenH = h; _screenPixels = raw; }
-                    _screenBusy = false;
+                    try
+                    {
+                        int need = w * h * 4;
+                        int bi = 0;
+                        while (bi == _screenHold || bi == _screenReady) bi++;      // three buffers: one is always free
+                        byte[] outBuf = _screenPx[bi];
+                        if (outBuf == null || outBuf.Length != need) _screenPx[bi] = outBuf = new byte[need];
+                        if (Inflate(z, len, outBuf))
+                        {
+                            _screenW = w; _screenH = h;
+                            _screenReady = bi;
+                        }
+                    }
+                    catch (Exception) { }
+                    finally { _screenDecoding = false; }
                 });
             };
         }
 
-        /// <summary>zlib (RFC 1950) to raw bytes: skip the 2-byte header, inflate the deflate body.</summary>
-        static byte[] Inflate(byte[] z, int expected)
+        /// <summary>The compressed frame, received into a reused buffer (grown only when a frame is bigger than any before).</summary>
+        sealed class ScreenDownload : DownloadHandlerScript
         {
-            if (z == null || z.Length < 6) return null;
-            var outBuf = new byte[expected];
-            using (var ms = new MemoryStream(z, 2, z.Length - 2))
+            static readonly byte[] Chunk = new byte[64 * 1024];
+            public byte[] Buffer;
+            public int Length;
+            public ScreenDownload(byte[] buffer) : base(Chunk) { Buffer = buffer != null && buffer.Length > 0 ? buffer : new byte[1 << 20]; }
+            protected override bool ReceiveData(byte[] data, int dataLength)
+            {
+                if (data == null || dataLength <= 0) return true;
+                if (Length + dataLength > Buffer.Length) Array.Resize(ref Buffer, Mathf.Max(Buffer.Length * 2, Length + dataLength));
+                System.Buffer.BlockCopy(data, 0, Buffer, Length, dataLength);
+                Length += dataLength;
+                return true;
+            }
+        }
+
+        /// <summary>zlib (RFC 1950) to raw bytes: skip the 2-byte header, inflate the deflate body into <paramref name="outBuf"/>.</summary>
+        static bool Inflate(byte[] z, int zLen, byte[] outBuf)
+        {
+            if (z == null || zLen < 6) return false;
+            using (var ms = new MemoryStream(z, 2, zLen - 2))
             using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
             {
-                int got = 0;
+                int got = 0, expected = outBuf.Length;
                 while (got < expected)
                 {
                     int n = ds.Read(outBuf, got, expected - got);
                     if (n <= 0) break;
                     got += n;
                 }
-                return got == expected ? outBuf : null;
+                return got == expected;
             }
+        }
+
+        // ------------------------------------------------------------------ rc21: Focus key out, Screen key in its slot
+
+        Transform _focusSlotParent;
+        Vector3 _focusSlotPos;
+        Quaternion _focusSlotRot = Quaternion.identity;
+        Vector3 _focusSlotScale = Vector3.one;
+        bool _focusSlotKnown;
+        Transform _focusHidden;
+        int _focusHideTick;
+
+        /// <summary>The Focus key is gone (owner, rc20: "it's just distracting"). It is hidden by scale, never SetActive(false) (poke
+        /// interactables break), its pokes are switched off, and this re-asserts it every few frames so nothing re-shows it.</summary>
+        void HideFocusKey()
+        {
+            if (!_focusSlotKnown)
+            {
+                var console = FindAnyObjectByType<MuseDesk.Spatial.ModeConsole>();
+                if (console == null || console.focusKey == null) return;
+                Transform fk = console.focusKey;
+                _focusSlotParent = fk.parent;
+                _focusSlotPos = fk.localPosition;
+                _focusSlotRot = fk.localRotation;
+                _focusSlotScale = fk.localScale;
+                _focusSlotKnown = true;
+                _focusHidden = fk;
+                if (_kScreen != null) MoveScreenKeyToFocusSlot();
+            }
+            if (_focusHidden == null) return;
+            if ((++_focusHideTick & 7) != 0) return;
+            Vector3 hidden = _focusSlotScale * Workspace.ScaleEase.HiddenFactor;
+            if ((_focusHidden.localScale - hidden).sqrMagnitude > 1e-12f) _focusHidden.localScale = hidden;
+            if (_focusHideTick < 64 || (_focusHideTick & 63) == 0)
+                foreach (var p in _focusHidden.GetComponentsInChildren<Oculus.Interaction.PokeInteractable>(true))
+                    if (p.enabled) p.enabled = false;
+        }
+
+        void MoveScreenKeyToFocusSlot()
+        {
+            if (_kScreen == null || _kScreen.root == null || !_focusSlotKnown || _focusSlotParent == null) return;
+            _kScreen.root.SetParent(_focusSlotParent, false);
+            _kScreen.root.localPosition = _focusSlotPos;
+            _kScreen.root.localRotation = _focusSlotRot;
+            var console = FindAnyObjectByType<MuseDesk.Spatial.ModeConsole>();
+            if (console != null && console.deskKey != null && console.deskKey.root != null)
+                _kScreen.shownScale = console.deskKey.shownScale;          // the same size as the other dock keys
+            else _kScreen.shownScale = _focusSlotScale;
+            _kScreen.root.localScale = _kScreen.shownScale * (_kScreen.shown ? 1f : Workspace.ScaleEase.HiddenFactor);
+        }
+
+        /// <summary>For drivers: where the Screen key and the Focus key are, and whether Focus is hidden.</summary>
+        public string DriverScreenKeyReport()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("screenKey=").Append(_kScreen != null && _kScreen.root != null ? _kScreen.root.name : "none");
+            if (_kScreen != null && _kScreen.root != null)
+                sb.Append(" parent=").Append(_kScreen.root.parent != null ? _kScreen.root.parent.name : "none")
+                  .Append(" local=").Append(_kScreen.root.localPosition.ToString("F4")).Append(" rot=").Append(_kScreen.root.localRotation.eulerAngles.ToString("F1"))
+                  .Append(" scale=").Append(_kScreen.root.localScale.ToString("F4")).Append(" shown=").Append(_kScreen.shown);
+            sb.Append(" | focusKnown=").Append(_focusSlotKnown);
+            if (_focusSlotKnown && _focusHidden != null)
+                sb.Append(" focusScale=").Append(_focusHidden.localScale.ToString("F5")).Append(" slotLocal=").Append(_focusSlotPos.ToString("F4"))
+                  .Append(" slotRot=").Append(_focusSlotRot.eulerAngles.ToString("F1")).Append(" slotScale=").Append(_focusSlotScale.ToString("F4"));
+            return sb.ToString();
         }
 
         void ResizeScreen(float aspect)

@@ -178,6 +178,119 @@ public static class Rc20Probe
         return "dragged=" + ok + " moved " + (c.VisitCard.root.position - before).magnitude.ToString("F3") + " m; " + "dragged=" + c.DraggedCard;
     }
 
+    /// <summary>Aim __CineCam at an agent of the habitat (role name), from the front, close.</summary>
+    public static string AimAgent(string role)
+    {
+        var c = C; if (c == null || c.View == null) return "no view";
+        MuseDesk.Spatial.Wall.HabitatRole r;
+        if (!MuseDesk.Spatial.Wall.HabitatStage.TryRole(role, out r)) return "bad role";
+        Vector3 at; if (!c.TryGetAvatarCenter(r, out at)) return "no avatar";
+        Transform root = c.View.root;
+        var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
+        var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
+        cam.enabled = true; cam.depth = 100f; cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.005f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.2f, 0.22f, 0.25f);
+        Vector3 fwd = root.TransformDirection(Vector3.forward);
+        cam.transform.position = at + fwd * 0.16f + Vector3.up * 0.02f + root.TransformDirection(Vector3.right) * 0.03f;
+        cam.transform.rotation = Quaternion.LookRotation(at - cam.transform.position, Vector3.up);
+        cam.fieldOfView = 40f;
+        return "aimed at " + role + " " + at.ToString("F3");
+    }
+
+    /// <summary>Active objects whose name contains <paramref name="part"/>: path, habitat-local position, world scale.</summary>
+    public static string Named(string part)
+    {
+        var c = C; Transform root = c != null && c.View != null ? c.View.root : null;
+        var sb = new StringBuilder(); int n = 0;
+        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+        {
+            if (!t.gameObject.activeInHierarchy || t.name.IndexOf(part, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+            sb.Append(t.name).Append(" parent=").Append(t.parent != null ? t.parent.name : "-")
+              .Append(" local=").Append(root != null ? root.InverseTransformPoint(t.position).ToString("F3") : "-")
+              .Append(" lossy=").Append(t.lossyScale.ToString("F4")).Append('\n');
+            if (++n > 15) break;
+        }
+        return n + " found\n" + sb;
+    }
+
+    public static string Renderers(string part)
+    {
+        var sb = new StringBuilder(); var cam = GameObject.Find("__CineCam");
+        foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+        {
+            if (!t.gameObject.activeInHierarchy || t.name.IndexOf(part, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+            sb.Append("[").Append(t.name).Append("] fwd=").Append(t.forward.ToString("F2"));
+            if (cam != null) sb.Append(" camDot=").Append(Vector3.Dot(t.forward, (t.position - cam.transform.position).normalized).ToString("F2"));
+            foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+                sb.Append(" | ").Append(r.name).Append(" en=").Append(r.enabled).Append(" act=").Append(r.gameObject.activeInHierarchy)
+                  .Append(" size=").Append(r.bounds.size.ToString("F3")).Append(" mat=").Append(r.sharedMaterial != null ? r.sharedMaterial.shader.name : "null");
+            var tmp = t.GetComponentInChildren<TMPro.TMP_Text>(true);
+            if (tmp != null) sb.Append(" | text='").Append(tmp.text).Append("' alpha=").Append(tmp.alpha.ToString("F2")).Append(" color=").Append(tmp.color);
+            sb.Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Send a labelled tube sheet and render __CineCam to a PNG in the same call (labels are short-lived).</summary>
+    public static async System.Threading.Tasks.Task<string> LabelShot(string path)
+    {
+        var c = C; if (c == null || c.View == null) return "no view";
+        bool sent = c.View.SendUpTube(MuseDesk.Spatial.Wall.HabitatRole.Researcher, MuseDesk.Spatial.Wall.HabitatRole.Manager,
+                                      new Color(0.3f, 0.75f, 0.7f), "Researcher → Manager: Findings: login options");
+        await System.Threading.Tasks.Task.Delay(900);
+        var go = GameObject.Find("__CineCam"); if (go == null) return "aim first";
+        var cam = go.GetComponent<Camera>();
+        var rt = new RenderTexture(1280, 720, 24);
+        cam.targetTexture = rt; cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0); tex.Apply();
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        RenderTexture.active = null; cam.targetTexture = null; Object.Destroy(rt); Object.Destroy(tex);
+        return "sent=" + sent + " saved " + path;
+    }
+
+    /// <summary>Make a visiting agent say a line, wait, then render from the user's eye toward the visitor (PNG).</summary>
+    public static async System.Threading.Tasks.Task<string> TalkShot(string path)
+    {
+        var c = C; if (c == null) return "no controller";
+        string agent = "developer";
+        Vector3 at = c.HasProxy ? c.ProxyPosition : Vector3.zero;
+        MuseDesk.Voice.AgentSpeech.Say(agent, "I wrote triangle.py and its tests. Seven passed, nothing failed. Next the Tester checks it.", at);
+        await System.Threading.Tasks.Task.Delay(1200);
+        var main = Camera.main; if (main == null) return "no main camera";
+        var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
+        var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
+        cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.01f; cam.fieldOfView = 60f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.2f, 0.22f, 0.25f);
+        Vector3 eye = main.transform.position;
+        Vector3 look = c.HasProxy ? c.ProxyPosition + Vector3.up * 0.10f : eye + main.transform.forward;
+        cam.transform.position = eye;
+        cam.transform.rotation = Quaternion.LookRotation(look - eye, Vector3.up);
+        var rt = new RenderTexture(1280, 720, 24);
+        cam.targetTexture = rt; cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0); tex.Apply();
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        RenderTexture.active = null; cam.targetTexture = null; Object.Destroy(rt); Object.Destroy(tex);
+        return "proxy=" + c.HasProxy + " at " + at.ToString("F2") + " eye " + eye.ToString("F2") + " saved";
+    }
+
+    public static string VoiceInternals()
+    {
+        var s = Object.FindAnyObjectByType<MuseDesk.Voice.WitVoiceSource>(FindObjectsInactive.Include);
+        if (s == null) return "no source";
+        var f = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        var t = s.GetType();
+        var sb = new StringBuilder("enabled=" + s.enabled + " activeAndEnabled=" + s.isActiveAndEnabled + " now=" + Time.unscaledTime.ToString("F2"));
+        foreach (var n in new[] { "_requestOpen", "_driverMode", "_rearmIssued", "_pieceLive", "_gotFinal", "_aborted", "_endAsked", "_hooked" })
+        { var fi = t.GetField(n, f); sb.Append(' ').Append(n).Append('=').Append(fi != null ? fi.GetValue(s) : "?"); }
+        var st = t.GetField("_stitch", f)?.GetValue(s) as MuseDesk.Voice.SentenceStitcher;
+        if (st != null) sb.Append(" holding=" + st.Holding + " resumed=" + st.Resumed + " deadline=" + st.Deadline.ToString("F2") + " pieces=" + st.Pieces);
+        return sb.ToString();
+    }
+
     static string Path(Transform t, Transform stop)
     {
         string p = t.name;

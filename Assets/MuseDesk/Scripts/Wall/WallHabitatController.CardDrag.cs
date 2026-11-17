@@ -122,9 +122,13 @@ namespace MuseDesk.Wall
         /// the card, toward the eyes. Zero when it is clear.</summary>
         Vector3 ReadoutClearance(Bounds b)
         {
+            // rc21: measured in metres along the card's own (unit) axes, so a card mid-pop (scaled) is judged at its real
+            // size, and the readout's own depth counts (it is now tilted toward the eyes, rc21 VoiceHud.PlaceForEye): the
+            // readout's back must end up 3 cm in front of the card.
             Transform h = ResolveHead();
             if (h == null) return Vector3.zero;
             Vector3 best = Vector3.zero;
+            Vector3 ext = b.extents;
             WallCard[] cards = { _planCard, _visitCard, _receiptCard };
             for (int i = 0; i < cards.Length; i++)
             {
@@ -134,14 +138,19 @@ namespace MuseDesk.Wall
                 Vector3 toEye = h.position - t.position;
                 if (toEye.sqrMagnitude < 1e-6f) continue;
                 toEye.Normalize();
-                Vector3 local = t.InverseTransformPoint(b.center);
+                Vector3 rel = b.center - t.position;
+                Vector3 right = t.right, up = t.up;
+                // The readout box's half size along each card axis.
+                float hx = Mathf.Abs(right.x) * ext.x + Mathf.Abs(right.y) * ext.y + Mathf.Abs(right.z) * ext.z;
+                float hy = Mathf.Abs(up.x) * ext.x + Mathf.Abs(up.y) * ext.y + Mathf.Abs(up.z) * ext.z;
+                float hd = Mathf.Abs(toEye.x) * ext.x + Mathf.Abs(toEye.y) * ext.y + Mathf.Abs(toEye.z) * ext.z;
                 Vector2 half = c.Size * 0.5f;
-                Vector3 ext = b.extents;
-                float rx = Mathf.Abs(Vector3.Dot(t.right, Vector3.right)) * ext.x + Mathf.Abs(Vector3.Dot(t.right, Vector3.forward)) * ext.z;
-                if (Mathf.Abs(local.x) > half.x + rx || Mathf.Abs(local.y) > half.y + ext.y) continue;
-                float ahead = Vector3.Dot(b.center - t.position, toEye);        // how far in front of the card it already is
-                if (ahead > 0.06f || ahead < -0.06f) continue;
-                Vector3 need = toEye * (0.05f - ahead);
+                if (Mathf.Abs(Vector3.Dot(rel, right)) > half.x + hx || Mathf.Abs(Vector3.Dot(rel, up)) > half.y + hy) continue;
+                float ahead = Vector3.Dot(rel, toEye);          // how far in front of the card the readout's centre is
+                const float Gap = 0.03f;
+                if (ahead - hd >= Gap) continue;                 // already clear in front
+                if (ahead + hd < -0.06f) continue;               // well behind the card: not in the way
+                Vector3 need = toEye * Mathf.Min(0.15f, Gap + hd - ahead);
                 if (need.sqrMagnitude > best.sqrMagnitude) best = need;
             }
             return best;
