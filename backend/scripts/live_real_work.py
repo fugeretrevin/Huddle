@@ -131,7 +131,8 @@ with httpx.Client(base_url=BASE, timeout=240) as c:
     else:
         check("R5 an independent pytest run of the folder matches the last card's counts", False, "no folder")
 
-    tester = next((cd.get("task_id") for cd in st.get("cards", []) if cd.get("agent_id") == "tester"), None)
+    # The LATEST Tester card (its result is the folder's newest test run), as when you visit the Tester after the plan.
+    tester = next((cd.get("task_id") for cd in reversed(st.get("cards", [])) if cd.get("agent_id") == "tester"), None)
     before = json.dumps(st, sort_keys=True)
     r = c.post(f"/v2/sessions/{sid}/agents/tester/side-question", headers=h, json={
         "schema_version": 2, "request_id": "real-ask", "task_id": tester, "visit_session_id": "visit-real",

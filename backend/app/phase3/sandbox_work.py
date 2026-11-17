@@ -92,7 +92,17 @@ DEV_SYSTEM = (
     "your files are saved into a sandbox folder and the tests in it are run with pytest, so "
     "the code must actually work. Include a pytest file named test_<module>.py with focused "
     "tests for this step's acceptance criteria. Extend the files already in the folder when "
-    "they exist (write the whole updated file). " + RULES)
+    "they exist (write the whole updated file). When you rewrite an existing test file, keep "
+    "every test already in it and add yours. " + RULES)
+
+# rc19 (owner, live run on a new objective): a later step rewrote a test file and the folder went from 51 to 45 tests
+# with nobody told. When a step leaves FEWER tests than the folder had before it, the Developer gets one chance to put the
+# earlier tests back (it is shown the files as they were); if the count is still lower, the card says so in its result.
+RESTORE_SYSTEM = (
+    "You work on a small software team. Your last change to the sandbox folder "
+    "removed tests that were there before. Put the earlier tests back: write the whole content "
+    "of each test file you change, keeping every earlier test and the new ones. Change an "
+    "earlier test only if this step's requested change makes it wrong. " + RULES)
 
 TEST_SYSTEM = (
     "You are the Tester on a small software team. Write REAL pytest tests for the code that "
@@ -100,7 +110,8 @@ TEST_SYSTEM = (
     "inputs and expected results, including edge cases. Only write test files (names start "
     "with test_ and end with .py); never change the code under test. The tests will be run "
     "and their real results reported, so test what the code really does and what the criteria "
-    "require. " + RULES)
+    "require. Never delete existing tests: add new test files, or keep every test already in a "
+    "file you rewrite. " + RULES)
 
 FIX_SYSTEM = (
     "You are the Developer on a small software team. The tests in the sandbox folder were run "
@@ -130,6 +141,8 @@ class SandboxOutcome:
     failed: int = 0
     tests_ran: bool = False
     attempts: int = 1
+    tests_before: int = -1        # tests the folder had before this step (-1: unknown / first run)
+    tests_dropped: int = 0        # how many fewer tests the folder has after this step (0: none lost)
 
 
 def parse_files(text: str) -> tuple[list[ParsedFile], str]:
@@ -255,6 +268,7 @@ class SandboxWork:
         self.guard = WorkspaceGuard(str(Path(workspace_root) / "plans"))
         self.test_timeout = int(test_timeout)
         self.fix_attempts = max(0, int(fix_attempts))
+        self._tests_seen: dict[str, int] = {}     # plan id -> tests in its folder after the last real run
 
     def folder(self, plan_id: str) -> Path:
         return self.guard.open_workspace(plan_id)
@@ -263,6 +277,8 @@ class SandboxWork:
     async def run(self, agent: str, plan_id: str, step_prompt: str, complete: Complete) -> SandboxOutcome:
         ws = self.folder(plan_id)
         tests_only = agent == "tester"
+        before_tests = _read_tests(ws)                 # the test files as they were before this step
+        prior = self._tests_seen.get(plan_id)          # tests after the last real run in this folder
         system = TEST_SYSTEM if tests_only else DEV_SYSTEM
         prompt = (step_prompt + "\n\nThe sandbox folder now contains:\n" + workspace_listing(ws))
         text = await complete(system, prompt)
@@ -322,7 +338,40 @@ class SandboxWork:
                 notes.append("Refused in the fix: " + _clip("; ".join(bad), 200))
             written = sorted(set(written) | set(w3))
             result = await asyncio.to_thread(self.guard.run_tests, ws, self.test_timeout)
+
+        # Fewer tests than before this step: one chance to restore them, then say so on the card.
+        if _dropped(prior, result) > 0:
+            lost = _dropped(prior, result)
+            changed = {n: s for n, s in before_tests.items() if _read_tests(ws).get(n) != s}
+            if changed:
+                earlier = "\n\n".join(f"FILE (before this step): {n}\n```python\n{s[:5000]}\n```" for n, s in changed.items())
+                text = await _try(complete, RESTORE_SYSTEM, step_prompt + "\n\nThe sandbox folder now contains:\n"
+                                  + workspace_listing(ws) + f"\n\nBefore this step the folder had {prior} tests; "
+                                  f"now it has {_total(result)} ({lost} fewer). The earlier versions of the test "
+                                  "files this step rewrote:\n\n" + earlier)
+                if text is not None:
+                    fixes, _ = parse_files(text)
+                    w4, n4, bad = self._write(ws, [f for f in fixes if f.name.startswith("test_")], True)
+                    notes += n4 + [f"{lost} earlier test(s) were missing: the Developer was asked to restore them "
+                                   "and rewrote " + (", ".join(w4) if w4 else "nothing")]
+                    if bad:
+                        notes.append("Refused in the restore: " + _clip("; ".join(bad), 200))
+                    if w4:
+                        written = sorted(set(written) | set(w4))
+                        result = await asyncio.to_thread(self.guard.run_tests, ws, self.test_timeout)
+        dropped = _dropped(prior, result)
+        if dropped > 0:
+            notes.append(f"This step left {dropped} fewer test(s) than the folder had before it "
+                         f"({prior} -> {_total(result)}).")
         out = self._outcome(_clean(result), agent, ws, written, result, summary, notes, attempts)
+        out.tests_before = prior if prior is not None else -1
+        out.tests_dropped = dropped
+        if dropped > 0:
+            out.summary = _clip(out.summary + f" · {dropped} fewer tests than before ({prior} -> {_total(result)})", 280)
+            if not out.ok:
+                out.fail_reason = out.summary
+        if not result.timed_out and result.returncode in (0, 1):
+            self._tests_seen[plan_id] = _total(result)
         if attempts > 1:
             out.pages.insert(1, {"page": 1, "title": "First run (before the fix)",
                                  "content": _test_header(first) + "\n\n" + first.output[-6000:],
@@ -385,6 +434,27 @@ class SandboxWork:
 
 def kind_for(agent: str) -> str:
     return "test_report" if agent == "tester" else "code_diff"
+
+
+def _total(r: TestResult) -> int:
+    return r.passed + r.failed
+
+
+def _dropped(prior: int | None, r: TestResult) -> int:
+    """How many fewer tests the folder has than after the last real run (0 when unknown, timed out or not fewer)."""
+    if prior is None or r.timed_out or r.returncode not in (0, 1):
+        return 0
+    return max(0, prior - _total(r))
+
+
+def _read_tests(ws: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for p in sorted(ws.glob("test_*.py")):
+        try:
+            out[p.name] = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return out
 
 
 def _clean(r: TestResult) -> bool:
