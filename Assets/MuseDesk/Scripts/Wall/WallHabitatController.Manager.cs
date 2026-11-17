@@ -314,7 +314,7 @@ namespace MuseDesk.Wall
                     if (_tubeMat.HasProperty("_BaseMap")) _tubeMat.SetTexture("_BaseMap", Texture2D.whiteTexture);
                     if (_tubeMat.HasProperty("_MainTex")) _tubeMat.SetTexture("_MainTex", Texture2D.whiteTexture);
                     if (_tubeMat.HasProperty("_Cull")) _tubeMat.SetFloat("_Cull", 0f);
-                    Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.55f); c.a = 0.32f;
+                    Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.55f); c.a = 0.22f;   // rc19: fainter (owner: "not so distracting")
                     if (_tubeMat.HasProperty(FxBaseColor)) _tubeMat.SetColor(FxBaseColor, c);
                     if (_tubeMat.HasProperty(FxColor)) _tubeMat.SetColor(FxColor, c);
                 }
@@ -421,7 +421,9 @@ namespace MuseDesk.Wall
                     _receiptBody = cut > 0 ? text.Substring(cut).Trim() : text.Trim();
                     if (string.IsNullOrEmpty(_receiptTitle)) _receiptTitle = title ?? "";
                 });
-            bool walking = WallActive && _stage != null
+            // rc19 (owner: "the elevator should only be used for a question, otherwise it's slow"): with the paper tubes on, the
+            // summary flies straight from the Manager's printer to you; the Manager no longer rides down with it (about 20 s).
+            bool walking = !cardTubes && WallActive && _stage != null
                 && _stage.Accept(HabitatEvent.Of("synth-" + id, HabitatEventKind.SynthesisReady, HabitatRole.Manager, rc.anchorTaskId), Time.unscaledTime);
             if (!walking) StartReceiptFlight(_view != null && WallActive ? _view.SocketWorld("TaskPrinterSocket", new Vector3(0f, 0.04f, 0.03f)) : ReceiptTarget());
         }
@@ -589,6 +591,10 @@ namespace MuseDesk.Wall
                                               : "LIVE model · text only, no code tools";
         }
 
+        readonly List<bool> _approvedScratch = new List<bool>();
+        /// <summary>For drivers: the plan paper (step ticks).</summary>
+        public WallPlanPaper PlanPaper => _paper;
+
         static void Key(List<KeyValuePair<string, Action>> keys, string label, Action a) { keys.Add(new KeyValuePair<string, Action>(label, a)); }
 
         void RefreshPlanPaper()
@@ -632,7 +638,7 @@ namespace MuseDesk.Wall
         void ShowPlanPage(List<KeyValuePair<string, Action>> keys, ManagerFlowState st, bool committed)
         {
             PlanModel model = PlanPaperMapper.ToModel(_manager);
-            PlanLayoutResult layout = PlanReviewLayout.Layout(model, _paper.TextWidthMm, 0f, _paper.readingDistance);
+            PlanLayoutResult layout = PlanReviewLayout.Layout(model, _paper.PlanTextWidthMm, 0f, _paper.readingDistance);
             List<PlanPage> pages = PlanPaperPager.Paginate(layout, _paper.PlanPageHeightMm);      // the rows stop above the framed stamp zone
             if (pages.Count == 0) pages.Add(new PlanPage());
             _page = ((_page % pages.Count) + pages.Count) % pages.Count;
@@ -643,7 +649,15 @@ namespace MuseDesk.Wall
                 foot += " · " + (_riskStep ? "a risky step needs your separate OK" : "rev " + _manager.Revision + " · proposed steps are not tasks yet");
             else if (st == ManagerFlowState.Rejected) foot += " · rejected: nothing was created";
             else foot += " · committed: these are real board cards";
-            _paper.ShowPage(pages[_page], _page, pages.Count, foot);
+            _paper.ShowPage(pages[_page], _page, pages.Count, foot, true);
+            // Each work item's tick sits beside its title on the page (✓ kept / ✗ skipped); only while the plan awaits you.
+            if (st == ManagerFlowState.AwaitingApproval)
+            {
+                _approvedScratch.Clear();
+                for (int i = 0; i < _manager.Items.Count; i++) _approvedScratch.Add(_manager.Items[i].approved);
+                _paper.SetChecks(_approvedScratch, ToggleItem);
+            }
+            else _paper.SetChecks(null, null);
 
             // The stamp is a CONFIRMED outcome: approved once the backend created the cards, rejected once it said so.
             // The framed zone says where to stamp; the mark itself is drawn inside it, only after the backend confirmed.
@@ -655,22 +669,14 @@ namespace MuseDesk.Wall
                 _paper.SetStampZone(st == ManagerFlowState.AwaitingApproval ? StampZoneMode.Awaiting : st == ManagerFlowState.Committing ? StampZoneMode.Committing : StampZoneMode.Hidden);
             }
 
-            int n = _manager.Items.Count;
-            int windows = Mathf.Max(1, (n + 2) / 3);
-            _stepWindow = ((_stepWindow % windows) + windows) % windows;
-            bool more = pages.Count > 1 || windows > 1;
-            Action turn = () => { _page++; _stepWindow++; };
+            bool more = pages.Count > 1;
+            Action turn = () => { _page++; };
 
             // Approve and Reject are the two stamps (guarded exactly as before: see Stamp.cs), so the paper has no keys for them.
-            // What is left: the step ticks, More (page / next steps), Revise, Close, and the separate OK for a risky step.
+            // The steps are ticked on the paper itself (above). What is left: More (next page), Revise, Close, and the separate
+            // OK for a risky step.
             if (st == ManagerFlowState.AwaitingApproval)
             {
-                for (int k = 0; k < 3; k++)
-                {
-                    int ii = _stepWindow * 3 + k;
-                    if (ii < n) Key(keys, (_manager.Items[ii].approved ? "Keep " : "Skip ") + (ii + 1), () => ToggleItem(ii));
-                    else Key(keys, null, null);
-                }
                 Key(keys, more ? "More" : null, turn);
                 Key(keys, "Revise", () => RevisePlan());
                 Key(keys, _riskStep ? "Confirm risk" : null, ConfirmRisky);

@@ -35,7 +35,7 @@ RenderSettings:
   m_DefaultReflectionMode: 0
   m_DefaultReflectionResolution: 128
   m_ReflectionBounces: 1
-  m_ReflectionIntensity: 1
+  m_ReflectionIntensity: 0.55
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
   m_UseRadianceAmbientProbe: 0
@@ -23167,8 +23167,9 @@ MonoBehaviour:
   portalArtLowFx: {fileID: 4525292280919888268, guid: 55c591852ef75834da741c86c6ff759d, type: 3}
   portalColumnAlpha: 0.55
   platformRadiusShare: 0.62
-  platformHoverBase: 0.045
-  platformHoverPerHeight: 0.04
+  platformHoverBase: 0.02
+  platformHoverPerHeight: 0.015
+  portalPadGrow: 1.2
   usePresentationLifecycle: 1
   flags:
     wallHabitatEnabled: 0
@@ -79911,7 +79912,7 @@ Light:
   serializedVersion: 13
   m_Type: 1
   m_Color: {r: 1, g: 0.94, b: 0.85, a: 1}
-  m_Intensity: 0.95
+  m_Intensity: 0.85
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -84985,12 +84986,13 @@ MonoBehaviour:
   elevation: 38
   sideAngle: 28
   keyColor: {r: 1, g: 0.94, b: 0.85, a: 1}
-  keyIntensity: 0.95
+  keyIntensity: 0.85
   followSeconds: 1.2
   setAmbient: 1
   ambientSky: {r: 0.5, g: 0.54, b: 0.62, a: 1}
   ambientEquator: {r: 0.42, g: 0.41, b: 0.4, a: 1}
   ambientGround: {r: 0.26, g: 0.24, b: 0.22, a: 1}
+  reflectionIntensity: 0.55
 --- !u!4 &1270989630
 Transform:
   m_ObjectHideFlags: 0
@@ -104327,8 +104329,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -104427,7 +104431,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.97, g: 0.96, b: 0.92, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.96999997, g: 0.96, b: 0.92, a: 1}
     - _EmissionColor: {r: 0.0582, g: 0.0576, b: 0.0552, a: 0.06}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -124154,8 +124158,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -124254,7 +124260,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.16, g: 0.15, b: 0.14, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.15999997, g: 0.14999998, b: 0.13999996, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -129785,8 +129791,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -129885,7 +129893,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.98, g: 0.97, b: 0.93, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.97999996, g: 0.96999997, b: 0.93, a: 1}
     - _EmissionColor: {r: 0.098000005, g: 0.097, b: 0.093, a: 0.1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -135334,8 +135342,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -135434,7 +135444,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.94, g: 0.91, b: 0.82, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.94, g: 0.91, b: 0.82, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []

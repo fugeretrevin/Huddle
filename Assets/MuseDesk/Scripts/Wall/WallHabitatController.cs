@@ -863,11 +863,59 @@ namespace MuseDesk.Wall
         void OnHabitatEvent(HabitatEvent e)
         {
             if (_stage == null || !WallActive) return;
-            _stage.Accept(e, Time.unscaledTime);
+            if (!SendPaperByTube(e)) _stage.Accept(e, Time.unscaledTime);
             // One restrained reaction for a CONFIRMED completion or failure (the event came from the reducer), through the
             // arbiter: never over a walk or a ride, never repeated inside its cooldown.
             if (e.kind == HabitatEventKind.TaskCompleted) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.CompletionNod);
             else if (e.kind == HabitatEventKind.TaskFailed) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.ErrorWorry);
+        }
+
+        // Owner, rc18 worn: "when the agents are bringing up their papers they should use the tubes too; the elevator should only
+        // be used for a question, otherwise it's slow". With the paper tubes on, a result or a problem report for the Manager,
+        // and a hand-off to an agent on ANOTHER floor, go by tube (the sheet rides up, and on down through the Manager's hub).
+        // A hand-off on the same floor is still a short walk; a question (approval) is still the walk / ride to you.
+        readonly HashSet<string> _tubeSeen = new HashSet<string>();
+        /// <summary>For drivers: event-driven papers sent by tube instead of a trip.</summary>
+        public int PapersByTube { get; private set; }
+
+        bool SendPaperByTube(HabitatEvent e)
+        {
+            if (!cardTubes || _view == null) return false;
+            HabitatRole to;
+            Color tint = WallHabitatView.Paper;
+            switch (e.kind)
+            {
+                case HabitatEventKind.Handoff:
+                    if (!e.hasTarget || e.target == e.agent || e.agent == HabitatRole.Manager) return false;
+                    to = e.target;
+                    if (to != HabitatRole.Manager)
+                    {
+                        bool ride;
+                        if (!_stage.Walker(e.agent).CanRoute(HabitatLayout.DoorNode(to), out ride) || !ride) return false;
+                    }
+                    break;
+                case HabitatEventKind.TaskCompleted:
+                    if (e.agent != HabitatRole.Researcher) return false;     // the others celebrate in place (as before)
+                    to = HabitatRole.Manager;
+                    break;
+                case HabitatEventKind.TaskFailed:
+                    if (e.agent == HabitatRole.Manager) return false;
+                    to = HabitatRole.Manager; tint = Workspace.OfficeTokens.Coral;
+                    break;
+                default:
+                    return false;
+            }
+            if (!string.IsNullOrEmpty(e.eventId))
+            {
+                if (_tubeSeen.Contains(e.eventId)) return true;               // a replay: already sent
+                if (_tubeSeen.Count > 512) _tubeSeen.Clear();
+                _tubeSeen.Add(e.eventId);
+            }
+            EnsureCardTubes();                                                // the glass material first (never an opaque tube)
+            if (!_view.SendUpTube(e.agent, to, tint)) return false;
+            _view.Acknowledge(e.agent, 0.9f);                                 // a small nod as it sends the sheet off
+            PapersByTube++;
+            return true;
         }
 
         void OnSessionReset()

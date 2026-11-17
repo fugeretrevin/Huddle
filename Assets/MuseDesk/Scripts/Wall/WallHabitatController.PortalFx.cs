@@ -94,7 +94,10 @@ namespace MuseDesk.Wall
         {
             EnsurePortalFx();
             float h = Mathf.Max(0.2f, _portal.Spot.avatarHeight);
-            float padScale = Mathf.Clamp(h / 1.05f, 0.3f, 1.2f);
+            // rc19 (owner, worn rc18: "their headphones are too wide for the portal, so maybe make the portal a bit bigger"):
+            // the agents are about 0.6 x their height wide with headphones; the pad was 0.57 x. Now about 0.69 x, inside the
+            // clearance the placement already checks (footprint + wall margin).
+            float padScale = Mathf.Clamp(h / 1.05f, 0.3f, 1.2f) * portalPadGrow;
             if (st != _portalFxState)
             {
                 PortalState was = _portalFxState;
@@ -130,6 +133,7 @@ namespace MuseDesk.Wall
                 default: a = 0f; break;
             }
             PortalColumnAlpha = a;
+            TickPlatform(st, k, h, padScale);
             if (_portalColumn != null)
             {
                 bool show = a > 0.01f;
@@ -137,17 +141,18 @@ namespace MuseDesk.Wall
                 if (show)
                 {
                     float rise = st == PortalState.Opening ? Mathf.SmoothStep(0.15f, 1f, k) : 1f;
-                    float r = portalSettings.footprintRadius * padScale * 0.78f;
+                    // rc19 (owner: "their head intersects with the top of the portal"; "headphones too wide"): the column now
+                    // clears the agent standing on the platform, head and headphones, with room for the arrival pop.
+                    float r = Mathf.Max(portalSettings.footprintRadius * padScale * 0.78f, h * 0.36f);
+                    float tall = Mathf.Max(PlatformTopFor(h), _platformLift) + h * 1.12f + 0.08f;
                     _portalColumn.localPosition = Vector3.up * 0.02f;
-                    _portalColumn.localScale = new Vector3(r, h * 1.18f * rise, r);
+                    _portalColumn.localScale = new Vector3(r, tall * rise, r);
                     Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.35f);
                     c.a = a * portalColumnAlpha;
                     _portalColumnMat.SetColor(FxBaseColor, c);
                     if (_portalColumnMat.HasProperty(FxColor)) _portalColumnMat.SetColor(FxColor, c);
                 }
             }
-
-            TickPlatform(st, k, h, padScale);
 
             // The conversation drives the visitor: thinking while a question is out, gesturing when the answer lands.
             if (st == PortalState.Conversing) TickLifeConversation(_portalLife, ref _portalHeard, ref _portalAsking);
@@ -160,9 +165,15 @@ namespace MuseDesk.Wall
         // footprint (smaller than the pad), so the keep-out checks are unchanged.
         [Header("Visitor platform (rc14)")]
         [Range(0f, 1f)] public float platformRadiusShare = 0.62f;
-        public float platformHoverBase = 0.045f;
+        // rc19 (owner, worn rc18: "the floating platform is too high"): it hovers about 4 cm (was about 9) for a 1 m visitor.
+        public float platformHoverBase = 0.02f;
         [Tooltip("Extra hover per metre of visitor height.")]
-        public float platformHoverPerHeight = 0.04f;
+        public float platformHoverPerHeight = 0.015f;
+        [Tooltip("rc19: the pad, platform and column are this much bigger than before (the visitor's headphones fit).")]
+        public float portalPadGrow = 1.2f;
+
+        /// <summary>The platform's top above the floor when fully up, for a visitor <paramref name="h"/> tall (no bob).</summary>
+        float PlatformTopFor(float h) { return platformHoverBase + platformHoverPerHeight * h + 0.012f + 0.018f * Mathf.Clamp01(h); }
 
         Transform _platform, _platformBody, _platformRim, _platformGlow;
         Renderer _platformBodyR, _platformRimR, _platformGlowR;

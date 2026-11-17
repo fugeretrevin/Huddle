@@ -29,6 +29,9 @@ namespace MuseDesk.Art
         public Color ambientSky = new Color(0.50f, 0.54f, 0.62f);
         public Color ambientEquator = new Color(0.42f, 0.41f, 0.40f);
         public Color ambientGround = new Color(0.26f, 0.24f, 0.22f);
+        [Tooltip("rc19 (owner, worn rc18: \"slightly less reflections, it looks a little too toy-like\"): how much of the sky the " +
+                 "glossy materials reflect (Unity default 1).")]
+        [Range(0f, 1f)] public float reflectionIntensity = 0.55f;
 
         Transform _head;
         float _yaw;
@@ -62,6 +65,7 @@ namespace MuseDesk.Art
             RenderSettings.ambientEquatorColor = ambientEquator;
             RenderSettings.ambientGroundColor = ambientGround;
             RenderSettings.ambientIntensity = 1f;
+            RenderSettings.reflectionIntensity = reflectionIntensity;
             // The ambient probe is what URP actually samples: build it from the gradient so it holds on device without baking.
             var sh = new SphericalHarmonicsL2();
             sh.AddAmbientLight(ambientEquator);

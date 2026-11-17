@@ -592,6 +592,7 @@ namespace MuseDesk.Wall
             Tint(_beacon, beaconColor * k);
 
             for (int i = _cards.Count - 1; i >= 0; i--) StepCard(_cards[i], dt);
+            StepAllMail(dt);
         }
 
         /// <summary>
@@ -851,31 +852,36 @@ namespace MuseDesk.Wall
         }
 
         /// <summary>
-        /// A pneumatic-tube route, like a real office's: up out of the printer, out to just in front of the decks, straight
-        /// down the front corner beside the printer, along under the ceiling of the owner's floor to above its desk, and down
-        /// onto the desk (beside the stack, never in front of the agent's face). Corners are rounded. Habitat-local points.
+        /// A pneumatic-tube route, like a real office's: up out of the printer, back to the BACK wall (owner, rc18 worn: "they
+        /// should go over the back wall, not in front"), straight down the back wall, along it under the ceiling of the owner's
+        /// floor, then forward under that ceiling to above its desk and down onto the desk (beside the stack, never in front of
+        /// the agent's face). Nothing crosses in front of the decks. Corners are rounded. Habitat-local points.
         /// </summary>
         Vector3[] TubeRoute(HabitatRole owner)
         {
             int r = (int)owner;
             float lane = (r - 1) * 0.013f;                                   // three tubes side by side, never through each other
-            float front = layout.size.z + 0.02f + 0.004f * r;
+            float back = TubeBackZ + 0.007f * r;                             // on the back wall, a little apart
             Vector3 tray = TraySlot(0);
             Vector3 slot = DeskSlot(owner, 0);
             Vector3 outlet = slot + new Vector3(0.028f, 0.028f, -0.012f);    // beside and just above the stack
-            float run = CeilingAbove(slot) - 0.022f - 0.008f * r;            // under the ceiling, stacked a little
+            float run = CeilingAbove(slot) - 0.016f - 0.007f * r;            // tucked under the ceiling, stacked a little
+            float top = tray.y + 0.075f;
             var poly = new List<Vector3>
             {
                 tray + new Vector3(lane, 0.035f, 0f),                         // inlet above the tray
-                tray + new Vector3(lane, 0.075f, 0f),
-                new Vector3(tray.x + lane, tray.y + 0.075f, front),
-                new Vector3(tray.x + lane, run, front),
-                new Vector3(outlet.x, run, front),
+                new Vector3(tray.x + lane, top, tray.z),
+                new Vector3(tray.x + lane, top, back),
+                new Vector3(tray.x + lane, run, back),
+                new Vector3(outlet.x, run, back),
                 new Vector3(outlet.x, run, outlet.z),
                 outlet,
             };
             return Rounded(poly, 0.03f, 6);
         }
+
+        /// <summary>Habitat-local z of the tubes on the back wall: just in front of the back panels (z 0.015-0.019).</summary>
+        public const float TubeBackZ = 0.028f;
 
         /// <summary>Round every inner corner of a polyline with a quadratic arc of up to <paramref name="radius"/>.</summary>
         static Vector3[] Rounded(List<Vector3> p, float radius, int steps)
@@ -1001,6 +1007,119 @@ namespace MuseDesk.Wall
             return moved;
         }
 
+        // ── Papers going UP (owner, rc18 worn: "when the agents are bringing up their papers they should use the tubes too; the
+        //    elevator should only be used for a question, otherwise it's slow"). A sheet lifts off the agent's desk, rolls up,
+        //    rides its tube up to the Manager's tray and unrolls there; for an agent on another floor it goes on down that
+        //    agent's tube (the Manager's printer is the hub, like a real pneumatic station). Presentation only: the event it
+        //    shows already happened; nothing here changes task state. The sheet fades after it lands. ──
+
+        sealed class TubeMail
+        {
+            public Transform t; public Renderer r;
+            public int[] legs; public bool[] up;
+            public Vector3 start, end; public float time; public bool spent;
+        }
+        readonly List<TubeMail> _mail = new List<TubeMail>();
+        public const float MailHold = 1.4f, MailFade = 0.35f;
+        /// <summary>For drivers: sheets sent up a tube so far, and in flight now.</summary>
+        public int MailSent { get; private set; }
+        public int MailInFlight => _mail.Count;
+
+        /// <summary>Send a sheet from <paramref name="from"/>'s desk up its tube to the Manager (<paramref name="to"/> =
+        /// Manager), or through the Manager's hub on down to another agent's desk. False when there is no tube for it.</summary>
+        public bool SendUpTube(HabitatRole from, HabitatRole to, Color tint)
+        {
+            int f = (int)from, g = (int)to;
+            if (f < 0 || f >= 3 || f == g) return false;              // the Manager has no tube of its own: its papers print
+            EnsureTubes();
+            if (_tubePts[f] == null) return false;
+            bool relay = g >= 0 && g < 3;
+            if (relay && _tubePts[g] == null) return false;
+            var r = Box(root, "TubeMail_" + from + "_to_" + to, DeskSlot(from, CardsOnDesk(from)), new Vector3(0.035f, 0.002f, 0.025f), Color.Lerp(Paper, tint, 0.45f));
+            var m = new TubeMail
+            {
+                t = r.transform, r = r,
+                legs = relay ? new[] { f, g } : new[] { f },
+                up = relay ? new[] { true, false } : new[] { true },
+                start = r.transform.localPosition,
+                end = relay ? DeskSlot(to, CardsOnDesk(to)) + Vector3.up * 0.003f : TraySlot(CardsInTrayTotal()) + Vector3.up * 0.003f,
+            };
+            _mail.Add(m);
+            MailSent++;
+            return true;
+        }
+
+        int CardsInTrayTotal() { int n = 0; foreach (var kv in _trayStack) n += kv.Value; return n; }
+
+        Vector3 LegEnd(int leg, bool up, bool atStart)
+        {
+            Vector3[] p = _tubePts[leg];
+            // A tube runs tray (index 0) -> desk (last). Up = desk -> tray.
+            bool first = up ? !atStart : atStart;
+            return first ? p[0] : p[p.Length - 1];
+        }
+
+        void StepMail(TubeMail m, float dt)
+        {
+            if (m.t == null) { m.spent = true; return; }
+            m.time += dt;
+            float t = m.time;
+            Vector3 full = new Vector3(0.035f, 0.002f, 0.025f), rolled = new Vector3(0.011f, 0.011f, 0.025f * 0.95f);
+            if (t < TubeRise)
+            {
+                // Lifts off the desk into the outlet, rolling up.
+                float k = Mathf.SmoothStep(0f, 1f, t / TubeRise);
+                m.t.localPosition = Vector3.Lerp(m.start, LegEnd(m.legs[0], m.up[0], true), k);
+                m.t.localScale = Vector3.Lerp(full, rolled, Mathf.Clamp01(k * 1.6f));
+                m.t.localRotation = Quaternion.Slerp(Quaternion.identity, Quaternion.LookRotation(Vector3.up, Vector3.forward), k);
+                return;
+            }
+            t -= TubeRise;
+            for (int i = 0; i < m.legs.Length; i++)
+            {
+                if (t < TubeTravel)
+                {
+                    float u = t / TubeTravel;
+                    float e = u < 0.5f ? 4f * u * u * u : 1f - Mathf.Pow(-2f * u + 2f, 3f) * 0.5f;
+                    Vector3 dir;
+                    Vector3 p = AlongTube(_tubePts[m.legs[i]], _tubeLen[m.legs[i]], m.up[i] ? 1f - e : e, out dir);
+                    if (m.up[i]) dir = -dir;
+                    m.t.localPosition = p;
+                    m.t.localScale = rolled;
+                    if (dir.sqrMagnitude > 1e-8f) m.t.localRotation = Quaternion.LookRotation(dir, Mathf.Abs(dir.y) > 0.95f ? Vector3.forward : Vector3.up);
+                    return;
+                }
+                t -= TubeTravel;
+            }
+            int last = m.legs.Length - 1;
+            Vector3 exit = LegEnd(m.legs[last], m.up[last], false);
+            float q = Mathf.Clamp01(t / TubeDrop);
+            if (q < 1f)
+            {
+                // Pops out, unrolls and settles onto the tray (or the other desk).
+                float drop = q * q * (3f - 2f * q);
+                m.t.localPosition = Vector3.Lerp(exit, m.end, drop) + Vector3.up * (Mathf.Sin(q * Mathf.PI) * 0.01f);
+                m.t.localScale = Vector3.Lerp(rolled, full, Mathf.Clamp01(q * 1.8f));
+                m.t.localRotation = Quaternion.Slerp(m.t.localRotation, Quaternion.identity, Mathf.Clamp01(q * 2f));
+                return;
+            }
+            t -= TubeDrop;
+            m.t.localPosition = m.end; m.t.localRotation = Quaternion.identity;
+            if (t < MailHold) { m.t.localScale = full; return; }
+            float f = Mathf.Clamp01((t - MailHold) / MailFade);
+            m.t.localScale = Vector3.Lerp(full, new Vector3(full.x, full.y, full.z) * 0.2f, f);
+            if (f >= 1f) { Object.Destroy(m.t.gameObject); m.spent = true; }
+        }
+
+        void StepAllMail(float dt)
+        {
+            for (int i = _mail.Count - 1; i >= 0; i--)
+            {
+                StepMail(_mail[i], dt);
+                if (_mail[i].spent) _mail.RemoveAt(i);
+            }
+        }
+
         void StepTube(CardFlight c)
         {
             Vector3 rolled = new Vector3(0.011f, 0.011f, c.fullScale.z * 0.95f);
@@ -1056,6 +1175,8 @@ namespace MuseDesk.Wall
         public void ClearCards()
         {
             for (int i = 0; i < _cards.Count; i++) if (_cards[i].t != null) Object.Destroy(_cards[i].t.gameObject);
+            for (int i = 0; i < _mail.Count; i++) if (_mail[i].t != null) Object.Destroy(_mail[i].t.gameObject);
+            _mail.Clear();
             _cards.Clear(); _cardById.Clear(); _trayStack.Clear(); _deskStack.Clear();
         }
 
