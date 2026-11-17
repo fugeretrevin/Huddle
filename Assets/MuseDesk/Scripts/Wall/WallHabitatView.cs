@@ -836,23 +836,82 @@ namespace MuseDesk.Wall
 
         /// <summary>Transparent glow material for the tube glass (set by the controller; null = a faint opaque tint).</summary>
         public Material tubeMaterial;
-        public const float TubeRise = 0.35f, TubeTravel = 1.2f, TubeDrop = 0.45f;
-        public const float TubeRadius = 0.0075f;
+        public const float TubeRise = 0.35f, TubeTravel = 1.25f, TubeDrop = 0.4f;
+        public const float TubeRadius = 0.0055f;
         readonly Transform[] _tube = new Transform[3];
+        readonly Vector3[][] _tubePts = new Vector3[3][];
+        readonly float[][] _tubeLen = new float[3][];
 
-        void TubePath(HabitatRole owner, out Vector3 b, out Vector3 c1, out Vector3 c2, out Vector3 d)
+        /// <summary>The ceiling above a habitat-local point (the floor it stands on), or the point + 0.12 when unknown.</summary>
+        float CeilingAbove(Vector3 p)
         {
-            float front = layout.size.z + 0.045f;
-            b = TraySlot(0) + new Vector3(0f, 0.055f, 0f);
-            d = DeskSlot(owner, 0) + new Vector3(0f, 0.06f, 0f);
-            c1 = new Vector3(b.x, b.y + 0.03f, front);
-            c2 = new Vector3(d.x, d.y + 0.015f, front);
+            for (int f = 0; f < layout.floors.Count; f++)
+                if (p.y >= layout.floors[f].floorY - 0.01f && p.y < layout.floors[f].ceilingY) return layout.floors[f].ceilingY;
+            return p.y + 0.12f;
         }
 
-        static Vector3 Bez(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        /// <summary>
+        /// A pneumatic-tube route, like a real office's: up out of the printer, out to just in front of the decks, straight
+        /// down the front corner beside the printer, along under the ceiling of the owner's floor to above its desk, and down
+        /// onto the desk (beside the stack, never in front of the agent's face). Corners are rounded. Habitat-local points.
+        /// </summary>
+        Vector3[] TubeRoute(HabitatRole owner)
         {
-            float u = 1f - t;
-            return u * u * u * p0 + 3f * u * u * t * p1 + 3f * u * t * t * p2 + t * t * t * p3;
+            int r = (int)owner;
+            float lane = (r - 1) * 0.013f;                                   // three tubes side by side, never through each other
+            float front = layout.size.z + 0.02f + 0.004f * r;
+            Vector3 tray = TraySlot(0);
+            Vector3 slot = DeskSlot(owner, 0);
+            Vector3 outlet = slot + new Vector3(0.028f, 0.028f, -0.012f);    // beside and just above the stack
+            float run = CeilingAbove(slot) - 0.022f - 0.008f * r;            // under the ceiling, stacked a little
+            var poly = new List<Vector3>
+            {
+                tray + new Vector3(lane, 0.035f, 0f),                         // inlet above the tray
+                tray + new Vector3(lane, 0.075f, 0f),
+                new Vector3(tray.x + lane, tray.y + 0.075f, front),
+                new Vector3(tray.x + lane, run, front),
+                new Vector3(outlet.x, run, front),
+                new Vector3(outlet.x, run, outlet.z),
+                outlet,
+            };
+            return Rounded(poly, 0.03f, 6);
+        }
+
+        /// <summary>Round every inner corner of a polyline with a quadratic arc of up to <paramref name="radius"/>.</summary>
+        static Vector3[] Rounded(List<Vector3> p, float radius, int steps)
+        {
+            var o = new List<Vector3> { p[0] };
+            for (int i = 1; i < p.Count - 1; i++)
+            {
+                Vector3 a = p[i - 1], c = p[i], b = p[i + 1];
+                float ra = Mathf.Min(radius, (c - a).magnitude * 0.45f), rb = Mathf.Min(radius, (b - c).magnitude * 0.45f);
+                Vector3 s = c + (a - c).normalized * ra, e = c + (b - c).normalized * rb;
+                for (int k = 0; k <= steps; k++)
+                {
+                    float t = k / (float)steps, u = 1f - t;
+                    o.Add(u * u * s + 2f * u * t * c + t * t * e);
+                }
+            }
+            o.Add(p[p.Count - 1]);
+            return o.ToArray();
+        }
+
+        static float[] Cumulative(Vector3[] pts)
+        {
+            var len = new float[pts.Length];
+            for (int i = 1; i < pts.Length; i++) len[i] = len[i - 1] + (pts[i] - pts[i - 1]).magnitude;
+            return len;
+        }
+
+        /// <summary>The point at fraction <paramref name="u"/> of the tube's length, and its direction of travel.</summary>
+        static Vector3 AlongTube(Vector3[] pts, float[] len, float u, out Vector3 dir)
+        {
+            float target = Mathf.Clamp01(u) * len[len.Length - 1];
+            int i = 1;
+            while (i < len.Length - 1 && len[i] < target) i++;
+            float seg = Mathf.Max(1e-6f, len[i] - len[i - 1]);
+            dir = (pts[i] - pts[i - 1]).normalized;
+            return Vector3.Lerp(pts[i - 1], pts[i], (target - len[i - 1]) / seg);
         }
 
         /// <summary>Build the three tubes (once; again after the habitat is rebuilt). Safe to call every frame.</summary>
@@ -861,25 +920,21 @@ namespace MuseDesk.Wall
             for (int r = 0; r < 3; r++)
             {
                 if (_tube[r] != null) continue;
-                Vector3 b, c1, c2, d;
-                TubePath((HabitatRole)r, out b, out c1, out c2, out d);
-                const int n = 24;
-                var pts = new Vector3[n + 2];
-                pts[0] = b + Vector3.down * 0.03f;                       // down into the printer's top
-                for (int i = 0; i <= n; i++) pts[i + 1] = Bez(b, c1, c2, d, i / (float)n);
+                Vector3[] pts = TubeRoute((HabitatRole)r);
+                _tubePts[r] = pts;
+                _tubeLen[r] = Cumulative(pts);
                 var go = new GameObject("CardTube_" + (HabitatRole)r);
                 go.transform.SetParent(root, false);
                 go.AddComponent<MeshFilter>().sharedMesh = TubeMesh(pts, TubeRadius, 10);
                 var mr = go.AddComponent<MeshRenderer>();
                 mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mr.receiveShadows = false;
                 if (tubeMaterial != null) mr.sharedMaterial = tubeMaterial;
-                else { mr.sharedMaterial = _mat; Tint(mr, Color.Lerp(Teal, Color.white, 0.6f)); }
+                else { mr.sharedMaterial = _mat; Tint(mr, Color.Lerp(Teal, Color.white, 0.7f)); }
                 _tube[r] = go.transform;
                 // Brass collars at the inlet and the outlet so the ends read as fittings, not cut glass.
-                Box(go.transform, "Collar_In", b, new Vector3(TubeRadius * 3f, 0.006f, TubeRadius * 3f), new Color(0.78f, 0.62f, 0.3f));
-                Vector3 outDir = (d - Bez(b, c1, c2, d, 0.96f)).normalized;
-                var co = Box(go.transform, "Collar_Out", d, new Vector3(TubeRadius * 3f, 0.006f, TubeRadius * 3f), new Color(0.78f, 0.62f, 0.3f)).transform;
-                co.localRotation = Quaternion.FromToRotation(Vector3.up, outDir);
+                Color brass = new Color(0.78f, 0.62f, 0.3f);
+                Box(go.transform, "Collar_In", pts[0], new Vector3(TubeRadius * 2.8f, 0.005f, TubeRadius * 2.8f), brass);
+                Box(go.transform, "Collar_Out", pts[pts.Length - 1], new Vector3(TubeRadius * 2.8f, 0.005f, TubeRadius * 2.8f), brass);
             }
         }
 
@@ -933,7 +988,8 @@ namespace MuseDesk.Wall
                 _deskStack[r] = count + 1;
                 c.onDesk = true;
                 if (!c.t.gameObject.activeSelf) c.t.gameObject.SetActive(true);
-                TubePath(owner, out c.b, out c.c1, out c.c2, out c.d);
+                Vector3[] route = _tubePts[r];
+                c.b = route[0]; c.d = route[route.Length - 1];
                 c.a = c.t.localPosition;
                 c.slot = DeskSlot(owner, count);
                 if (c.fullScale == Vector3.zero) c.fullScale = new Vector3(0.035f, 0.002f, 0.025f);   // the printed card's size
@@ -964,11 +1020,11 @@ namespace MuseDesk.Wall
                 // Through the tube: quick in the middle (InOutCubic), the rolled card pointing along the glass.
                 float u = t / TubeTravel;
                 float e = u < 0.5f ? 4f * u * u * u : 1f - Mathf.Pow(-2f * u + 2f, 3f) * 0.5f;
-                Vector3 p = Bez(c.b, c.c1, c.c2, c.d, e);
-                Vector3 ahead = Bez(c.b, c.c1, c.c2, c.d, Mathf.Min(1f, e + 0.02f));
+                Vector3 dir;
+                Vector3 p = AlongTube(_tubePts[c.role], _tubeLen[c.role], e, out dir);
                 c.t.localPosition = p;
                 c.t.localScale = rolled;
-                if ((ahead - p).sqrMagnitude > 1e-8f) c.t.localRotation = Quaternion.LookRotation((ahead - p).normalized, Vector3.up);
+                if (dir.sqrMagnitude > 1e-8f) c.t.localRotation = Quaternion.LookRotation(dir, Mathf.Abs(dir.y) > 0.95f ? Vector3.forward : Vector3.up);
                 return;
             }
             t -= TubeTravel;

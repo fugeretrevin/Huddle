@@ -592,6 +592,10 @@ namespace MuseDesk.Wall
         readonly Transform[] _deskBeam = new Transform[4];
         readonly float[] _deskBeamT = { 99f, 99f, 99f, 99f };
         Material _deskBeamMat;
+        /// <summary>For drivers: how many teleport-in beams have started at the wall desks.</summary>
+        public int DeskBeamsStarted { get; private set; }
+        /// <summary>For drivers: a teleport-in beam is showing right now.</summary>
+        public bool DeskBeamShowing { get { for (int i = 0; i < 4; i++) if (_deskBeam[i] != null && _deskBeam[i].gameObject.activeSelf) return true; return false; } }
         static readonly int DeskBeamColorId = Shader.PropertyToID("_BaseColor");
         static readonly int DeskBeamColorId2 = Shader.PropertyToID("_Color");
 
@@ -614,6 +618,7 @@ namespace MuseDesk.Wall
             }
             _deskBeam[r].SetParent(a.parent, false);
             _deskBeamT[r] = 0f;
+            DeskBeamsStarted++;
             _deskBeam[r].gameObject.SetActive(true);
             if (_audio != null) _audio.Play(WallCue.PrintTick);
         }

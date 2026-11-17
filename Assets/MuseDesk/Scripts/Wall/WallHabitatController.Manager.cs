@@ -302,10 +302,18 @@ namespace MuseDesk.Wall
             if (_view == null) return;
             if (_view.tubeMaterial == null)
             {
-                EnsurePortalFx();
-                if (_tubeMat == null && _portalColumnMat != null)
+                // The portal pad's soft particle material (URP Particles/Unlit, transparent) is already in the build with the
+                // right keywords: a copy with a white texture makes see-through glass. Read straight from the prefab.
+                Material src = null;
+                GameObject art = portalArt != null ? portalArt : portalArtLowFx;
+                if (art != null) { var psr = art.GetComponentInChildren<ParticleSystemRenderer>(true); if (psr != null) src = psr.sharedMaterial; }
+                if (src == null) { EnsurePortalFx(); src = _portalColumnMat; }
+                if (_tubeMat == null && src != null)
                 {
-                    _tubeMat = new Material(_portalColumnMat) { name = "CardTube_Glass" };
+                    _tubeMat = new Material(src) { name = "CardTube_Glass" };
+                    if (_tubeMat.HasProperty("_BaseMap")) _tubeMat.SetTexture("_BaseMap", Texture2D.whiteTexture);
+                    if (_tubeMat.HasProperty("_MainTex")) _tubeMat.SetTexture("_MainTex", Texture2D.whiteTexture);
+                    if (_tubeMat.HasProperty("_Cull")) _tubeMat.SetFloat("_Cull", 0f);
                     Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.55f); c.a = 0.32f;
                     if (_tubeMat.HasProperty(FxBaseColor)) _tubeMat.SetColor(FxBaseColor, c);
                     if (_tubeMat.HasProperty(FxColor)) _tubeMat.SetColor(FxColor, c);
