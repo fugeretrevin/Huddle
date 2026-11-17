@@ -858,7 +858,7 @@ namespace MuseDesk.Wall
                 {
                     _manager.OnAmended(planId, r.revision, r.tasks);
                     _amendBusyFor = null; _amendDoneFor = requestId; AmendmentsApplied++;
-                    _amendNote = "Change added as a new step for " + AgentPresentationRegistry.Pretty(agent) + ". It prints on the Manager's tray.";
+                    _amendNote = "Change added as a new step for " + AgentPresentationRegistry.Pretty(agent) + (cardTubes ? ". It prints at the Manager's desk and comes down the tube." : ". It prints on the Manager's tray.");
                     return;
                 }
                 // The plan moved on (another change, a retry): read its revision once and try again with a new key.

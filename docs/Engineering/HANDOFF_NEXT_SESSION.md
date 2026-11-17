@@ -1,4 +1,20 @@
-﻿# Handoff for the next session (written 2026-11-16 ~23:45, before the owner restarted the PC)
+﻿# Handoff for the next session
+
+## UPDATE 2026-11-17 overnight (read this first; the older text below is the rc17 state)
+
+- **Release key: DONE.** The owner ran `scripts\make_release_keystore.ps1` (a NEW key; there was never an old password).
+  `%USERPROFILE%\.musedesk\` holds the keystore + `signing.json` (never print, copy or commit them).
+- **Quest:** now runs a RELEASE-signed build (the rc17 code, `Builds/MuseDesk_signtest_rc17code.apk`, 38AE41EE…, verified).
+  So rc18 and later install with `adb install -r` (no uninstall, no reset).
+- **rc17 worn by the owner (2026-11-17):** "all the core things seem like they work" + 18 polish notes (ledger in
+  `RC17_FINAL_HARDWARE_QA.md`). All 18 addressed overnight in rc18; the owner's morning checklist is
+  **`RC18_MORNING_QA.md`** (what changed, line by line, and what to check).
+- **Not done on purpose:** full-screen colour grading (passthrough alpha risk, could not be checked on the headset overnight).
+- Next: owner wears rc18 (`RC18_MORNING_QA.md`), then filming and submission as below (steps 5 and 6).
+
+---
+
+(Written 2026-11-16 ~23:45, before the owner restarted the PC.)
 
 **Deadline:** 2026-11-18 12:00 PT (Meta VR Start Developer Competition 2026, Productivity track).
 **Repo:** https://github.com/fugeretrevin/MuseDesk, branch `feature/rc8-feedback-1`.

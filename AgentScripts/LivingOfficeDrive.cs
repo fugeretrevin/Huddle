@@ -246,7 +246,7 @@ public static class LivingOfficeDrive
             () => C.Manager.PrintedCount >= C.Manager.CommittedCount && C.Manager.CommittedCount > 0, 20f,
             () => "printed=" + C.Manager.PrintedCount + " of " + C.Manager.CommittedCount);
 
-        Add("10 each owner rides up, collects its card and carries it to its desk", null,
+        Add("10 each owner's card reaches its desk (rc18: all at once by paper tube)", null,
             () => AllCards(c => c.delivery == CardDelivery.OnDesk), 420f,
             () =>
             {
