@@ -212,8 +212,21 @@ namespace MuseDesk.Spatial
             {
                 if (wall == null || !wall.WallEnabled) return false;
                 bool deskIdle = _core.Mode == PlacementMode.Desk && _core.Phase == DirectorPhase.Idle && !_core.IsTransitioning;
+                // rc18 (owner: "wall mode should be enabled from anywhere"): from Floor / Ceiling at rest the office first
+                // goes home with the normal Desk move; the wall preview opens by itself once it is home and still.
+                bool awayAtRest = (_core.Mode == PlacementMode.Floor || _core.Mode == PlacementMode.Ceiling)
+                                  && _core.Phase == DirectorPhase.Idle && !_core.IsTransitioning;
+                if (!deskIdle && awayAtRest)
+                {
+                    if (flags.Any) SyncRoom();
+                    bool ok = _core.RequestMode(PlacementMode.Desk);
+                    _wallAfterDeskUntil = ok ? Time.unscaledTime + WallAfterDeskTimeout : 0f;
+                    RefreshViews();
+                    return ok;
+                }
                 return wall.RequestWall(deskIdle);
             }
+            _wallAfterDeskUntil = 0f;   // any other request cancels a pending "Wall after Desk"
             if (wall != null && (wall.WallActive || wall.WallPreviewing))
             {
                 wall.ExitWall("mode " + mode);
@@ -424,11 +437,31 @@ namespace MuseDesk.Spatial
             return s == WorkspacePlacement.PlacementState.PlacedManual || s == WorkspacePlacement.PlacementState.PlacedFromTable;
         }
 
+        // ───────────────────────── Wall from anywhere (rc18) ─────────────────────────
+
+        const float WallAfterDeskTimeout = 40f;
+        float _wallAfterDeskUntil;
+
+        /// <summary>True while Wall was asked for from Floor / Ceiling and the office is still on its way home.</summary>
+        public bool WallAfterDeskPending => _wallAfterDeskUntil > 0f;
+
+        void TickWallAfterDesk()
+        {
+            if (_wallAfterDeskUntil <= 0f) return;
+            if (Time.unscaledTime > _wallAfterDeskUntil) { _wallAfterDeskUntil = 0f; return; }
+            if (_core.Mode != PlacementMode.Desk || _core.Phase != DirectorPhase.Idle || _core.IsTransitioning) return;
+            _wallAfterDeskUntil = 0f;
+            IWallModeHost wall = Wall;
+            if (wall != null && wall.WallEnabled) wall.RequestWall(true);
+            RefreshViews();
+        }
+
         // ───────────────────────── frame loop ─────────────────────────
 
         void Update()
         {
             if (_core == null) return;
+            TickWallAfterDesk();
             // A flag ticked in the Inspector at run time is picked up here (two bool compares).
             if (flags.floorModeEnabled != _appliedFloor || flags.ceilingModeEnabled != _appliedCeiling) ApplyFlags();
             // Flags off and at rest in Desk: nothing to do, nothing done.

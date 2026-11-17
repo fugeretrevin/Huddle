@@ -239,7 +239,11 @@ namespace MuseDesk.Wall
 
             // Printer: one card per canonical task id that is both committed and on the board. It prints into the
             // Manager's tray; its owner is told (a real committed card) and comes up for it when the ride lane is free.
+            // The tubes are part of the habitat from the moment it is up (not popped in with the first card).
+            if (cardTubes && WallActive && _view != null) EnsureCardTubes();
+
             ManagerPrintJob job;
+            int tubeOrder = 0;
             while (_view != null && WallActive && _manager.TryDequeuePrint(out job))
             {
                 HabitatRole owner;
@@ -248,10 +252,17 @@ namespace MuseDesk.Wall
                 _view.PrintToTray(job.taskId, owner);
                 _lastPrintAt = now;
                 if (_audio != null) _audio.Play(WallCue.PrintTick);
-                if (known && owner != HabitatRole.Manager && _stage != null)
+                if (known && owner != HabitatRole.Manager && cardTubes)
+                {
+                    // rc18 (owner): no walk-up-one-by-one. Every printed card goes down its owner's paper tube at once.
+                    EnsureCardTubes();
+                    if (_view.SendByTube(owner, 0.85f + 0.18f * tubeOrder) > 0) { SetDelivery(owner, CardDelivery.OnDesk, false); tubeOrder++; }
+                }
+                else if (known && owner != HabitatRole.Manager && _stage != null)
                     _stage.Accept(HabitatEvent.Of("print-" + job.taskId, HabitatEventKind.CardPrinted, owner, job.taskId), now);
-                Debug.Log("[MuseDesk.Wall] Printed card for task " + job.taskId + " -> " + job.agentId);
+                Debug.Log("[MuseDesk.Wall] Printed card for task " + job.taskId + " -> " + job.agentId + (cardTubes ? " (paper tube)" : ""));
             }
+            if (tubeOrder > 0 && _audio != null) _audio.Play(WallCue.PrintTick);
 
             // A printed card nobody is coming for (its pick-up was dropped, or everything was reset) goes down by the chute.
             if (_view != null && _stage != null && WallActive && now >= _traySweepAt && now - _lastPrintAt > 1.2f)
@@ -279,6 +290,29 @@ namespace MuseDesk.Wall
             if (now < _paperRefreshAt) return;
             _paperRefreshAt = now + 0.1f;
             RefreshPlanPaper();
+        }
+
+        [Tooltip("rc18 (owner, worn rc17): committed cards travel to every owner's desk at once through glass paper tubes, " +
+                 "instead of each owner riding up to collect its card in turn. Off = the old collect-by-elevator trips.")]
+        public bool cardTubes = true;
+        Material _tubeMat;
+
+        void EnsureCardTubes()
+        {
+            if (_view == null) return;
+            if (_view.tubeMaterial == null)
+            {
+                EnsurePortalFx();
+                if (_tubeMat == null && _portalColumnMat != null)
+                {
+                    _tubeMat = new Material(_portalColumnMat) { name = "CardTube_Glass" };
+                    Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.55f); c.a = 0.32f;
+                    if (_tubeMat.HasProperty(FxBaseColor)) _tubeMat.SetColor(FxBaseColor, c);
+                    if (_tubeMat.HasProperty(FxColor)) _tubeMat.SetColor(FxColor, c);
+                }
+                _view.tubeMaterial = _tubeMat;
+            }
+            _view.EnsureTubes();
         }
 
         void SetDelivery(HabitatRole role, CardDelivery to, bool byChute)
@@ -438,7 +472,7 @@ namespace MuseDesk.Wall
                     if (_receiptCard != null)
                     {
                         Vector3 eye = h != null ? h.position : ReceiptTarget() + Vector3.back;
-                        _receiptCard.Place(ReceiptTarget(), eye, 12f);
+                        _receiptCard.Place(CardSpot(_receiptCard, ReceiptTarget()), eye, 12f);
                         _receiptCard.Show(true);
                     }
                     if (_audio != null) _audio.Play(WallCue.Land, true);
@@ -725,7 +759,7 @@ namespace MuseDesk.Wall
         {
             if (_receiptCard == null) return;
             Transform h = ResolveHead();
-            _receiptCard.Place(ReceiptTarget(), h != null ? h.position : ReceiptTarget() + Vector3.back, 12f);
+            _receiptCard.Place(CardSpot(_receiptCard, ReceiptTarget()), h != null ? h.position : ReceiptTarget() + Vector3.back, 12f);
         }
 
         /// <summary>One line for drivers: what the paper shows right now.</summary>

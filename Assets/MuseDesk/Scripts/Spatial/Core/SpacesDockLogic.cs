@@ -66,6 +66,8 @@ namespace MuseDesk.Spatial
         public const string NextSpot = "Next spot", Place = "Place", Cancel = "Cancel", Stop = "Stop";
         public const string Bring = "Bring", Status = "Status", Full = "Full", Compact = "Compact";
         public const string WallFromDeskNote = "Wall: go back to Desk first";
+        /// <summary>From Floor / Ceiling: Wall is offered and says what it will do (the office comes home, then the wall preview).</summary>
+        public const string WallViaDeskNote = "Wall: the office comes home first";
         public const string Move = "Move", Select = "Select", Done = "Done", Manager = "Manager", Meet = "Meet";
 
         /// <summary>Every word a dock key can show (the label-fit test walks this list).</summary>
@@ -140,11 +142,12 @@ namespace MuseDesk.Spatial
                 k.wallDisabled = false;
                 return k;
             }
-            // Desk / Floor / Ceiling as before. Wall only from the desk, at rest, with nothing previewed.
-            k.wallDisabled = !i.wallEnabled || !deskIdle;
-            // Floor or Ceiling at rest: Wall stays closed (never chain moves) but the dock says why.
+            // Desk / Floor / Ceiling as before. Owner (worn rc17): "wall mode should be enabled from anywhere not just from desk".
+            // From Floor or Ceiling at rest, Wall is offered whenever Desk is: the office first goes home (the normal, swept
+            // Desk move), then the wall preview opens by itself. Nothing is placed until Place, as always.
             bool floorOrCeiling = i.mode == PlacementMode.Floor || i.mode == PlacementMode.Ceiling;
-            if (i.wallEnabled && floorOrCeiling && !i.previewing && !i.transitioning) k.wallNote = WallFromDeskNote;
+            bool awayAtRest = floorOrCeiling && !i.previewing && !i.transitioning && !b.deskDisabled;
+            k.wallDisabled = !i.wallEnabled || !(deskIdle || awayAtRest);
             return k;
         }
     }

@@ -117,6 +117,7 @@ namespace MuseDesk.Wall
         void TickInteraction(float dt)
         {
             _visit.Tick(dt);
+            TickCardDrag(dt);
             _portal.comfortMode = Comfort;
             _portal.Tick(dt);
             TickPresentations();
@@ -576,7 +577,69 @@ namespace MuseDesk.Wall
             if (_view == null) return;
             int visitRole = _proxy != null && _visit.Agent != null ? (int)RoleOf(_visit.Agent) : -1;
             int portalRole = _portalAvatar != null && _portal.Agent != null ? (int)RoleOf(_portal.Agent) : -1;
-            for (int r = 0; r < 4; r++) _view.SetHidden((HabitatRole)r, r == visitRole || r == portalRole);
+            for (int r = 0; r < 4; r++)
+            {
+                bool hide = r == visitRole || r == portalRole;
+                // Owner (worn rc17): after Send back the agent "just pops back in to their spot": it now teleports in at its
+                // desk (a short light column, and it grows out of it).
+                if (!hide && _view.IsHidden((HabitatRole)r)) { _view.PlayArrive((HabitatRole)r); StartDeskBeam((HabitatRole)r); }
+                _view.SetHidden((HabitatRole)r, hide);
+            }
+            TickDeskBeams(Time.deltaTime);
+        }
+
+        // ── Teleport-in beam at an agent's wall desk (reuses the portal column's mesh and glow material) ──
+        readonly Transform[] _deskBeam = new Transform[4];
+        readonly float[] _deskBeamT = { 99f, 99f, 99f, 99f };
+        Material _deskBeamMat;
+        static readonly int DeskBeamColorId = Shader.PropertyToID("_BaseColor");
+        static readonly int DeskBeamColorId2 = Shader.PropertyToID("_Color");
+
+        void StartDeskBeam(HabitatRole role)
+        {
+            int r = (int)role;
+            Transform a = _view != null ? _view.Avatar(role) : null;
+            if (a == null) return;
+            EnsurePortalFx();
+            if (_deskBeamMat == null) _deskBeamMat = _portalColumnMat != null ? new Material(_portalColumnMat) { name = "DeskBeam_Glow" } : null;
+            if (_deskBeamMat == null) return;
+            if (_deskBeam[r] == null)
+            {
+                var go = new GameObject("DeskBeam_" + role);
+                go.AddComponent<MeshFilter>().sharedMesh = ColumnMesh(20);
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mr.receiveShadows = false;
+                mr.sharedMaterial = _deskBeamMat;
+                _deskBeam[r] = go.transform;
+            }
+            _deskBeam[r].SetParent(a.parent, false);
+            _deskBeamT[r] = 0f;
+            _deskBeam[r].gameObject.SetActive(true);
+            if (_audio != null) _audio.Play(WallCue.PrintTick);
+        }
+
+        void TickDeskBeams(float dt)
+        {
+            for (int r = 0; r < 4; r++)
+            {
+                Transform b = _deskBeam[r];
+                if (b == null || !b.gameObject.activeSelf) continue;
+                _deskBeamT[r] += dt;
+                float k = _deskBeamT[r] / (WallHabitatView.ArriveSeconds + 0.35f);
+                Transform a = _view != null ? _view.Avatar((HabitatRole)r) : null;
+                if (k >= 1f || a == null) { b.gameObject.SetActive(false); continue; }
+                float h = _view.AvatarHeight;
+                float rad = h * 0.36f;
+                b.localPosition = a.localPosition + Vector3.up * 0.002f;
+                b.localRotation = Quaternion.identity;
+                // Up fast, hold while the agent forms, then fade.
+                float rise = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(k / 0.22f));
+                b.localScale = new Vector3(rad, h * 1.35f * rise, rad);
+                float alpha = k < 0.55f ? 1f : Mathf.SmoothStep(1f, 0f, (k - 0.55f) / 0.45f);
+                Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.35f); c.a = alpha * 0.85f;
+                if (_deskBeamMat.HasProperty(DeskBeamColorId)) _deskBeamMat.SetColor(DeskBeamColorId, c);
+                if (_deskBeamMat.HasProperty(DeskBeamColorId2)) _deskBeamMat.SetColor(DeskBeamColorId2, c);
+            }
         }
 
         /// <summary>For drivers: whether the habitat avatar of this role is hidden while its projection is out.</summary>
@@ -643,7 +706,7 @@ namespace MuseDesk.Wall
             // The plan paper is taller than the old plan card: it grows UP from the old card's bottom edge, so it stays clear of
             // the stamps and the desk things the old card was placed above.
             if (_planCard != null && nearUserRig != null)
-                _planCard.Place(nearUserRig.TransformPoint(planCardLocal + Vector3.up * Mathf.Max(0f, (planPaperSize.y - 0.15f) * 0.5f)), eye, 12f);
+                _planCard.Place(CardSpot(_planCard, nearUserRig.TransformPoint(planCardLocal + Vector3.up * Mathf.Max(0f, (planPaperSize.y - 0.15f) * 0.5f))), eye, 12f);
         }
 
         static readonly string[] Questions = { "What are you working on?", "Is anything blocking you?", "What happens next?" };

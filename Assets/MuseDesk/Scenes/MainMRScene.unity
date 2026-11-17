@@ -20,11 +20,11 @@ RenderSettings:
   m_FogDensity: 0.01
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
-  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
-  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
+  m_AmbientSkyColor: {r: 0.5, g: 0.54, b: 0.62, a: 1}
+  m_AmbientEquatorColor: {r: 0.42, g: 0.41, b: 0.4, a: 1}
+  m_AmbientGroundColor: {r: 0.26, g: 0.24, b: 0.22, a: 1}
   m_AmbientIntensity: 1
-  m_AmbientMode: 0
+  m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
   m_HaloStrength: 0.5
@@ -15982,6 +15982,8 @@ MonoBehaviour:
   visibilityShownScale: []
   smoothTime: 0.05
   faceHead: 1
+  wristTurnGain: 1.2
+  wristTurnMax: 75
   minReach: 0.25
   maxReach: 0.75
   overlapGap: 0.008
@@ -23112,6 +23114,8 @@ MonoBehaviour:
   aimRayWidth: 0.004
   aimCursorRadius: 0.035
   aimHoverInterval: 0.1
+  movableCards: 1
+  cardGrabReach: 0.075
   guide: {fileID: 0}
   useSelectGrabV2: 1
   selectGrab:
@@ -23156,6 +23160,7 @@ MonoBehaviour:
   receiptCardLocal: {x: -0.21, y: 0.2, z: 0.36}
   receiptFlightSeconds: 1.6
   managerRayPoke: 1
+  cardTubes: 1
   meetChooserTimeout: 30
   meetHintSeconds: 10
   portalArt: {fileID: 8154156005999822430, guid: e157c2839807af94eb7c9c7408c1dd26, type: 3}
@@ -27008,6 +27013,8 @@ MonoBehaviour:
   visibilityShownScale: []
   smoothTime: 0.05
   faceHead: 1
+  wristTurnGain: 1.2
+  wristTurnMax: 75
   minReach: 0.25
   maxReach: 0.75
   overlapGap: 0.008
@@ -60119,6 +60126,10 @@ PrefabInstance:
       propertyPath: m_LocalRotation.y
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 8273070037089365922, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0.315
+      objectReference: {fileID: 0}
     - target: {fileID: 8714706079963911764, guid: 54b25a14d2e2f5f4ba2f9d63b80dd398, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -63335,6 +63346,8 @@ MonoBehaviour:
   visibilityShownScale: []
   smoothTime: 0.05
   faceHead: 1
+  wristTurnGain: 1.2
+  wristTurnMax: 75
   minReach: 0.25
   maxReach: 0.75
   overlapGap: 0.008
@@ -77550,7 +77563,7 @@ Camera:
     height: 1
   near clip plane: 0.01
   far clip plane: 30
-  field of view: 30
+  field of view: 35
   orthographic: 0
   orthographic size: 5
   m_Depth: -100
@@ -77576,8 +77589,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1159972272}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0.98870224, z: -0.14989316, w: 0}
-  m_LocalPosition: {x: -0.42, y: 1.12, z: 1.12}
+  m_LocalRotation: {x: -0.023538496, y: 0.9763784, z: -0.15818417, w: -0.14528935}
+  m_LocalPosition: {x: -0.3, y: 1.2, z: 0.9}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -79870,6 +79883,103 @@ MonoBehaviour:
   guardAddedByKit: 0
   wideRatio: 1
   meshSource: square (unchanged)
+--- !u!1 &1215275251
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1215275253}
+  - component: {fileID: 1215275252}
+  m_Layer: 0
+  m_Name: MuseKeyLight
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!108 &1215275252
+Light:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1215275251}
+  m_Enabled: 1
+  serializedVersion: 13
+  m_Type: 1
+  m_Color: {r: 1, g: 0.94, b: 0.85, a: 1}
+  m_Intensity: 0.95
+  m_Range: 10
+  m_SpotAngle: 30
+  m_InnerSpotAngle: 21.80208
+  m_CookieSize2D: {x: 0.5, y: 0.5}
+  m_Shadows:
+    m_Type: 0
+    m_Resolution: -1
+    m_CustomResolution: -1
+    m_Strength: 1
+    m_Bias: 0.05
+    m_NormalBias: 0.4
+    m_NearPlane: 0.2
+    m_CullingMatrixOverride:
+      e00: 1
+      e01: 0
+      e02: 0
+      e03: 0
+      e10: 0
+      e11: 1
+      e12: 0
+      e13: 0
+      e20: 0
+      e21: 0
+      e22: 1
+      e23: 0
+      e30: 0
+      e31: 0
+      e32: 0
+      e33: 1
+    m_UseCullingMatrixOverride: 0
+  m_Cookie: {fileID: 0}
+  m_DrawHalo: 0
+  m_Flare: {fileID: 0}
+  m_RenderMode: 1
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingLayerMask: 1
+  m_Lightmapping: 4
+  m_LightShadowCasterMode: 0
+  m_AreaSize: {x: 1, y: 1}
+  m_BounceIntensity: 1
+  m_ColorTemperature: 6570
+  m_UseColorTemperature: 0
+  m_BoundingSphereOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_UseBoundingSphereOverride: 0
+  m_UseViewFrustumForShadowCasterCull: 1
+  m_ForceVisible: 0
+  m_ShapeRadius: 0.025
+  m_ShadowAngle: 0
+  m_LightUnit: 1
+  m_LuxAtDistance: 1
+  m_EnableSpotReflector: 1
+--- !u!4 &1215275253
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1215275251}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.07876206, y: 0.9174326, z: -0.31589738, w: 0.22874165}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1270989630}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1215886907
 GameObject:
   m_ObjectHideFlags: 0
@@ -84842,6 +84952,61 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &1270989628
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1270989630}
+  - component: {fileID: 1270989629}
+  m_Layer: 0
+  m_Name: LookRig
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1270989629
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270989628}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 825f15c7e398acb41aa52244cecb333b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Art.ViewerKeyLight
+  keyLight: {fileID: 1215275252}
+  elevation: 38
+  sideAngle: 28
+  keyColor: {r: 1, g: 0.94, b: 0.85, a: 1}
+  keyIntensity: 0.95
+  followSeconds: 1.2
+  setAmbient: 1
+  ambientSky: {r: 0.5, g: 0.54, b: 0.62, a: 1}
+  ambientEquator: {r: 0.42, g: 0.41, b: 0.4, a: 1}
+  ambientGround: {r: 0.26, g: 0.24, b: 0.22, a: 1}
+--- !u!4 &1270989630
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270989628}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1215275253}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1271606864
 GameObject:
   m_ObjectHideFlags: 0
@@ -102822,6 +102987,10 @@ PrefabInstance:
     - target: {fileID: 8777168939425429321, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       propertyPath: m_LocalRotation.y
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8777168939425429321, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0.315
       objectReference: {fileID: 0}
     - target: {fileID: 9186310847477901248, guid: 4cc98641c91b8ca46a35285529bed804, type: 3}
       propertyPath: m_LocalPosition.x
@@ -131916,6 +132085,10 @@ PrefabInstance:
       propertyPath: m_LocalRotation.y
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 7517922135495682009, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0.315
+      objectReference: {fileID: 0}
     - target: {fileID: 7621835413852217484, guid: 36ea2b2eb5ebf554cb9323fd4b6e08ea, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -143361,6 +143534,8 @@ MonoBehaviour:
   - 1
   smoothTime: 0.05
   faceHead: 1
+  wristTurnGain: 1.2
+  wristTurnMax: 75
   minReach: 0.25
   maxReach: 0.75
   overlapGap: 0.008
@@ -158944,3 +159119,4 @@ SceneRoots:
   - {fileID: 1547186416}
   - {fileID: 1898947740}
   - {fileID: 1159972275}
+  - {fileID: 1270989630}

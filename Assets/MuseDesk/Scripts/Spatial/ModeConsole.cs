@@ -567,8 +567,9 @@ namespace MuseDesk.Spatial
             if (h == null) { if (wallKey.visual != null) wallKey.visual.FlashRefused(); return; }
             if (h.WallPreviewing || h.WallActive) return;                     // already there, or choosing a spot
             if (guide != null) guide.CancelGuide();                           // a guided Floor / Ceiling step is dropped; nothing had moved
-            director.RequestMode(WorkspaceMode.Wall);
-            if (!h.WallPreviewing && !h.WallActive && wallKey.visual != null) wallKey.visual.FlashRefused();
+            bool ok = director.RequestMode(WorkspaceMode.Wall);
+            // From Floor / Ceiling the office first goes home (rc18): that is a yes, not a refusal.
+            if (!h.WallPreviewing && !h.WallActive && !(ok && director.WallAfterDeskPending) && wallKey.visual != null) wallKey.visual.FlashRefused();
         }
 
         /// <summary>Wall preview: Full / Compact.</summary>

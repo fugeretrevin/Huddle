@@ -192,12 +192,55 @@ namespace MuseDesk.Wall
             bool want = isActiveAndEnabled && flags.wallHabitatEnabled && flags.largeAgentPortalEnabled && WallActive;
             if (want) { if (MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler != _meetVoice) MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler = _meetVoice; }
             else ClearMeetVoiceHook();
+            SyncCompanionVoiceHook();
         }
 
         void ClearMeetVoiceHook()
         {
             if (_meetVoice != null && MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler == _meetVoice)
                 MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler = null;
+            ClearCompanionVoiceHook();
+        }
+
+        // ── rc18: talk to the agent that is with you (no name needed) ──
+        System.Func<MuseDesk.Voice.VoiceAgentTarget> _companionWho;
+        System.Func<string, string> _companionAsk;
+
+        void SyncCompanionVoiceHook()
+        {
+            if (_companionWho == null) { _companionWho = CompanionForVoice; _companionAsk = AskCompanionByVoice; }
+            bool want = isActiveAndEnabled && flags.wallHabitatEnabled && flags.agentBtwEnabled && WallActive;
+            if (want)
+            {
+                if (MuseDesk.Voice.VoiceCommandCenter.CompanionAgent != _companionWho) MuseDesk.Voice.VoiceCommandCenter.CompanionAgent = _companionWho;
+                if (MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler != _companionAsk) MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler = _companionAsk;
+            }
+            else ClearCompanionVoiceHook();
+        }
+
+        void ClearCompanionVoiceHook()
+        {
+            if (_companionWho != null && MuseDesk.Voice.VoiceCommandCenter.CompanionAgent == _companionWho) MuseDesk.Voice.VoiceCommandCenter.CompanionAgent = null;
+            if (_companionAsk != null && MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler == _companionAsk) MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler = null;
+        }
+
+        /// <summary>The agent with the user: perched on the desk, or out of the portal (talking). None otherwise.</summary>
+        MuseDesk.Voice.VoiceAgentTarget CompanionForVoice()
+        {
+            if (this == null || !isActiveAndEnabled || !WallActive || _side == null) return MuseDesk.Voice.VoiceAgentTarget.None;
+            bool perched = _visit.State == VisitState.Perched;
+            bool portal = _portal.State >= PortalState.Emerging && _portal.State <= PortalState.Conversing;
+            if (!perched && !portal) return MuseDesk.Voice.VoiceAgentTarget.None;
+            return MuseDesk.Voice.VoiceIntentClassifier.FromId(_side.agentId);
+        }
+
+        string AskCompanionByVoice(string question)
+        {
+            if (CompanionForVoice() == MuseDesk.Voice.VoiceAgentTarget.None) return null;
+            string name = char.ToUpperInvariant(_side.agentId[0]) + _side.agentId.Substring(1);
+            if (AskText(question)) return "Asking the " + name + "… the answer shows on its card.";
+            if (_side.State == SideAskState.Asking) return "The " + name + " is still answering your last question.";
+            return null;
         }
 
         /// <summary>"Researcher, come here": the same preview the chooser opens. Null (not handled) outside Wall mode.</summary>

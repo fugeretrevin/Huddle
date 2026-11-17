@@ -389,6 +389,8 @@ namespace MuseDesk.Wall
             PaperSheet = WallUi.Hex(0xF7F2E3), PaperRim = WallUi.Hex(0xD9D0BA);
 
         public bool Visible => _visible;
+        /// <summary>The card's size in metres (card space).</summary>
+        public Vector2 Size => _size;
         public TMP_Text Title => _title;
         public TMP_Text Body => _body;
         public bool PaperStyle => _paper;

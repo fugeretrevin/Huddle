@@ -56,7 +56,12 @@ namespace MuseDesk.Wall
         readonly Dictionary<int, int> _deskStack = new Dictionary<int, int>();
         float _beaconPhase;
 
-        sealed class CardFlight { public Transform t; public Vector3 from, mid, to; public float time, duration; public int role; public bool landed; public bool hideOnLand; public string taskId; public Renderer r; public bool onDesk; }
+        sealed class CardFlight
+        {
+            public Transform t; public Vector3 from, mid, to; public float time, duration; public int role; public bool landed; public bool hideOnLand; public string taskId; public Renderer r; public bool onDesk;
+            // Paper tube (rc18): rise into the inlet rolled up, travel the tube, pop out at the desk and unroll onto the stack.
+            public bool tube, tubeStarted; public float tubeT; public Vector3 a, b, c1, c2, d, slot, fullScale;
+        }
         readonly Dictionary<string, CardFlight> _cardById = new Dictionary<string, CardFlight>();
         readonly Dictionary<int, int> _trayStack = new Dictionary<int, int>();
         readonly bool[] _propHidden = new bool[4];
@@ -144,6 +149,13 @@ namespace MuseDesk.Wall
         readonly Renderer[][] _avatarRenderers = new Renderer[4][];
 
         public bool IsHidden(HabitatRole r) { return _hidden[(int)r]; }
+
+        /// <summary>Seconds of the teleport-in (the avatar grows back at its desk after Send back / Return).</summary>
+        public const float ArriveSeconds = 0.9f;
+        readonly float[] _arriveT = { 99f, 99f, 99f, 99f };
+        /// <summary>Start the teleport-in for this role: it is drawn from nothing up to full size over <see cref="ArriveSeconds"/>.</summary>
+        public void PlayArrive(HabitatRole role) { int r = (int)role; if (r >= 0 && r < 4) _arriveT[r] = 0f; }
+        public bool Arriving(HabitatRole role) { int r = (int)role; return r >= 0 && r < 4 && _arriveT[r] < ArriveSeconds; }
 
         public void SetHidden(HabitatRole role, bool hidden)
         {
@@ -538,6 +550,13 @@ namespace MuseDesk.Wall
                 a.localPosition = riding ? new Vector3(w.Position.x - cp.x, 0f, w.Position.z - cp.z) : w.Position;
                 a.localRotation = Quaternion.Euler(0f, w.Yaw, 0f);
                 float vis = w.Visibility;
+                // Teleport-in at the desk (Send back): the avatar grows out of its light column instead of popping in.
+                if (_arriveT[r] < ArriveSeconds)
+                {
+                    _arriveT[r] += dt;
+                    float ak = Mathf.Clamp01(_arriveT[r] / ArriveSeconds);
+                    vis *= ak < 0.25f ? 0f : 1f - Mathf.Pow(1f - (ak - 0.25f) / 0.75f, 3f);   // hold briefly in the light, then ease out
+                }
                 Vector3 s = _avatarScale[r] * Mathf.Max(0.001f, vis);
                 if (a.localScale != s) a.localScale = s;
                 SetAnim(r, w.Anim, (HabitatRole)r, w);
@@ -709,6 +728,17 @@ namespace MuseDesk.Wall
 
         void StepCard(CardFlight c, float dt)
         {
+            if (c.tube)
+            {
+                c.tubeT += dt;
+                if (c.tubeT >= 0f)
+                {
+                    if (!c.tubeStarted) { c.tubeStarted = true; c.a = c.t.localPosition; }
+                    StepTube(c);
+                    return;
+                }
+                // Still waiting for its turn: finish the print flight into the tray first.
+            }
             if (c.landed) return;
             c.time += dt;
             float u = Mathf.Clamp01(c.time / c.duration);
@@ -797,6 +827,163 @@ namespace MuseDesk.Wall
             }
             if (moved > 0) _trayStack[(int)owner] = 0;
             return moved;
+        }
+
+        // ── Paper tubes (owner, worn rc17: the Manager's cards went out "one by one" and slowly; "have papers come down to them
+        //    through little paper tubes"). One glass tube per owner from the printer to above its desk, in front of the decks.
+        //    A card rises into the inlet rolling up, rides the tube, pops out over the desk and unrolls onto the stack.
+        //    Presentation only: the card is the same committed task card; nothing here changes task state. ──
+
+        /// <summary>Transparent glow material for the tube glass (set by the controller; null = a faint opaque tint).</summary>
+        public Material tubeMaterial;
+        public const float TubeRise = 0.35f, TubeTravel = 1.2f, TubeDrop = 0.45f;
+        public const float TubeRadius = 0.0075f;
+        readonly Transform[] _tube = new Transform[3];
+
+        void TubePath(HabitatRole owner, out Vector3 b, out Vector3 c1, out Vector3 c2, out Vector3 d)
+        {
+            float front = layout.size.z + 0.045f;
+            b = TraySlot(0) + new Vector3(0f, 0.055f, 0f);
+            d = DeskSlot(owner, 0) + new Vector3(0f, 0.06f, 0f);
+            c1 = new Vector3(b.x, b.y + 0.03f, front);
+            c2 = new Vector3(d.x, d.y + 0.015f, front);
+        }
+
+        static Vector3 Bez(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float u = 1f - t;
+            return u * u * u * p0 + 3f * u * u * t * p1 + 3f * u * t * t * p2 + t * t * t * p3;
+        }
+
+        /// <summary>Build the three tubes (once; again after the habitat is rebuilt). Safe to call every frame.</summary>
+        public void EnsureTubes()
+        {
+            for (int r = 0; r < 3; r++)
+            {
+                if (_tube[r] != null) continue;
+                Vector3 b, c1, c2, d;
+                TubePath((HabitatRole)r, out b, out c1, out c2, out d);
+                const int n = 24;
+                var pts = new Vector3[n + 2];
+                pts[0] = b + Vector3.down * 0.03f;                       // down into the printer's top
+                for (int i = 0; i <= n; i++) pts[i + 1] = Bez(b, c1, c2, d, i / (float)n);
+                var go = new GameObject("CardTube_" + (HabitatRole)r);
+                go.transform.SetParent(root, false);
+                go.AddComponent<MeshFilter>().sharedMesh = TubeMesh(pts, TubeRadius, 10);
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mr.receiveShadows = false;
+                if (tubeMaterial != null) mr.sharedMaterial = tubeMaterial;
+                else { mr.sharedMaterial = _mat; Tint(mr, Color.Lerp(Teal, Color.white, 0.6f)); }
+                _tube[r] = go.transform;
+                // Brass collars at the inlet and the outlet so the ends read as fittings, not cut glass.
+                Box(go.transform, "Collar_In", b, new Vector3(TubeRadius * 3f, 0.006f, TubeRadius * 3f), new Color(0.78f, 0.62f, 0.3f));
+                Vector3 outDir = (d - Bez(b, c1, c2, d, 0.96f)).normalized;
+                var co = Box(go.transform, "Collar_Out", d, new Vector3(TubeRadius * 3f, 0.006f, TubeRadius * 3f), new Color(0.78f, 0.62f, 0.3f)).transform;
+                co.localRotation = Quaternion.FromToRotation(Vector3.up, outDir);
+            }
+        }
+
+        static Mesh TubeMesh(Vector3[] pts, float radius, int sides)
+        {
+            int rings = pts.Length;
+            var v = new Vector3[rings * (sides + 1)];
+            var col = new Color[v.Length];
+            var tris = new int[(rings - 1) * sides * 6];
+            Vector3 prevN = Vector3.right;
+            for (int i = 0; i < rings; i++)
+            {
+                Vector3 tan = (i < rings - 1 ? pts[i + 1] - pts[i] : pts[i] - pts[i - 1]).normalized;
+                Vector3 n = Vector3.Cross(tan, Vector3.Cross(prevN, tan)).normalized;   // parallel transport: no twisting
+                if (n.sqrMagnitude < 1e-6f) n = Vector3.Cross(tan, Vector3.up).normalized;
+                prevN = n;
+                Vector3 bi = Vector3.Cross(tan, n);
+                for (int s = 0; s <= sides; s++)
+                {
+                    float a = s / (float)sides * Mathf.PI * 2f;
+                    v[i * (sides + 1) + s] = pts[i] + (n * Mathf.Cos(a) + bi * Mathf.Sin(a)) * radius;
+                    col[i * (sides + 1) + s] = Color.white;
+                }
+            }
+            int t = 0;
+            for (int i = 0; i < rings - 1; i++)
+                for (int s = 0; s < sides; s++)
+                {
+                    int a0 = i * (sides + 1) + s, a1 = a0 + 1, b0 = a0 + sides + 1, b1 = b0 + 1;
+                    tris[t++] = a0; tris[t++] = b0; tris[t++] = a1; tris[t++] = a1; tris[t++] = b0; tris[t++] = b1;
+                }
+            var m = new Mesh { name = "CardTube", vertices = v, colors = col, triangles = tris };
+            m.RecalculateNormals(); m.RecalculateBounds();
+            return m;
+        }
+
+        /// <summary>Send every tray card of this owner down its tube to its desk (staggered by <paramref name="stagger"/> s
+        /// per card, after <paramref name="delay"/> s). Returns how many went.</summary>
+        public int SendByTube(HabitatRole owner, float delay, float stagger = 0.25f)
+        {
+            int r = (int)owner;
+            if (r < 0 || r >= 3) return 0;
+            EnsureTubes();
+            int moved = 0;
+            foreach (var kv in _cardById)
+            {
+                CardFlight c = kv.Value;
+                if (c.role != r || c.onDesk || c.hideOnLand) continue;
+                int count;
+                _deskStack.TryGetValue(r, out count);
+                _deskStack[r] = count + 1;
+                c.onDesk = true;
+                if (!c.t.gameObject.activeSelf) c.t.gameObject.SetActive(true);
+                TubePath(owner, out c.b, out c.c1, out c.c2, out c.d);
+                c.a = c.t.localPosition;
+                c.slot = DeskSlot(owner, count);
+                if (c.fullScale == Vector3.zero) c.fullScale = new Vector3(0.035f, 0.002f, 0.025f);   // the printed card's size
+                c.tube = true; c.tubeStarted = false; c.hideOnLand = false;
+                c.tubeT = -(delay + stagger * moved);
+                moved++;
+            }
+            if (moved > 0) _trayStack[r] = 0;
+            return moved;
+        }
+
+        void StepTube(CardFlight c)
+        {
+            Vector3 rolled = new Vector3(0.011f, 0.011f, c.fullScale.z * 0.95f);
+            float t = c.tubeT;
+            if (t < TubeRise)
+            {
+                // Up from the tray into the inlet, rolling up as it goes.
+                float k = Mathf.SmoothStep(0f, 1f, t / TubeRise);
+                c.t.localPosition = Vector3.Lerp(c.a, c.b, k);
+                c.t.localScale = Vector3.Lerp(c.fullScale, rolled, Mathf.Clamp01(k * 1.6f));
+                c.t.localRotation = Quaternion.Slerp(Quaternion.identity, Quaternion.LookRotation(Vector3.up, Vector3.forward), k);
+                return;
+            }
+            t -= TubeRise;
+            if (t < TubeTravel)
+            {
+                // Through the tube: quick in the middle (InOutCubic), the rolled card pointing along the glass.
+                float u = t / TubeTravel;
+                float e = u < 0.5f ? 4f * u * u * u : 1f - Mathf.Pow(-2f * u + 2f, 3f) * 0.5f;
+                Vector3 p = Bez(c.b, c.c1, c.c2, c.d, e);
+                Vector3 ahead = Bez(c.b, c.c1, c.c2, c.d, Mathf.Min(1f, e + 0.02f));
+                c.t.localPosition = p;
+                c.t.localScale = rolled;
+                if ((ahead - p).sqrMagnitude > 1e-8f) c.t.localRotation = Quaternion.LookRotation((ahead - p).normalized, Vector3.up);
+                return;
+            }
+            t -= TubeTravel;
+            float q = Mathf.Clamp01(t / TubeDrop);
+            // Pops out of the outlet, unrolls and drops onto the stack with a little settle.
+            float drop = q * q * (3f - 2f * q);
+            Vector3 pos = Vector3.Lerp(c.d, c.slot, drop) + Vector3.up * (Mathf.Sin(q * Mathf.PI) * 0.012f);
+            c.t.localPosition = pos;
+            c.t.localScale = Vector3.Lerp(rolled, c.fullScale, Mathf.Clamp01(q * 1.8f));
+            c.t.localRotation = Quaternion.Slerp(c.t.localRotation, Quaternion.identity, Mathf.Clamp01(q * 2f));
+            if (q >= 1f)
+            {
+                c.t.localPosition = c.slot; c.t.localScale = c.fullScale; c.t.localRotation = Quaternion.identity;
+                c.landed = true; c.tube = false;
+            }
         }
 
         /// <summary>The card's edge shows its REAL task state colour (the app's state palette).</summary>

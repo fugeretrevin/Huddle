@@ -451,6 +451,13 @@ namespace MuseDesk.Voice
         /// null when it is not handled (the sentence then goes through the normal grammar, exactly as before).</summary>
         public static Func<VoiceAgentTarget, string> PortalRequestHandler;
 
+        /// <summary>rc18: set by the Wall habitat. The agent that is with the user right now (perched on the desk, or out of the
+        /// portal), else None. While it is not None, natural speech that is not a command goes to that agent.</summary>
+        public static Func<VoiceAgentTarget> CompanionAgent;
+        /// <summary>rc18: set by the Wall habitat. Asks the companion a free question (read-only side conversation); returns
+        /// the line to show ("Asking the Developer…"), or null when it could not be asked (the sentence then goes on as before).</summary>
+        public static Func<string, string> CompanionQuestionHandler;
+
         void HandleFinal(string transcript)
         {
             // A leading name the service misheard ("Research your why") is read as the name ("Researcher, why").
@@ -463,6 +470,33 @@ namespace MuseDesk.Voice
             _ambient = _ambientQuiet = false;
 
             VoiceIntent intent = VoiceIntentParser.Parse(heard, CurrentContext());
+
+            // rc18 (owner): talk naturally to the agent that is WITH you (perched on the desk or out of the portal), no name
+            // needed: "hey, why are you doing this instead of that?". It goes to that agent's side conversation (live: the real
+            // model answers as that agent; offline: the scripted reply), shown on its visit card. Read-only, as the keys are.
+            if (_pending == Pending.None && CompanionQuestionHandler != null && CompanionAgent != null)
+            {
+                VoiceAgentTarget companion = CompanionAgent();
+                bool command = !(intent.Kind == VoiceIntentKind.None || intent.Kind == VoiceIntentKind.AskAgent || intent.Kind == VoiceIntentKind.AskWhy
+                                 || intent.Kind == VoiceIntentKind.Status || intent.Kind == VoiceIntentKind.WhoNeedsMe);
+                string question;
+                if (CompanionAddressing.ForCompanion(heard, companion, command, out question))
+                {
+                    string reply = CompanionQuestionHandler(question);
+                    if (reply != null)
+                    {
+                        _ambient = _ambientQuiet = false;
+                        _actedOnPartial = VoiceIntentKind.None;
+                        _partial = "";
+                        LastIntent = "CompanionQuestion";
+                        LastMessage = reply;
+                        if (policy != null) policy.NotifyHeard(LastMessage);
+                        Result("You: " + VoiceAnswers.Clip(question, 60), reply, VoiceTone.Agent, 3.5f);
+                        RefreshMic();
+                        return;
+                    }
+                }
+            }
 
             // Wall portal (Meet): "Researcher, come here" / "meet the developer". Only while the Wall registered for it.
             VoiceAgentTarget meetWho;
