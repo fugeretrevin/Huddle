@@ -641,6 +641,78 @@ namespace MuseDesk.Wall
             return new ManagerCommitResult { ok = false, code = code, message = message };
         }
 
+        // ------------------------------------------------------------------ manager: amend (a confirmed change -> one new step)
+
+        /// <summary>The user confirmed a change (the visit card's Apply key): ONE new step for <paramref name="agentId"/> on the
+        /// committed plan, after <paramref name="afterTaskId"/>. Live: POST .../amend (the backend's runner then really works it).
+        /// Offline: a step on the demo board, worked by the scripted demo and labelled like every other offline card.</summary>
+        public void AmendPlan(string planId, int revision, string summary, string agentId, string afterTaskId, string idempotencyKey,
+                              Action<ManagerCommitResult> done)
+        {
+            if (done == null) return;
+            string title = WallOfflineLogic.ChangeTitle(summary);
+            OfflinePlan op;
+            if (!string.IsNullOrEmpty(planId) && _offline.TryGetValue(planId, out op)) { _ = AmendOfflineAsync(op, title, agentId, afterTaskId, idempotencyKey, done); return; }
+            if (!IsLive) { done(CommitFail("PLAN_NOT_OPEN", "That plan is no longer available")); return; }
+            var body = new JObject
+            {
+                ["schema_version"] = 2, ["revision"] = revision, ["summary"] = WallOfflineLogic.Clip((summary ?? "").Trim(), 300),
+                ["agent_id"] = agentId, ["after_task_id"] = string.IsNullOrEmpty(afterTaskId) ? null : afterTaskId,
+                ["idempotency_key"] = Key(idempotencyKey, "mgr-amend-", planId + "-r" + revision),
+            };
+            Send(UnityWebRequest.kHttpVerbPOST, "/v2/sessions/" + Sid + "/manager/plans/" + Uri.EscapeDataString(planId) + "/amend",
+                body.ToString(Newtonsoft.Json.Formatting.None), planTimeoutSeconds, (status, resp, net) =>
+                {
+                    if (net != null) { done(CommitFail("UNREACHABLE", IsTimeout(net) ? "No answer in time. Nothing is confirmed; try again" : WallOfflineLogic.UnreachableMessage)); return; }
+                    if (status >= 200 && status < 300)
+                    {
+                        WallParsedCommit c;
+                        if (!WallOfflineLogic.TryParseCommit(resp, null, out c)) { done(CommitFail("BAD_REPLY", "The backend confirmed a change this app could not read")); return; }
+                        for (int i = 0; i < c.tasks.Count; i++) { var t = c.tasks[i]; if (string.IsNullOrEmpty(t.title)) { t.title = title; c.tasks[i] = t; } }
+                        done(new ManagerCommitResult { ok = true, revision = c.revision, tasks = c.tasks });
+                        return;
+                    }
+                    var err = WallOfflineLogic.ParseError(status, resp);
+                    done(CommitFail(err.code, WallOfflineLogic.FriendlyMessage(err)));
+                });
+        }
+
+        async Task AmendOfflineAsync(OfflinePlan op, string title, string agentId, string afterTaskId, string key, Action<ManagerCommitResult> done)
+        {
+            ManagerCommitResult result;
+            try
+            {
+                FindRefsOnce();
+                IPhase2Gateway board = phase2 != null ? phase2.Gateway : null;
+                if (op.status != "committed") result = CommitFail("PLAN_NOT_COMMITTED", "Only an approved plan can take a new step");
+                else if (board == null || !phase2.Ready) result = CommitFail("BOARD_NOT_READY", "The task board is not ready, so nothing was added");
+                else
+                {
+                    var deps = new List<string>();
+                    if (!string.IsNullOrEmpty(afterTaskId)) foreach (var c in _offlineCards) if (c.taskId == afterTaskId) { deps.Add(afterTaskId); break; }
+                    TaskCardV2 card = await board.CreateTaskAsync(new TaskCreateV2
+                    {
+                        Title = title, AgentId = agentId, Priority = 1, Dependencies = deps,
+                        IdempotencyKey = Key(key, "wall-amend-", op.plan.planId + "-" + agentId),
+                    }, _cts.Token);
+                    if (card == null || string.IsNullOrEmpty(card.TaskId)) result = CommitFail("COMMIT_FAILED", "The step could not be added to the board");
+                    else
+                    {
+                        _offlineCards.Add(new OfflineCard { taskId = card.TaskId, agentId = agentId, title = title, objective = op.plan.objective, planId = op.plan.planId });
+                        op.synthesized = false;                       // unfinished again: a new summary follows
+                        result = new ManagerCommitResult { ok = true, revision = op.plan.revision };
+                        result.tasks.Add(new ManagerPrintJob { taskId = card.TaskId, clientItemId = "amend-" + card.TaskId, agentId = agentId, title = title });
+                        Debug.Log(Tag + "offline plan " + op.plan.planId + " amended: " + card.TaskId + " -> " + agentId + " (SCRIPTED DEMO)");
+                    }
+                }
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Debug.LogWarning(Tag + "offline amend failed: " + ex.Message); result = CommitFail("COMMIT_FAILED", "The step could not be added to the board"); }
+            if (this == null) return;
+            try { done(result); }
+            catch (Exception ex) { Debug.LogError(Tag + "callback error: " + ex.Message); }
+        }
+
         async Task CommitOfflineAsync(OfflinePlan op, int revision, List<string> approved, List<string> authorized, string key, Action<ManagerCommitResult> done)
         {
             ManagerCommitResult result;

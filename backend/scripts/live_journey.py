@@ -1,4 +1,4 @@
-﻿"""LIVE user-journey check against a REAL running backend (the canonical request from the E2E brief).
+"""LIVE user-journey check against a REAL running backend (the canonical request from the E2E brief).
 
     python -I scripts/live_journey.py http://127.0.0.1:8765 [evidence.json]
 
@@ -8,7 +8,7 @@ It does what the Quest client does over HTTP, with the configured model provider
   B5  a revision ("password at least 12 characters") -> a new plan revision; the old revision cannot be committed
   B4  commit (approve) the new revision, dangerous steps explicitly authorised as the stamp + "OK" do; a replay creates
       no second set of tasks
-  C3  the plan's tasks run (the live runner: sequential, text-only) -> per-task states and outputs recorded
+  C3  the plan's tasks run (the live runner: sequential; real code + pytest when MUSEDESK_P3_EXECUTE_CODE) -> per-task states and outputs recorded
   D2  /btw to the Developer "what are you working on right now?" -> a grounded reply; nothing changes
   D5  /btw "what is the weather tomorrow?" -> no invented access; nothing changes
   D6  /btw "change the password rule to 12 characters" -> a proposed action that needs confirmation, NOT applied
@@ -125,7 +125,7 @@ with httpx.Client(base_url=BASE, timeout=180) as c:
     task_ids = [t.get("task_id") if isinstance(t, dict) else t for t in (tasks or [])]
     st = {}
     t0 = time.time()
-    while time.time() - t0 < 300:
+    while time.time() - t0 < 1800:   # real work: model code + real pytest per card takes minutes
         st = c.get(f"/v2/sessions/{sid}/manager/plans/{pid}/status", headers=h).json()
         states = json.dumps(st)
         if '"running"' not in states and '"queued"' not in states and '"assigned"' not in states and time.time() - t0 > 5:

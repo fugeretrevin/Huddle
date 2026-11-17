@@ -155,6 +155,60 @@ def test_refused_code_is_never_written_or_run(tmp_path):
         assert failed["code"] == "SANDBOX_REFUSED" and "subprocess" in failed["result_summary"]
 
 
+SECRETY = GOOD_CODE.replace("def test_bad():", "def test_literal():\n    password = \"Secret123!\"\n    token = \"abc\"\n    assert password and token\n\ndef test_bad():")
+
+
+def test_code_is_written_verbatim_not_redacted(tmp_path):
+    """Live rc16 bug: the secret filter turned `token = ...` lines in tests into ***REDACTED***."""
+    prov = ScriptedProvider(dev=SECRETY)
+    with _client_exec(tmp_path, prov) as c:
+        sid, h = open_session(c)
+        plan, cards = _committed(c, sid, h)
+        _run_all(c)
+        body = (tmp_path / "plans" / plan["plan_id"] / "test_login_rules.py").read_text(encoding="utf-8")
+        assert 'password = "Secret123!"' in body and "REDACTED" not in body
+        assert state(c, cards[1]["task_id"]) == "completed"
+
+
+class FlakyFixProvider(ScriptedProvider):
+    """Live rc17 bug: a fix attempt came back empty (finish_reason=length) and the card read 'The sandbox could not work
+    this step'. A failed follow-up call must leave the REAL test result standing."""
+
+    def __init__(self, first_fails=False):
+        super().__init__(dev=BUGGY_CODE)
+        self.first_fails = first_fails
+
+    async def complete(self, *, system, messages, max_tokens=600, purpose="side"):
+        from app.phase3.provider_meta import ProviderError
+        if "did not all pass" in system or (self.first_fails and "Developer" in system and "sandbox" in system):
+            raise ProviderError("provider returned no text (finish_reason=length)")
+        return await super().complete(system=system, messages=messages, max_tokens=max_tokens, purpose=purpose)
+
+
+def test_a_failed_fix_call_keeps_the_real_test_result(tmp_path):
+    with _client_exec(tmp_path, FlakyFixProvider()) as c:
+        sid, h = open_session(c)
+        _, cards = _committed(c, sid, h)
+        _run_all(c)
+        b = cards[1]["task_id"]
+        failed = [e["payload"] for e in c.app.state.phase2_store.events_after_v2(sid, 0)
+                  if e["type"] == "task.failed" and e["task_id"] == b][0]
+        assert failed["code"] == "TESTS_FAILED" and "0 passed, 2 failed" in failed["result_summary"]
+        page = json.loads(artifacts(c, sid, b)[0]["pages_json"])[0]["content"]
+        assert "the model gave no usable answer" in page
+
+
+def test_a_failed_first_call_says_the_model_not_the_sandbox(tmp_path):
+    with _client_exec(tmp_path, FlakyFixProvider(first_fails=True)) as c:
+        sid, h = open_session(c)
+        _, cards = _committed(c, sid, h)
+        _run_all(c)
+        b = cards[1]["task_id"]
+        failed = [e["payload"] for e in c.app.state.phase2_store.events_after_v2(sid, 0)
+                  if e["type"] == "task.failed" and e["task_id"] == b][0]
+        assert failed["code"] == "MODEL_UNAVAILABLE"
+
+
 def test_execution_off_keeps_text_only_work(tmp_path):
     prov = ScriptedProvider()
     with _client(provider=prov, workspace_root=str(tmp_path)) as c:
@@ -179,3 +233,45 @@ def test_parse_and_rules():
     assert check_python("x.py", "().__class__.__bases__\n", set())
     assert check_python("x.py", "import re, hashlib\nfrom mod import f\n", {"mod"}) == []
     assert check_python("x.py", "def f(:\n", set()) == []     # cannot execute; pytest reports it
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("src", [
+    "import pytest\nos = pytest.importorskip('os')\n",                       # module by name
+    "def test_x(tmp_path):\n    (tmp_path.parent / 'x').write_text('1')\n",   # file system fixture
+    "def test_x(monkeypatch):\n    pass\n",
+    "def test_x(request):\n    pass\n",
+    "import operator\n",                                                       # attrgetter by name
+    "from unittest import mock\n",                                             # patch().getter()
+    "import string\nstring.Formatter().get_field('0.__class__', [()], {})\n",
+    "from string import Formatter\n",
+    "import typing\ntyping.get_type_hints(f)\n",                               # evaluates annotations
+    "from typing import ForwardRef\n",
+    "import pytest\n@pytest.mark.skipif(\"__import__('os').system('x')\")\ndef test_a():\n    pass\n",
+    "import pytest\n@pytest.mark.xfail(condition='1')\ndef test_a():\n    pass\n",
+    "pytest_plugins = ['evil']\n",
+    "f = getattr\n",                                                           # referenced, not called
+    "x = help\n",
+])
+def test_hardened_checks_refuse(src):
+    assert check_python("t.py", src, set()), src
+
+
+@pytest.mark.parametrize("src", [
+    "import re, string, hashlib\nSPECIALS = set(string.punctuation)\n",
+    "import pytest\n@pytest.mark.parametrize('v', ['a@b.co'])\ndef test_ok(v):\n    assert v\n",
+    "import pytest\n@pytest.mark.skipif(True, reason='x')\ndef test_a():\n    pass\n",
+    "items = [1, 2]\nitems.remove(1)\n",
+    "from dataclasses import dataclass\n@dataclass\nclass User:\n    email: str\n",
+    "def test_raises():\n    import pytest\n    with pytest.raises(ValueError):\n        int('x')\n",
+])
+def test_ordinary_code_still_passes(src):
+    assert check_python("t.py", src, set()) == [], src
+
+
+def test_files_named_like_standard_modules_are_refused():
+    assert "standard module" in check_name("email.py", False)
+    assert "standard module" in check_name("socket.py", False)
+    assert check_name("email_rules.py", False) is None

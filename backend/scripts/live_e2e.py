@@ -8,12 +8,20 @@ WS = BASE.replace("http", "ws", 1)
 results = []
 
 
+
+def honest_label(p):
+    """The desk decision says where it came from: model-written (no web) or the fixed template."""
+    prov, label = p.get("research_provenance"), (p.get("research_provenance_label") or "").lower()
+    return (prov == "model" and "model-written" in label) or (prov == "template" and "template" in label)
+
 def check(name, ok, detail=""):
     results.append(ok)
     print(("PASS " if ok else "FAIL ") + name + (f"  [{detail}]" if detail else ""))
 
 
-async def collect(sid, token, until, timeout=120.0, after=0, ver="v1"):
+async def collect(sid, token, until, timeout=600.0, after=0, ver="v1"):
+    # Generous: a model-written decision, model code and up to two real fix attempts can take minutes. Returns as soon as
+    # `until` holds, so the bound only matters when something is really stuck.
     """Read the event socket (v1, or the v2 board stream) until `until(events)` is true."""
     events = []
     url = f"{WS}/{ver}/sessions/{sid}/events?after_seq={after}&token={token}"
@@ -84,7 +92,7 @@ async def run(action):
 
         last = seqs[-1]
         done = lambda es: any(e["type"] in ("task.completed", "task.failed") and (e.get("task_id") or "").endswith("-oauth") for e in es)
-        ev2 = await collect(sid, token, done, after=last)
+        ev2 = await collect(sid, token, done, after=last, timeout=600.0)   # model code + up to 2 real fixes
         t2 = types(ev2)
         check(f"[{action}] resume from after_seq has no duplicates", all(e["seq"] > last for e in ev2))
         fin = next((e for e in ev2 if e["type"] in ("task.completed", "task.failed") and (e.get("task_id") or "").endswith("-oauth")), None)
@@ -165,9 +173,9 @@ async def run_card():
 
         ev = await collect(sid, token, lambda es: any(e["type"] == "decision.requested" for e in es))
         dec = next((e for e in ev if e["type"] == "decision.requested"), None)
-        check(f"{T} decision requested, linked to the card, labelled a template", dec is not None
+        check(f"{T} decision requested, linked to the card, honestly labelled (model or template)", dec is not None
               and dec["payload"].get("board_task_id") == cid
-              and dec["payload"].get("research_provenance") == "template",
+              and honest_label(dec["payload"]),
               json.dumps({k: dec["payload"].get(k) for k in ("board_task_id", "research_provenance", "research_provenance_label")}) if dec else "none")
         if dec is None:
             return
@@ -263,9 +271,9 @@ async def run_revise():
               second["decision_id"] != first["decision_id"] and p2.get("revision") == 1
               and p2.get("revises_decision_id") == first["decision_id"],
               json.dumps({k: p2.get(k) for k in ("revision", "revises_decision_id")}))
-        check("[revise] revised proposal differs and is still labelled a template",
+        check("[revise] revised proposal differs and is still honestly labelled",
               (p2.get("summary"), p2.get("title")) != (p1.get("summary"), p1.get("title"))
-              and p2.get("research_provenance") == "template",
+              and honest_label(p2),
               (p2.get("title") or "")[:70])
         check("[revise] nothing was built between the two decisions",
               "artifact.created" not in types(ev2), ",".join(sorted(set(types(ev2)))))

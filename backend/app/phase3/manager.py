@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -29,6 +30,22 @@ from .validation import ValidationResult, topological_order, validate_items
 log = logging.getLogger("musedesk.phase3.manager")
 
 OPEN_STATES = ("proposed", "approved")
+
+
+_CHANGE_LEAD = re.compile(
+    r"^(?:requested change \(not applied\)\s*:\s*"
+    r"|(?:actually|ok|okay|so|oh|wait|hmm|hey|please|and|um|uh|researcher|developer|tester|manager|dev)\b[\s,:;.!-]*"
+    r"|(?:can|could|would|will) you\s+(?:please\s+)?)+", re.I)
+
+
+def change_title(summary: str) -> str:
+    """'Actually, change the password rule to 12 characters.' -> 'Change: the password rule to 12
+    characters' (the Quest client applies the same rule: WallOfflineLogic.ChangeTitle)."""
+    s = _CHANGE_LEAD.sub("", (summary or "").strip()).strip().rstrip(".!? ")
+    if s.lower().startswith("change "):
+        s = s[7:].lstrip()
+    s = s or (summary or "").strip()
+    return "Change: " + s[:110]
 
 
 def public_plan(plan: dict[str, Any]) -> dict[str, Any]:
@@ -218,6 +235,55 @@ class ManagerPlanService:
     async def retry_card(self, session_id: str, plan_id: str, task_id: str) -> dict[str, Any]:
         self._require(session_id, plan_id)
         return await self._ops().retry_card(session_id, plan_id, task_id)
+
+    # ─────────────────────── amend (a confirmed change → one new step) ───────────────────────
+    AMEND_KIND = {"researcher": "research", "developer": "code", "tester": "test"}
+
+    async def amend(self, session_id: str, plan_id: str, revision: int, summary: str,
+                    agent_id: str, after_task_id: str | None) -> dict[str, Any]:
+        """The user confirmed a change (e.g. an agent's suggestion from a visit): add ONE step
+        for that agent to the COMMITTED plan. It depends on ``after_task_id`` when that is one
+        of the plan's cards, so it runs after it. The plan runner then works it like any other
+        card. The plan's summary is reset so a new one is written once the step settles."""
+        plan = self._require(session_id, plan_id)
+        if plan["status"] != "committed":
+            raise PlanCommandError("PLAN_NOT_COMMITTED", "only an approved plan can take a new step",
+                                   status=409, canonical_plan=public_plan(plan))
+        self._guard_revision(plan, revision)
+        if agent_id not in self.AMEND_KIND:
+            raise PlanCommandError("UNKNOWN_AGENT", f"no worker called {agent_id!r}", status=422)
+        title = change_title(self._text(summary, 300))
+        if len(title) < len("Change: ") + 3:
+            raise PlanCommandError("EMPTY_CHANGE", "the change has no text", status=422)
+        by_task = {t["task_id"]: t for t in plan.get("committed_tasks", [])}
+        dep = by_task.get(after_task_id) if after_task_id else None
+        n = sum(1 for it in plan["items"] if str(it.get("client_item_id", "")).startswith("amend-")) + 1
+        cid = f"amend-{n}"
+        item = {"client_item_id": cid, "title": title, "kind": self.AMEND_KIND[agent_id],
+                "proposed_agent": agent_id, "depends_on": [dep["client_item_id"]] if dep else [],
+                "acceptance_criteria": [self._text(summary, 200)], "required_permission":
+                    "workspace_write" if agent_id == "developer" else "none",
+                "dangerous": False, "danger_reasons": []}
+        card = self._graph.create_task(session_id, title, agent_id, 1,
+                                       [dep["task_id"]] if dep else [], None)
+        entry = {"client_item_id": cid, "task_id": card.task_id, "agent_id": card.agent_id,
+                 "state": card.task_state.value, "revision": card.revision,
+                 "depends_on": list(card.dependencies)}
+        plan["items"].append(item)
+        plan["committed_tasks"].append(entry)
+        plan["synthesis"] = None
+        try:
+            self._bump(plan, revision)
+        except PlanCommandError:
+            self._s3.delete_tasks_v2([card.task_id])
+            raise
+        await self._graph.announce_created(session_id, card)
+        await self._emit(session_id, EventTypeV2.manager_plan_committed, plan,
+                         {"tasks": [entry], "amended": True,
+                          "edges": [{"from_task_id": d, "to_task_id": card.task_id} for d in entry["depends_on"]],
+                          "task_ids": {cid: card.task_id}})
+        return {"plan_id": plan_id, "status": "committed", "revision": plan["revision"],
+                "tasks": [entry], "amended": True}
 
     # ─────────────────────── commit ───────────────────────
     async def commit(self, session_id: str, plan_id: str, revision: int,

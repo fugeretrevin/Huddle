@@ -35,8 +35,9 @@ watches the team write and test real code, asks one of them what it is doing, an
 - The run takes about 6–7 minutes for 7 cards. **Compress it with an on-screen "6 minutes later" caption**: never cut so it looks instant.
 - If a card fails, keep it: "failed, fixed once, passed" is a strength. Never hide a red card.
 - The offline (no PC) build is **SCRIPTED DEMO**. If any offline footage is used, the label must be readable in the frame.
-- The desk **Start** task's code is still a fixed starter (OAuth scaffold). Its tests are real. Do not narrate it as written from the request.
-  The request-specific code comes from the **Manager plan** path.
+- The desk **Start** task is model-driven too when live: the Researcher's decision paper reads "Model-written recommendation
+  (no web research, no tools)" and the receipt names the files the model wrote. Only if the paper says "Template
+  recommendation" (model unreachable) is the code the fixed starter: then caption the tests, not the code.
 - Research cards are model text (no web, no tools). Say "the Researcher's write-up", never "it researched the web".
 - Caption the PC cutaway honestly: "the same folder on the PC: real files, real pytest".
 
@@ -57,10 +58,10 @@ Timing targets 2:50 (judges may stop at 3:00).
 | 4 | 0:34–0:50 | One real goal | Open the Manager; pick the login goal (or say "Manager, plan a login page with email validation, password rules and tests"). The plan paper fills: steps, owners, risks; footer "LIVE model · code + tests really run in a sandbox" | Manager → goal | "One goal. The Manager plans it with the Meta model." | LIVE + PLAY. Footer new in rc16 |
 | 5 | 0:50–1:02 | Stamp it | Close on the hand pressing the stamp; APPROVED appears only after the backend confirms; cards print; owners ride the elevator to their desks | Stamp Approve (OK the risky step if asked) | "Nothing runs until you stamp it." | WORN (desk stamp), PLAY (plan stamp 13/13) |
 | 6 | 1:02–1:20 | Work happens | Status page rows changing: "Code written: login_page.py, test_login_page.py · pytest 7 passed, 0 failed", then "Tests run: 61 passed, 0 failed". Cut on the "6 minutes later" caption | Watch | "Real code. Real tests. In a sandbox." | LIVE (9/9). **Film from the headset** |
-| 7 | 1:20–1:36 | Ask a teammate | Wall → Select agents: the beam bends to the Developer, "Pinch to pick up Developer"; carry it to the perch; ask "Developer, what are you working on?"; the reply names its real card | Select, pinch, carry, ask | "Ask anyone, any time. Nothing changes unless you approve." | WORN (beam, rc15); LIVE (reply). Voice: wear rc16 first |
+| 7 | 1:20–1:36 | Ask a teammate | Wall → Select agents: the beam bends to the Developer, "Pinch to pick up Developer"; carry it to the perch; ask "Developer, what are you working on?"; the reply names its real card. Then "Actually, change the password rule to 12 characters": the card says NOT applied and offers **Apply change**; press it and a "Change: …" card prints for the Developer | Select, pinch, carry, ask, Apply change | "Ask anyone. Nothing changes until you press Apply." | WORN (beam, rc15); LIVE (reply). Voice: wear rc16 first |
 | 8 | 1:36–1:50 | Proof | PC cutaway: the sandbox folder (`backend\sandbox_workspaces\plans\<plan>`), the code file, then `pytest` printing "116 passed" | — | "The same folder on the PC: real files, real pytest." | LIVE (independent run matched) |
 | 9 | 1:50–2:15 | Spatial moment (pick ONE) | **A.** Meet → Open here: the visitor rises on its hovering disc and follows you with its head as you lean around it. **B.** Ceiling: the pod lowers, the Researcher walks to the front shelf and holds out the paper | Meet / Ceiling | "Bring one closer." | **Both WORN PASS on rc15.** Pick A for wow, B for calm |
-| 10 | 2:15–2:35 | Decide and finish | Desk: the Researcher brings the decision paper; read it, stamp it; the handoff; the receipt "6 passed / 0 failed" on the desk | Take paper, stamp | "You stay in charge." | WORN (desk loop). The desk code is a fixed starter: caption the tests, not the code |
+| 10 | 2:15–2:35 | Decide and finish | Desk: the Researcher brings its model-written decision paper; read it, stamp it; the handoff; the receipt with the files the model wrote and the real pytest counts | Take paper, stamp | "You stay in charge." | WORN (desk loop); model desk path LIVE (`live_e2e.py` 71/71) |
 | 11 | 2:35–2:50 | Close | Quiet desk, agents back at work, the plan summary receipt; title card | — | "MuseDesk: supervise AI agents as a tiny team you can see, stamp and talk to." | — |
 
 **Fallback film:** if the live backend is unavailable on the day, use beats 1–3, 5, 7 (preset question), 9 and 10 offline. Then:

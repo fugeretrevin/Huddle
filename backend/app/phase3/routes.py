@@ -59,6 +59,15 @@ class RetryBody(_Body):
     idempotency_key: str = Field(min_length=8, max_length=200)
 
 
+class AmendBody(_Body):
+    """A change the user CONFIRMED (e.g. an agent's suggested change from a visit): one new step."""
+    revision: int = Field(ge=0)
+    summary: str = Field(min_length=3, max_length=300)
+    agent_id: str = Field(min_length=1, max_length=40)
+    after_task_id: str | None = Field(default=None, max_length=100)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+
+
 def register_phase3_routes(app: FastAPI) -> None:
     async def require_session(session_id: str, request: Request,
                               authorization: str | None = Header(default=None)) -> dict[str, Any]:
@@ -180,6 +189,18 @@ def register_phase3_routes(app: FastAPI) -> None:
                 store2(request), session_id, f"manager.{plan_id}.retry.{task_id}",
                 body.model_dump(mode="json"),
                 lambda: svc.retry_card(session_id, plan_id, task_id))
+
+    @app.post("/v2/sessions/{session_id}/manager/plans/{plan_id}/amend")
+    async def amend_plan(session_id: str, plan_id: str, body: AmendBody, request: Request,
+                         session=Depends(manager_gate)) -> dict[str, Any]:
+        # Explicit, confirmed user command only (the visit card's Apply key): adds ONE step.
+        svc = manager_service(request)
+        async with plan_lock(request, plan_id):
+            return await idempotent(
+                store2(request), session_id, f"manager.{plan_id}.amend",
+                body.model_dump(mode="json"),
+                lambda: svc.amend(session_id, plan_id, body.revision, body.summary,
+                                  body.agent_id, body.after_task_id))
 
     @app.post("/v2/sessions/{session_id}/manager/plans/{plan_id}/commit")
     async def commit_plan(session_id: str, plan_id: str, body: CommitBody, request: Request,

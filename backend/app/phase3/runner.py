@@ -33,7 +33,8 @@ from ..phase2.models import ArtifactKind, EventTypeV2, HandoffKind, TaskStateV2
 from ..phase2.sanitize import sanitize_text
 from ..phase2.store import Phase2Store
 from .plan_ops import PlanOps
-from .provider import ModelProvider
+from .provider import ModelProvider, ProviderRefused
+from .provider_meta import ProviderError
 from .sandbox_work import SandboxWork
 from .store import Phase3Store
 
@@ -41,6 +42,9 @@ log = logging.getLogger("musedesk.phase3.runner")
 
 MAX_DEP_CHARS = 3000
 MAX_OUTPUT_CHARS = 10000
+# Whole files are rewritten in one answer and the model's reasoning shares the budget: 8000 ran out live
+# (finish_reason=length, no text) on a fix attempt.
+WORK_MAX_TOKENS = 16000
 
 WORKER_SYSTEM = {
     "researcher": (
@@ -271,8 +275,11 @@ class PlanRunner:
         async def complete(system: str, prompt: str) -> str:
             text = await asyncio.wait_for(
                 provider.complete(system=system, messages=[{"role": "user", "content": prompt}],
-                                  max_tokens=8000, purpose="work"), timeout=budget)
-            return sanitize_text(text or "")
+                                  max_tokens=WORK_MAX_TOKENS, purpose="work"), timeout=budget)
+            # NOT sanitized: redaction would corrupt code ("token = ..." / password literals in tests
+            # became ***REDACTED*** and broke the build). The files stay in the local sandbox; every
+            # artifact page shown to the client is sanitized on ingest (ArtifactService).
+            return text or ""
 
         try:
             out = await self._sandbox().run(agent, plan["plan_id"], self._step_prompt(plan, item, row),
@@ -280,6 +287,11 @@ class PlanRunner:
         except asyncio.TimeoutError:
             await self._fail_if_running(row["id"], "MODEL_TIMEOUT",
                                         "The model did not finish this step in time.")
+            return
+        except (ProviderError, ProviderRefused):
+            log.warning("sandbox work: the model gave no usable answer for %s", row["id"])
+            await self._fail_if_running(row["id"], "MODEL_UNAVAILABLE",
+                                        "The model gave no usable answer for this step. Retry it.")
             return
         except Exception:  # noqa: BLE001 - provider/sandbox details never leak to the client
             log.exception("sandbox work failed for %s", row["id"])

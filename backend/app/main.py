@@ -85,7 +85,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Projects a run's milestones onto the task card that launched it (v2 stream).
         board = BoardRunBridge(phase2_store, phase2_bus)
         orchestrator = (LiveOrchestrator(storage, bus, settings, phase2_store, phase2_bus,
-                                         board=board)
+                                         board=board,
+                                         provider_getter=lambda: get_provider(app))
                         if settings.producer == "live"
                         else Orchestrator(storage, bus, settings, board=board))
         app.state.settings = settings

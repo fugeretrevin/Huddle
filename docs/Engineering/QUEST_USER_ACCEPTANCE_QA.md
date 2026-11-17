@@ -1,7 +1,7 @@
-# Quest user acceptance QA (owner script, rc16)
+# Quest user acceptance QA (owner script, rc17)
 
-Build: `Builds/MuseDesk_rc16_real_work.apk`, label `rc16-real-work`, SHA-256 `D25583D1…E22C1753`, **installed and hash-verified** on the Quest (2026-11-16). Rollbacks: rc15 (`047DD408…`), rc14 (`3CD37ED9…`), rc13, rc11.
-Before putting it on, run `scripts\quest_perf_watch.ps1 -Label rc16_worn` in a terminal. It logs frame rate and hitches.
+Build: `Builds/MuseDesk_rc17_production.apk`, label `rc17-production`, SHA-256 `BD0204F4…7B602AD`, **installed and hash-verified** on the Quest (2026-11-16 night). rc17 = rc16 + Apply change on the visit card. Backend-only changes ride along with `start_wall_backend.ps1`: model-written desk task, hardened sandbox.
+Before putting it on, run `scripts\quest_perf_watch.ps1 -Label rc17_worn` in a terminal. It logs frame rate and hitches.
 Mark each line PASS / FAIL / NOTE. Only these observations can make anything WORN.
 
 ## 0. rc15 worn results (owner, 2026-11-16 evening)
@@ -66,8 +66,12 @@ Say only: "Use MuseDesk to ask your team to complete a task." Do not help. Note:
    - Research rows read "Written, not run · Research write-up: …" (model text, labelled).
 8. On the PC, open the newest folder under `backend\sandbox_workspaces\plans\` and run pytest. The counts must match the last
    card.
-9. Desk: Start → Researcher paper → stamp Approve. The receipt shows **6 passed / 0 failed** and two files. The code here is
-   still the fixed OAuth starter.
+9. Visit the Developer and say (or ask) "Actually, change the password rule to 12 characters". The card says the change was
+   NOT applied and shows **Apply change**. Press it: a new card "Change: the password rule to 12 characters" prints, the
+   Developer collects it, and its row later shows real pytest counts.
+10. Desk: Start. The Researcher's paper is model-written ("Model-written recommendation (no web research, no tools)"). Stamp
+   Approve. The receipt names the files the model wrote and the real pytest counts (they vary per run). If the model is
+   unreachable the paper says "Template recommendation (the model did not answer)" and the receipt says "Fixed OAuth starter".
 
 Record:
 - the time from Approve to the first card;

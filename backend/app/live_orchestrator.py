@@ -4,8 +4,10 @@ Same public surface and event shapes as the deterministic demo producer, so the
 backend/API and Unity client are unchanged. The difference is truth: the developer
 writes real files and the tester runs real pytest in an isolated per-session
 workspace. Executed artifacts are stamped source_mode="live" and
-work_provenance="sandbox_execution"; the research step is a fixed template and says
-so (provenance="deterministic", research_provenance="template").
+work_provenance="sandbox_execution". With a model and ``p3_execute_code`` the research
+decision is model-written (research_provenance="model") and the developer's code is
+model-written for the approved proposal; without them, or when the model fails, the fixed
+template recommendation / fixed OAuth starter is used, and the labels say which.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from .workers import (
     RESEARCH_PROGRESS_MESSAGE,
     WORK_PROVENANCE_SANDBOX,
     ArtifactData,
+    DevResult,
     DeveloperWorker,
     ResearchWorker,
     TesterWorker,
@@ -32,11 +35,19 @@ from .workers import (
     revising_progress_message,
 )
 from .workspace_guard import WorkspaceGuard
+from .model_workers import (DESK_OBJECTIVE, TEMPLATE_FALLBACK_LABEL, ModelDeveloperWorker,
+                            ModelResearchWorker, model_ready)
+
+MODEL_RESEARCH_PROGRESS = "Weighing the options"
 
 
 class LiveOrchestrator:
     def __init__(self, storage: Storage, bus: EventBus, settings: Settings,
-                 phase2_store=None, phase2_bus=None, board=None) -> None:
+                 phase2_store=None, phase2_bus=None, board=None, provider_getter=None) -> None:
+        # Optional () -> ModelProvider | None. With a model and p3_execute_code the
+        # Researcher's decision and the Developer's code are model-written (model_workers);
+        # otherwise (or when the model fails) the fixed template / starter is used and labelled.
+        self._provider_getter = provider_getter or (lambda: None)
         # Optional ``BoardRunBridge``: keeps the task card that launched a run in step
         # with it on the v2 stream.
         self._board = board
@@ -183,8 +194,15 @@ class LiveOrchestrator:
                                  **link, "source_mode": "live"},
                                 task_id=oauth_task, agent_id="developer")
 
+        provider = self._provider_getter()
+        use_model = model_ready(self._settings, provider)
+        timeout = float(self._settings.p3_work_timeout_seconds)
+        model_research = ModelResearchWorker(provider, timeout) if use_model else None
+        model_dev = ModelDeveloperWorker(provider, timeout) if use_model else None
+
         await self._set_agent(session_id, AgentId.researcher, AgentState.researching,
-                              TaskState.running, RESEARCH_PROGRESS_MESSAGE, "live")
+                              TaskState.running,
+                              MODEL_RESEARCH_PROGRESS if use_model else RESEARCH_PROGRESS_MESSAGE, "live")
         await self._set_agent(session_id, AgentId.tester, AgentState.testing,
                               TaskState.running, "Running baseline tests", "live", executed=True)
 
@@ -209,16 +227,26 @@ class LiveOrchestrator:
                                  "result_summary": f"Baseline {baseline.passed} passed, {baseline.failed} failed"},
                                 task_id=test_task, agent_id="tester")
 
-        # Researcher raises the gated decision. The recommendation is a fixed TEMPLATE
-        # (no model call, no web research): disclosed in machine-readable fields.
-        # "Request changes" revises the template recommendation up to ``max_revisions``
-        # times without executing any developer work in between.
-        max_revisions = proposal_revision_limit(self._settings.max_proposal_revisions)
+        # Researcher raises the gated decision. With a model (model_ready) the proposal is
+        # model-written (no web, no tools); otherwise, or when the model fails, it is the fixed
+        # TEMPLATE. Either way the machine-readable fields say which. "Request changes"
+        # revises it up to ``max_revisions`` times without any developer work in between.
+        max_revisions = (max(0, int(self._settings.max_proposal_revisions)) if use_model
+                         else proposal_revision_limit(self._settings.max_proposal_revisions))
         revision = 0
         previous_id: str | None = None
+        proposal = None
         loop = asyncio.get_running_loop()
         while True:
-            proposal = self._research.evaluate(f"dec-{uuid.uuid4().hex[:10]}", revision=revision)
+            decision_id = f"dec-{uuid.uuid4().hex[:10]}"
+            made = (await model_research.propose(decision_id, DESK_OBJECTIVE, revision, proposal)
+                    if model_research is not None else None)
+            if made is None:
+                template_rev = min(revision, proposal_revision_limit(self._settings.max_proposal_revisions))
+                made = self._research.evaluate(decision_id, revision=template_rev)
+                if model_research is not None:
+                    made.research_provenance_label = TEMPLATE_FALLBACK_LABEL
+            proposal = made
             details = {
                 "title": proposal.title, "summary": proposal.summary,
                 "recommendation": proposal.recommendation, "rationale": proposal.rationale,
@@ -272,7 +300,9 @@ class LiveOrchestrator:
                 await board.changes_requested(parent_task_id, proposal.decision_id, revision)
             self._storage.set_task_status(research_task, TaskState.running.value, utcnow_iso())
             await self._set_agent(session_id, AgentId.researcher, AgentState.researching,
-                                  TaskState.running, revising_progress_message(revision), "live")
+                                  TaskState.running,
+                                  (f"Revising the recommendation (revision {revision})" if use_model
+                                   else revising_progress_message(revision)), "live")
             await self._step()
 
         if board is not None and action == DecisionAction.approve.value:
@@ -288,13 +318,30 @@ class LiveOrchestrator:
             max_retries = max(0, int(self._settings.max_dev_revision_attempts))
             attempts = 0
             first_attempt: dict | None = None
+            model_code = False          # the files that were tested came from the model
+            dev = None
+            result = None
             while True:
                 attempts += 1
-                prog = ("Implementing OAuth scaffold" if attempts == 1
-                        else f"Revising OAuth scaffold (attempt {attempts})")
+                if model_dev is not None:
+                    prog = "Writing the code" if attempts == 1 else f"Fixing the code (attempt {attempts})"
+                else:
+                    prog = ("Implementing OAuth scaffold" if attempts == 1
+                            else f"Revising OAuth scaffold (attempt {attempts})")
                 await self._set_agent(session_id, AgentId.developer, AgentState.coding,
                                       TaskState.running, prog, "live", executed=True)
-                dev = await asyncio.to_thread(self._dev.implement_oauth, self._guard, ws)
+                out = None
+                if model_dev is not None and (attempts == 1 or model_code):
+                    out = await model_dev.implement(self._guard, ws, DESK_OBJECTIVE, proposal,
+                                                    result.output if attempts > 1 and result else None)
+                if out is not None:
+                    model_code = True
+                    files = sorted(set(out.result.files_changed) | set(dev.files_changed if dev else []))
+                    dev = DevResult(files_changed=files, diff_excerpt=out.result.diff_excerpt)
+                elif attempts == 1 or not model_code:
+                    # No model, or the model's code could not be used: the fixed starter (labelled).
+                    model_code = False
+                    dev = await asyncio.to_thread(self._dev.implement_oauth, self._guard, ws)
                 await self._set_agent(session_id, AgentId.tester, AgentState.testing,
                                       TaskState.running,
                                       "Running tests on new code" if attempts == 1 else f"Retesting code (attempt {attempts})",
@@ -326,9 +373,17 @@ class LiveOrchestrator:
                                   f"Tests on new code: {counts}"
                                   + (" (timed out)" if result.timed_out else ""), "live",
                                   executed=True)
+            if model_code:
+                what = "Code written by the model (" + ", ".join(dev.files_changed[:3]) + ")"
+                summary = (f"{what}; {counts}" if passed_ok
+                           else f"{what} but tests did not pass; {counts}")
+            else:
+                starter = ("OAuth login scaffold" if model_dev is None
+                           else "Fixed OAuth starter (the model's code could not be used)")
+                summary = (f"{starter} complete; {counts}" if passed_ok
+                           else f"{starter} written but tests did not pass; {counts}")
             art = ArtifactData(
-                summary=(f"OAuth login scaffold complete; {counts}" if passed_ok
-                         else f"OAuth login scaffold written but tests did not pass; {counts}"),
+                summary=summary[:280],
                 files_changed=dev.files_changed, diff_excerpt=dev.diff_excerpt,
                 tests_passed=result.passed, tests_failed=result.failed, timed_out=result.timed_out,
                 attempts=attempts, first_attempt=first_attempt,
@@ -367,7 +422,8 @@ class LiveOrchestrator:
         else:
             self._storage.set_task_status(oauth_task, TaskState.cancelled.value, utcnow_iso())
             rejected = action == DecisionAction.reject.value
-            msg = ("Rejected: no OAuth files written" if rejected
+            msg = (("Rejected: no code written" if model_dev is not None else "Rejected: no OAuth files written")
+                   if rejected
                    else CHANGES_LIMIT_MESSAGE if revision > 0 else CHANGES_REQUESTED_MESSAGE)
             card_final, card_summary = TaskState.cancelled, msg
             parent_final = TaskState.cancelled  # not "completed": the gated work was not done

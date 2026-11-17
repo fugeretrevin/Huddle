@@ -28,4 +28,4 @@ MonoBehaviour:
   reducedMotion: 0
   reducedMotionToggle: 1
   onboardingHints: 1
-  buildLabel: rc16-real-work
+  buildLabel: rc17-production

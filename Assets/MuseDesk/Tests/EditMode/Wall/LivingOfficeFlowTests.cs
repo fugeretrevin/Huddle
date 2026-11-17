@@ -260,6 +260,49 @@ namespace MuseDesk.Tests.EditMode.Wall
             Assert.AreEqual("t-b", job.taskId);
         }
 
+        // rc17: a change the user confirmed from a visit becomes ONE new step on the committed plan, printed like the others.
+        [Test]
+        public void Amendment_AddsOneStep_ToTheCommittedPlan_AndPrintsItOnce()
+        {
+            List<ManagerPlanItemView> items;
+            var f = Proposed(out items);
+            List<string> approved, authorized; int rev; string key, problem;
+            Assert.IsTrue(f.TryBuildCommit(out approved, out authorized, out rev, out key, out problem));
+            f.BeginCommit();
+            f.OnCommitted(2, Jobs());
+            foreach (var j in Jobs()) f.OnBoardTask(j.taskId);
+            ManagerPrintJob job;
+            while (f.TryDequeuePrint(out job)) { }
+            Assert.AreEqual(ManagerFlowState.Monitoring, f.State);
+
+            var raised = new List<string>();
+            f.Committed += (planId, tasks) => { foreach (var t in tasks) raised.Add(t.taskId); };
+            var change = new List<ManagerPrintJob> { new ManagerPrintJob { taskId = "t-amend", clientItemId = "amend-1", agentId = "developer", title = "Change: 12-character passwords" } };
+            Assert.AreEqual(0, f.OnAmended("some-other-plan", 3, change), "another plan's change is not ours");
+            Assert.AreEqual(1, f.OnAmended("demo-plan-1", 3, change));
+            Assert.AreEqual(ManagerFlowState.Delegating, f.State);
+            Assert.AreEqual(3, f.Revision);
+            Assert.AreEqual(4, f.CommittedCount);
+            CollectionAssert.AreEqual(new[] { "t-amend" }, raised, "only the new step reaches the board");
+            Assert.IsFalse(f.OnCommittedEvent("demo-plan-1", 3, change), "the announcement of the same change adds nothing");
+
+            Assert.IsFalse(f.TryDequeuePrint(out job), "not printed before the card is on the board");
+            f.OnBoardTask("t-amend");
+            Assert.IsTrue(f.TryDequeuePrint(out job));
+            Assert.AreEqual("t-amend", job.taskId);
+            Assert.IsFalse(f.TryDequeuePrint(out job));
+            Assert.AreEqual(ManagerFlowState.Monitoring, f.State);
+        }
+
+        [Test]
+        public void ChangeTitle_ReadsCleanly_LikeTheBackend()
+        {
+            Assert.AreEqual("Change: the password rule to 12 characters", WallOfflineLogic.ChangeTitle("Actually, change the password rule to 12 characters."));
+            Assert.AreEqual("Change: add rate limiting", WallOfflineLogic.ChangeTitle("Developer, could you please add rate limiting?"));
+            Assert.AreEqual("Change: Make the password rule 12 characters", WallOfflineLogic.ChangeTitle("Make the password rule 12 characters"));
+            Assert.AreEqual("Change: the password rule to 12 characters", WallOfflineLogic.ChangeTitle("Requested change (not applied): Actually, change the password rule to 12 characters"));
+        }
+
         // ── plan paper ──
 
         [Test]

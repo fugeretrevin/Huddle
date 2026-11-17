@@ -71,6 +71,9 @@ namespace MuseDesk.Wall
         /// <summary>Ask for a FAILED card of a committed plan to be queued again. The only other command besides CommitPlan
         /// that changes a task, and only on the user's explicit Retry poke.</summary>
         void RetryPlanCard(string planId, string taskId, string idempotencyKey, Action<PlanRetryResult> done);
+        /// <summary>A change the user confirmed becomes ONE new step for the agent on the committed plan (after afterTaskId).</summary>
+        void AmendPlan(string planId, int revision, string summary, string agentId, string afterTaskId, string idempotencyKey,
+                       Action<ManagerCommitResult> done);
         /// <summary>Read a committed plan's cards (state, blocked reason, failure) and its summary. done(null) when unavailable.</summary>
         void GetPlanStatus(string planId, Action<WallParsedPlanStatus> done);
         /// <summary>Read every committed plan of the session (GET .../manager/status; offline: the demo board's committed plans).

@@ -306,9 +306,37 @@ namespace MuseDesk.Spatial.Wall
         public bool OnCommittedEvent(string planId, int revision, IList<ManagerPrintJob> tasks)
         {
             if (string.IsNullOrEmpty(planId) || planId != PlanId) return false;
+            // A later announcement for the already-committed plan is a confirmed change (amend): its new step may print.
+            if (State == ManagerFlowState.Delegating || State == ManagerFlowState.Monitoring) return OnAmended(planId, revision, tasks) > 0;
             if (State != ManagerFlowState.Committing && State != ManagerFlowState.AwaitingApproval) return false;
             OnCommitted(revision, tasks);
             return true;
+        }
+
+        /// <summary>
+        /// A change the user confirmed was added to the COMMITTED plan as new step(s) (backend amend reply or its
+        /// manager.plan_committed announcement, whichever comes first; the other adds nothing). Only these canonical ids may
+        /// print, exactly like the commit's. Returns how many steps were new.
+        /// </summary>
+        public int OnAmended(string planId, int revision, IList<ManagerPrintJob> tasks)
+        {
+            if (string.IsNullOrEmpty(planId) || planId != CommittedPlanId || tasks == null) return 0;
+            if (State != ManagerFlowState.Delegating && State != ManagerFlowState.Monitoring) return 0;
+            var added = new List<ManagerPrintJob>();
+            foreach (var t in tasks)
+            {
+                if (string.IsNullOrEmpty(t.taskId) || _committed.ContainsKey(t.taskId)) continue;
+                _committed[t.taskId] = t;
+                added.Add(t);
+            }
+            if (added.Count == 0) return 0;
+            if (revision > Revision) Revision = revision;
+            Go(ManagerFlowState.Delegating);                         // back to Monitoring once it has printed
+            foreach (var t in added) TryQueuePrint(t.taskId);
+            Message = "Change added as a new step: " + added[0].title;
+            var done = Committed;
+            if (done != null) done(CommittedPlanId, added);
+            return added.Count;
         }
 
         /// <summary>

@@ -249,7 +249,7 @@ namespace MuseDesk.Spatial.Wall
             {
                 ex.status = "amendment_suggested";
                 ex.amendment = question == null ? "" : question.Trim();
-                sb.Append(" That reads like a change request. It was NOT applied and nothing changed. Use the task board to change work.");
+                sb.Append(" That reads like a change request. It was NOT applied: nothing changed.");
             }
             ex.reply = sb.ToString();
             return ex;
@@ -455,6 +455,19 @@ namespace MuseDesk.Spatial.Wall
         }
 
         /// <summary>Commit reply. Reads `tasks` (commit response) and `committed_tasks` (plan object). titles: clientItemId to title.</summary>
+        static readonly System.Text.RegularExpressions.Regex ChangeLead = new System.Text.RegularExpressions.Regex(
+            @"^(?:requested change \(not applied\)\s*:\s*|(?:actually|ok|okay|so|oh|wait|hmm|hey|please|and|um|uh|researcher|developer|tester|manager|dev)\b[\s,:;.!-]*|(?:can|could|would|will) you\s+(?:please\s+)?)+",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        /// <summary>The title of the step a confirmed change becomes: "Actually, change the password rule to 12 characters." ->
+        /// "Change: the password rule to 12 characters". Same rule as the backend's amend title.</summary>
+        public static string ChangeTitle(string suggestion)
+        {
+            string s = ChangeLead.Replace((suggestion ?? "").Trim(), "").Trim().TrimEnd('.', '!', '?', ' ');
+            if (s.StartsWith("change ", StringComparison.OrdinalIgnoreCase)) s = s.Substring(7).TrimStart();
+            if (s.Length == 0) s = (suggestion ?? "").Trim();
+            return "Change: " + Clip(s, 110);
+        }
         public static bool TryParseCommit(string json, Dictionary<string, string> titles, out WallParsedCommit commit)
         {
             commit = null;

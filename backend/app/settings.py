@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     # OFF by default; scripts/start_wall_backend.ps1 turns it on for LIVE runs.
     p3_execute_code: bool = False
     p3_sandbox_test_timeout_seconds: int = 60
-    p3_sandbox_fix_attempts: int = 1
+    p3_sandbox_fix_attempts: int = 2
     # Model used when MUSEDESK_MODEL_PROVIDER=anthropic (key: MUSEDESK_PROVIDER_API_KEY or
     # ANTHROPIC_API_KEY). Effort per purpose: low | medium | high | xhigh | max.
     p3_model: str = "claude-opus-5-5"

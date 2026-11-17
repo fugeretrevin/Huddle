@@ -713,7 +713,13 @@ namespace MuseDesk.Wall
                 SideExchange x = _side.History[_side.History.Count - 1];
                 body += "\nYou: " + x.question + "\n" + name + ": " + x.reply;
                 if (x.staleContext) body += "\n(Task changed since; this is the current state.)";
-                if (!string.IsNullOrEmpty(x.amendment)) body += "\nSuggested change NOT applied: needs your approval through the board.";
+                if (!string.IsNullOrEmpty(x.amendment))
+                {
+                    if (_amendDoneFor == x.requestId) body += "\n" + _amendNote;
+                    else if (_amendBusyFor == x.requestId) body += "\nAdding the change as a new step…";
+                    else body += CanApplyAmendment() ? "\nSuggested change NOT applied yet. Press Apply change to add it as a new step."
+                                                     : "\nSuggested change NOT applied: there is no approved plan to add it to.";
+                }
             }
             else body += flags.agentBtwEnabled ? "\nAsk a question. This never changes the task." : "";
             // rc12: one short line (it wrapped into the keys), and the mode only once ("SCRIPTED DEMO · SCRIPTED DEMO").
@@ -721,11 +727,83 @@ namespace MuseDesk.Wall
             string modeLabel = _tasks != null ? _tasks.SourceModeLabel : "";
             string foot = (string.IsNullOrEmpty(said) || said == modeLabel ? modeLabel : said + " · " + modeLabel) + " · a projection; the real agent keeps working";
             _visitCard.SetText(name + (_portal.State != PortalState.Hidden ? " is here" : " visiting"), body, foot);
-            if (flags.agentBtwEnabled) for (int i = 0; i < 3; i++) { int qi = i; keys.Add(new KeyValuePair<string, Action>(QuestionKeys[i], () => Ask(qi))); }
+            // A suggested change that can be applied takes the third question's place: "Apply change" (the one key that
+            // changes anything from a visit, and only after this explicit press).
+            bool applyKey = PendingAmendment() != null && CanApplyAmendment();
+            if (flags.agentBtwEnabled)
+                for (int i = 0; i < 3; i++)
+                {
+                    int qi = i;
+                    if (i == 2 && applyKey) keys.Add(new KeyValuePair<string, Action>("Apply change", () => ApplyAmendment()));
+                    else keys.Add(new KeyValuePair<string, Action>(QuestionKeys[i], () => Ask(qi)));
+                }
             if (_portal.State == PortalState.Hidden && flags.largeAgentPortalEnabled) keys.Add(new KeyValuePair<string, Action>("Meet larger", PressMeetLarger));
             else keys.Add(new KeyValuePair<string, Action>(null, null));
             keys.Add(new KeyValuePair<string, Action>(_portal.State != PortalState.Hidden ? "Send back" : "Return", PressReturn));
             _visitCard.SetKeys(keys);
+        }
+
+        // ───────────────────────── a suggested change → a new step (explicit Apply only) ─────────────────────────
+
+        string _amendBusyFor, _amendDoneFor, _amendNote;
+        public int AmendmentsApplied { get; private set; }
+
+        /// <summary>The latest exchange's suggested change, when it has not been applied or sent yet.</summary>
+        SideExchange? PendingAmendment()
+        {
+            if (_side == null || _side.History.Count == 0) return null;
+            SideExchange x = _side.History[_side.History.Count - 1];
+            if (string.IsNullOrEmpty(x.amendment) || x.requestId == _amendDoneFor || x.requestId == _amendBusyFor) return null;
+            return x;
+        }
+
+        bool CanApplyAmendment()
+        {
+            return _backend != null && _manager != null && !string.IsNullOrEmpty(_manager.CommittedPlanId)
+                   && (_manager.State == ManagerFlowState.Delegating || _manager.State == ManagerFlowState.Monitoring);
+        }
+
+        /// <summary>The visit card's Apply change key: the agent's suggested change becomes ONE new step for that agent on the
+        /// approved plan, after its current card. The backend creates it; it prints and is worked like every other card.</summary>
+        public bool ApplyAmendment()
+        {
+            SideExchange? pending = PendingAmendment();
+            if (pending == null || !CanApplyAmendment()) { Note("There is no suggested change to apply"); return false; }
+            SideExchange x = pending.Value;
+            string agent = _side.agentId;
+            string afterTask = null, title, state; int rev;
+            if (_tasks != null) _tasks.TryGetAgentTask(agent, out afterTask, out title, out state, out rev);
+            string planId = _manager.CommittedPlanId, requestId = x.requestId;
+            string key = "amend-" + requestId;
+            _amendBusyFor = requestId;
+            SendAmend(planId, _manager.Revision, x.amendment, agent, afterTask, key, requestId, true);
+            return true;
+        }
+
+        void SendAmend(string planId, int revision, string summary, string agent, string afterTask, string key, string requestId, bool mayRetry)
+        {
+            _backend.AmendPlan(planId, revision, summary, agent, afterTask, key, r =>
+            {
+                if (r != null && r.ok)
+                {
+                    _manager.OnAmended(planId, r.revision, r.tasks);
+                    _amendBusyFor = null; _amendDoneFor = requestId; AmendmentsApplied++;
+                    _amendNote = "Change added as a new step for " + AgentPresentationRegistry.Pretty(agent) + ". It prints on the Manager's tray.";
+                    return;
+                }
+                // The plan moved on (another change, a retry): read its revision once and try again with a new key.
+                if (mayRetry && r != null && r.code == "REVISION_CONFLICT")
+                {
+                    _backend.GetPlanStatus(planId, s =>
+                    {
+                        if (s != null && s.revision > 0) SendAmend(planId, s.revision, summary, agent, afterTask, key + "-r" + s.revision, requestId, false);
+                        else { _amendBusyFor = null; Note("The change was not added: the plan changed. Try again."); }
+                    });
+                    return;
+                }
+                _amendBusyFor = null;
+                Note("The change was not added: " + (r == null ? "no reply" : (string.IsNullOrEmpty(r.message) ? r.code : r.message)));
+            });
         }
 
         static string ProvenanceWords(string p)

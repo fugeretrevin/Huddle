@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import logging
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -40,14 +42,35 @@ _NAME_OK = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,60}\.(py|md|txt|json|html|css|
 ALLOWED_MODULES = frozenset({
     "abc", "base64", "binascii", "bisect", "calendar", "collections", "contextlib", "copy",
     "dataclasses", "datetime", "decimal", "difflib", "enum", "fractions", "functools",
-    "hashlib", "heapq", "hmac", "html", "itertools", "json", "math", "numbers", "operator",
+    "hashlib", "heapq", "hmac", "html", "itertools", "json", "math", "numbers",
     "pytest", "random", "re", "secrets", "statistics", "string", "textwrap", "time",
-    "typing", "typing_extensions", "unicodedata", "unittest", "uuid", "warnings", "zoneinfo",
+    "typing", "unicodedata", "uuid", "warnings", "zoneinfo",
 })
+# Left out on purpose: operator (attrgetter/methodcaller reach any attribute by name), unittest
+# (mock.patch objects hand back real modules), typing_extensions, os/sys/pathlib/io/subprocess/...
 DENIED_CALLS = frozenset({
     "eval", "exec", "compile", "__import__", "open", "getattr", "setattr", "delattr",
-    "globals", "locals", "vars", "breakpoint", "input", "memoryview", "exit", "quit",
+    "globals", "locals", "vars", "breakpoint", "input", "memoryview", "exit", "quit", "help",
 })
+# Attributes that reach modules, frames, files or evaluated strings indirectly.
+DENIED_ATTRS = frozenset({
+    "importorskip", "import_module", "get_field", "get_value", "vformat", "Formatter",
+    "attrgetter", "methodcaller", "get_type_hints", "ForwardRef", "_eval_type", "evaluate",
+    "pluginmanager", "_importer", "chdir", "rmtree", "f_globals", "f_locals", "f_back", "f_builtins", "gi_frame",
+    "cr_frame", "tb_frame", "tb_next", "mro",
+})
+# pytest fixtures that hand the test the file system, the import machinery or the config.
+DENIED_FIXTURES = frozenset({
+    "tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory", "monkeypatch", "request",
+    "pytestconfig", "pytester", "testdir", "cache", "doctest_namespace", "record_property",
+    "record_testsuite_property", "record_xml_attribute",
+})
+# Names a sandbox file may not take: a file named like a standard module could stand in for it
+# while the real one is already loaded (or the other way round).
+try:
+    _STDLIB = frozenset(sys.stdlib_module_names) | {"pytest", "_pytest", "pluggy", "py", "conftest"}
+except AttributeError:  # Python < 3.10
+    _STDLIB = frozenset({"os", "sys", "subprocess", "socket", "shutil", "pathlib", "io", "pytest"})
 ALLOWED_DUNDERS = frozenset({"__name__", "__doc__", "__init__", "__post_init__", "__eq__",
                              "__repr__", "__str__", "__hash__", "__lt__", "__len__"})
 
@@ -57,7 +80,9 @@ RULES = (
     "these standard modules: " + ", ".join(sorted(ALLOWED_MODULES - {"typing_extensions"})) +
     ", and the folder's own modules. No file, process, network or environment access; do not "
     "use eval, exec, open, getattr, setattr, globals or dunder attributes other than __init__. "
-    "Keep it small, complete and runnable.\n"
+    "Do not name a file after a standard module (no email.py, string.py, html.py); do not use "
+    "the pytest fixtures tmp_path, monkeypatch or request, pytest.importorskip, string "
+    "conditions in skipif/xfail, or pytest_plugins. Keep it small, complete and runnable.\n"
     "Output format, exactly: for each file, a line 'FILE: <name>' followed by ONE fenced code "
     "block containing the whole file. After the last file, one line starting 'Summary:' that "
     "says what the files do in one sentence. Nothing else.")
@@ -135,6 +160,8 @@ def check_name(name: str, tests_only: bool) -> str | None:
         return f"{name}: this file name is reserved"
     if tests_only and not (name.startswith("test_") and name.endswith(".py")):
         return f"{name}: the Tester only writes test_*.py files"
+    if name.endswith(".py") and name[:-3] in _STDLIB:
+        return f"{name}: named like the standard module {name[:-3]!r}; choose another name"
     return None
 
 
@@ -152,22 +179,37 @@ def check_python(name: str, source: str, local_modules: set[str]) -> list[str]:
         return top in ALLOWED_MODULES or top in local_modules
 
     for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Import):
             for a in node.names:
                 if not mod_ok(a.name):
-                    problems.append(f"{name}:{node.lineno} imports {a.name}")
+                    problems.append(f"{name}:{line} imports {a.name}")
         elif isinstance(node, ast.ImportFrom):
             if node.level == 0 and not mod_ok(node.module):
-                problems.append(f"{name}:{node.lineno} imports {node.module}")
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in DENIED_CALLS:
-                problems.append(f"{name}:{node.lineno} calls {node.func.id}()")
-        elif isinstance(node, ast.Name) and node.id in ("__builtins__", "__loader__", "__spec__"):
-            problems.append(f"{name}:{node.lineno} uses {node.id}")
+                problems.append(f"{name}:{line} imports {node.module}")
+            for a in node.names:
+                if a.name in DENIED_ATTRS or a.name in DENIED_CALLS:
+                    problems.append(f"{name}:{line} imports {a.name}")
+        elif isinstance(node, ast.Name):
+            # Called or merely referenced ("f = getattr"): either way it is refused.
+            if node.id in DENIED_CALLS or node.id in ("__builtins__", "__loader__", "__spec__"):
+                problems.append(f"{name}:{line} uses {node.id}")
+            elif node.id == "pytest_plugins" and isinstance(node.ctx, ast.Store):
+                problems.append(f"{name}:{line} sets pytest_plugins")
         elif isinstance(node, ast.Attribute):
             a = node.attr
-            if a.startswith("__") and a.endswith("__") and a not in ALLOWED_DUNDERS:
-                problems.append(f"{name}:{node.lineno} uses .{a}")
+            if (a.startswith("__") and a.endswith("__") and a not in ALLOWED_DUNDERS) or a in DENIED_ATTRS:
+                problems.append(f"{name}:{line} uses .{a}")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            args = node.args
+            for arg in args.posonlyargs + args.args + args.kwonlyargs:
+                if arg.arg in DENIED_FIXTURES:
+                    problems.append(f"{name}:{line} uses the pytest fixture {arg.arg}")
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr in ("skipif", "xfail"):
+            conds = list(node.args[:1]) + [k.value for k in node.keywords if k.arg == "condition"]
+            if any(isinstance(c, ast.Constant) and isinstance(c.value, str) for c in conds):
+                problems.append(f"{name}:{line} gives {node.func.attr} a string condition (pytest evaluates it)")
     return problems[:8]
 
 
@@ -200,6 +242,8 @@ def _clip(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+log = logging.getLogger("musedesk.phase3.sandbox")
+
 Complete = Callable[[str, str], Awaitable[str]]     # (system, user prompt) -> model text
 
 
@@ -224,10 +268,10 @@ class SandboxWork:
         text = await complete(system, prompt)
         files, summary = parse_files(text)
         if not files:
-            text = await complete(system, prompt + "\n\nYour previous answer had no files in the "
-                                  "required format. Answer again: 'FILE: <name>' lines, each "
-                                  "followed by one fenced code block, then 'Summary:'.")
-            files, summary = parse_files(text)
+            text = await _try(complete, system, prompt + "\n\nYour previous answer had no files in the "
+                              "required format. Answer again: 'FILE: <name>' lines, each "
+                              "followed by one fenced code block, then 'Summary:'.")
+            files, summary = parse_files(text or "")
         if not files:
             return self._failed("NO_CODE", "The model returned no files in the required format, "
                                 "so nothing was written or run.", ws, [], kind_for(agent))
@@ -235,10 +279,10 @@ class SandboxWork:
         written, notes, problems = self._write(ws, files, tests_only)
         if problems:
             # One chance to rewrite within the rules; otherwise nothing runs.
-            text = await complete(system, prompt + "\n\nThese files were refused by the sandbox "
-                                  "rules, so nothing ran:\n- " + "\n- ".join(problems) +
-                                  "\nWrite them again within the rules.")
-            files2, summary2 = parse_files(text)
+            text = await _try(complete, system, prompt + "\n\nThese files were refused by the sandbox "
+                              "rules, so nothing ran:\n- " + "\n- ".join(problems) +
+                              "\nWrite them again within the rules.")
+            files2, summary2 = parse_files(text or "")
             w2, n2, problems = self._write(ws, files2, tests_only)
             written = sorted(set(written) | set(w2))
             notes += n2
@@ -264,7 +308,12 @@ class SandboxWork:
             fix_prompt = (step_prompt + "\n\nThe sandbox folder now contains:\n" +
                           workspace_listing(ws) + "\n\npytest output (tail):\n" +
                           result.output[-MAX_OUTPUT_TAIL:])
-            text = await complete(FIX_SYSTEM, fix_prompt)
+            text = await _try(complete, FIX_SYSTEM, fix_prompt)
+            if text is None:
+                # The model gave no usable answer (timeout, empty, refused): the last REAL result stands.
+                notes.append(f"Developer fix attempt {attempts - 1}: the model gave no usable answer; "
+                             "the last real test result stands")
+                break
             fixes, _ = parse_files(text)
             w3, n3, bad = self._write(ws, fixes, False)
             notes += n3 + [f"Developer fix attempt {attempts - 1}: rewrote "
@@ -284,26 +333,7 @@ class SandboxWork:
 
     # ─────────────────────── helpers ───────────────────────
     def _write(self, ws: Path, files: list[ParsedFile], tests_only: bool) -> tuple[list[str], list[str], list[str]]:
-        written, notes, problems = [], [], []
-        locals_ = _local_modules(ws, files)
-        for f in files[:MAX_FILES]:
-            why = check_name(f.name, tests_only)
-            if why:
-                notes.append("Skipped " + why)
-                continue
-            if len(f.content) > MAX_FILE_CHARS:
-                notes.append(f"Skipped {f.name}: longer than {MAX_FILE_CHARS} characters")
-                continue
-            if f.name.endswith(".py"):
-                bad = check_python(f.name, f.content, locals_)
-                if bad:
-                    problems += bad
-                    continue
-            self.guard.write_file(ws, f.name, f.content)
-            written.append(f.name)
-        if len(files) > MAX_FILES:
-            notes.append(f"Only the first {MAX_FILES} files were used")
-        return written, notes, problems
+        return write_checked(self.guard, ws, files, tests_only)
 
 
     def _outcome(self, ok: bool, agent: str, ws: Path, written: list[str],
@@ -371,3 +401,43 @@ def _counts(r: TestResult) -> str:
 
 def _test_header(r: TestResult) -> str:
     return f"pytest: {_counts(r)} (exit code {r.returncode})"
+
+
+def write_checked(guard: WorkspaceGuard, ws: Path, files: list[ParsedFile],
+                  tests_only: bool) -> tuple[list[str], list[str], list[str]]:
+    """Write the files that pass the name and static checks. Returns (written, notes,
+    problems); a refused file is never written."""
+    written: list[str] = []
+    notes: list[str] = []
+    problems: list[str] = []
+    locals_ = _local_modules(ws, files)
+    for f in files[:MAX_FILES]:
+        why = check_name(f.name, tests_only)
+        if why:
+            if "standard module" in why:
+                problems.append(why)          # the model can fix it: the retry prompt names it
+            else:
+                notes.append("Skipped " + why)
+            continue
+        if len(f.content) > MAX_FILE_CHARS:
+            notes.append(f"Skipped {f.name}: longer than {MAX_FILE_CHARS} characters")
+            continue
+        if f.name.endswith(".py"):
+            bad = check_python(f.name, f.content, locals_)
+            if bad:
+                problems += bad
+                continue
+        guard.write_file(ws, f.name, f.content)
+        written.append(f.name)
+    if len(files) > MAX_FILES:
+        notes.append(f"Only the first {MAX_FILES} files were used")
+    return written, notes, problems
+
+
+async def _try(complete: "Complete", system: str, prompt: str) -> str | None:
+    """A follow-up model call (format retry, rewrite, fix) that may fail without failing the card."""
+    try:
+        return await complete(system, prompt)
+    except Exception:  # noqa: BLE001 - timeouts, empty answers, refusals: the caller keeps the real state
+        log.warning("sandbox follow-up model call gave no usable answer")
+        return None

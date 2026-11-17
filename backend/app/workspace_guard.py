@@ -104,7 +104,9 @@ class WorkspaceGuard:
         ws = Path(ws).resolve()
         # --rootdir + the workspace's own pytest.ini isolate this run from any parent
         # project's pytest config (otherwise a parent testpaths= could collect 0 tests).
-        cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        # -I: isolated (no user site, no PYTHON* env, no cwd on sys.path); -B: never write .pyc, so a
+        # file rewritten within the same second (a fix) is never shadowed by stale bytecode.
+        cmd = [sys.executable, "-I", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider",
                "--rootdir", str(ws), str(ws)]
         try:
             proc = subprocess.run(
@@ -131,6 +133,8 @@ def _child_env() -> dict[str, str]:
     provider API key). Code executed in the workspace must not be able to read them."""
     env = {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Only pytest itself: no third-party plugins auto-loaded from the backend's environment.
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     return env
 
 
