@@ -45,7 +45,9 @@ class HandoffService:
                                status=400)
         if kind not in _VALID_KINDS:
             raise CommandError("INVALID_HANDOFF_KIND", f"unknown handoff kind {kind}", status=400)
-        if self._store.get_artifact_v2(artifact_id) is None:
+        art = self._store.get_artifact_v2(artifact_id)
+        # Session-scoped: another session's artifact id must look unknown.
+        if art is None or art["session_id"] != session_id:
             raise CommandError("UNKNOWN_ARTIFACT", f"artifact {artifact_id} does not exist",
                                status=400)
         task = self._store.get_task_v2(task_id)

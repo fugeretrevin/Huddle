@@ -90,6 +90,18 @@
               "live",
               "demo"
             ]
+          },
+          "task_template": {
+            "description": "Executable pipeline template for this card, or null for a planned card that no agent runs. Only \"auth_demo\" is executable.",
+            "type": ["string", "null"]
+          },
+          "executable": {
+            "description": "True only when assigning this card to the Researcher launches a real pipeline run.",
+            "type": "boolean"
+          },
+          "run_task_id": {
+            "description": "v1 parent task id of the pipeline run launched from this card; null until launched.",
+            "type": ["string", "null"]
           }
         },
         "additionalProperties": false

@@ -27,12 +27,28 @@ namespace MuseDesk.Phase2.Board
         public GameObject halo;
 
         [Tooltip("Tint the halo when the hovered card is a VALID target here.")]
-        public Color validColor = new Color(0.30f, 0.80f, 0.45f, 0.6f);
+        public Color validColor = WithAlpha(MuseDesk.Workspace.OfficeTokens.Success, 0.24f);
         [Tooltip("Tint the halo when the hovered card is INVALID here (e.g. running/terminal).")]
-        public Color invalidColor = new Color(0.85f, 0.35f, 0.30f, 0.6f);
+        public Color invalidColor = WithAlpha(MuseDesk.Workspace.OfficeTokens.Coral, 0.26f);
+
+        static Color WithAlpha(Color c, float a) { c.a = a; return c; }
+
+        [Tooltip("Optional: the pad's own plate. It grows a little while a held card would be accepted " +
+                 "here, so the valid target is shown by shape as well as by colour.")]
+        public Transform highlightPlate;
+        [Tooltip("Scale of highlightPlate while this zone is the valid target (1 = no change).")]
+        public float validPlateScale = 1.08f;
 
         Collider _collider;
         Renderer _haloRenderer;
+        MaterialPropertyBlock _block;
+        bool _wasOn, _wasValid = true;
+        Vector3 _plateBase;
+        bool _plateBaseRead;
+        bool _plateGrown;
+
+        /// <summary>Raised when the halo turns on/off or changes validity (zone, on, valid).</summary>
+        public static event System.Action<StationDropZone, bool, bool> HighlightChanged;
 
         /// <summary>All enabled zones, for the nearest-valid resolver. Registered in OnEnable.</summary>
         public static readonly List<StationDropZone> Active = new List<StationDropZone>();
@@ -67,6 +83,9 @@ namespace MuseDesk.Phase2.Board
             if (TaskStateSets.IsTerminal(card.TaskState)) return false;
             if (TaskStateSets.IsRunning(card.TaskState)) return false;
             if (!TaskStateSets.IsSafeAssignCheckpoint(card.TaskState)) return false;
+            // A runnable card's pipeline starts with the Researcher, so only that zone is a valid
+            // target (the others show the red halo). The backend enforces the same rule.
+            if (card.Executable && agentId != Phase2AgentIds.Researcher) return false;
             return true;
         }
 
@@ -78,10 +97,34 @@ namespace MuseDesk.Phase2.Board
 
         public void SetHighlight(bool on, bool valid)
         {
+            // The plate grows only for a drop that would be accepted (state by shape, not colour alone).
+            bool grow = on && valid;
+            if (highlightPlate != null && grow != _plateGrown)
+            {
+                if (!_plateBaseRead) { _plateBaseRead = true; _plateBase = highlightPlate.localScale; }
+                _plateGrown = grow;
+                highlightPlate.localScale = grow
+                    ? new Vector3(_plateBase.x * validPlateScale, _plateBase.y * validPlateScale, _plateBase.z)
+                    : _plateBase;
+            }
             if (halo == null) return;
             halo.SetActive(on);
-            if (on && _haloRenderer != null && _haloRenderer.material != null)
-                _haloRenderer.material.color = valid ? validColor : invalidColor;
+            if (on && _haloRenderer != null)
+            {
+                // Property block (no per-zone material instance). Green = a drop here assigns;
+                // red = it would be refused. The card's own status line states the reason in words.
+                if (_block == null) _block = new MaterialPropertyBlock();
+                Color c = valid ? validColor : invalidColor;
+                _haloRenderer.GetPropertyBlock(_block);
+                _block.SetColor("_BaseColor", c);
+                _block.SetColor("_Color", c);
+                _haloRenderer.SetPropertyBlock(_block);
+            }
+            if (on != _wasOn || valid != _wasValid)
+            {
+                _wasOn = on; _wasValid = valid;
+                HighlightChanged?.Invoke(this, on, valid);
+            }
         }
 
         /// <summary>

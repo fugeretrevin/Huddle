@@ -9,6 +9,8 @@ namespace MuseDesk.Models
         [JsonProperty("role")] public string Role;
         [JsonProperty("display_name")] public string DisplayName;
         [JsonProperty("state")] public string State;
+        /// <summary>The agent's own latest progress line (agent.status_changed.progress_message).</summary>
+        [JsonProperty("progress_message")] public string Progress;
     }
 
     public class TaskView
@@ -54,6 +56,11 @@ namespace MuseDesk.Models
         [JsonProperty("priority")] public string Priority;
         [JsonProperty("impact")] public string Impact;
         [JsonProperty("source_mode")] public string SourceMode;
+        /// <summary>Where the recommendation came from, e.g. "template" (a fixed recommendation,
+        /// not live AI research). Null when the backend does not say.</summary>
+        [JsonProperty("research_provenance")] public string ResearchProvenance;
+        /// <summary>Short sentence for the paper, e.g. "Template recommendation. Not live AI research."</summary>
+        [JsonProperty("research_provenance_label")] public string ResearchProvenanceLabel;
         [JsonProperty("allowed_actions")] public List<string> AllowedActions = new List<string>();
         [JsonProperty("alternatives")] public List<DecisionAlternative> Alternatives = new List<DecisionAlternative>();
     }

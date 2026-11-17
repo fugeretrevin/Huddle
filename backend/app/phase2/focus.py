@@ -73,9 +73,15 @@ class FocusService:
             now = utcnow_iso()
             self._store.add_inbox_v2(item_id, session_id, kind, summary, priority,
                                      critical, self._mode, now)
+            # ``item`` is the full InboxItemV2 the snapshot would carry. The Unity reducer
+            # reads payload["item"] to upsert its inbox projection; the flat fields are
+            # kept for any consumer that read the original shape.
+            item = {"item_id": item_id, "kind": kind, "summary": summary,
+                    "priority": priority, "critical": critical, "created_at": now,
+                    "source_mode": self._mode}
             await self._bus.publish(session_id, EventTypeV2.inbox_updated,
-                                    {"item_id": item_id, "kind": kind, "summary": summary,
-                                     "priority": priority, "critical": critical,
-                                     "source_mode": self._mode})
+                                    {"item": item, "item_id": item_id, "kind": kind,
+                                     "summary": summary, "priority": priority,
+                                     "critical": critical, "source_mode": self._mode})
             return decision, {"item_id": item_id}
         return decision, {}

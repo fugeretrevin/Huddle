@@ -111,6 +111,13 @@ class Phase2Store:
         self._s = storage
         with self._s._lock:  # noqa: SLF001 - intentional shared-connection coupling
             self._s._conn.executescript(SCHEMA_V2)
+            # Additive columns for the board -> pipeline bridge. ``CREATE TABLE IF NOT
+            # EXISTS`` does not alter a table created by an older build, so add them here.
+            have = {r["name"] for r in
+                    self._s._conn.execute("PRAGMA table_info(tasks_v2)").fetchall()}
+            for col in ("task_template", "run_task_id"):
+                if col not in have:
+                    self._s._conn.execute(f"ALTER TABLE tasks_v2 ADD COLUMN {col} TEXT")
             self._s._conn.commit()
 
     # ─────────────────────── events (own monotonic seq) ───────────────────────
@@ -185,16 +192,44 @@ class Phase2Store:
     # ─────────────────────── tasks ───────────────────────
     def create_task_v2(self, task_id: str, session_id: str, title: str, task_state: str,
                        agent_id: str | None, priority: int, dependencies: list[str],
-                       role_lock: str | None, source_mode: str, now: str) -> None:
+                       role_lock: str | None, source_mode: str, now: str,
+                       task_template: str | None = None) -> None:
         with self._s._lock:
             self._s._conn.execute(
                 "INSERT INTO tasks_v2(id, session_id, title, task_state, agent_id, priority,"
-                " revision, dependency_json, role_lock, source_mode, created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                " revision, dependency_json, role_lock, source_mode, created_at, updated_at,"
+                " task_template) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (task_id, session_id, title, task_state, agent_id, priority, 0,
-                 json.dumps(dependencies), role_lock, source_mode, now, now),
+                 json.dumps(dependencies), role_lock, source_mode, now, now, task_template),
             )
             self._s._conn.commit()
+
+    def link_run_v2(self, task_id: str, run_task_id: str) -> None:
+        """Record the v1 run (parent task id) a card launched. Written once: a card
+        that has a run id can never launch another run."""
+        with self._s._lock:
+            self._s._conn.execute(
+                "UPDATE tasks_v2 SET run_task_id=? WHERE id=? AND run_task_id IS NULL",
+                (run_task_id, task_id),
+            )
+            self._s._conn.commit()
+
+    def get_task_v2_by_run(self, run_task_id: str) -> dict[str, Any] | None:
+        with self._s._lock:
+            row = self._s._conn.execute(
+                "SELECT * FROM tasks_v2 WHERE run_task_id=?", (run_task_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_unsettled_run_cards_v2(self) -> list[dict[str, Any]]:
+        """Cards (all sessions) that launched a run and are not in a terminal state."""
+        with self._s._lock:
+            rows = self._s._conn.execute(
+                "SELECT * FROM tasks_v2 WHERE run_task_id IS NOT NULL"
+                " AND task_state NOT IN ('completed','failed','cancelled')"
+                " ORDER BY created_at, id"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def get_task_v2(self, task_id: str) -> dict[str, Any] | None:
         with self._s._lock:

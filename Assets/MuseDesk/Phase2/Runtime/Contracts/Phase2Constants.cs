@@ -114,6 +114,30 @@ namespace MuseDesk.Phase2.Contracts
         // emitted by pause/resume guards (not in the P2-01 assign set, included for completeness)
         public const string TaskNotPausable = "TASK_NOT_PAUSABLE";
         public const string TaskNotPaused = "TASK_NOT_PAUSED";
+        /// <summary>An executable card was assigned while a pipeline run is already in progress.</summary>
+        public const string RunInProgress = "RUN_IN_PROGRESS";
+        /// <summary>Assign of an executable card that is paused (resume it first).</summary>
+        public const string TaskPaused = "TASK_PAUSED";
+        /// <summary>Assign of an executable card whose dependencies are not completed.</summary>
+        public const string DependenciesNotReady = "DEPENDENCIES_NOT_READY";
+        /// <summary>Nothing can run the card right now (HTTP 503 live; in the offline demo the
+        /// scripted session is not attached).</summary>
+        public const string ExecutorUnavailable = "EXECUTOR_UNAVAILABLE";
+        /// <summary>Create with a task_template the backend does not know (HTTP 422).</summary>
+        public const string UnknownTaskTemplate = "UNKNOWN_TASK_TEMPLATE";
+        /// <summary>Create with a dependency id that does not exist (HTTP 422).</summary>
+        public const string UnknownDependency = "UNKNOWN_DEPENDENCY";
+        // Run outcome codes carried in a task.failed payload ("code").
+        public const string RunFailed = "RUN_FAILED";
+        public const string RunInterrupted = "RUN_INTERRUPTED";
+    }
+
+    /// <summary>Pipeline templates a card can carry (task_template). Only AuthDemo is executable.</summary>
+    public static class TaskTemplates
+    {
+        public const string AuthDemo = "auth_demo";
+
+        public static bool IsExecutable(string template) => template == AuthDemo;
     }
 
     /// <summary>

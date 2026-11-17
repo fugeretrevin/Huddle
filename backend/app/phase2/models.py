@@ -123,6 +123,13 @@ class EventTypeV2(str, Enum):
     inbox_updated = "inbox.updated"
     diagram_created = "diagram.created"
     station_milestone = "station.milestone"
+    # Phase 3 additive types (Manager plans). Unknown to older clients; the Unity
+    # reducer advances seq and ignores types it has no case for.
+    manager_plan_proposed = "manager.plan_proposed"
+    manager_plan_revised = "manager.plan_revised"
+    manager_plan_rejected = "manager.plan_rejected"
+    manager_plan_committed = "manager.plan_committed"
+    manager_plan_failed = "manager.plan_failed"
 
 
 # ─────────────────────────── snapshot projections ───────────────────────────
@@ -136,6 +143,19 @@ class TaskCardV2(BaseModel):
     revision: int = Field(ge=0)
     dependencies: list[str] = Field(default_factory=list)
     source_mode: SourceMode
+    # Additive (board -> pipeline bridge). ``executable`` is true only for a card whose
+    # ``task_template`` names a pipeline the backend can really run; every other card is
+    # a plain board card that no agent executes. ``run_task_id`` is the v1 run (parent
+    # task id) the card launched, once it has launched one.
+    task_template: str | None = None
+    executable: bool = False
+    run_task_id: str | None = None
+
+
+# Templates a card can launch. Each maps to a real producer entry point.
+EXECUTABLE_TEMPLATES = frozenset({"auth_demo"})
+# The pipeline's first agent: the only valid assignee for starting an executable card.
+PIPELINE_FIRST_AGENT = "researcher"
 
 
 class HandoffV2(BaseModel):
@@ -373,6 +393,9 @@ class TaskCreateV2(BaseModel):
     priority: int = Field(default=1, ge=0, le=3)
     dependencies: list[str] = Field(default_factory=list)
     role_lock: AgentIdV2 | None = None
+    # Additive. Only "auth_demo" is executable; any other value is rejected by the
+    # service with UNKNOWN_TASK_TEMPLATE (typed ``str`` so the refusal carries a code).
+    task_template: str | None = Field(default=None, max_length=60)
     idempotency_key: str = Field(min_length=8, max_length=200)
 
 

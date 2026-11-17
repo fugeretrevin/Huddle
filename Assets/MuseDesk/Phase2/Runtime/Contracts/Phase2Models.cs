@@ -34,13 +34,24 @@ namespace MuseDesk.Phase2.Contracts
         [JsonProperty("revision")] public int Revision;
         [JsonProperty("dependencies")] public List<string> Dependencies = new List<string>();
         [JsonProperty("source_mode")] public string SourceMode;    // "live" | "demo"
+        /// <summary>Pipeline template this card runs, or null. Only "auth_demo" is executable.</summary>
+        [JsonProperty("task_template")] public string TaskTemplate; // nullable
+        /// <summary>True when assigning this card to the Researcher starts a real (or, in the demo,
+        /// scripted) pipeline run. False = a planned card: commands change the card only.</summary>
+        [JsonProperty("executable")] public bool Executable;
+        /// <summary>The v1 parent task id of the pipeline run this card launched; null until launched.</summary>
+        [JsonProperty("run_task_id")] public string RunTaskId;     // nullable
+        /// <summary>The decision this card is waiting on while task_state is awaiting_approval.</summary>
+        [JsonProperty("decision_id", NullValueHandling = NullValueHandling.Ignore)] public string DecisionId;
 
         public TaskCardV2 Clone() => new TaskCardV2
         {
             TaskId = TaskId, Title = Title, TaskState = TaskState, AgentId = AgentId,
             Priority = Priority, Revision = Revision,
             Dependencies = Dependencies != null ? new List<string>(Dependencies) : new List<string>(),
-            SourceMode = SourceMode
+            SourceMode = SourceMode,
+            TaskTemplate = TaskTemplate, Executable = Executable, RunTaskId = RunTaskId,
+            DecisionId = DecisionId
         };
     }
 
@@ -315,6 +326,9 @@ namespace MuseDesk.Phase2.Contracts
         [JsonProperty("priority")] public int Priority = 1;
         [JsonProperty("dependencies")] public List<string> Dependencies = new List<string>();
         [JsonProperty("role_lock", NullValueHandling = NullValueHandling.Ignore)] public string RoleLock;
+        /// <summary>Optional pipeline template. Only "auth_demo" makes the card executable; omitted
+        /// from the wire when null so a plain card create is unchanged.</summary>
+        [JsonProperty("task_template", NullValueHandling = NullValueHandling.Ignore)] public string TaskTemplate;
         [JsonProperty("idempotency_key")] public string IdempotencyKey;
     }
 

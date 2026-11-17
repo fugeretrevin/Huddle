@@ -7,15 +7,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
 
 from ..auth import verify_token
+from ..ws_stream import pump_events
 from .artifacts import ArtifactService
+from .board_bridge import card_from_row
 from .diagrams import DiagramService
 from .errors import CommandError, NotFoundError
 from .events import Phase2EventBus
 from .focus import FocusService
+from .keylock import idempotency_lock
 from .handoffs import HandoffService
 from .models import (
     ArtifactRefV2,
@@ -28,7 +31,6 @@ from .models import (
     PriorityCommand,
     ResumeCommand,
     SnapshotV2,
-    TaskCardV2,
     TaskCreateV2,
 )
 from .store import Phase2Store, body_hash
@@ -36,7 +38,9 @@ from .task_graph import TaskGraphService
 
 
 def _source_mode(request: Request) -> str:
-    return request.app.state.settings.producer_source_mode
+    # Backend-authoritative board state: "live" under the live producer, otherwise the
+    # scripted producer's configured mode. See Settings.state_source_mode.
+    return request.app.state.settings.state_source_mode
 
 
 def _store(request: Request) -> Phase2Store:
@@ -53,7 +57,8 @@ def _services(request: Request) -> dict[str, Any]:
     mode = _source_mode(request)
     ws_root = getattr(request.app.state.settings, "workspace_root", None)
     return {
-        "graph": TaskGraphService(store, bus, mode),
+        "graph": TaskGraphService(store, bus, mode,
+                                  launcher=getattr(request.app.state, "run_launcher", None)),
         "handoffs": HandoffService(store, bus, mode),
         "artifacts": ArtifactService(store, bus, mode, ws_root),
         "focus": FocusService(store, bus, mode),
@@ -65,13 +70,7 @@ def _build_snapshot(request: Request, session_row: dict) -> SnapshotV2:
     store = _store(request)
     sid = session_row["id"]
     focus = FocusService(store, _bus(request), _source_mode(request))
-    import json as _json
-    tasks = [
-        TaskCardV2(task_id=t["id"], title=t["title"], task_state=t["task_state"],
-                   agent_id=t["agent_id"], priority=t["priority"], revision=t["revision"],
-                   dependencies=_json.loads(t["dependency_json"]), source_mode=t["source_mode"])
-        for t in store.list_tasks_v2(sid)
-    ]
+    tasks = [card_from_row(t) for t in store.list_tasks_v2(sid)]
     handoffs = [
         HandoffV2(handoff_id=h["id"], from_agent_id=h["from_agent_id"],
                   to_agent_id=h["to_agent_id"], task_id=h["task_id"], artifact_id=h["artifact_id"],
@@ -118,15 +117,16 @@ def register_phase2_routes(app: FastAPI) -> None:
         store = _store(request)
         key = body_dict["idempotency_key"]
         bhash = body_hash({"route": route, **body_dict})
-        prior = store.get_idempotent_v2(session_id, key)
-        if prior is not None:
-            if prior["body_hash"] == bhash:
-                return prior["result"]  # canonical replay; no re-exec, no new event
-            raise CommandError("IDEMPOTENCY_KEY_REUSE",
-                               "idempotency key reused with a different body", status=409)
-        result = await coro()
-        store.save_idempotent_v2(session_id, key, route, bhash, result)
-        return result
+        async with idempotency_lock(session_id, key):
+            prior = store.get_idempotent_v2(session_id, key)
+            if prior is not None:
+                if prior["body_hash"] == bhash:
+                    return prior["result"]  # canonical replay; no re-exec, no new event
+                raise CommandError("IDEMPOTENCY_KEY_REUSE",
+                                   "idempotency key reused with a different body", status=409)
+            result = await coro()
+            store.save_idempotent_v2(session_id, key, route, bhash, result)
+            return result
 
     # ─────────────────────── snapshot ───────────────────────
     @app.get("/v2/sessions/{session_id}/snapshot", response_model=SnapshotV2)
@@ -146,7 +146,10 @@ def register_phase2_routes(app: FastAPI) -> None:
                 body.agent_id.value if body.agent_id else None,
                 body.priority, body.dependencies,
                 body.role_lock.value if body.role_lock else None,
+                task_template=body.task_template,
             )
+            # Inside the idempotent command: emitted once, never on a replayed key.
+            await svc.announce_created(session_id, card)
             return card.model_dump(mode="json")
 
         return await _idempotent_command(request, session_id, "tasks.create",
@@ -259,18 +262,8 @@ def register_phase2_routes(app: FastAPI) -> None:
         await ws.accept()
         q = bus.subscribe(session_id)
         try:
-            sent = after_seq
-            for ev in bus.replay(session_id, after_seq):
-                if ev["seq"] > sent:
-                    await ws.send_json(ev)
-                    sent = ev["seq"]
-            while True:
-                env = await q.get()
-                if env.seq > sent:
-                    await ws.send_json(env.wire())
-                    sent = env.seq
-        except WebSocketDisconnect:
-            pass
+            await pump_events(ws, q, bus.replay(session_id, after_seq), after_seq,
+                              lambda env: env.wire())
         finally:
             bus.unsubscribe(session_id, q)
 

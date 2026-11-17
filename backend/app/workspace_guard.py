@@ -43,13 +43,31 @@ class WorkspaceGuard:
     def create_workspace(self, session_id: str) -> Path:
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:64]
         ws = (self.root / safe).resolve()
-        if os.path.commonpath([str(ws), str(self.root)]) != str(self.root):
+        if (os.path.commonpath([str(ws), str(self.root)]) != str(self.root)
+                or ws == self.root):
+            # ws == root happens for ids like "." / "": rmtree below would wipe every
+            # session's workspace.
             raise WorkspaceError("workspace path escapes root")
         if ws.exists():
             shutil.rmtree(ws)
         if not self.template.exists():
             raise WorkspaceError(f"template missing: {self.template}")
         shutil.copytree(self.template, ws)
+        return ws
+
+    def open_workspace(self, name: str) -> Path:
+        """A persistent, initially empty workspace (Manager plan folders): created once with
+        only a pytest.ini that anchors rootdir; never wiped, so later steps build on it."""
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:64]
+        ws = (self.root / safe).resolve()
+        if (os.path.commonpath([str(ws), str(self.root)]) != str(self.root)
+                or ws == self.root):
+            raise WorkspaceError("workspace path escapes root")
+        ws.mkdir(parents=True, exist_ok=True)
+        ini = ws / "pytest.ini"
+        if not ini.exists():
+            ini.write_text("[pytest]\n# Anchors pytest's rootdir to this sandbox folder.\n",
+                           encoding="utf-8")
         return ws
 
     def destroy_workspace(self, ws: Path) -> None:
@@ -64,7 +82,11 @@ class WorkspaceGuard:
         if os.path.isabs(rel) or rel.startswith(("/", "\\")):
             raise WorkspaceError(f"absolute path not allowed: {rel}")
         target = (ws / rel).resolve()
-        if os.path.commonpath([str(target), str(ws)]) != str(ws):
+        try:
+            inside = os.path.commonpath([str(target), str(ws)]) == str(ws)
+        except ValueError:  # e.g. a drive-qualified path ("D:evil.py") on another drive
+            inside = False
+        if not inside:
             raise WorkspaceError(f"path escapes workspace: {rel}")
         return target
 
@@ -82,19 +104,38 @@ class WorkspaceGuard:
         ws = Path(ws).resolve()
         # --rootdir + the workspace's own pytest.ini isolate this run from any parent
         # project's pytest config (otherwise a parent testpaths= could collect 0 tests).
-        cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        # -I: isolated (no user site, no PYTHON* env, no cwd on sys.path); -B: never write .pyc, so a
+        # file rewritten within the same second (a fix) is never shadowed by stale bytecode.
+        cmd = [sys.executable, "-I", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider",
                "--rootdir", str(ws), str(ws)]
         try:
             proc = subprocess.run(
                 cmd, cwd=str(ws), capture_output=True, text=True, timeout=timeout,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                env=_child_env(),
             )
         except subprocess.TimeoutExpired as e:
-            return TestResult(0, 0, -1, (e.output or "") + "\n[timeout]", timed_out=True)
+            partial = e.output or ""
+            if isinstance(partial, bytes):  # TimeoutExpired can carry bytes even with text=True
+                partial = partial.decode("utf-8", errors="replace")
+            return TestResult(0, 0, -1, partial[-4000:] + "\n[timeout]", timed_out=True)
         out = (proc.stdout or "") + (proc.stderr or "")
         passed = _count(out, r"(\d+) passed")
         failed = _count(out, r"(\d+) failed") + _count(out, r"(\d+) error")
         return TestResult(passed, failed, proc.returncode, out[-4000:])
+
+
+_SECRET_ENV = re.compile(r"(?i)(^MUSEDESK_|KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)")
+
+
+def _child_env() -> dict[str, str]:
+    """Environment for the sandboxed test process: the host environment minus anything
+    that looks like a credential (and all MUSEDESK_* backend config, which includes the
+    provider API key). Code executed in the workspace must not be able to read them."""
+    env = {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Only pytest itself: no third-party plugins auto-loaded from the backend's environment.
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    return env
 
 
 def _count(text: str, pattern: str) -> int:

@@ -1,0 +1,641 @@
+{
+  "project": "MuseDesk",
+  "target_platform": "Meta Quest 3 (Unity 6000.6.8f1 / URP 17.6)",
+  "art_style": "Pipkin Sprites & Cozy Tactile Miniature Studio",
+  "validation_passed": true,
+  "validation_errors": [],
+  "summary": {
+    "total_exported_fbx_assets": 61,
+    "character_count": 3,
+    "shared_character_animation_clips": 39,
+    "workstation_count": 3,
+    "prop_and_diagram_count": 54,
+    "factory_animation_clips": 10,
+    "total_library_triangles": 73074
+  },
+  "required_character_attachments": [
+    "RightHand_Attach",
+    "LeftHand_Attach",
+    "Head_Attach",
+    "Back_Attach",
+    "Document_Attach"
+  ],
+  "workstation_interaction_anchors": {
+    "Workstation_Developer": [
+      "AgentWorkPosition",
+      "AgentSeatPosition",
+      "TaskDropZone",
+      "DocumentPickupPoint",
+      "ArtifactOutputPoint",
+      "MonitorScreen_Left",
+      "MonitorScreen_Right",
+      "HandoffReceivePoint"
+    ],
+    "Workstation_Research": [
+      "AgentWorkPosition",
+      "AgentSeatPosition",
+      "TaskDropZone",
+      "DocumentPickupPoint",
+      "ArtifactOutputPoint",
+      "BlueprintSpawnPoint",
+      "HandoffReceivePoint"
+    ],
+    "Workstation_Testing": [
+      "AgentWorkPosition",
+      "AgentSeatPosition",
+      "TaskDropZone",
+      "DocumentPickupPoint",
+      "ArtifactOutputPoint",
+      "ChamberSlotPoint",
+      "AcceptedTrayPoint",
+      "RejectedTrayPoint",
+      "HandoffReceivePoint"
+    ]
+  },
+  "characters": [
+    {
+      "character": "Agent_Researcher",
+      "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Characters\\Agent_Researcher.blend",
+      "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Characters\\Agent_Researcher.fbx",
+      "fbx_bytes": 9404892,
+      "vertices": 3089,
+      "triangles": 6010,
+      "bones": 26,
+      "clips": 39,
+      "renders": [
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Researcher_front.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Researcher_threequarter.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Researcher_side.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Researcher_offer.png"
+      ]
+    },
+    {
+      "character": "Agent_Developer",
+      "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Characters\\Agent_Developer.blend",
+      "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Characters\\Agent_Developer.fbx",
+      "fbx_bytes": 9397756,
+      "vertices": 3038,
+      "triangles": 5892,
+      "bones": 26,
+      "clips": 39,
+      "renders": [
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Developer_front.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Developer_threequarter.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Developer_side.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Developer_offer.png"
+      ]
+    },
+    {
+      "character": "Agent_Tester",
+      "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Characters\\Agent_Tester.blend",
+      "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Characters\\Agent_Tester.fbx",
+      "fbx_bytes": 9393356,
+      "vertices": 2862,
+      "triangles": 5568,
+      "bones": 26,
+      "clips": 39,
+      "renders": [
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Tester_front.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Tester_threequarter.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Tester_side.png",
+        "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Agent_Tester_offer.png"
+      ]
+    }
+  ],
+  "workstations": [
+    {
+      "station": "Workstation_Research",
+      "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Workstations\\Workstation_Research.blend",
+      "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Workstations\\Workstation_Research.fbx",
+      "fbx_bytes": 300876,
+      "vertices": 3082,
+      "triangles": 5928,
+      "preview": "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Workstation_Research_preview.png"
+    },
+    {
+      "station": "Workstation_Developer",
+      "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Workstations\\Workstation_Developer.blend",
+      "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Workstations\\Workstation_Developer.fbx",
+      "fbx_bytes": 288588,
+      "vertices": 3016,
+      "triangles": 5820,
+      "preview": "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Workstation_Developer_preview.png"
+    },
+    {
+      "station": "Workstation_Testing",
+      "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Workstations\\Workstation_Testing.blend",
+      "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Workstations\\Workstation_Testing.fbx",
+      "fbx_bytes": 282876,
+      "vertices": 3014,
+      "triangles": 5820,
+      "preview": "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\Workstation_Testing_preview.png"
+    }
+  ],
+  "factory": {
+    "asset": "SoftwareFactory_Complete",
+    "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Factory\\SoftwareFactory_Complete.blend",
+    "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Factory\\SoftwareFactory_Complete.fbx",
+    "fbx_bytes": 1618828,
+    "vertices": 3296,
+    "triangles": 6348,
+    "bones": 14,
+    "clips": 10,
+    "preview": "C:\\dev\\MuseDesk\\MuseDesk\\Screenshots\\ArtPreviews\\SoftwareFactory_preview.png"
+  },
+  "props_by_category": {
+    "TaskBoard": [
+      {
+        "category": "TaskBoard",
+        "asset": "TaskBoard_KanbanFrame",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\TaskBoard\\TaskBoard_KanbanFrame.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\TaskBoard\\TaskBoard_KanbanFrame.fbx",
+        "fbx_bytes": 202716,
+        "vertices": 1952,
+        "triangles": 3760
+      },
+      {
+        "category": "TaskBoard",
+        "asset": "TaskCard_Grabbable",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\TaskBoard\\TaskCard_Grabbable.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\TaskBoard\\TaskCard_Grabbable.fbx",
+        "fbx_bytes": 58524,
+        "vertices": 486,
+        "triangles": 948
+      },
+      {
+        "category": "TaskBoard",
+        "asset": "TaskBoard_PriorityBadge",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\TaskBoard\\TaskBoard_PriorityBadge.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\TaskBoard\\TaskBoard_PriorityBadge.fbx",
+        "fbx_bytes": 21580,
+        "vertices": 44,
+        "triangles": 80
+      },
+      {
+        "category": "TaskBoard",
+        "asset": "TaskBoard_StatusMarker",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\TaskBoard\\TaskBoard_StatusMarker.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\TaskBoard\\TaskBoard_StatusMarker.fbx",
+        "fbx_bytes": 26668,
+        "vertices": 182,
+        "triangles": 356
+      },
+      {
+        "category": "TaskBoard",
+        "asset": "TaskBoard_OwnerIcon",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\TaskBoard\\TaskBoard_OwnerIcon.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\TaskBoard\\TaskBoard_OwnerIcon.fbx",
+        "fbx_bytes": 35596,
+        "vertices": 346,
+        "triangles": 684
+      },
+      {
+        "category": "TaskBoard",
+        "asset": "TaskBoard_DependencyLink",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\TaskBoard\\TaskBoard_DependencyLink.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\TaskBoard\\TaskBoard_DependencyLink.fbx",
+        "fbx_bytes": 26956,
+        "vertices": 76,
+        "triangles": 140
+      }
+    ],
+    "Documents": [
+      {
+        "category": "Documents",
+        "asset": "Doc_SmallPaper",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_SmallPaper.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_SmallPaper.fbx",
+        "fbx_bytes": 26972,
+        "vertices": 112,
+        "triangles": 216
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_ExpandedFrame",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_ExpandedFrame.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_ExpandedFrame.fbx",
+        "fbx_bytes": 49852,
+        "vertices": 336,
+        "triangles": 648
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_ApprovalPaper",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_ApprovalPaper.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_ApprovalPaper.fbx",
+        "fbx_bytes": 31660,
+        "vertices": 148,
+        "triangles": 284
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_ResearchDocument",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_ResearchDocument.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_ResearchDocument.fbx",
+        "fbx_bytes": 32316,
+        "vertices": 168,
+        "triangles": 324
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_TestReport",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_TestReport.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_TestReport.fbx",
+        "fbx_bytes": 38716,
+        "vertices": 196,
+        "triangles": 372
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_CodeReviewSheet",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_CodeReviewSheet.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_CodeReviewSheet.fbx",
+        "fbx_bytes": 36844,
+        "vertices": 224,
+        "triangles": 432
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_BlueprintSheet",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_BlueprintSheet.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_BlueprintSheet.fbx",
+        "fbx_bytes": 34620,
+        "vertices": 272,
+        "triangles": 536
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_RolledBlueprint",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_RolledBlueprint.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_RolledBlueprint.fbx",
+        "fbx_bytes": 32300,
+        "vertices": 232,
+        "triangles": 456
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_Folder",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_Folder.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_Folder.fbx",
+        "fbx_bytes": 35900,
+        "vertices": 224,
+        "triangles": 432
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_Envelope",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_Envelope.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_Envelope.fbx",
+        "fbx_bytes": 29580,
+        "vertices": 144,
+        "triangles": 276
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_Clipboard",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_Clipboard.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_Clipboard.fbx",
+        "fbx_bytes": 32396,
+        "vertices": 168,
+        "triangles": 324
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_ApprovalStamp",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_ApprovalStamp.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_ApprovalStamp.fbx",
+        "fbx_bytes": 38876,
+        "vertices": 290,
+        "triangles": 564
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_SignaturePen",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_SignaturePen.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_SignaturePen.fbx",
+        "fbx_bytes": 31836,
+        "vertices": 148,
+        "triangles": 280
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_InboxTray",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_InboxTray.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_InboxTray.fbx",
+        "fbx_bytes": 39244,
+        "vertices": 280,
+        "triangles": 540
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_OutboxTray",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_OutboxTray.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_OutboxTray.fbx",
+        "fbx_bytes": 39260,
+        "vertices": 280,
+        "triangles": 540
+      },
+      {
+        "category": "Documents",
+        "asset": "Doc_DocumentArchive",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Doc_DocumentArchive.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Doc_DocumentArchive.fbx",
+        "fbx_bytes": 59548,
+        "vertices": 504,
+        "triangles": 972
+      },
+      {
+        "category": "Documents",
+        "asset": "Collab_PackageBox",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Collab_PackageBox.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Collab_PackageBox.fbx",
+        "fbx_bytes": 29100,
+        "vertices": 168,
+        "triangles": 324
+      },
+      {
+        "category": "Documents",
+        "asset": "Collab_ArtifactToken",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Documents\\Collab_ArtifactToken.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Documents\\Collab_ArtifactToken.fbx",
+        "fbx_bytes": 33740,
+        "vertices": 266,
+        "triangles": 524
+      }
+    ],
+    "Diagrams": [
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_FrontendNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_FrontendNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_FrontendNode.fbx",
+        "fbx_bytes": 30988,
+        "vertices": 152,
+        "triangles": 292
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_ServerNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_ServerNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_ServerNode.fbx",
+        "fbx_bytes": 64796,
+        "vertices": 702,
+        "triangles": 1372
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_DatabaseNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_DatabaseNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_DatabaseNode.fbx",
+        "fbx_bytes": 59804,
+        "vertices": 700,
+        "triangles": 1384
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_ApiGatewayNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_ApiGatewayNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_ApiGatewayNode.fbx",
+        "fbx_bytes": 34492,
+        "vertices": 246,
+        "triangles": 484
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_AuthNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_AuthNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_AuthNode.fbx",
+        "fbx_bytes": 38716,
+        "vertices": 280,
+        "triangles": 548
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_CloudNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_CloudNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_CloudNode.fbx",
+        "fbx_bytes": 44508,
+        "vertices": 478,
+        "triangles": 940
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_StorageNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_StorageNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_StorageNode.fbx",
+        "fbx_bytes": 29964,
+        "vertices": 128,
+        "triangles": 244
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_QueueNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_QueueNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_QueueNode.fbx",
+        "fbx_bytes": 49500,
+        "vertices": 514,
+        "triangles": 1008
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_ProcessNode",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_ProcessNode.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_ProcessNode.fbx",
+        "fbx_bytes": 51884,
+        "vertices": 408,
+        "triangles": 784
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_ConnectorArrow",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_ConnectorArrow.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_ConnectorArrow.fbx",
+        "fbx_bytes": 22204,
+        "vertices": 52,
+        "triangles": 96
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_ConnectionLine",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_ConnectionLine.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_ConnectionLine.fbx",
+        "fbx_bytes": 31244,
+        "vertices": 248,
+        "triangles": 492
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_LabelPlaque",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_LabelPlaque.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_LabelPlaque.fbx",
+        "fbx_bytes": 24956,
+        "vertices": 112,
+        "triangles": 216
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_DisplayPlatform",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_DisplayPlatform.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_DisplayPlatform.fbx",
+        "fbx_bytes": 42652,
+        "vertices": 504,
+        "triangles": 1000
+      },
+      {
+        "category": "Diagrams",
+        "asset": "Diagram_SelectionHighlight",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\SpatialDiagrams\\Diagram_SelectionHighlight.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Diagrams\\Diagram_SelectionHighlight.fbx",
+        "fbx_bytes": 23724,
+        "vertices": 224,
+        "triangles": 448
+      }
+    ],
+    "Decorations": [
+      {
+        "category": "Decorations",
+        "asset": "Decor_MiniPlant",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_MiniPlant.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_MiniPlant.fbx",
+        "fbx_bytes": 85548,
+        "vertices": 1202,
+        "triangles": 2372
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_DeskLamp",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_DeskLamp.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_DeskLamp.fbx",
+        "fbx_bytes": 35388,
+        "vertices": 246,
+        "triangles": 476
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_BookStack",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_BookStack.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_BookStack.fbx",
+        "fbx_bytes": 30028,
+        "vertices": 168,
+        "triangles": 324
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_CoffeeMug",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_CoffeeMug.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_CoffeeMug.fbx",
+        "fbx_bytes": 30108,
+        "vertices": 196,
+        "triangles": 384
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_DeskMat",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_DeskMat.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_DeskMat.fbx",
+        "fbx_bytes": 18412,
+        "vertices": 56,
+        "triangles": 108
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_Trophy",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_Trophy.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_Trophy.fbx",
+        "fbx_bytes": 34348,
+        "vertices": 264,
+        "triangles": 516
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_AwardPlaque",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_AwardPlaque.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_AwardPlaque.fbx",
+        "fbx_bytes": 23340,
+        "vertices": 92,
+        "triangles": 176
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_Toolbox",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_Toolbox.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_Toolbox.fbx",
+        "fbx_bytes": 35884,
+        "vertices": 280,
+        "triangles": 548
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_SmallShelf",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_SmallShelf.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_SmallShelf.fbx",
+        "fbx_bytes": 28444,
+        "vertices": 168,
+        "triangles": 324
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_FilingCabinet",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_FilingCabinet.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_FilingCabinet.fbx",
+        "fbx_bytes": 38604,
+        "vertices": 280,
+        "triangles": 540
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_DecorativeMonitor",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_DecorativeMonitor.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_DecorativeMonitor.fbx",
+        "fbx_bytes": 28700,
+        "vertices": 144,
+        "triangles": 276
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_PosterSign",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_PosterSign.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_PosterSign.fbx",
+        "fbx_bytes": 24780,
+        "vertices": 112,
+        "triangles": 216
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_StatusIndicator",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_StatusIndicator.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_StatusIndicator.fbx",
+        "fbx_bytes": 49004,
+        "vertices": 498,
+        "triangles": 976
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_MiniClock",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_MiniClock.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_MiniClock.fbx",
+        "fbx_bytes": 39708,
+        "vertices": 368,
+        "triangles": 720
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_ProgressAward",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_ProgressAward.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_ProgressAward.fbx",
+        "fbx_bytes": 21708,
+        "vertices": 48,
+        "triangles": 88
+      },
+      {
+        "category": "Decorations",
+        "asset": "Decor_ProjectDisplayShelf",
+        "blend": "C:\\dev\\MuseDesk\\MuseDesk\\ArtSource\\Blender\\Decorations\\Decor_ProjectDisplayShelf.blend",
+        "fbx": "C:\\dev\\MuseDesk\\MuseDesk\\Assets\\MuseDesk\\Art\\Models\\Decorations\\Decor_ProjectDisplayShelf.fbx",
+        "fbx_bytes": 31276,
+        "vertices": 168,
+        "triangles": 324
+      }
+    ]
+  }
+}

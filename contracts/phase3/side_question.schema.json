@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase3/side_question.schema.json",
+  "title": "MuseDesk Phase 3 SideQuestion (read-only /btw)",
+  "type": "object",
+  "required": ["request_id","visit_session_id","question","idempotency_key"],
+  "properties": {
+    "request_id": {"type":"string","minLength":1,"maxLength":100},
+    "task_id": {"type":["string","null"]},
+    "visit_session_id": {"type":"string","minLength":1,"maxLength":100},
+    "question": {"type":"string","minLength":1,"maxLength":1000},
+    "context_revision": {"type":["integer","null"],"minimum":0},
+    "idempotency_key": {"type":"string","minLength":8,"maxLength":200}
+  }
+}

@@ -48,7 +48,8 @@ class ArtifactService:
         self._ws_root = workspace_root
 
     async def create_artifact(self, session_id: str, task_id: str, kind: str, summary: str,
-                            raw_pages: list[dict], *, source_mode: str | None = None) -> ArtifactV2:
+                            raw_pages: list[dict], *, source_mode: str | None = None,
+                            work_provenance: str | None = None) -> ArtifactV2:
         # ``source_mode`` is explicit: it is NEVER inferred from the connection. The
         # caller must pass "live" only for genuinely executed output; otherwise the
         # service's configured mode (demo) is used.
@@ -71,8 +72,12 @@ class ArtifactService:
         now = utcnow_iso()
         self._store.create_artifact_v2(artifact_id, session_id, task_id, kind, clean_summary,
                                        mode, content_hash, clean_pages, now)
-        await self._bus.publish(session_id, EventTypeV2.artifact_created,
-                                {"kind": kind, "summary": clean_summary, "source_mode": mode},
+        payload = {"kind": kind, "summary": clean_summary, "source_mode": mode}
+        if work_provenance:
+            # Additive, event-only: how the content came to exist (e.g. real sandbox
+            # execution). Never set for scripted content.
+            payload["work_provenance"] = work_provenance
+        await self._bus.publish(session_id, EventTypeV2.artifact_created, payload,
                                 task_id=task_id, artifact_id=artifact_id)
         return ArtifactV2(artifact_id=artifact_id, task_id=task_id, kind=ArtifactKind(kind),
                           summary=clean_summary, source_mode=mode, content_hash=content_hash,
@@ -81,7 +86,8 @@ class ArtifactService:
     # ─────────────────────── real sandboxed-worker ingest (P2-02) ───────────────────────
     async def ingest_code_diff(self, session_id: str, task_id: str, diff_text: str,
                              *, summary: str | None = None,
-                             source_mode: str = "live") -> ArtifactV2:
+                             source_mode: str = "live",
+                             work_provenance: str | None = None) -> ArtifactV2:
         """Turn a REAL unified diff produced inside the sandbox into a ``code_diff``
         artifact: one page per changed file, with accurate add/delete counts, run
         through the sanitizer so no absolute host path or secret survives. Default
@@ -107,13 +113,14 @@ class ArtifactService:
                 if files else "no file changes detected")
         return await self.create_artifact(
             session_id, task_id, ArtifactKind.code_diff.value, summary or auto,
-            raw_pages, source_mode=source_mode,
+            raw_pages, source_mode=source_mode, work_provenance=work_provenance,
         )
 
     async def ingest_test_report(self, session_id: str, task_id: str, output: str,
                                *, summary: str | None = None, runner: str = "pytest -q",
                                duration: float | None = None,
-                               source_mode: str = "live") -> ArtifactV2:
+                               source_mode: str = "live",
+                               work_provenance: str | None = None) -> ArtifactV2:
         """Turn REAL pytest output into a ``test_report`` artifact. Parses
         passed/failed/skipped counts and failing test node ids, and makes the
         *0-tests-collected* case explicit (so it is never shown as 'passing')."""
@@ -143,7 +150,7 @@ class ArtifactService:
         }]
         return await self.create_artifact(
             session_id, task_id, ArtifactKind.test_report.value, summary or headline,
-            raw_pages, source_mode=source_mode,
+            raw_pages, source_mode=source_mode, work_provenance=work_provenance,
         )
 
     def get_page(self, session_id: str, artifact_id: str, page: int,

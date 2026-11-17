@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28c7707150539624fb988a3898abf0b5, type: 3}
+  m_Name: HabitatArtManifest
+  m_EditorClassIdentifier: Assembly-CSharp::MuseDesk.Wall.HabitatArtManifest
+  useHabitatArt: 1
+  artVersion: wall-habitat-fit-310e070
+  entries:
+  - socketId: WallContact
+    prefab: {fileID: 8387851098296870049, guid: d6db181d0097683439bdf5152cf3f547, type: 3}
+    localOffset: {x: 0, y: 0, z: 0}
+    localEuler: {x: 0, y: 0, z: 0}
+    uniformScale: 1
+    hideProxies:
+    - Structure (proxy art)
+    - TaskPrinter
+    - TaskPrinterSlot
+    - BeaconPost
+    - Door_Lower_L
+    - Door_Lower_R
+    - StopLight_Lower
+    - Door_Mid_L
+    - Door_Mid_R
+    - StopLight_Mid
+    - Door_Manager_L
+    - Door_Manager_R
+    - StopLight_Manager
+    hideRenderersOf:
+    - ElevatorCabin
+    enabled: 1
+    full: 1
+    compact: 0
+  - socketId: WallContact
+    prefab: {fileID: 5186553940919952027, guid: 4a7f00dcf3c41c344a0593431176e494, type: 3}
+    localOffset: {x: 0, y: 0, z: 0}
+    localEuler: {x: 0, y: 0, z: 0}
+    uniformScale: 1
+    hideProxies:
+    - Structure (proxy art)
+    - TaskPrinter
+    - TaskPrinterSlot
+    - BeaconPost
+    - Door_Lower_L
+    - Door_Lower_R
+    - StopLight_Lower
+    - Door_Manager_L
+    - Door_Manager_R
+    - StopLight_Manager
+    hideRenderersOf:
+    - ElevatorCabin
+    enabled: 1
+    full: 0
+    compact: 1

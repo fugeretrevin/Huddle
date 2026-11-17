@@ -24,6 +24,16 @@ namespace MuseDesk.Networking
         public event Action<string, string> DecisionResolved;           // decisionId, state
         public event Action<EventEnvelope> ArtifactCreated;
         public event Action<EventEnvelope> TaskCompleted;
+        /// <summary>A task.completed that delivered real work, i.e. it references a produced artifact.
+        /// Bookkeeping completions (baseline tests, a cancelled branch after a rejection) also arrive
+        /// as task.completed but carry no artifact, so success visuals (shelf token, completion chime,
+        /// factory delivery) listen to THIS instead of TaskCompleted.</summary>
+        public event Action<EventEnvelope> WorkDelivered;
+        /// <summary>A task.failed was applied (the run ended without delivering work).</summary>
+        public event Action<EventEnvelope> TaskFailed;
+        /// <summary>Raised after LoadSnapshot so views can project state that predates the event
+        /// stream (app restart / resume against a backend with work already in flight).</summary>
+        public event Action SnapshotLoaded;
         public event Action<EventEnvelope> Applied;                     // any applied event
         public event Action SessionReset;
 
@@ -36,6 +46,15 @@ namespace MuseDesk.Networking
             foreach (var a in snap.Agents) _agents[a.AgentId] = a;
             foreach (var t in snap.Tasks) _tasks[t.TaskId] = t;
             foreach (var d in snap.Decisions) _decisions[d.DecisionId] = d;
+            SnapshotLoaded?.Invoke();
+        }
+
+        /// <summary>The first decision still awaiting a human in the current snapshot, or null.</summary>
+        public DecisionView FirstPendingDecision()
+        {
+            foreach (var d in _decisions.Values)
+                if (d != null && d.State == "requested") return d;
+            return null;
         }
 
         /// <summary>Apply one event. Returns true if it advanced state (new seq).</summary>
@@ -71,13 +90,17 @@ namespace MuseDesk.Networking
                     ArtifactCreated?.Invoke(e);
                     break;
                 case EventTypes.TaskCompleted:
+                    // The backend reports a cancelled branch (rejected decision) as task.completed
+                    // with task_state "cancelled"; keep the real state so it matches the snapshot.
                     if (e.TaskId != null && _tasks.TryGetValue(e.TaskId, out var tc))
-                        tc.Status = "completed";
+                        tc.Status = e.PayloadString("task_state", "completed");
                     TaskCompleted?.Invoke(e);
+                    if (!string.IsNullOrEmpty(e.PayloadString("artifact_id"))) WorkDelivered?.Invoke(e);
                     break;
                 case EventTypes.TaskFailed:
                     if (e.TaskId != null && _tasks.TryGetValue(e.TaskId, out var tf))
                         tf.Status = "failed";
+                    TaskFailed?.Invoke(e);
                     break;
                 case EventTypes.SessionReset:
                     Reset();
@@ -107,6 +130,7 @@ namespace MuseDesk.Networking
                 _agents[e.AgentId] = a;
             }
             a.State = e.PayloadString("state", a.State);
+            a.Progress = e.PayloadString("progress_message", null);
             Snapshot.Agents = new List<AgentView>(_agents.Values);
             AgentChanged?.Invoke(a);
         }

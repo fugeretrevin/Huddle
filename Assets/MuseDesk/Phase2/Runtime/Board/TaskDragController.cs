@@ -2,6 +2,9 @@ using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using MuseDesk.Phase2.Contracts;
+using MuseDesk.Spatial;
+using Oculus.Interaction;
+using Oculus.Interaction.Input;
 
 namespace MuseDesk.Phase2.Board
 {
@@ -29,7 +32,7 @@ namespace MuseDesk.Phase2.Board
         public enum DragState { Idle, Held, Candidate, Pending, Confirmed, Error }
 
         [Tooltip("Max distance (m) from a zone's bounds within which a hovered card snaps to it.")]
-        public float snapRadius = 0.12f;
+        public float snapRadius = 0.15f;
         [Tooltip("Seconds the Confirmed/Error visual holds before returning to Idle.")]
         public float resolveHoldSeconds = 0.6f;
 
@@ -40,6 +43,36 @@ namespace MuseDesk.Phase2.Board
         StationDropZone _candidate;          // currently highlighted valid target
         StationDropZone _invalidHover;       // nearest zone shown red when not a valid target
         bool _resolving;                     // an async assign is in flight / settling
+
+        // Tracking-loss rule (S2). Pure decision lives in MuseDesk.Spatial.GrabTrackingWatch (EditMode tested).
+        // A hand that was lost within this window before the grab ended makes the end a cancel. ISDK may
+        // drop the grab a few frames after tracking is lost; 0.25 s covers that and the HandOwnership 0.20 s grace.
+        const float LostHandLookbackSeconds = 0.25f;
+        GrabTrackingWatch _watch;
+        static HandVisual s_leftHand, s_rightHand;
+        static float s_nextHandSearch;
+
+        /// <summary>Tracking of both hands from the rig's HandVisuals (same IsTrackedDataValid signal the
+        /// floor, ceiling and wall gestures use). When a hand visual cannot be found (Editor without a rig,
+        /// the Play Mode simulated hold) it is reported tracked, which keeps the old behaviour there.
+        /// Searches at most once a second; no per-frame allocation.</summary>
+        static void ReadHandsTracked(out bool left, out bool right)
+        {
+            if ((s_leftHand == null || s_rightHand == null) && Time.unscaledTime >= s_nextHandSearch)
+            {
+                s_nextHandSearch = Time.unscaledTime + 1f;
+                var all = FindObjectsByType<HandVisual>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var v = all[i];
+                    if (v == null || v.Hand == null) continue;
+                    if (v.Hand.Handedness == Handedness.Left) { if (s_leftHand == null) s_leftHand = v; }
+                    else if (s_rightHand == null) s_rightHand = v;
+                }
+            }
+            left = s_leftHand == null || s_leftHand.Hand == null || s_leftHand.Hand.IsTrackedDataValid;
+            right = s_rightHand == null || s_rightHand.Hand == null || s_rightHand.Hand.IsTrackedDataValid;
+        }
 
         /// <summary>Called by BoardPresenter when this card view is (re)used.</summary>
         public void Bind(BoardPresenter presenter, TaskCardView card)
@@ -58,13 +91,37 @@ namespace MuseDesk.Phase2.Board
             switch (State)
             {
                 case DragState.Idle:
-                    if (held) State = DragState.Held;
+                    if (held)
+                    {
+                        State = DragState.Held;
+                        ReadHandsTracked(out bool b0, out bool b1);
+                        _watch.Begin(b0, b1);
+                    }
                     break;
 
                 case DragState.Held:
                 case DragState.Candidate:
-                    if (!held) { OnReleased(); break; }
-                    UpdateHover();
+                    ReadHandsTracked(out bool t0, out bool t1);
+                    // Polish S9b: the task left the board while the user holds its card (the hide waits for the release).
+                    // No hover, no candidate; on release nothing is sent, exactly like a lost hand.
+                    if (_card.TaskGone)
+                    {
+                        ClearHighlights();
+                        if (held) { State = DragState.Held; break; }
+                        CancelHeldGrab();
+                        break;
+                    }
+                    if (held) { _watch.Sample(t0, t1, Time.unscaledTime); UpdateHover(); break; }
+                    // The grab ended. ISDK also ends a grab when its hand is lost, which looks exactly
+                    // like a release from here: only a grab that ended with its hand still tracked is a
+                    // drop. A lost hand returns the card home and sends nothing (Polish S2).
+                    if (_watch.Decide(t0, t1, Time.unscaledTime, LostHandLookbackSeconds) == GrabEnd.Cancel)
+                    {
+                        CancelHeldGrab();
+                        if (_card != null) _card.ShowResult(false, "Hand lost. Nothing sent");
+                        break;
+                    }
+                    OnReleased();
                     break;
 
                 // Pending/Confirmed/Error are advanced by the async flow, not by hold changes.
@@ -105,25 +162,51 @@ namespace MuseDesk.Phase2.Board
 
         void OnReleased()
         {
+            // Read both targets BEFORE clearing the halos: ClearHighlights nulls _candidate, and the
+            // check below used to run after it, so a drop on a valid zone never sent the assign
+            // (the card just went home).
+            var invalidTarget = _invalidHover;
+            var target = _candidate;
             ClearHighlights();
 
             // Valid target under the card at release?
-            if (_candidate != null && _candidate.IsCompatible(_card.Data))
+            if (target != null && target.IsCompatible(_card.Data))
             {
-                if (!_candidate.WouldReassign(_card.Data))
+                if (!target.WouldReassign(_card.Data))
                 {
-                    // Already assigned to this agent — no command; just rest at the station.
-                    SnapTo(_candidate.RestAnchor);
+                    // Already assigned to this agent: no command. The card goes back to its place on
+                    // the board (it used to stay floating at the pad, which is now hidden after a drop).
+                    _card.ShowResult(true, "Already with the " + TaskCardView.RoleWord(target.agentId));
+                    _card.ReturnHome();
                     ResetToIdle(returnHome: false);
                     return;
                 }
-                _ = BeginAssignAsync(_candidate);
+                _ = BeginAssignAsync(target);
                 return;
             }
 
-            // Invalid drop or empty space: return home, NO server call.
+            // Invalid drop or empty space: explain why if dropped on a red zone, return home, NO server call.
+            if (invalidTarget != null && _card?.Data != null)
+                _card.ShowResult(false, LocalRefusalWords(_card.Data, invalidTarget));
             _card.ReturnHome();
             ResetToIdle(returnHome: false);
+        }
+
+        /// <summary>
+        /// Why a drop of <paramref name="card"/> on <paramref name="zone"/> is refused locally (no
+        /// server call is made for these). Same wording the gateway's refusal codes map to, so the
+        /// card, the assignment pads and the dock all say one thing. Returns null when the drop
+        /// would be sent to the gateway.
+        /// </summary>
+        public static string LocalRefusalWords(TaskCardV2 card, StationDropZone zone)
+        {
+            if (card == null || zone == null) return null;
+            if (zone.IsCompatible(card)) return null;
+            if (TaskStateSets.IsTerminal(card.TaskState)) return "Finished tasks can't move";
+            if (TaskStateSets.IsRunning(card.TaskState)) return "Already running";
+            if (!TaskStateSets.IsSafeAssignCheckpoint(card.TaskState)) return "Can't move it right now";
+            if (card.Executable && zone.agentId != Phase2AgentIds.Researcher) return "Starts with the Researcher";
+            return "Can't assign here";
         }
 
         async Task BeginAssignAsync(StationDropZone zone)
@@ -134,7 +217,8 @@ namespace MuseDesk.Phase2.Board
             SnapTo(zone.RestAnchor);
 
             // One idempotency key per drop attempt (reused only if WE retried the same key).
-            string key = _presenter.NextIdemKey("assign");
+            // (S2: the key is stable per task + target; a re-drop after a transport failure reuses it.)
+            string key = _presenter.StableKey(_card.Data.TaskId, "assign", zone.agentId, "assign");
             Phase2CommandResult<TaskCardV2> result;
             try
             {
@@ -174,7 +258,9 @@ namespace MuseDesk.Phase2.Board
         void SnapTo(Transform anchor)
         {
             if (anchor == null) return;
-            _card.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+            // Eases to the pad / station (about 200 ms) instead of jumping; from there the card
+            // eases to its lane slot when the answer arrives, or back home when it is refused.
+            _card.GlideTo(anchor);
         }
 
         void ClearHighlights()
@@ -197,6 +283,10 @@ namespace MuseDesk.Phase2.Board
         void OnDisable() => CancelHeldGrab();
         void OnApplicationPause(bool paused) { if (paused) CancelHeldGrab(); }
         void OnApplicationFocus(bool focused) { if (!focused) CancelHeldGrab(); }
+
+        /// <summary>Abandon a hold that has not sent anything yet: halos off, card back to its slot,
+        /// no command. Same path as tracking loss. Does nothing once a command is in flight.</summary>
+        public void CancelHold() => CancelHeldGrab();
 
         void CancelHeldGrab()
         {

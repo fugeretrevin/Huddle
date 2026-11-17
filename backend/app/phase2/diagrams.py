@@ -133,17 +133,24 @@ class DiagramService:
 
     async def create_diagram(self, session_id: str, template: DiagramTemplate,
                            task_id: str | None, artifact_id: str | None) -> DiagramV2:
-        if artifact_id is not None and self._store.get_artifact_v2(artifact_id) is None:
-            raise NotFoundError(f"unknown artifact {artifact_id}")
+        if artifact_id is not None:
+            art = self._store.get_artifact_v2(artifact_id)
+            # Session-scoped: another session's artifact id must look unknown.
+            if art is None or art["session_id"] != session_id:
+                raise NotFoundError(f"unknown artifact {artifact_id}")
         nodes, edges = self._build_nodes_edges(session_id, template, task_id)
         self.validate_graph(template, nodes, edges)  # raises CommandError on violation
+        # Only the task graph is derived from real session state. ``auth_flow`` and
+        # ``module_dependency_graph`` are FIXED illustrative templates, so they are
+        # always labelled "demo" — never "live", even during a live run.
+        mode = self._mode if template in _DAG_TEMPLATES else "demo"
         diagram_id = f"d2-{uuid.uuid4().hex[:10]}"
         now = utcnow_iso()
-        self._store.create_diagram_v2(diagram_id, session_id, template.value, self._mode,
+        self._store.create_diagram_v2(diagram_id, session_id, template.value, mode,
                                       nodes, edges, now)
         await self._bus.publish(session_id, EventTypeV2.diagram_created,
-                                {"template": template.value, "source_mode": self._mode},
+                                {"template": template.value, "source_mode": mode},
                                 task_id=task_id)
-        return DiagramV2(diagram_id=diagram_id, template=template, source_mode=self._mode,
+        return DiagramV2(diagram_id=diagram_id, template=template, source_mode=mode,
                          nodes=[DiagramNode(**n) for n in nodes],
                          edges=[DiagramEdge(**e) for e in edges])

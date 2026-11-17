@@ -1,113 +1,119 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MuseDesk.Agents
 {
     /// <summary>
-    /// Squishy, nudgeable arm: lives on an arm pivot (Arm_L / Arm_R, a child of Bob). When the user's
-    /// hand (physics capsules) overlaps this arm's trigger collider, the arm swings away from the
-    /// contact a few degrees (springy) then eases back to its authored rest pose. Purely cosmetic /
-    /// kinematic — the pivot only rotates, never translates, and always returns to rest.
-    ///
-    /// COMPOSITION with AgentView (the key risk):
-    ///   AgentView writes this arm's localRotation EVERY frame in Update(). For idle/rest states it
-    ///   does so via Slerp(arm.localRotation, target, k) — i.e. it READS BACK the current rotation.
-    ///   If we simply post-multiplied a nudge each LateUpdate, AgentView would read our nudged value
-    ///   next frame and fold it into its base, and the feedback loop would DIVERGE (base += nudge/k).
-    ///
-    ///   So we split into two phases around AgentView:
-    ///     - Update() [DefaultExecutionOrder(-100), runs BEFORE AgentView's Update(order 0)]:
-    ///         STRIP last frame's nudge — restore the clean base pose we captured — so AgentView reads
-    ///         a nudge-free rotation and its Slerp cannot accumulate our offset.
-    ///     - LateUpdate() [after all Update()]:
-    ///         CAPTURE the clean pose AgentView produced this frame as the new base, then apply the
-    ///         current nudge on top of it.
-    ///   Walk() writes the arm absolutely (no read-back), so the strip is harmless there and we yield
-    ///   while moving anyway.
-    ///
-    /// This arm pivot needs its OWN kinematic Rigidbody so these trigger callbacks are delivered to
-    /// THIS GameObject rather than being captured by the agent root's Rigidbody (compound-collider
-    /// routing). See BuildInteractiveAgents for the setup + VERIFY notes.
+    /// Squishy, nudgeable arm: lives on UpperArm_L / UpperArm_R (or Arm_L / Arm_R). When the
+    /// user's hand capsules or tracked fingertips touch/push near the arm, it swings away springily
+    /// then eases back to its animated pose. Uses BoneRotationLayer at LateUpdate Order 410 so it
+    /// layers cleanly over Animator + AgentIdleLife without fighting keyframes or accumulating drift.
     /// </summary>
-    [DefaultExecutionOrder(-100)]
+    [DefaultExecutionOrder(410)]
     public class AgentArmNudge : MonoBehaviour
     {
         [Tooltip("Max swing angle, degrees.")]
-        public float maxNudge = 18f;
+        public float maxNudge = 28f;
         [Tooltip("How fast the arm eases back to rest once the hand leaves.")]
-        public float springback = 9f;
+        public float springback = 8f;
         [Tooltip("Swing gained per second of contact.")]
-        public float pushStrength = 0.7f;
+        public float pushStrength = 0.9f;
+        [Tooltip("Fingertip proximity radius (m) along the arm.")]
+        public float touchRadius = 0.06f;
         [Tooltip("While walking, yield to the walk arm-swing (no nudge).")]
         public AgentMovement movement;
 
-        // The clean, AgentView-authored pose captured each LateUpdate (before we add the nudge).
-        Quaternion _base = Quaternion.identity;
-        bool _hasBase;
-        // Accumulated swing as an axis*magnitude in the pivot's LOCAL frame, |.| <= 1.
-        Vector3 _nudge;
+        BoneRotationLayer _layer;
+        Vector3 _nudgeWorldAxisMag;   // world rotation axis * magnitude, |.| <= 1
         float _contact;
-        // The whole agent's root — so we ignore this agent's OWN colliders (root push-sphere,
-        // the other arm). Those are kinematic-rigidbody triggers too now, so without this guard the
-        // arm would be perpetually "nudged" by its own body.
         Transform _agentRoot;
 
         void Awake()
         {
             var view = GetComponentInParent<AgentView>();
+            if (movement == null && view != null) movement = view.GetComponent<AgentMovement>();
             _agentRoot = view != null ? view.transform : transform.root;
         }
 
-        void OnEnable() { _nudge = Vector3.zero; _contact = 0f; _hasBase = false; }
-
-        // Phase 1: runs before AgentView.Update() — hand the base back so AgentView's Slerp stays clean.
-        void Update()
-        {
-            if (_hasBase) transform.localRotation = _base;
-        }
+        void OnEnable() { _nudgeWorldAxisMag = Vector3.zero; _contact = 0f; }
+        void OnDisable() => _layer.Release(transform);
 
         void OnTriggerStay(Collider other)
         {
-            // Ignore any collider belonging to THIS agent (own children, the root push-sphere,
-            // the other arm). Only external colliders (the user's hand capsules) should nudge us.
             if (_agentRoot != null && other.transform.IsChildOf(_agentRoot)) return;
             if (other.transform.IsChildOf(transform)) return;
+            NudgeFromPoint(other.ClosestPoint(transform.position));
+        }
 
-            Vector3 contact = other.ClosestPoint(transform.position);
-            Vector3 away = transform.position - contact;
+        void NudgeFromPoint(Vector3 contact)
+        {
+            Vector3 armCenter = transform.position + Vector3.down * 0.025f;
+            Vector3 away = armCenter - contact;
             if (away.sqrMagnitude < 1e-6f) return;
             away.Normalize();
 
-            // The arm hangs along the pivot's local -Y. To swing the hand toward `away`, rotate about
-            // axis = down x away (computed in the pivot's local frame).
-            Vector3 aLocal = transform.InverseTransformDirection(away);
-            Vector3 axis = Vector3.Cross(Vector3.down, aLocal);
+            Vector3 axis = Vector3.Cross(Vector3.down, away);
             if (axis.sqrMagnitude < 1e-6f) return;
             axis.Normalize();
 
-            Vector3 want = Vector3.ClampMagnitude(_nudge + axis, 1f);
-            _nudge = Vector3.Lerp(_nudge, want, Time.deltaTime * pushStrength * 12f);
-            _contact = 0.12f;
+            Vector3 want = Vector3.ClampMagnitude(_nudgeWorldAxisMag + axis, 1f);
+            _nudgeWorldAxisMag = Vector3.Lerp(_nudgeWorldAxisMag, want, Time.deltaTime * pushStrength * 14f);
+            _contact = 0.14f;
         }
 
-        // Phase 2: runs after AgentView.Update() — capture the clean base, then add the nudge on top.
         void LateUpdate()
         {
-            _base = transform.localRotation;   // AgentView's authored pose this frame (nudge was stripped)
-            _hasBase = true;
+            if (movement != null && movement.IsMoving)
+            {
+                _nudgeWorldAxisMag = Vector3.zero;
+                _contact = 0f;
+                _layer.Release(transform);
+                return;
+            }
 
-            if (movement != null && movement.IsMoving) { _nudge = Vector3.zero; _contact = 0f; return; }
+            IReadOnlyList<Transform> tips = HandFingertips.Get();
+            if (tips != null && tips.Count > 0)
+            {
+                Vector3 armCenter = transform.position + Vector3.down * 0.025f;
+                Vector3 bestAway = Vector3.zero;
+                float bestStrength = 0f;
+                for (int i = 0; i < tips.Count; i++)
+                {
+                    var h = tips[i];
+                    if (h == null) continue;
+                    Vector3 d = armCenter - h.position;
+                    float dist = d.magnitude;
+                    if (dist < touchRadius && dist > 1e-4f)
+                    {
+                        float s = (touchRadius - dist) / touchRadius;
+                        if (s > bestStrength) { bestStrength = s; bestAway = d.normalized; }
+                    }
+                }
+                if (bestStrength > 0f)
+                {
+                    Vector3 axis = Vector3.Cross(Vector3.down, bestAway);
+                    if (axis.sqrMagnitude > 1e-6f)
+                    {
+                        Vector3 want = axis.normalized * Mathf.Clamp01(bestStrength * 1.25f);
+                        _nudgeWorldAxisMag = Vector3.Lerp(_nudgeWorldAxisMag, want, Time.deltaTime * pushStrength * 16f);
+                        _contact = 0.14f;
+                    }
+                }
+            }
 
             _contact -= Time.deltaTime;
             if (_contact <= 0f)
-                _nudge = Vector3.Lerp(_nudge, Vector3.zero, Time.deltaTime * springback);
+                _nudgeWorldAxisMag = Vector3.Lerp(_nudgeWorldAxisMag, Vector3.zero, Time.deltaTime * springback);
 
-            float mag = _nudge.magnitude;
-            if (mag < 1e-5f) return;
+            float mag = _nudgeWorldAxisMag.magnitude;
+            if (mag < 1e-4f)
+            {
+                _layer.Release(transform);
+                return;
+            }
 
-            Quaternion offset = Quaternion.AngleAxis(Mathf.Clamp01(mag) * maxNudge, _nudge / mag);
-            // Post-multiply: the swing axis is expressed in the arm's own local frame (same convention
-            // AgentView uses: _armHome * Euler(swing,0,0)).
-            transform.localRotation = _base * offset;
+            Quaternion worldDelta = Quaternion.AngleAxis(Mathf.Clamp01(mag) * maxNudge, _nudgeWorldAxisMag / mag);
+            _layer.Apply(transform, worldDelta);
         }
     }
 }

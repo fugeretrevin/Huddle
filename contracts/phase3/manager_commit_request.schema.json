@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase3/manager_commit_request.schema.json",
+  "title": "MuseDesk Phase 3 ManagerCommitRequest",
+  "type": "object",
+  "required": ["revision","approved_item_ids","authorized_dangerous_item_ids","idempotency_key"],
+  "properties": {
+    "revision": {"type":"integer","minimum":0},
+    "approved_item_ids": {"type":"array","minItems":1,"maxItems":50,"items":{"type":"string"}},
+    "authorized_dangerous_item_ids": {"type":"array","maxItems":50,"items":{"type":"string"}},
+    "idempotency_key": {"type":"string","minLength":8,"maxLength":200}
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "source_mode": "demo",
+  "note": "Sample artifacts for the OFFLINE SCRIPTED DEMO only. They are not output of a live agent. The client stamps source_mode demo and prefixes every page with a 'SCRIPTED SAMPLE' line (Phase2DemoArtifactSamples.Normalize), whatever this file says. Pages are 0-based. Avoid the less-than character in content: the viewer renders with TextMeshPro rich text.",
+  "artifacts": [
+    {
+      "schema_version": 2,
+      "artifact_id": "art-demo-oauth-diff",
+      "kind": "code_diff",
+      "summary": "Scripted sample: OAuth login scaffold (code diff, 2 files)",
+      "source_mode": "demo",
+      "content_hash": "scripted-sample-oauth-diff-v1",
+      "pages": [
+        {
+          "page": 0,
+          "title": "Sample diff 1/3: app/auth/oauth_login.py (authorize URL)",
+          "content": "diff --git a/app/auth/oauth_login.py b/app/auth/oauth_login.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/auth/oauth_login.py\n@@ -0,0 +1,27 @@\n+# OAuth login scaffold: authorization-code flow with PKCE.\n+import hashlib\n+import secrets\n+from base64 import urlsafe_b64encode\n+from urllib.parse import urlencode\n+\n+AUTHORIZE_URL = 'https://id.example.test/oauth/authorize'\n+TOKEN_URL = 'https://id.example.test/oauth/token'\n+\n+\n+def new_pkce_pair():\n+    # One (verifier, challenge) pair per login attempt.\n+    verifier = secrets.token_urlsafe(48)\n+    digest = hashlib.sha256(verifier.encode()).digest()\n+    challenge = urlsafe_b64encode(digest).rstrip(b'=').decode()\n+    return verifier, challenge\n+\n+\n+def build_authorize_url(client_id, redirect_uri, state, challenge):\n+    query = urlencode({\n+        'response_type': 'code',\n+        'client_id': client_id,\n+        'redirect_uri': redirect_uri,\n+        'state': state,\n+        'code_challenge': challenge,\n+        'code_challenge_method': 'S256',\n+    })\n+    return AUTHORIZE_URL + '?' + query\n",
+          "line_refs": ["app/auth/oauth_login.py:1-27"]
+        },
+        {
+          "page": 1,
+          "title": "Sample diff 2/3: app/auth/oauth_login.py (callback)",
+          "content": "@@ -0,0 +28,22 @@ app/auth/oauth_login.py (continued)\n+\n+\n+class OAuthError(Exception):\n+    pass\n+\n+\n+def handle_callback(params, expected_state, exchange_code):\n+    # Refuse a callback that does not belong to this login attempt.\n+    if params.get('error'):\n+        raise OAuthError(params['error'])\n+    if params.get('state') != expected_state:\n+        raise OAuthError('state mismatch')\n+    code = params.get('code')\n+    if not code:\n+        raise OAuthError('missing code')\n+    tokens = exchange_code(code)\n+    if 'access_token' not in tokens:\n+        raise OAuthError('no access token returned')\n+    return {\n+        'access_token': tokens['access_token'],\n+        'expires_in': int(tokens.get('expires_in', 3600)),\n+    }\n",
+          "line_refs": ["app/auth/oauth_login.py:28-49"]
+        },
+        {
+          "page": 2,
+          "title": "Sample diff 3/3: tests/test_oauth_login.py",
+          "content": "diff --git a/tests/test_oauth_login.py b/tests/test_oauth_login.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_oauth_login.py\n@@ -0,0 +1,31 @@\n+import pytest\n+from app.auth import oauth_login as oauth\n+\n+\n+def test_pkce_pair_is_unique():\n+    assert oauth.new_pkce_pair() != oauth.new_pkce_pair()\n+\n+\n+def test_authorize_url_carries_state_and_challenge():\n+    url = oauth.build_authorize_url('app', 'https://app.example.test/cb', 's1', 'ch')\n+    assert 'state=s1' in url and 'code_challenge=ch' in url\n+\n+\n+def test_callback_rejects_state_mismatch():\n+    with pytest.raises(oauth.OAuthError):\n+        oauth.handle_callback({'state': 'other', 'code': 'c'}, 's1', dict)\n+\n+\n+def test_callback_rejects_missing_code():\n+    with pytest.raises(oauth.OAuthError):\n+        oauth.handle_callback({'state': 's1'}, 's1', dict)\n+\n+\n+def test_callback_returns_access_token():\n+    exchange = lambda code: {'access_token': 'tok-' + code}\n+    result = oauth.handle_callback({'state': 's1', 'code': 'c'}, 's1', exchange)\n+    assert result['access_token'] == 'tok-c'\n+    assert result['expires_in'] == 3600\n",
+          "line_refs": ["tests/test_oauth_login.py:1-31"]
+        }
+      ]
+    },
+    {
+      "schema_version": 2,
+      "artifact_id": "art-demo-oauth-tests",
+      "kind": "test_report",
+      "summary": "Scripted sample: OAuth login tests (5 passed, 0 failed)",
+      "source_mode": "demo",
+      "content_hash": "scripted-sample-oauth-tests-v1",
+      "pages": [
+        {
+          "page": 0,
+          "title": "Sample test report 1/2: summary",
+          "content": "$ pytest tests/test_oauth_login.py\n\ncollected 5 items\n\ntests/test_oauth_login.py .....                 [100%]\n\n5 passed in 0.21s\n\nResult: PASSED (5 passed, 0 failed)\nBaseline suite before the change: 3 passed.\nFiles under test: app/auth/oauth_login.py\n",
+          "line_refs": ["tests/test_oauth_login.py"]
+        },
+        {
+          "page": 1,
+          "title": "Sample test report 2/2: tests and limits",
+          "content": "PASSED  test_pkce_pair_is_unique\nPASSED  test_authorize_url_carries_state_and_challenge\nPASSED  test_callback_rejects_state_mismatch\nPASSED  test_callback_rejects_missing_code\nPASSED  test_callback_returns_access_token\n\nWhat this report is: a bundled sample that shows the shape of\nthe tester's result. Nothing was executed on this headset and\nno code was changed.\n\nWhat a live run adds: the tester really runs pytest in a\nsandboxed workspace on the desktop and reports the real counts.\n",
+          "line_refs": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase3/manager_amend_request.schema.json",
+  "title": "MuseDesk Phase 3 ManagerAmendRequest",
+  "description": "POST /v2/sessions/{session_id}/manager/plans/{plan_id}/amend. A change the user CONFIRMED (for example an agent's suggested change from a visit) becomes ONE new step for that agent on the committed plan, after after_task_id when that is one of the plan's cards. The reply is a ManagerCommitResult with only the new task and amended=true; manager.plan_committed is announced with the same task and amended=true. 409 PLAN_NOT_COMMITTED / REVISION_CONFLICT, 422 UNKNOWN_AGENT / EMPTY_CHANGE.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision","summary","agent_id","idempotency_key"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "revision": {"type":"integer","minimum":0},
+    "summary": {"type":"string","minLength":3,"maxLength":300},
+    "agent_id": {"enum":["researcher","developer","tester"]},
+    "after_task_id": {"type":["string","null"]},
+    "idempotency_key": {"type":"string","minLength":8,"maxLength":200}
+  }
+}

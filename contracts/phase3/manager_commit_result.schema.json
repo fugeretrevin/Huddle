@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://musedesk.local/contracts/phase3/manager_commit_result.schema.json",
+  "title": "MuseDesk Phase 3 ManagerCommitResult",
+  "type": "object",
+  "required": ["plan_id","status","revision","tasks"],
+  "properties": {
+    "plan_id": {"type":"string"},
+    "status": {"const":"committed"},
+    "revision": {"type":"integer","minimum":2},
+    "tasks": {"type":"array","minItems":1,"items": {"type":"object","additionalProperties":false,"required":["client_item_id","task_id","agent_id","state","revision"],"properties":{"client_item_id":{"type":"string"},"task_id":{"type":"string"},"agent_id":{"type":"string"},"state":{"type":"string"},"revision":{"type":"integer","minimum":0}}} }
+  }
+}

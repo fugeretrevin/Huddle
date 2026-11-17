@@ -115,6 +115,8 @@ namespace MuseDesk.Phase2.Contracts
             {
                 case Phase2EventTypes.TaskCreated:
                 case Phase2EventTypes.TaskStarted:
+                case Phase2EventTypes.TaskProgress:
+                case Phase2EventTypes.DecisionRequested:   // card-launched run: awaiting_approval
                 case Phase2EventTypes.TaskAssigned:
                 case Phase2EventTypes.TaskPriorityChanged:
                 case Phase2EventTypes.TaskPauseRequested:
@@ -154,8 +156,12 @@ namespace MuseDesk.Phase2.Contracts
                     StationMilestone?.Invoke(e);
                     break;
 
-                // session.ready / agent.status_changed / task.progress / decision.* / system.warning
-                // are mirrored v1 lifecycle types; the board does not derive card truth from them.
+                case Phase2EventTypes.SessionReset:
+                    ApplySessionReset(e);
+                    break;
+
+                // session.ready / agent.status_changed / decision.* / system.warning are mirrored
+                // v1 lifecycle types; the board does not derive card truth from them.
                 default:
                     break;
             }
@@ -172,6 +178,9 @@ namespace MuseDesk.Phase2.Contracts
             if (string.IsNullOrEmpty(id)) return;
             if (!_tasks.TryGetValue(id, out var t))
             {
+                // task.progress / decision.requested are also mirrored v1 lifecycle types (a v1
+                // task id with no card); they only ever update a card that already exists.
+                if (e.Type == Phase2EventTypes.TaskProgress || e.Type == Phase2EventTypes.DecisionRequested) return;
                 // A task we have not seen (e.g. task.created before snapshot caught it). Seed a card.
                 t = new TaskCardV2 { TaskId = id, Dependencies = new List<string>(),
                     SourceMode = SourceMode ?? SourceModes.Live, TaskState = TaskStates.Queued };
@@ -183,10 +192,16 @@ namespace MuseDesk.Phase2.Contracts
             var title = e.PayloadString("title");
             if (!string.IsNullOrEmpty(title)) t.Title = title;
 
+            // Task events carry the canonical task_state; adopt it when present, and fall back to
+            // what the event type implies when an older producer omits it.
+            var wireState = e.PayloadString("task_state");
+            bool hasState = !string.IsNullOrEmpty(wireState);
+
             switch (e.Type)
             {
                 case Phase2EventTypes.TaskAssigned:
                     t.AgentId = e.AgentId ?? e.PayloadString("target_agent_id", t.AgentId);
+                    if (hasState) t.TaskState = wireState;
                     break;
                 case Phase2EventTypes.TaskPriorityChanged:
                     if (e.TryPayloadInt("priority", out var p)) t.Priority = p;
@@ -198,27 +213,71 @@ namespace MuseDesk.Phase2.Contracts
                     t.TaskState = TaskStates.Paused;
                     break;
                 case Phase2EventTypes.TaskResumed:
-                    t.TaskState = e.PayloadString("task_state", TaskStates.Running);
+                    // Nothing runs a resumed card by itself, so without an explicit state it is
+                    // queued — never claimed to be running.
+                    t.TaskState = hasState ? wireState : TaskStates.Queued;
                     break;
                 case Phase2EventTypes.TaskCompleted:
-                    t.TaskState = TaskStates.Completed;
+                    // A rejected / changes-requested run ends as task.completed with
+                    // task_state "cancelled"; keep that distinction.
+                    t.TaskState = hasState ? wireState : TaskStates.Completed;
                     break;
                 case Phase2EventTypes.TaskFailed:
                     t.TaskState = TaskStates.Failed;
                     break;
+                case Phase2EventTypes.TaskProgress:
+                case Phase2EventTypes.DecisionRequested:
+                    // decision.requested on the v2 stream moves a card whose pipeline run asked the
+                    // human to awaiting_approval (task.resumed moves it back to running).
+                    if (hasState) t.TaskState = wireState;
+                    break;
                 case Phase2EventTypes.TaskCreated:
                 case Phase2EventTypes.TaskStarted:
-                    var st = e.PayloadString("task_state");
-                    if (!string.IsNullOrEmpty(st)) t.TaskState = st;
+                    if (hasState) t.TaskState = wireState;
                     if (e.AgentId != null) t.AgentId = e.AgentId;
+                    if (e.TryPayloadInt("priority", out var cp)) t.Priority = cp;
                     break;
             }
+
+            // Additive card fields (task.created and later task events may carry them).
+            var template = e.PayloadString("task_template");
+            if (!string.IsNullOrEmpty(template)) t.TaskTemplate = template;
+            bool? executable = e.PayloadValue<bool?>("executable");
+            if (executable.HasValue) t.Executable = executable.Value;
+            var runTaskId = e.PayloadString("run_task_id");
+            if (!string.IsNullOrEmpty(runTaskId)) t.RunTaskId = runTaskId;
+
+            // The decision a card waits on is only meaningful while it is awaiting approval
+            // (task.resumed after an approval still names the decision it answered).
+            var decisionId = e.PayloadString("decision_id");
+            if (t.TaskState != TaskStates.AwaitingApproval) t.DecisionId = null;
+            else if (!string.IsNullOrEmpty(decisionId)) t.DecisionId = decisionId;
 
             // revision is monotonic from the server; adopt it if present so the client's
             // expected_revision for the next command matches the canonical task.
             if (e.TryPayloadInt("revision", out var rev)) t.Revision = rev;
 
             TaskChanged?.Invoke(t);
+        }
+
+        /// <summary>
+        /// session.reset on the v2 stream. When the producer includes the post-reset snapshot
+        /// (the offline demo does), load it so every presenter rebuilds from it; otherwise ask the
+        /// caller to re-fetch the authoritative snapshot. Either way no stale card survives.
+        /// </summary>
+        void ApplySessionReset(EventEnvelopeV2 e)
+        {
+            var snap = e.PayloadValue<SnapshotV2>("snapshot");
+            if (snap != null)
+            {
+                snap.LastSeq = e.Seq;      // the reset itself is the newest applied event
+                LoadSnapshot(snap);        // raises SnapshotLoaded
+                RememberId(e.EventId);     // LoadSnapshot cleared the dedup memory
+            }
+            else
+            {
+                ResyncNeeded?.Invoke(e.Seq, e.Seq);
+            }
         }
 
         void ApplyHandoffCreated(EventEnvelopeV2 e)

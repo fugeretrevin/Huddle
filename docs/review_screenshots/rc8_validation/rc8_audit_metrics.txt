@@ -1,0 +1,74 @@
+=== MUSEDESK RC8 FINAL ART, MOTION & VFX AUDIT ===
+Branch: art/rc8-final-support (from 4d976fa)
+Capture Mode: Unity Editor (MainMRScene read-only; NEVER headset capture)
+
+--- 1. ANIMATORS, CLIPS & FLAGS ---
+Controller MuseDesk_Agent.controller: layers=[Base Layer(w=0.00,states=77), UpperBody(w=0.00,states=16), HeadGaze(w=0.00,states=7)] params=[MoveSpeed:Float, IsCarryingPaper:Bool]
+Controller MuseDesk_WallAgent.controller: layers=[Base Layer(w=0.00,states=77), UpperBody(w=0.00,states=16), HeadGaze(w=0.00,states=7)] params=[MoveSpeed:Float, IsCarryingPaper:Bool]
+ReleaseConfig (rc8-living-office): floor=True ceiling=True ceilingParticles=True ceilingCone=True wallHabitat=True wallManager=True portal=True wallElevatorVfx=True reducedMotion=False
+HabitatArtManifest: useHabitatArt=True version=wall-habitat-fit-310e070 entries=2
+FBX Agent_Researcher.fbx                : def=77 custom=77 metaLoops=34 assetLoops=34 (loaded=77)
+FBX Agent_Developer.fbx                 : def=77 custom=77 metaLoops=34 assetLoops=34 (loaded=77)
+FBX Agent_Tester.fbx                    : def=77 custom=77 metaLoops=34 assetLoops=34 (loaded=77)
+FBX Agent_Manager.fbx                   : def=77 custom=77 metaLoops=34 assetLoops=34 (loaded=77)
+FBX WallHabitat_ElevatorSpine_3Tier.fbx : def= 8 custom= 8 metaLoops= 2 assetLoops= 2 (loaded=8)
+FBX WallHabitat_ElevatorSpine_2Tier.fbx : def= 6 custom= 6 metaLoops= 2 assetLoops= 2 (loaded=6)
+FBX WallHabitat_ElevatorCar.fbx         : def= 5 custom= 5 metaLoops= 2 assetLoops= 2 (loaded=5)
+FBX WallHabitat_ElevatorCar_Compact.fbx : def= 5 custom= 5 metaLoops= 2 assetLoops= 2 (loaded=5)
+FBX WallHabitat_TaskPrinter.fbx         : def= 4 custom= 4 metaLoops= 2 assetLoops= 2 (loaded=4)
+FBX WallHabitat_DeskVisitPerch.fbx      : def= 4 custom= 4 metaLoops= 2 assetLoops= 2 (loaded=4)
+FBX WallHabitat_LargeAgentPortal.fbx    : def= 4 custom= 4 metaLoops= 2 assetLoops= 2 (loaded=4)
+FBX SuspendedOfficePod.fbx              : def=13 custom=13 metaLoops= 4 assetLoops= 4 (loaded=13)
+FBX CeilingMount.fbx                    : def= 4 custom= 4 metaLoops= 2 assetLoops= 2 (loaded=4)
+
+--- 2. SCENE RENDER COST COMPARISON (ACTIVE SCENE SUBTREE COUNTS, EDITOR) ---
+  Desk Idle (Workspace+Near)   | rend=317 (mesh=230, skin= 4, tmp=79) | mats=85 transp=83 | tris= 79370 | ps= 4 maxP= 28
+  Desk + Floor Platform        | rend=322 (mesh=232, skin= 6, tmp=80) | mats=86 transp=84 | tris= 92662 | ps= 4 maxP= 28
+  Desk + Ceiling Pod           | rend=318 (mesh=230, skin= 5, tmp=79) | mats=86 transp=83 | tris= 88654 | ps= 4 maxP= 28
+  Wall_Complete_3Tier only     | rend=104 (mesh= 86, skin=16, tmp= 0) | mats=39 transp= 2 | tris= 85886 | ps= 2 maxP= 28
+  Wall_Complete_2Tier only     | rend=102 (mesh= 84, skin=16, tmp= 0) | mats=39 transp= 2 | tris= 79910 | ps= 2 maxP= 28
+  Desk + Wall_3Tier + Near     | rend=421 (mesh=316, skin=20, tmp=79) | mats=88 transp=85 | tris=165256 | ps= 6 maxP= 56
+  LargePortal_HighFX only      | rend=  2 (mesh=  0, skin= 1, tmp= 0) | mats= 8 transp= 2 | tris=  6144 | ps= 1 maxP= 14
+  LargePortal_LowFX only       | rend=  2 (mesh=  0, skin= 1, tmp= 0) | mats= 8 transp= 2 | tris=  6144 | ps= 1 maxP=  8
+
+--- 3. INTERACTION PROPS (PAPER, STAMP, CARD, RECEIPT) ---
+HeldPaperController: name=DecisionDocument agentHoldPoint=PaperHoldPoint heldScale=0.22 mat=[none]
+  DetailsSheet localPos=(0.0000, -0.2080, 0.0040) active=True
+ApprovalStampController: stamp=null mark=StampMark targetPlate=StampPlate
+StampTool (Reject): name=StampReject rootLocal=(0.0360, 0.0140, 0.4150) contactR=0.050 dwell=0.12 pressVisual=StampVisual
+StampTool (Approve): name=StampApprove rootLocal=(-0.0360, 0.0140, 0.4150) contactR=0.050 dwell=0.12 pressVisual=StampVisual
+CompletionReceipt: name=CompletionReceipt rootLocal=(-0.1500, 0.0498, 0.3700) active=True
+
+--- 4. DESK V2 SKINNED CLIP & HELD-PROP AUDIT ---
+  01_Res_Seated_Reading              | footY=0.0000 topY=0.2334 | skinGap=0.0135m @ Nameplate_PlateRim_Art
+  02a_Res_Exit1_TurnLeft             | footY=0.0085 topY=0.2516 | skinGap=0.0804m @ Nameplate_PlateRim_Art | HeldPaper boundsXZ=[-0.170..-0.150,-0.060..0.010] y=[0.091..0.161] minGap=0.1258@Research_Static_WarmWood
+  02b_Res_Exit1_WalkCarry            | footY=0.0092 topY=0.2549 | skinGap=0.0995m @ Nameplate_PlateRim_Art | HeldPaper boundsXZ=[-0.170..-0.150,-0.060..0.010] y=[0.091..0.161] minGap=0.1258@Research_Static_WarmWood
+  02c_Res_Exit2_WalkCarry            | footY=0.0015 topY=0.2490 | skinGap=0.1230m @ Nameplate_PlateRim_Art | HeldPaper boundsXZ=[-0.114..-0.053,0.054..0.113] y=[0.091..0.161] minGap=0.0299@Developer_Static_CharcoalVisor
+  03a_Res_OfferPresent               | footY=0.0019 topY=0.2373 | skinGap=0.0538m @ Developer_Static_CharcoalVisor | HeldPaper boundsXZ=[-0.076..-0.004,0.215..0.247] y=[0.091..0.161] minGap=0.0016@Developer_Static_CharcoalVisor
+  03b_Res_OfferHold                  | footY=0.0011 topY=0.2376 | skinGap=0.0462m @ Developer_PCTowerWindow | HeldPaper boundsXZ=[-0.076..-0.004,0.215..0.247] y=[0.091..0.161] minGap=0.0016@Developer_Static_CharcoalVisor
+  04a_Res_To_Dev_Give                | footY=0.0000 topY=0.2352 | skinGap=0.0309m @ Developer_Static_CharcoalVisor | ArtifactToken boundsXZ=[-0.027..0.008,-0.038..-0.002] y=[0.063..0.099] minGap=0.0693@Developer_Static_WarmWood
+  04b_Dev_Receive                    | footY=0.0000 topY=0.2179 | skinGap=0.0423m @ Nameplate_HousingInner_Art
+  05a_Dev_To_Tester_Give             | footY=0.0000 topY=0.2182 | skinGap=0.0205m @ Testing_Static_Tester_SlateBlue | ArtifactToken boundsXZ=[0.227..0.262,-0.081..-0.045] y=[0.063..0.099] minGap=0.0557@Showcase_Frame
+  06_Tester_CompletionCheer          | footY=0.0039 topY=0.2218 | skinGap=0.0291m @ Nameplate_PlateRim_Art
+  PhaseCheck Walk_Start            : minFootY=0.0000m
+  PhaseCheck Walk_Loop             : minFootY=0.0005m
+  PhaseCheck Walk_Stop             : minFootY=-0.0021m
+  PhaseCheck Walk_Carry_Paper      : minFootY=0.0012m
+  PhaseCheck Turn_Left             : minFootY=0.0000m
+  PhaseCheck Turn_Right            : minFootY=0.0000m
+  PhaseCheck Carry_Package         : minFootY=0.0018m
+
+--- 5. CEILING & FLOOR MODES ---
+Captured floor_deployed_overview, ceiling_deployed_eye, ceiling_stowed_wings.
+
+--- 6. WALL HABITAT FULL & COMPACT ELEVATOR AUDIT ---
+  Wall Full: Dev SeatPose y=-0.4000 | Agent minY=-0.4000 maxY=-0.1826
+  Wall Compact: Dev SeatPose y=-0.2600 | Agent minY=-0.2600 maxY=-0.0426
+
+--- 7. LARGE PORTAL & DESK-VISIT PERCH AUDIT ---
+  LargePortal (HighFX) + Scaled Agent: mountLocalY=0.0230 agentBoundsY=[0.0197..0.9142]
+  DeskVisitPerch + Agent: mountName=WallHabitat_DeskVisitPerch mountY=0.0000 agentBoundsY=[0.0000..0.2308]
+
+--- 8. ROLE TRIM PALETTE VS LIGHT & DARK PASSTHROUGH ---
+Captured palette_dark_passthrough and palette_light_passthrough.
+

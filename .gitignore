@@ -74,3 +74,5 @@ TempAssembly*.dll
 # Wit SDK voice-build artifacts (generated only in the voice build; keep the judge build clean)
 /Assets/Oculus/Voice/
 /Assets/Oculus/Voice.meta
+
+TestResults/

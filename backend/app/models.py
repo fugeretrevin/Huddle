@@ -161,6 +161,8 @@ class TaskView(BaseModel):
     status: TaskState
     template: str | None = None
     dependencies: list[str] = Field(default_factory=list)
+    # Additive: the v2 task card that launched this task's run (null if card-less).
+    board_task_id: str | None = None
 
 
 class DecisionView(BaseModel):
@@ -177,6 +179,9 @@ class Snapshot(BaseModel):
     session_id: str
     mode: SessionMode
     last_seq: int
+    # Additive provenance label for the state below ("live" | "demo"); optional so older
+    # clients/fixtures that omit it still parse.
+    source_mode: SourceMode | None = None
     agents: list[AgentView] = Field(default_factory=list)
     tasks: list[TaskView] = Field(default_factory=list)
     decisions: list[DecisionView] = Field(default_factory=list)

@@ -1,107 +1,159 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MuseDesk.Agents
 {
     /// <summary>
-    /// Squishy body lean: when the user's hand (physics capsules) pushes the agent's trigger volume,
-    /// the agent not only displaces (that is <see cref="RubberBandReturn"/>'s job, on the root
-    /// localPosition) but also TILTS/LEANS away from the contact, then springs back upright when the
-    /// hand leaves. Purely cosmetic / kinematic: we lean the Bob child a few degrees, never real
-    /// physics, and never touch task/agent state. The agent can never fall, drift, or leave its spot.
+    /// Squishy body lean: when the user's hand/fingertips push near or overlap the agent, the
+    /// agent's upper torso (Chest / Spine / Bob) TILTS/LEANS smoothly away from the contact, then
+    /// springs upright when the hand leaves. Works both via OnTriggerStay (hand capsules) AND
+    /// deterministic HandFingertips proximity so Quest hand tracking always feels responsive.
     ///
-    /// COMPOSITION with AgentView (the key risk):
-    ///   AgentView.Update() OVERWRITES bob.localRotation from scratch every frame (bob/idle/walk pose).
-    ///   This component runs its lean in LateUpdate (which always runs AFTER every Update), reads the
-    ///   pose AgentView just wrote, and PRE-MULTIPLIES a lean rotation on top of it. Because AgentView
-    ///   rebuilds bob.localRotation absolutely each frame (it never reads back the previous value for
-    ///   the rotation), there is no feedback/accumulation: our lean is a pure additive layer that
-    ///   AgentView wipes and we re-apply each frame. [DefaultExecutionOrder] is set high so, if any
-    ///   other LateUpdate ever also touched Bob, ours would compose last.
-    ///
-    /// This lives on the agent ROOT (same GameObject as RubberBandReturn + the trigger SphereCollider),
-    /// so it receives the SAME OnTriggerStay events as RubberBandReturn — no extra collider needed for
-    /// the body lean.
+    /// Uses BoneRotationLayer in LateUpdate after Animator and AgentIdleLife (Order 400) so it
+    /// layers cleanly over idle/work clips and never accumulates drift. Yields while walking.
     /// </summary>
-    [DefaultExecutionOrder(200)]
+    [DefaultExecutionOrder(400)]
     public class AgentTilt : MonoBehaviour
     {
-        [Tooltip("Transform to lean. Defaults to AgentView.bob, else this transform.")]
+        [Tooltip("Torso bone/transform to lean (defaults to Chest, then Spine, then Bob).")]
         public Transform bob;
         [Tooltip("Max lean angle, degrees.")]
-        public float maxTilt = 12f;
+        public float maxTilt = 16f;
         [Tooltip("How fast the lean eases back to upright once the hand leaves.")]
         public float springback = 7f;
         [Tooltip("Lean gained per second of contact.")]
-        public float pushStrength = 0.6f;
+        public float pushStrength = 0.85f;
+        [Tooltip("Fingertip proximity radius (m) around chest height for deterministic push.")]
+        public float touchRadius = 0.085f;
         [Tooltip("While walking, yield to the walk animation (no lean).")]
         public AgentMovement movement;
 
-        // Accumulated lean as a HORIZONTAL direction*magnitude in Bob's PARENT-local frame, |.| <= 1.
-        Vector3 _lean;
-        float _contact;   // >0 while a hand is touching this frame-window
+        BoneRotationLayer _layer;
+        Vector3 _lean;       // world-space horizontal lean direction * magnitude, |.| <= 1
+        float _contact;
 
         void Awake()
         {
+            if (movement == null) movement = GetComponent<AgentMovement>();
             if (bob == null)
             {
-                var view = GetComponent<AgentView>();
-                if (view != null && view.bob != null) bob = view.bob;
+                var all = GetComponentsInChildren<Transform>(true);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    if (all[i].name == "Chest" || all[i].name == "Bob") { bob = all[i]; break; }
+                }
+                if (bob == null)
+                {
+                    for (int i = 0; i < all.Length; i++)
+                        if (all[i].name == "Spine") { bob = all[i]; break; }
+                }
             }
             if (bob == null) bob = transform;
+            _idle = GetComponent<AgentIdleLife>();   // optional
         }
 
         void OnEnable() { _lean = Vector3.zero; _contact = 0f; }
+        void OnDisable() => Clear();
+
+        AgentIdleLife _idle;
+        bool _viaIdle;
+
+        // AgentIdleLife (order 300) already layers on the Spine and Chest. When the bone we lean is
+        // one of those, hand it our rotation so exactly one component writes the bone, in a defined
+        // order (its own motion first, this lean on top). It is applied on its next LateUpdate, one
+        // frame later, which a hand push cannot show. Otherwise use our own layer.
+        void Write(Quaternion worldDelta)
+        {
+            if (_idle != null && _idle.Owns(bob))
+            {
+                if (!_viaIdle) { _layer.Release(bob); _viaIdle = true; }
+                _idle.SetBoneOffset(bob, worldDelta);
+            }
+            else
+            {
+                if (_viaIdle) { if (_idle != null) _idle.ClearBoneOffset(bob); _viaIdle = false; }
+                _layer.Apply(bob, worldDelta);
+            }
+        }
+
+        void Clear()
+        {
+            if (_viaIdle) { if (_idle != null) _idle.ClearBoneOffset(bob); _viaIdle = false; }
+            _layer.Release(bob);
+        }
 
         void OnTriggerStay(Collider other)
         {
-            if (bob == null) return;
-            // Ignore self / children (our own body/arm colliders).
-            if (other.transform.IsChildOf(transform)) return;
+            if (bob == null || other.transform.IsChildOf(transform)) return;
+            PushFromPoint(other.ClosestPoint(bob.position));
+        }
 
-            Vector3 contact = other.ClosestPoint(bob.position);
+        void PushFromPoint(Vector3 contact)
+        {
             Vector3 away = bob.position - contact;
             away.y = 0f;
             if (away.sqrMagnitude < 1e-6f) return;
             away.Normalize();
-
-            // Express the lean direction in Bob's parent-local frame so the lean is independent of the
-            // agent's world facing (which FaceUserWhileDelivering / AgentMovement may be turning).
-            Vector3 local = bob.parent != null ? bob.parent.InverseTransformDirection(away) : away;
-            local.y = 0f;
-            if (local.sqrMagnitude < 1e-6f) return;
-            local.Normalize();
-
-            Vector3 want = Vector3.ClampMagnitude(_lean + local, 1f);
-            _lean = Vector3.Lerp(_lean, want, Time.deltaTime * pushStrength * 12f);
-            _contact = 0.12f;
+            Vector3 want = Vector3.ClampMagnitude(_lean + away, 1f);
+            _lean = Vector3.Lerp(_lean, want, Time.deltaTime * pushStrength * 14f);
+            _contact = 0.14f;
         }
 
         void LateUpdate()
         {
             if (bob == null) return;
+            if (movement != null && movement.IsMoving)
+            {
+                _lean = Vector3.zero;
+                _contact = 0f;
+                Clear();
+                return;
+            }
 
-            // Walking is driven by AgentView.Walk() (bob.localRotation) + AgentMovement (root). Don't
-            // fight it: drop the lean and let the walk read cleanly.
-            if (movement != null && movement.IsMoving) { _lean = Vector3.zero; _contact = 0f; return; }
+            // Deterministic fingertip proximity (works even without physics hand capsules).
+            IReadOnlyList<Transform> tips = HandFingertips.Get();
+            if (tips != null && tips.Count > 0)
+            {
+                Vector3 chestPos = bob.position;
+                Vector3 accum = Vector3.zero;
+                for (int i = 0; i < tips.Count; i++)
+                {
+                    var h = tips[i];
+                    if (h == null) continue;
+                    Vector3 d = chestPos - h.position;
+                    float dist = d.magnitude;
+                    if (dist < touchRadius && dist > 1e-4f)
+                    {
+                        d.y = 0f;
+                        if (d.sqrMagnitude > 1e-6f)
+                            accum += d.normalized * ((touchRadius - dist) / touchRadius);
+                    }
+                }
+                if (accum.sqrMagnitude > 1e-6f)
+                {
+                    Vector3 want = Vector3.ClampMagnitude(accum, 1f);
+                    _lean = Vector3.Lerp(_lean, want, Time.deltaTime * pushStrength * 16f);
+                    _contact = 0.14f;
+                }
+            }
 
-            // Only spring back once the hand has LEFT; holding during contact kills jitter.
             _contact -= Time.deltaTime;
             if (_contact <= 0f)
                 _lean = Vector3.Lerp(_lean, Vector3.zero, Time.deltaTime * springback);
 
             float mag = _lean.magnitude;
-            if (mag < 1e-5f) return;
+            if (mag < 1e-4f)
+            {
+                Clear();
+                return;
+            }
 
-            Vector3 dir = _lean / mag;                       // horizontal lean direction (parent-local)
-            Vector3 axis = Vector3.Cross(Vector3.up, dir);   // tipping the top toward `dir` rotates about this
-            if (axis.sqrMagnitude < 1e-6f) return;
+            Vector3 dir = _lean / mag;
+            Vector3 axis = Vector3.Cross(Vector3.up, dir);
+            if (axis.sqrMagnitude < 1e-6f) { Clear(); return; }
 
-            float angle = Mathf.Clamp01(mag) * maxTilt;
-            Quaternion lean = Quaternion.AngleAxis(angle, axis.normalized);
-
-            // AgentView already wrote bob.localRotation THIS frame (in Update). Compose our lean in the
-            // parent frame on top of it. AgentView rebuilds the base next frame, so no accumulation.
-            bob.localRotation = lean * bob.localRotation;
+            Quaternion worldDelta = Quaternion.AngleAxis(Mathf.Clamp01(mag) * maxTilt, axis.normalized);
+            Write(worldDelta);
         }
     }
 }

@@ -41,7 +41,15 @@ namespace MuseDesk.Agents
 
         enum Motion { Calm, Read, Type, Examine, Hop, Shake }
 
+        /// <summary>Current backend-driven state (set only via SetState). Rigged visuals read this.</summary>
+        public string State => _state;
+        /// <summary>The agent's own latest progress line from the backend, or null if none was sent.</summary>
+        public string Progress { get; private set; }
+        /// <summary>Raised whenever SetState changes/sets the state, so an Animator bridge can react.</summary>
+        public event System.Action<string> StateChanged;
+
         string _state = AgentStates.Idle;
+        string _labelState, _labelName, _labelText;   // last label content, to skip rebuilding an unchanged string
         float _bobAmp;
         float _bobSpeed;
         Motion _motion = Motion.Calm;
@@ -160,6 +168,7 @@ namespace MuseDesk.Agents
         public void SetState(string state, string progress = null)
         {
             _state = string.IsNullOrEmpty(state) ? _state : state;
+            Progress = progress;
             var (color, busy) = Style(_state);
             if (bodyRenderer != null)
             {
@@ -172,22 +181,31 @@ namespace MuseDesk.Agents
             var newMotion = MotionFor(_state);
             if (newMotion == Motion.Hop && _motion != Motion.Hop) _hopT = 0f;
             _motion = newMotion;
-            if (label != null)
-                label.text = $"{displayName}\n<size=60%>{Pretty(_state)}</size>";
+            // Rebuild the label string only when what it shows changed (SetState is called on every progress event).
+            if (label != null && (_labelText == null || _labelState != _state || _labelName != displayName))
+            {
+                _labelState = _state;
+                _labelName = displayName;
+                _labelText = $"{displayName}\n<size=60%>{Pretty(_state)}</size>";
+                label.text = _labelText;
+            }
+            StateChanged?.Invoke(_state);
         }
 
         // state -> (color, busyFactor 0..~2)
+        // Colours come from the shared state palette (working = teal for every role, needs you = amber, done =
+        // success green, error = coral). Previously coding was "completed" green and testing "needs you" amber.
         static (Color, float) Style(string s) => s switch
         {
-            AgentStates.Researching => (new Color(0.30f, 0.55f, 0.95f), 1.4f),
-            AgentStates.Coding      => (new Color(0.30f, 0.80f, 0.45f), 1.6f),
-            AgentStates.Testing     => (new Color(0.95f, 0.65f, 0.25f), 1.4f),
-            AgentStates.Reporting   => (new Color(0.70f, 0.70f, 0.95f), 1.0f),
-            AgentStates.Waiting     => (new Color(0.85f, 0.80f, 0.35f), 0.4f),
-            AgentStates.Approaching => (new Color(0.85f, 0.80f, 0.35f), 1.0f),
-            AgentStates.Complete    => (new Color(0.40f, 0.85f, 0.55f), 0.3f),
-            AgentStates.Error       => (new Color(0.90f, 0.35f, 0.35f), 0.6f),
-            _                       => (new Color(0.72f, 0.72f, 0.76f), 0.3f), // idle
+            AgentStates.Researching => (MuseDesk.Workspace.OfficeTokens.Teal, 1.4f),
+            AgentStates.Coding      => (MuseDesk.Workspace.OfficeTokens.Teal, 1.6f),
+            AgentStates.Testing     => (MuseDesk.Workspace.OfficeTokens.Teal, 1.4f),
+            AgentStates.Reporting   => (MuseDesk.Workspace.OfficeTokens.Teal, 1.0f),
+            AgentStates.Waiting     => (MuseDesk.Workspace.OfficeTokens.Amber, 0.4f),
+            AgentStates.Approaching => (MuseDesk.Workspace.OfficeTokens.Amber, 1.0f),
+            AgentStates.Complete    => (MuseDesk.Workspace.OfficeTokens.Success, 0.3f),
+            AgentStates.Error       => (MuseDesk.Workspace.OfficeTokens.Coral, 0.6f),
+            _                       => (MuseDesk.Workspace.OfficeTokens.Neutral, 0.3f), // idle
         };
 
         static Motion MotionFor(string s) => s switch

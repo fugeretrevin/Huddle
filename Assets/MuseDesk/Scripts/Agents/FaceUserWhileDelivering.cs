@@ -15,13 +15,26 @@ namespace MuseDesk.Agents
         public float turnSpeed = 8f;
 
         Transform _head;
+        AgentGaze _gaze;
+        float _nextCamTry;
+
+        void Awake()
+        {
+            _gaze = GetComponent<AgentGaze>();   // optional
+        }
 
         void LateUpdate()
         {
             if (movement == null) return;
             if (movement.AtHome || movement.IsMoving) return;   // only once arrived at the delivery spot
+            if (movement.IsFacingPoint) return;                 // a handoff has it facing a colleague (one writer)
+            // Standing next to a colleague in an agent-to-agent handoff: keep facing them (the walk
+            // left the body pointing that way) instead of turning to the user mid-exchange.
+            if (AgentHandoffController.AnyBusy && _gaze != null && _gaze.HasNearbyAgent) return;
             if (_head == null)
             {
+                if (Time.unscaledTime < _nextCamTry) return;     // Camera.main is a scene search
+                _nextCamTry = Time.unscaledTime + 0.5f;
                 var cam = Camera.main;
                 if (cam == null) return;
                 _head = cam.transform;
