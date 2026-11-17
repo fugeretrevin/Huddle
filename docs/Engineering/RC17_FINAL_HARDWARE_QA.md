@@ -133,16 +133,17 @@ Pass = steady at the headset rate (72 fps at 72 Hz), and no hitch over 150 ms ou
 
 | Section | Date | Result | Notes / bugs (P0 / P1 / P2) |
 |---|---|---|---|
-| B1 Cold launch | | PENDING | |
-| B2 Desk workflow | | PENDING | |
-| B3 Wall + Manager | | PENDING | |
-| B4 Select agent | | PENDING | |
-| B5 Portal | | PENDING | |
-| B6 Floor / Ceiling | | PENDING | |
-| B7 Voice | | PENDING | |
-| B8 Apply change | | PENDING | |
-| D Performance + 15-min soak + restart | | PENDING | |
-| E Live from the Quest | | PENDING | |
+| B1 Cold launch | 2026-11-17 | PASS (core) + NOTE | Owner: "all the core things seem like they work". Agents stand, but chairs sit at the desks (remove them). Back of the Researcher's computer clips. Nameplates clip through things when they turn: make them stationary, facing forward on the desk, no tilt. Props should face the right way and not jump around. (P1 polish) |
+| B2 Desk workflow | 2026-11-17 | PASS (core) + NOTE | The handed paper is not fully attached to the hand: when the agent leans, the paper does not move. "!" sits a little too high above the agent. The handoff between agents goes too quickly: make it smoother. (P1 polish) |
+| B3 Wall + Manager | 2026-11-17 | PASS (core) + NOTE | The little Wall boxes ("1 done") are unclear: remove them. Manager paper and plan summary should be movable. The Manager handing out the three cards one by one is slow after picking a plan: owner chose paper tubes delivering them. (P1) |
+| B4 Select agent | 2026-11-17 | PASS (core) + NOTE | Finicky: said the hand was over a key when the owner is fairly sure it was not. (P1) |
+| B5 Portal | 2026-11-17 | PASS (core) + NOTE | Send back works, but the agent pops into its wall spot: add the teleport effect at the desk (owner's choice). (P1) |
+| B6 Floor / Ceiling | 2026-11-17 | PASS (core) + NOTE | The Spaces side panel can't be angled ergonomically: make it movable and turnable left/right so it faces the owner. Wall should be reachable from any mode, not just Desk. Calm motion option can go. (P1) |
+| B7 Voice | 2026-11-17 | PASS (core) + NOTE | "voice seems like it works". Wanted for live: natural speech ("hey, why are you doing this instead of this") rather than "X, why". Owner chose: no name needed when talking to the agent you're with. (P1 feature) |
+| B8 Apply change | 2026-11-17 | PASS (core) | Covered by "all the core things seem like they work"; no specific note. |
+| D Performance + 15-min soak + restart | | PENDING | Recorder `rc17_worn` ran during the session; summary in `Logs/quest/`. Owner did not report on the soak/restart. |
+| E Live from the Quest | | PENDING | Not run yet. |
+| Look | 2026-11-17 | NOTE | "It all looks kinda dull": owner chose a lighting/material pass, then light colour grading if the frame rate holds. |
 
 **Triage rules** (from the brief):
 - **P0:** crash, launch failure, broken decision loop, wrong approval, unreachable UI, falsely reported result, serious grab failure, uncomfortable portal placement, sustained frame loss. Fix before filming.
