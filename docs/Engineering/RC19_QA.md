@@ -25,6 +25,13 @@ pytest). See the results section below (filled in from the run, never from a gue
 
 ## Results
 
+- **Full preflight (2026-11-17 11:23, commit 1b66afd, label rc19-release): 11 of 11 groups PASS**, 0 real console errors
+  (ledger `Logs/preflight/1b66afd_20261117_1107.md`): backend 375; Meet; Select-grab; Unified dock; Living Office stamp
+  journey; failure-path journey; Floor -> Desk -> Ceiling (pod down/up) -> Desk; portal Meet -> Open -> touch/ask -> Send back
+  (platform lift 0.069 on a 1.2 m visitor); Apply change; desk walk clearance 7/7; desk paper offer holds (0 take-backs).
+  With compile and EditMode 1640/1640 from the same day this covers every preflight group (the run cut short by low memory
+  last night is now complete). PLAY/AUTO evidence, not WORN.
+
 - **Build:** `Builds/MuseDesk_rc19_release.apk`, SHA-256 `F197F662B6FA02339014D8AC75EA2BB1BF6323F0953D1A1B88BC2C895F5EFD57`,
   signer `CN=MuseDesk, O=MuseDesk`, label `rc19-release` found in the APK, versionCode 3.
 - **Installed on the Quest (2026-11-17) with `adb install -r`** (no uninstall, settings kept); the on-device sha256 matches;
