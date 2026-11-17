@@ -32,6 +32,8 @@ namespace MuseDesk.Spatial
         public Vector3 offset = new Vector3(-0.20f, 0.07f, 0.04f);
         [Tooltip("The mailbox moves only after the near-user point moved this far (m).")]
         public float rePlaceDistance = 0.15f;
+        [Tooltip("Off since rc18 (owner: the counts boxes were unclear). The agents' own '!' and the Manager board say the same.")]
+        public static bool mailboxEnabled = false;
 
         readonly ScaleEase _ease = new ScaleEase();
         bool _ready, _bound, _placed, _countsSet;
@@ -84,7 +86,8 @@ namespace MuseDesk.Spatial
         {
             if (!_ready || mailbox == null) return;
             // A tray only when there is something in it: an empty mailbox would just clutter the desk.
-            bool show = SpatialWorkspaceState.IsRemote && attention != null
+            // Owner (worn rc17): the little "1 done" boxes were unclear ("weird and unclear on what it is or does"): off.
+            bool show = mailboxEnabled && SpatialWorkspaceState.IsRemote && attention != null
                         && (attention.CompletedCount > 0 || attention.PendingDecisionCount > 0);
             if (!show) { _ease.Hide(); return; }
 

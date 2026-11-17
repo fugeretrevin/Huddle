@@ -28,8 +28,13 @@ namespace MuseDesk.Agents
         [Tooltip("Metres (station-local, scaled with the workspace) the stop point is pulled back toward the agents' " +
                  "side so the courier does not stand on the desk edge.")]
         public float backOffset = 0.015f;
-        [Tooltip("Seconds the give/receive pose holds before the courier walks home.")]
-        public float exchangeHold = 1.0f;
+        [Tooltip("Seconds the give/receive pose holds before the courier walks home (the token's flight counts toward it).")]
+        public float exchangeHold = 1.8f;
+        [Tooltip("Owner (worn rc17): the handoff 'goes really quick between them'. The walk to the receiver takes at least " +
+                 "this many seconds (0 = the agent's usual walk time).")]
+        public float minApproachSeconds = 2.2f;
+        [Tooltip("After arriving, both agents face each other for this long before the give (a readable 'ready' beat).")]
+        public float readyBeat = 0.4f;
         [Tooltip("After an approval the Researcher plays its success reaction. The walk to the Developer " +
                  "waits for that reaction, at most this many seconds, so the reaction is not cut to a walk.")]
         public float approvalReactionWait = 0.9f;
@@ -306,7 +311,7 @@ namespace MuseDesk.Agents
             if (lane != null)
             {
                 // The way home from the stand is always the home lane, backwards.
-                srcMove.WalkRoute(lane.stand, laneVia, Reversed(lane.fromHome), null, laneSeconds);
+                srcMove.WalkRoute(lane.stand, laneVia, Reversed(lane.fromHome), null, laneSeconds, minApproachSeconds);
             }
             else
             {
@@ -327,7 +332,7 @@ namespace MuseDesk.Agents
             // Wait for arrival (IsMoving falls to false), with a safety guard.
             float guard = 0f;
             yield return null; // let DeliverTo set IsMoving=true first
-            while (srcMove.IsMoving && guard < 6f) { guard += Time.deltaTime; yield return null; }
+            while (srcMove.IsMoving && guard < 8f) { guard += Time.deltaTime; yield return null; }
 
             // Give / receive beat.
             _stage = Stage.Exchanging;
@@ -342,6 +347,8 @@ namespace MuseDesk.Agents
                     _facedReceiver = dstMove;
                 }
             }
+            // A short beat while they turn to each other, so the give does not fire the moment the courier stops.
+            if (readyBeat > 0f) yield return new WaitForSeconds(readyBeat);
             if (srcBridge != null) srcBridge.PlayHandoffGive();
             if (dstBridge != null) dstBridge.PlayHandoffReceive();
 
@@ -407,7 +414,7 @@ namespace MuseDesk.Agents
         }
 
         // ---- Token presentation (visual only; the exchange timing and fallbacks are unchanged) ----
-        const float FlightSeconds = 0.42f;
+        const float FlightSeconds = 0.7f;   // was 0.42 (rc17 worn: too quick to follow)
         Coroutine _tokenAnim;
 
         IEnumerator ScaleToken(Vector3 from, Vector3 to, MotionToken token, bool deactivateAtEnd)
@@ -438,7 +445,7 @@ namespace MuseDesk.Agents
             if (t == null || !t.gameObject.activeInHierarchy) { AttachProp(toHand, true); yield break; }
             Vector3 p0 = t.position; Quaternion r0 = t.rotation;
             t.SetParent(frame, true);                       // keeps its world pose and world size
-            float arc = 0.03f * (frame != null ? Mathf.Abs(frame.lossyScale.y) : 1f);
+            float arc = 0.045f * (frame != null ? Mathf.Abs(frame.lossyScale.y) : 1f);
             var token = new MotionToken(FlightSeconds, EaseKind.InOutCubic);
             var clock = new MotionClock();
             clock.Start(token);

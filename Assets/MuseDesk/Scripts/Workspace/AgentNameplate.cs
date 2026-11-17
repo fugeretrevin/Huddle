@@ -44,9 +44,9 @@ namespace MuseDesk.Workspace
         public const int MaxProgressChars = 28;
 
         [Header("Turn toward the viewer")]
-        [Tooltip("Owner (worn rc15): plates should tilt naturally toward the user instead of sitting at a fixed angle. The plate " +
-                 "turns (yaw) and tilts (pitch) toward the head, damped and clamped around its rest pose.")]
-        public bool faceViewer = true;
+        [Tooltip("Off by default (owner, worn rc17: turning plates clipped through things; they now rest square to the desk). " +
+                 "When on, the plate turns (yaw) and tilts (pitch) toward the head, damped and clamped around its rest pose.")]
+        public bool faceViewer = false;
         [Range(0f, 90f)] public float maxYaw = 60f;
         [Range(0f, 60f)] public float maxPitch = 35f;
         [Tooltip("How quickly it follows (1/s); low = lazy and natural.")]

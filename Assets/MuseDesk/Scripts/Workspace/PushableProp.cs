@@ -25,6 +25,14 @@ namespace MuseDesk.Workspace
         public float returnSeconds = 0.6f;
         [Tooltip("Further than this from home (m) and it goes back immediately (fell off the desk).")]
         public float maxStray = 0.45f;
+        [Tooltip("Owner (worn rc17): props 'jump around randomly' and are distracting. On: the prop never runs physics; it stays " +
+                 "exactly at home, can still be picked up, and glides home (no hop) shortly after it is let go.")]
+        public bool stayPut = true;
+        [Tooltip("With stayPut: seconds after release before it glides home.")]
+        public float releaseReturnDelay = 0.8f;
+
+        bool _wasHeld;
+        float _releasedFor;
 
         enum Mode { Settling, Dynamic, Returning }
 
@@ -107,6 +115,8 @@ namespace MuseDesk.Workspace
                 if (moved > 0.02f * 0.02f) { EnterSettling(); return; }
             }
 
+            if (stayPut) { TickStayPut(); return; }
+
             if (IsHeld())
             {
                 if (_mode == Mode.Returning) _mode = Mode.Dynamic;
@@ -157,6 +167,35 @@ namespace MuseDesk.Workspace
                         _mode = Mode.Dynamic;
                     }
                     break;
+            }
+        }
+
+        // Stay-put mode: always kinematic. Held = the hand moves it; released = after a short pause it glides home
+        // (smooth, no hop) and stays there. Nothing moves it on its own.
+        void TickStayPut()
+        {
+            if (!_rb.isKinematic) _rb.isKinematic = true;
+            if (IsHeld()) { _wasHeld = true; _releasedFor = 0f; if (_mode == Mode.Returning) _mode = Mode.Settling; return; }
+            if (_mode == Mode.Returning)
+            {
+                _timer += Time.deltaTime;
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_timer / Mathf.Max(0.05f, returnSeconds)));
+                transform.localPosition = Vector3.Lerp(_fromPos, _homePos, k);
+                transform.localRotation = Quaternion.Slerp(_fromRot, _homeRot, k);
+                if (k >= 1f) { transform.localPosition = _homePos; transform.localRotation = _homeRot; _mode = Mode.Settling; }
+                return;
+            }
+            if (_wasHeld)
+            {
+                _releasedFor += Time.deltaTime;
+                if (_releasedFor >= releaseReturnDelay) { _wasHeld = false; BeginReturn(); }
+                return;
+            }
+            // At rest: pinned exactly at home (nothing else should move it; this also undoes any stray push).
+            if ((transform.localPosition - _homePos).sqrMagnitude > 1e-8f || transform.localRotation != _homeRot)
+            {
+                if ((transform.localPosition - _homePos).sqrMagnitude > 0.005f * 0.005f) BeginReturn();
+                else { transform.localPosition = _homePos; transform.localRotation = _homeRot; }
             }
         }
 

@@ -152,7 +152,9 @@ namespace MuseDesk.Wall
             for (int i = 0; i < 2; i++)
             {
                 AimHandSample s = _simOn[i] ? _sim[i] : ReadHand(i);
-                if (!_simOn[i]) s = HandInteractionProbe.Apply(s, i);
+                // Select agents points with the hand ray: a ray merely sweeping over a key/card on its way is not "over a key"
+                // (rc17 worn false refusals). A fingertip poke hover or a real ray selection still blocks the pinch.
+                if (!_simOn[i]) s = selectMode ? HandInteractionProbe.ApplyPointing(s, i) : HandInteractionProbe.Apply(s, i);
                 _samples[i] = s;
             }
             _arb.Tick(dt, _samples[0], _samples[1]);

@@ -26,6 +26,6 @@ MonoBehaviour:
   largeAgentPortal: 1
   wallElevatorVfx: 1
   reducedMotion: 0
-  reducedMotionToggle: 1
+  reducedMotionToggle: 0
   onboardingHints: 1
   buildLabel: rc17-production
