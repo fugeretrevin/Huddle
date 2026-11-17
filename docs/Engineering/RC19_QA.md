@@ -29,4 +29,19 @@ pytest). See the results section below (filled in from the run, never from a gue
   signer `CN=MuseDesk, O=MuseDesk`, label `rc19-release` found in the APK, versionCode 3.
 - **Installed on the Quest (2026-11-17) with `adb install -r`** (no uninstall, settings kept); the on-device sha256 matches;
   `dumpsys` shows versionCode=3. rc19 is now a protected path in `BuildApkTo.cs` (the next build is rc20, versionCode 4).
-- **Live real build:** (below, from the run)
+- **Live real build (2026-11-17, LIVE Meta model, PC backend; not on the headset):** `backend/scripts/live_real_work.py` with a
+  NEW objective it had never run: "Build a small expense tracker module: add expenses with an amount, a category and a date,
+  reject negative or zero amounts, and report totals by category and by month, with tests." **13/13 checks passed.**
+  Evidence: `Logs/live_real_work_rc19_expenses.json`; files in `backend/sandbox_workspaces/plans/mp-d8bd6326fe`.
+  - The Manager planned 6 steps with the model in 14 s (Researcher 1, Developer 3, Tester 2); approval created 6 cards; all 6
+    completed in 216 s. Card results: pytest 9 -> 14 -> 28 -> 46 -> 51 passed, 0 failed.
+  - Independent pytest of the folder matched the last card (51/0). /btw to the Tester and "what have you changed?" to the
+    Developer changed nothing; the Developer named the real files.
+  - Change request "also reject expenses whose category is empty or only spaces": came back as a suggestion only; Apply
+    change made exactly one step (a second press made nothing); it was worked for real in 36 s.
+  - **Checked by hand afterwards:** pytest of the folder now 45 passed, 0 failed; a smoke run of the module totals
+    food 12.50 + " food " 7 = 19.50 (categories normalised), and rejects 0, -1, "" and "   ".
+  - **Findings (not failures of the checks, but worth knowing):** (1) the change step rewrote `test_expense_tracker.py` and
+    the folder went from 51 to 45 tests: an amendment can silently drop earlier tests (nothing in the runner prevents it).
+    (2) The script asks the FIRST Tester card, so the Tester answered "28 passed" (that card's own result) while the latest
+    Tester card had 46; the app asks the card of the agent you are visiting.
