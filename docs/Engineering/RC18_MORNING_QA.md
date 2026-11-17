@@ -1,7 +1,16 @@
 # rc18 morning QA (owner, on the headset): what changed overnight and what to check
 
-**Build:** `Builds/MuseDesk_rc18_release.apk`, RELEASE-signed (your new key, versionCode 2). Hash in the commit that installs it.
-The Quest already runs a release-signed build, so rc18 installs over it (no uninstall, no reset).
+**Build:** `Builds/MuseDesk_rc18_release.apk`, label `rc18-release`, RELEASE-signed (your new key, `CN=MuseDesk`,
+versionCode 2), SHA-256 `FEEFEFC1BF812479525B26B29E420D7C92C29C96C64AB6FC57731A5D85A3D421`.
+**INSTALLED on the Quest and hash-verified (2026-11-17 overnight).** It is also the build to submit if it passes this check
+(a later fix means rc19 with versionCode 3).
+
+**Automated evidence for rc18 (PLAY/AUTO, not WORN):** compile; EditMode 1640/1640; backend pytest 371; Meet, Select-grab,
+Unified dock drives; Living Office offline journey 13/13 (paper tubes); desk paper offer holds (0 take-backs); desk walk
+clearance 7/7 routes; Apply change (change card by tube, completed); Send back fires the desk teleport beam; Floor -> Wall
+opens the wall preview after the office comes home. The full preflight was stopped by the PC running low on memory after its
+first 7 groups (all PASS); the failure-path journey, the spatial Floor/Ceiling sweep and the portal group were not re-run as a
+whole (the pieces touched tonight were checked one by one, above).
 **Rollbacks:** rc17 `BD0204F4` (debug-signed: needs an uninstall to go back), rc16, rc15.
 **Rule:** only your words make anything WORN. Mark each line PASS / FAIL / NOTE.
 

@@ -9,6 +9,8 @@
 - **rc17 worn by the owner (2026-11-17):** "all the core things seem like they work" + 18 polish notes (ledger in
   `RC17_FINAL_HARDWARE_QA.md`). All 18 addressed overnight in rc18; the owner's morning checklist is
   **`RC18_MORNING_QA.md`** (what changed, line by line, and what to check).
+- **rc18 INSTALLED:** `Builds/MuseDesk_rc18_release.apk` (label rc18-release, release-signed, versionCode 2,
+  FEEFEFC1…A3D421, hash-verified on the Quest). rc18 is protected in `BuildApkTo.cs`; the next build is rc19 with versionCode 3.
 - **Not done on purpose:** full-screen colour grading (passthrough alpha risk, could not be checked on the headset overnight).
 - Next: owner wears rc18 (`RC18_MORNING_QA.md`), then filming and submission as below (steps 5 and 6).
 
