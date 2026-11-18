@@ -14,6 +14,9 @@ namespace MuseDesk.Documents
     /// approvals still go only through the poke buttons -> backend. This reads the grab state by
     /// reflection so the runtime assembly keeps no hard dependency on the Interaction SDK.
     /// </summary>
+    // Runs after the agent's pose layers (idle life 300, tilt 400, arm nudge 410, presence 420, attention 430) so the
+    // sheet reads the FINAL hand pose: before this it read the clip pose and stayed put while the agent leaned (rc17 worn).
+    [DefaultExecutionOrder(450)]
     public class HeldPaperController : MonoBehaviour
     {
         [Tooltip("The Oculus.Interaction.Grabbable on this paper (assigned by the builder).")]

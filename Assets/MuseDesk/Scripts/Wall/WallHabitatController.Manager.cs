@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using MuseDesk.Spatial;
 using MuseDesk.Spatial.Ui;
 using MuseDesk.Spatial.Wall;
 
@@ -63,9 +64,27 @@ namespace MuseDesk.Wall
         };
         static readonly string[] ObjectiveKeys = { "Login flow", "Fix tests", "Write docs" };
 
+        /// <summary>rc22 (owner, worn rc21: "allow the manager to function on the ceiling and floor modes"): the Manager plans on
+        /// the Wall and also while the office is on the Floor or the Ceiling (at rest). Cards print into the habitat's tray only
+        /// once it is on a wall; the backend work, the plan paper, the status page and the summary need no habitat.</summary>
+        public bool ManagerAvailable
+        {
+            get
+            {
+                if (!flags.wallManagerEnabled || WallPreviewing) return false;
+                if (WallActive) return true;
+                var mode = SpatialWorkspaceState.Mode;
+                bool away = mode == WorkspaceMode.Floor || mode == WorkspaceMode.Ceiling;
+                bool busy = director != null && (director.IsPreviewing || (director.Core != null && director.Core.IsTransitioning));
+                return away && !busy;
+            }
+        }
+
         public void PressManager()
         {
-            if (!flags.wallManagerEnabled || !WallActive) return;
+            if (!flags.wallManagerEnabled) return;
+            // Closing is always allowed (the mode may have changed while the paper was open); opening needs the Manager here.
+            if (!_planCardOpen && !ManagerAvailable) return;
             EnsurePlanCard();
             if (_paper == null) return;
             _planCardOpen = !_planCardOpen;
@@ -94,6 +113,14 @@ namespace MuseDesk.Wall
                 _manager.OnProposed(r.planId, r.revision, r.title, r.provenance, r.items);
                 _manager.SetPlanNotes(r.objective, r.assumptions, r.risks);
                 _workExecution = r.workExecution ?? "";
+                int n = r.items != null ? r.items.Count : 0;
+                string spokenTitle = (r.title ?? "").Trim();
+                if (spokenTitle.StartsWith("Plan:", StringComparison.OrdinalIgnoreCase)) spokenTitle = spokenTitle.Substring(5).Trim();
+                spokenTitle = spokenTitle.TrimEnd('…', '.', ' ');
+                MuseDesk.Voice.AgentSpeech.Say("manager",
+                    "Here is my plan" + (spokenTitle.Length == 0 ? "" : ": " + spokenTitle) + ". " + n + (n == 1 ? " step" : " steps")
+                    + ". Untick anything you don't want, then stamp Approve.",
+                    _planCard != null && _planCard.Visible ? _planCard.root.position : SpeechSpot());
             });
             return true;
         }
@@ -102,10 +129,47 @@ namespace MuseDesk.Wall
         /// it did not understand); otherwise the words to show.</summary>
         public string RequestPlanByVoice(string objective)
         {
-            if (!flags.wallManagerEnabled || !WallActive || _backend == null) return null;
+            if (!flags.wallManagerEnabled || _backend == null) return null;
+            // rc20: not on the Wall used to fall through to the board's "new task" (a card nobody planned or worked).
+            if (!ManagerAvailable) return "The Manager works on the Wall, the Floor or the Ceiling. Open one, then tell the Manager your goal again.";
+            // rc22 (owner, worn rc21: "every question means the manager starts building a plan; allow it to answer normal
+            // questions too"): a question is answered (read-only side conversation); only a goal drafts a plan.
+            if (ManagerUtterance.IsQuestion(objective)) return AskManagerQuestion(objective);
             EnsurePlanCard();
             if (_paper != null && !_planCardOpen) PressManager();
             return RequestPlan(objective) ? "The Manager is drafting a plan. Nothing starts until you approve it." : _manager.Message;
+        }
+
+        SideConversationSession _managerSide;
+        string _managerQuestion, _managerAnswer;
+        /// <summary>For drivers: questions the Manager answered (not planned).</summary>
+        public int ManagerQuestionsAnswered { get; private set; }
+        public string ManagerLastAnswer => _managerAnswer ?? "";
+
+        /// <summary>Ask the Manager a question (read-only: nothing is planned or created). The answer is spoken and shown on the
+        /// Manager's paper.</summary>
+        public string AskManagerQuestion(string question)
+        {
+            if (_backend == null || string.IsNullOrWhiteSpace(question)) return null;
+            if (_managerSide == null) _managerSide = new SideConversationSession("manager", "mgr-ask-" + System.DateTime.UtcNow.Ticks.ToString("x"));
+            if (_managerSide.State == SideAskState.Asking) return "The Manager is still answering your last question.";
+            string rid, key;
+            if (!_managerSide.TryBegin(question, Time.unscaledTime, out rid, out key)) return null;
+            _managerQuestion = question.Trim();
+            _managerAnswer = null;
+            SideConversationSession session = _managerSide;
+            _backend.AskSide("manager", null, session.visitSessionId, question, -1, rid, key, reply =>
+            {
+                if (session != _managerSide || !session.Complete(reply)) return;
+                bool ok = reply.status == "answered" || reply.status == "amendment_suggested";
+                _managerAnswer = ok ? reply.reply : "I couldn't answer that just now.";
+                if (ok) ManagerQuestionsAnswered++;
+                _paperRefreshAt = 0f;
+                Note("Manager: " + (_managerAnswer.Length > 80 ? _managerAnswer.Substring(0, 77) + "..." : _managerAnswer));
+                MuseDesk.Voice.AgentSpeech.Say("manager", _managerAnswer,
+                    _planCard != null && _planCard.Visible ? _planCard.root.position : SpeechSpot());
+            });
+            return "Asking the Manager…";
         }
 
         public void ToggleItem(int index)
@@ -122,9 +186,35 @@ namespace MuseDesk.Wall
             _riskStep = false;
         }
 
+        /// <summary>rc22: some proposed steps are crossed out. The plan that would be approved is then not the plan on the paper,
+        /// so it must be revised first (the Manager redoes it without those steps; a new revision to read and stamp).</summary>
+        public bool PlanEditedSinceProposal
+        {
+            get
+            {
+                if (_manager.State != ManagerFlowState.AwaitingApproval) return false;
+                for (int i = 0; i < _manager.Items.Count; i++) if (!_manager.Items[i].approved) return true;
+                return false;
+            }
+        }
+
+        float _reviseHintSaidAt = -99f;
+
         public bool ApprovePlan()
         {
             List<string> approved, authorized; int rev; string key, problem;
+            if (PlanEditedSinceProposal)
+            {
+                // rc22 (owner, worn rc21: approval "is broken if you uncheck an item or two; make it clearer it needs a revision").
+                Note("You crossed out steps: press Revise now, then stamp the new plan");
+                if (Time.unscaledTime - _reviseHintSaidAt > 6f)
+                {
+                    _reviseHintSaidAt = Time.unscaledTime;
+                    MuseDesk.Voice.AgentSpeech.Say("manager", "You crossed out some steps. Press Revise and I'll redo the plan without them. Then stamp it.",
+                        _planCard != null && _planCard.Visible ? _planCard.root.position : SpeechSpot());
+                }
+                return false;
+            }
             if (!_manager.TryBuildCommit(out approved, out authorized, out rev, out key, out problem))
             {
                 Note(problem);
@@ -239,7 +329,11 @@ namespace MuseDesk.Wall
 
             // Printer: one card per canonical task id that is both committed and on the board. It prints into the
             // Manager's tray; its owner is told (a real committed card) and comes up for it when the ride lane is free.
+            // The tubes are part of the habitat from the moment it is up (not popped in with the first card).
+            if (cardTubes && WallActive && _view != null) EnsureCardTubes();
+
             ManagerPrintJob job;
+            int tubeOrder = 0;
             while (_view != null && WallActive && _manager.TryDequeuePrint(out job))
             {
                 HabitatRole owner;
@@ -248,10 +342,17 @@ namespace MuseDesk.Wall
                 _view.PrintToTray(job.taskId, owner);
                 _lastPrintAt = now;
                 if (_audio != null) _audio.Play(WallCue.PrintTick);
-                if (known && owner != HabitatRole.Manager && _stage != null)
+                if (known && owner != HabitatRole.Manager && cardTubes)
+                {
+                    // rc18 (owner): no walk-up-one-by-one. Every printed card goes down its owner's paper tube at once.
+                    EnsureCardTubes();
+                    if (_view.SendByTube(owner, 0.85f + 0.18f * tubeOrder) > 0) { SetDelivery(owner, CardDelivery.OnDesk, false); tubeOrder++; }
+                }
+                else if (known && owner != HabitatRole.Manager && _stage != null)
                     _stage.Accept(HabitatEvent.Of("print-" + job.taskId, HabitatEventKind.CardPrinted, owner, job.taskId), now);
-                Debug.Log("[MuseDesk.Wall] Printed card for task " + job.taskId + " -> " + job.agentId);
+                Debug.Log("[MuseDesk.Wall] Printed card for task " + job.taskId + " -> " + job.agentId + (cardTubes ? " (paper tube)" : ""));
             }
+            if (tubeOrder > 0 && _audio != null) _audio.Play(WallCue.PrintTick);
 
             // A printed card nobody is coming for (its pick-up was dropped, or everything was reset) goes down by the chute.
             if (_view != null && _stage != null && WallActive && now >= _traySweepAt && now - _lastPrintAt > 1.2f)
@@ -279,6 +380,37 @@ namespace MuseDesk.Wall
             if (now < _paperRefreshAt) return;
             _paperRefreshAt = now + 0.1f;
             RefreshPlanPaper();
+        }
+
+        [Tooltip("rc18 (owner, worn rc17): committed cards travel to every owner's desk at once through glass paper tubes, " +
+                 "instead of each owner riding up to collect its card in turn. Off = the old collect-by-elevator trips.")]
+        public bool cardTubes = true;
+        Material _tubeMat;
+
+        void EnsureCardTubes()
+        {
+            if (_view == null) return;
+            if (_view.tubeMaterial == null)
+            {
+                // The portal pad's soft particle material (URP Particles/Unlit, transparent) is already in the build with the
+                // right keywords: a copy with a white texture makes see-through glass. Read straight from the prefab.
+                Material src = null;
+                GameObject art = portalArt != null ? portalArt : portalArtLowFx;
+                if (art != null) { var psr = art.GetComponentInChildren<ParticleSystemRenderer>(true); if (psr != null) src = psr.sharedMaterial; }
+                if (src == null) { EnsurePortalFx(); src = _portalColumnMat; }
+                if (_tubeMat == null && src != null)
+                {
+                    _tubeMat = new Material(src) { name = "CardTube_Glass" };
+                    if (_tubeMat.HasProperty("_BaseMap")) _tubeMat.SetTexture("_BaseMap", Texture2D.whiteTexture);
+                    if (_tubeMat.HasProperty("_MainTex")) _tubeMat.SetTexture("_MainTex", Texture2D.whiteTexture);
+                    if (_tubeMat.HasProperty("_Cull")) _tubeMat.SetFloat("_Cull", 0f);
+                    Color c = Color.Lerp(WallHabitatView.Teal, Color.white, 0.55f); c.a = 0.22f;   // rc19: fainter (owner: "not so distracting")
+                    if (_tubeMat.HasProperty(FxBaseColor)) _tubeMat.SetColor(FxBaseColor, c);
+                    if (_tubeMat.HasProperty(FxColor)) _tubeMat.SetColor(FxColor, c);
+                }
+                _view.tubeMaterial = _tubeMat;
+            }
+            _view.EnsureTubes();
         }
 
         void SetDelivery(HabitatRole role, CardDelivery to, bool byChute)
@@ -379,7 +511,9 @@ namespace MuseDesk.Wall
                     _receiptBody = cut > 0 ? text.Substring(cut).Trim() : text.Trim();
                     if (string.IsNullOrEmpty(_receiptTitle)) _receiptTitle = title ?? "";
                 });
-            bool walking = WallActive && _stage != null
+            // rc19 (owner: "the elevator should only be used for a question, otherwise it's slow"): with the paper tubes on, the
+            // summary flies straight from the Manager's printer to you; the Manager no longer rides down with it (about 20 s).
+            bool walking = !cardTubes && WallActive && _stage != null
                 && _stage.Accept(HabitatEvent.Of("synth-" + id, HabitatEventKind.SynthesisReady, HabitatRole.Manager, rc.anchorTaskId), Time.unscaledTime);
             if (!walking) StartReceiptFlight(_view != null && WallActive ? _view.SocketWorld("TaskPrinterSocket", new Vector3(0f, 0.04f, 0.03f)) : ReceiptTarget());
         }
@@ -392,9 +526,21 @@ namespace MuseDesk.Wall
             _receiptCard = new WallCard(nearUserRig, "WallReceiptCard", keyTemplate, font, ArtHelper(), new Vector2(0.18f, 0.20f), keyScale);
         }
 
+        bool _receiptFlightDeferred;
+        Vector3 _receiptDeferredFrom;
+
         void StartReceiptFlight(Vector3 fromWorld)
         {
             if (_receiptFlyer != null || _board.Receipt.stage == ReceiptStage.None || _board.Receipt.stage == ReceiptStage.OnDesk) return;
+            // Acts are dropped while the habitat is being switched off (leaving Wall mode): no object may be parented under it
+            // then (Unity: "Cannot set the parent ... while activating or deactivating"). Fly the receipt once it is active again.
+            if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            {
+                _receiptFlightDeferred = true;
+                _receiptDeferredFrom = fromWorld;
+                return;
+            }
+            _receiptFlightDeferred = false;
             _board.SetReceiptStage(ReceiptStage.ComingDown);
             _receiptFrom = fromWorld;
             _receiptFlyer = ArtHelper().Box(transform, "ReceiptFlyer", Vector3.zero, Vector3.one, Color.Lerp(WallHabitatView.Lavender, WallHabitatView.Paper, 0.55f)).transform;
@@ -406,6 +552,7 @@ namespace MuseDesk.Wall
 
         void TickReceipt(float dt)
         {
+            if (_receiptFlightDeferred && _receiptFlyer == null) StartReceiptFlight(_receiptDeferredFrom);
             if (_receiptFlyer != null)
             {
                 bool done = _receiptClock.Step(dt) || !_receiptClock.Running;
@@ -425,10 +572,12 @@ namespace MuseDesk.Wall
                     if (_receiptCard != null)
                     {
                         Vector3 eye = h != null ? h.position : ReceiptTarget() + Vector3.back;
-                        _receiptCard.Place(ReceiptTarget(), eye, 12f);
+                        _receiptCard.Place(CardSpot(_receiptCard, ReceiptTarget()), eye, 12f);
                         _receiptCard.Show(true);
                     }
                     if (_audio != null) _audio.Play(WallCue.Land, true);
+                    // rc20 (owner): the Manager says it, not only the paper.
+                    MuseDesk.Voice.AgentSpeech.Say("manager", "All done. " + _receiptTitle, _receiptCard != null ? _receiptCard.root.position : ReceiptTarget());
                     Debug.Log("[MuseDesk.Wall] Plan summary receipt delivered to the desk (artifact " + _board.Receipt.artifactId + ").");
                 }
             }
@@ -480,6 +629,7 @@ namespace MuseDesk.Wall
             _board.Reset();
             if (_view != null) _view.ClearCards();
             if (_receiptFlyer != null) { Destroy(_receiptFlyer.gameObject); _receiptFlyer = null; }
+            _receiptFlightDeferred = false;
             if (_receiptCard != null) _receiptCard.Show(false);
             _managerWarning = ""; _statusFails = 0; _statusBusy = false; _askMode = false; _showCommittedPlan = false;
         }
@@ -529,9 +679,14 @@ namespace MuseDesk.Wall
         /// <summary>The live plan paper's footer for the backend's declared work mode.</summary>
         public static string PlanFooter(string workExecution)
         {
-            return workExecution == "sandbox" ? "LIVE model · code + tests really run in a sandbox"
-                                              : "LIVE model · text only, no code tools";
+            // rc20 (owner: no LIVE tags). Says what really happens; "restricted workspace", never "sandbox" (honesty rule).
+            return workExecution == "sandbox" ? "Code and tests really run in a restricted workspace on your PC"
+                                              : "Model text only, no code tools";
         }
+
+        readonly List<bool> _approvedScratch = new List<bool>();
+        /// <summary>For drivers: the plan paper (step ticks).</summary>
+        public WallPlanPaper PlanPaper => _paper;
 
         static void Key(List<KeyValuePair<string, Action>> keys, string label, Action a) { keys.Add(new KeyValuePair<string, Action>(label, a)); }
 
@@ -563,7 +718,12 @@ namespace MuseDesk.Wall
                 _paper.SetStamp(null, Color.clear);
                 var sb = new StringBuilder();
                 if (!string.IsNullOrEmpty(_manager.Message) && st != ManagerFlowState.Monitoring) sb.AppendLine(_manager.Message);
-                sb.Append("Pick a goal. You will see the plan before anything is created.");
+                if (!string.IsNullOrEmpty(_managerQuestion))
+                {
+                    sb.Append("You: ").AppendLine(_managerQuestion);
+                    sb.Append("Manager: ").AppendLine(string.IsNullOrEmpty(_managerAnswer) ? "…thinking" : _managerAnswer).AppendLine();
+                }
+                sb.Append("Pick a goal, or say \"Manager, build …\". Ask the Manager anything; only a goal makes a plan, and you see it before anything is created.");
                 _paper.ShowText("Manager: what should the team do?", sb.ToString(), mode);
                 for (int i = 0; i < ObjectiveKeys.Length; i++) { int oi = i; Key(keys, ObjectiveKeys[i], () => RequestPlan(Objectives[oi])); }
                 Key(keys, _board.Count > 0 && committed ? "Status" : null, () => _askMode = false);
@@ -576,7 +736,7 @@ namespace MuseDesk.Wall
         void ShowPlanPage(List<KeyValuePair<string, Action>> keys, ManagerFlowState st, bool committed)
         {
             PlanModel model = PlanPaperMapper.ToModel(_manager);
-            PlanLayoutResult layout = PlanReviewLayout.Layout(model, _paper.TextWidthMm, 0f, _paper.readingDistance);
+            PlanLayoutResult layout = PlanReviewLayout.Layout(model, _paper.PlanTextWidthMm, 0f, _paper.readingDistance);
             List<PlanPage> pages = PlanPaperPager.Paginate(layout, _paper.PlanPageHeightMm);      // the rows stop above the framed stamp zone
             if (pages.Count == 0) pages.Add(new PlanPage());
             _page = ((_page % pages.Count) + pages.Count) % pages.Count;
@@ -584,10 +744,19 @@ namespace MuseDesk.Wall
             string foot = layout.ProvenanceText;
             if (st == ManagerFlowState.Committing) foot += " · stamping: waiting for the board to confirm";
             else if (st == ManagerFlowState.AwaitingApproval)
-                foot += " · " + (_riskStep ? "a risky step needs your separate OK" : "rev " + _manager.Revision + " · proposed steps are not tasks yet");
+                foot += " · " + (PlanEditedSinceProposal ? "you crossed out steps: press Revise now for the new plan, then stamp it"
+                                : _riskStep ? "a risky step needs your separate OK" : "rev " + _manager.Revision + " · proposed steps are not tasks yet");
             else if (st == ManagerFlowState.Rejected) foot += " · rejected: nothing was created";
             else foot += " · committed: these are real board cards";
-            _paper.ShowPage(pages[_page], _page, pages.Count, foot);
+            _paper.ShowPage(pages[_page], _page, pages.Count, foot, true);
+            // Each work item's tick sits beside its title on the page (✓ kept / ✗ skipped); only while the plan awaits you.
+            if (st == ManagerFlowState.AwaitingApproval)
+            {
+                _approvedScratch.Clear();
+                for (int i = 0; i < _manager.Items.Count; i++) _approvedScratch.Add(_manager.Items[i].approved);
+                _paper.SetChecks(_approvedScratch, ToggleItem);
+            }
+            else _paper.SetChecks(null, null);
 
             // The stamp is a CONFIRMED outcome: approved once the backend created the cards, rejected once it said so.
             // The framed zone says where to stamp; the mark itself is drawn inside it, only after the backend confirmed.
@@ -596,27 +765,20 @@ namespace MuseDesk.Wall
             else
             {
                 _paper.SetStamp(null, Color.clear);
-                _paper.SetStampZone(st == ManagerFlowState.AwaitingApproval ? StampZoneMode.Awaiting : st == ManagerFlowState.Committing ? StampZoneMode.Committing : StampZoneMode.Hidden);
+                _paper.SetStampZone(st == ManagerFlowState.AwaitingApproval ? (PlanEditedSinceProposal ? StampZoneMode.NeedsRevision : StampZoneMode.Awaiting)
+                                    : st == ManagerFlowState.Committing ? StampZoneMode.Committing : StampZoneMode.Hidden);
             }
 
-            int n = _manager.Items.Count;
-            int windows = Mathf.Max(1, (n + 2) / 3);
-            _stepWindow = ((_stepWindow % windows) + windows) % windows;
-            bool more = pages.Count > 1 || windows > 1;
-            Action turn = () => { _page++; _stepWindow++; };
+            bool more = pages.Count > 1;
+            Action turn = () => { _page++; };
 
             // Approve and Reject are the two stamps (guarded exactly as before: see Stamp.cs), so the paper has no keys for them.
-            // What is left: the step ticks, More (page / next steps), Revise, Close, and the separate OK for a risky step.
+            // The steps are ticked on the paper itself (above). What is left: More (next page), Revise, Close, and the separate
+            // OK for a risky step.
             if (st == ManagerFlowState.AwaitingApproval)
             {
-                for (int k = 0; k < 3; k++)
-                {
-                    int ii = _stepWindow * 3 + k;
-                    if (ii < n) Key(keys, (_manager.Items[ii].approved ? "Keep " : "Skip ") + (ii + 1), () => ToggleItem(ii));
-                    else Key(keys, null, null);
-                }
                 Key(keys, more ? "More" : null, turn);
-                Key(keys, "Revise", () => RevisePlan());
+                Key(keys, PlanEditedSinceProposal ? "Revise now" : "Revise", () => RevisePlan());
                 Key(keys, _riskStep ? "Confirm risk" : null, ConfirmRisky);
                 Key(keys, null, null);
                 Key(keys, "Close", PressManager);
@@ -627,7 +789,8 @@ namespace MuseDesk.Wall
                 Key(keys, st == ManagerFlowState.Rejected ? "New plan" : null, () => _askMode = true);
                 Key(keys, null, null);
                 Key(keys, more ? "More" : null, turn);
-                Key(keys, null, null); Key(keys, null, null); Key(keys, null, null);
+                Key(keys, null, null); Key(keys, null, null);
+                Key(keys, "Close", PressManager);          // rc22 (owner): a rejected / stamped paper can be closed too
                 Key(keys, "Close", PressManager);
             }
         }
@@ -711,7 +874,7 @@ namespace MuseDesk.Wall
         {
             if (_receiptCard == null) return;
             Transform h = ResolveHead();
-            _receiptCard.Place(ReceiptTarget(), h != null ? h.position : ReceiptTarget() + Vector3.back, 12f);
+            _receiptCard.Place(CardSpot(_receiptCard, ReceiptTarget()), h != null ? h.position : ReceiptTarget() + Vector3.back, 12f);
         }
 
         /// <summary>One line for drivers: what the paper shows right now.</summary>

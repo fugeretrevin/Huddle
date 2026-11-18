@@ -7,7 +7,9 @@ using UnityEngine.Android;
 #endif
 using Oculus.Voice;
 using Meta.WitAi;
+using Meta.WitAi.Configuration;
 using Meta.WitAi.Json;
+using Meta.WitAi.Requests;
 
 namespace MuseDesk.Voice
 {
@@ -28,6 +30,36 @@ namespace MuseDesk.Voice
         public float maxRecordingSeconds = 6f;
         [Tooltip("Silence after speech that ends the request (s).")]
         public float silenceSeconds = 1.4f;
+        /// <summary>A pause this long between words still belongs to the same sentence.</summary>
+        public const float WordGapSeconds = 2.2f;
+        /// <summary>A sentence (a goal for the Manager) may run this long.</summary>
+        public const float MinSentenceSeconds = 15f;
+
+        [Header("rc21: one sentence across pauses")]
+        [Tooltip("Join pieces the speech service cut at a pause into one sentence (see SentenceStitcher).")]
+        public bool stitchSentences = true;
+        [Tooltip("Microphone level (0..1) that counts as the user starting to talk again while a piece is held.")]
+        // rc22 (owner: "less picky"): 0.1 -> 0.05, so a softly spoken continuation also extends the wait for more words. It
+        // can only ever make the stitcher wait longer, and never past its hold cap (4 s after a piece).
+        public float resumeSoundLevel = 0.05f;
+        /// <summary>Set by VoiceCommandCenter: whether a piece already reads as a whole command (act now) or clearly goes on.</summary>
+        public Func<string, PieceVerdict> SentenceVerdict;
+
+        readonly SentenceStitcher _stitch = new SentenceStitcher();
+        bool _pieceLive;            // stitching: the reopened microphone has started, events now belong to the new piece
+        bool _rearmIssued;          // stitching: the microphone was asked to open again
+        float _nextRearmTry;
+        bool _endAsked;             // the user (or a cap) ended the request: the next final is the sentence
+        float _pieceCap = 20f;
+        bool Stitching => _stitch.Holding;
+
+        /// <summary>For drivers: sentences that were joined from more than one piece, and the last one's piece count.</summary>
+        public int StitchedSentences { get; private set; }
+        public int LastPieces { get; private set; }
+        public string LastSentence { get; private set; } = "";
+        public string StitchState => "stitching=" + Stitching + " pieces=" + _stitch.Pieces + " resumed=" + _stitch.Resumed
+            + " live=" + _pieceLive + " rearm=" + _rearmIssued + " text='" + _stitch.Text + "' holds=" + _stitch.HoldCount
+            + " stitched=" + StitchedSentences + " lastPieces=" + LastPieces + " last='" + LastSentence + "'";
 
         public event Action<string> PartialTranscript;
         public event Action<string> FinalTranscript;
@@ -90,8 +122,14 @@ namespace MuseDesk.Voice
                 var rc = appVoice.RuntimeConfiguration;
                 if (rc != null)
                 {
-                    if (maxRecordingSeconds > 0f) rc.maxRecordingTime = maxRecordingSeconds;
-                    if (silenceSeconds > 0f) rc.minKeepAliveTimeInSeconds = silenceSeconds;
+                    // rc20 (worn rc19): the request stopped between two words and the sentence came back half said. The SDK
+                    // closes the request 1 s after the last new word by default; a goal for the Manager needs pauses to think.
+                    // (This object is the one WitService reads on every audio sample, so the values do apply. They only
+                    // govern the CLIENT's closing; the service's own end-of-utterance is handled by the stitcher, rc21.)
+                    rc.maxRecordingTime = Mathf.Max(rc.maxRecordingTime, maxRecordingSeconds, MinSentenceSeconds);
+                    if (silenceSeconds > 0f) rc.minKeepAliveTimeInSeconds = Mathf.Max(rc.minKeepAliveTimeInSeconds, silenceSeconds, WordGapSeconds);
+                    rc.minTranscriptionKeepAliveTimeInSeconds = Mathf.Max(rc.minTranscriptionKeepAliveTimeInSeconds, WordGapSeconds);
+                    _pieceCap = rc.maxRecordingTime;
                 }
                 var ev = appVoice.VoiceEvents;
                 ev.OnPartialTranscription.AddListener(SdkPartial);
@@ -135,6 +173,7 @@ namespace MuseDesk.Voice
             }
             _hooked = false;
             _requestOpen = false;
+            _stitch.Reset();
             SetListening(false);
             lock (_lock) _queue.Clear();
         }
@@ -182,6 +221,10 @@ namespace MuseDesk.Voice
             _requestAt = Time.unscaledTime;
             _gotFinal = false;
             _aborted = false;
+            _endAsked = false;
+            _driverMode = false;
+            _pieceLive = _rearmIssued = false;
+            _stitch.Begin(Time.unscaledTime);
             try { appVoice.Activate(); }
             catch (Exception e)
             {
@@ -194,6 +237,9 @@ namespace MuseDesk.Voice
         public void EndRequest()
         {
             if (appVoice == null || !_requestOpen) return;
+            _endAsked = true;
+            // Between two pieces (nothing new said yet): the sentence is what is in.
+            if (Stitching && (!_pieceLive || !_stitch.Resumed)) { Deliver(_stitch.Finish(), true); return; }
             try { appVoice.Deactivate(); } catch { }
         }
 
@@ -202,6 +248,7 @@ namespace MuseDesk.Voice
             if (appVoice == null) return;
             _aborted = true;
             _requestOpen = false;
+            _stitch.Reset();
             try { appVoice.DeactivateAndAbortRequest(); } catch { }
             SetListening(false);
         }
@@ -249,9 +296,12 @@ namespace MuseDesk.Voice
         {
             // A request the service never acknowledged (no microphone opened, no answer, no error)
             // must not block the next one.
-            if (_requestOpen && Time.unscaledTime - _requestAt > maxRecordingSeconds + 12f)
+            if (_requestOpen && Time.unscaledTime - _requestAt > Mathf.Max(maxRecordingSeconds, _pieceCap) + 12f)
             {
+                // Words already joined are not thrown away because the last piece never came back.
+                if (Stitching) { Deliver(_stitch.Finish(), true); return; }
                 _requestOpen = false;
+                _stitch.Reset();
                 try { appVoice.DeactivateAndAbortRequest(); } catch { }
                 SetListening(false);
                 Raise(VoiceProblem.Timeout, null);
@@ -272,43 +322,154 @@ namespace MuseDesk.Voice
                 try { Handle(q); }
                 catch (Exception e) { Debug.LogException(e); }
             }
+            TickStitch(Time.unscaledTime);
         }
+
+        // ───────────────────────── rc21: one sentence across the service's pauses ─────────────────────────
+
+        void TickStitch(float now)
+        {
+            if (!_requestOpen || !Stitching) return;
+            // Open the microphone again as soon as the service lets go of the previous piece (it refuses while that one is
+            // still active, returning null, so this simply retries a few times a second).
+            if (!_rearmIssued && now >= _nextRearmTry)
+            {
+                _nextRearmTry = now + 0.1f;
+                if (_driverMode) _rearmIssued = true;      // the driver says when the microphone is open again
+                else try
+                {
+                    var r = appVoice != null ? appVoice.Activate(new WitRequestOptions(), new VoiceServiceRequestEvents()) : null;
+                    if (r != null) { _rearmIssued = true; _requestAt = now; }
+                }
+                catch (Exception e) { Debug.LogWarning("[MuseDesk] voice: could not reopen the microphone (" + e.GetType().Name + ")."); _rearmIssued = true; }
+            }
+            if (_pieceLive && !_stitch.Resumed && _level >= resumeSoundLevel) _stitch.OnSound(now);
+            if (_stitch.Tick(now) == StitchStep.Emit) Deliver(_stitch.Finish(), true);     // Finish keeps words still in progress
+        }
+
+        /// <summary>The sentence is finished: close everything and hand it on (empty: nothing was heard).</summary>
+        void Deliver(string sentence, bool stopMicrophone)
+        {
+            int pieces = Mathf.Max(1, _piecesPending);
+            _piecesPending = 0;
+            _gotFinal = true;
+            _requestOpen = false;
+            _pieceLive = _rearmIssued = false;
+            if (stopMicrophone)
+            {
+                _aborted = true;        // the reopened microphone's own stop / abort events are not news
+                if (!_driverMode) { try { appVoice.DeactivateAndAbortRequest(); } catch { } }
+            }
+            SetListening(false);
+            if (string.IsNullOrWhiteSpace(sentence)) { Raise(VoiceProblem.NoSpeech, null); return; }
+            LastSentence = sentence.Trim();
+            LastPieces = pieces;
+            if (pieces > 1) StitchedSentences++;
+            FinalTranscript?.Invoke(LastSentence);
+        }
+
+        int _piecesPending;
+        bool _driverMode;           // fake service events from a driver: never open the real microphone
+
+        /// <summary>For Play Mode drivers (AgentScripts/Rc21VoiceProbe): open a request with fake service events, no microphone
+        /// and no network. Follow with DriverPiece / DriverMicReopened / DriverPartial; the stitcher and VoiceCommandCenter run
+        /// exactly as with the real service.</summary>
+        public void DriverOpen()
+        {
+            if (_requestOpen) AbortRequest();
+            _driverMode = true;
+            _requestOpen = true;
+            _requestAt = Time.unscaledTime;
+            _gotFinal = _aborted = _endAsked = false;
+            _pieceLive = _rearmIssued = false;
+            _stitch.Begin(Time.unscaledTime);
+            Push(Ev.Start);
+        }
+        public void DriverPartial(string text) { Push(Ev.Partial, text); }
+        /// <summary>The service calls a piece final (and repeats it with its response, as the real one does).</summary>
+        public void DriverPiece(string text) { Push(Ev.Partial, text); Push(Ev.Full, text); Push(Ev.Full, text); Push(Ev.Stop); Push(Ev.Done); }
+        public void DriverMicReopened() { Push(Ev.Start); }
+        public void DriverSilence() { Push(Ev.Stop); Push(Ev.Done); }
 
         void Handle(Queued q)
         {
+            float now = Time.unscaledTime;
             switch (q.Kind)
             {
                 case Ev.Start:
-                    if (!_aborted) SetListening(true);
+                    if (_aborted) break;
+                    if (Stitching)
+                    {
+                        // The microphone is open again for the rest of the sentence (the app never stopped "listening").
+                        if ((_rearmIssued || _driverMode) && !_pieceLive) { _rearmIssued = true; _pieceLive = true; _stitch.OnMicReopened(now); }
+                        break;
+                    }
+                    SetListening(true);
                     break;
                 case Ev.Stop:
+                    if (Stitching && _requestOpen) break;      // between two pieces the user is still being listened to
                     SetListening(false);
                     break;
                 case Ev.Partial:
-                    if (_requestOpen && !string.IsNullOrWhiteSpace(q.A)) PartialTranscript?.Invoke(q.A.Trim());
+                    if (!_requestOpen || string.IsNullOrWhiteSpace(q.A)) break;
+                    if (Stitching && !_pieceLive) break;       // late words of the piece already taken
+                    _stitch.OnPartial(q.A.Trim(), now);
+                    PartialTranscript?.Invoke(_stitch.Display(q.A));
                     break;
                 case Ev.Full:
-                    if (!_requestOpen || _gotFinal || string.IsNullOrWhiteSpace(q.A)) break;
-                    _gotFinal = true;
-                    _requestOpen = false;
-                    SetListening(false);
-                    FinalTranscript?.Invoke(q.A.Trim());
-                    break;
+                    {
+                        if ((!_requestOpen || _gotFinal) && !string.IsNullOrWhiteSpace(q.A)) LogLatePiece(q.A);
+                        if (!_requestOpen || _gotFinal || string.IsNullOrWhiteSpace(q.A)) break;
+                        if (Stitching && !_pieceLive) break;   // the previous piece's response repeating its transcript
+                        string piece = q.A.Trim();
+                        bool closing = !stitchSentences || _endAsked;
+                        PieceVerdict verdict = PieceVerdict.Unknown;
+                        if (!closing && SentenceVerdict != null)
+                        {
+                            try { verdict = SentenceVerdict(_stitch.Display(piece)); } catch (Exception) { verdict = PieceVerdict.Unknown; }
+                        }
+                        StitchStep step = _stitch.OnFinal(piece, now, verdict, closing);
+                        if (step == StitchStep.Ignore) break;
+                        _piecesPending = _stitch.Pieces;
+                        if (step == StitchStep.Emit) { Deliver(_stitch.TakeSentence(), false); break; }
+                        // Held: the sentence may go on. Keep listening and open the microphone again for the next piece.
+                        _pieceLive = false;
+                        _rearmIssued = false;
+                        _nextRearmTry = now;
+                        _requestAt = now;
+                        PartialTranscript?.Invoke(_stitch.Text);
+                        break;
+                    }
                 case Ev.Inactive:
                     // The SDK closed the microphone because nobody spoke; Done follows.
                     break;
                 case Ev.Done:
                     if (!_requestOpen) break;
+                    if (Stitching)
+                    {
+                        // The reopened microphone closed with no new final (silence): the sentence is what is in.
+                        // (A Done before the reopened microphone started is the previous piece completing: not news.)
+                        if (_pieceLive) Deliver(_stitch.Finish(), false);
+                        break;
+                    }
                     _requestOpen = false;
                     SetListening(false);
                     if (!_gotFinal && !_aborted) Raise(VoiceProblem.NoSpeech, null);
                     break;
                 case Ev.Error:
                     {
+                        string code = q.A ?? "", message = q.B ?? "";
+                        if (Stitching && _requestOpen)
+                        {
+                            // Words are already in: act on them rather than show an error. An error from the previous piece
+                            // (after its transcript) is not news at all.
+                            Debug.LogWarning("[MuseDesk] voice: speech service error while joining a sentence: " + Scrub(code) + " " + Scrub(message));
+                            if (_pieceLive) Deliver(_stitch.Finish(), true);
+                            break;
+                        }
                         bool was = _requestOpen;
                         _requestOpen = false;
                         SetListening(false);
-                        string code = q.A ?? "", message = q.B ?? "";
                         Debug.LogWarning("[MuseDesk] voice: speech service error: " + Scrub(code) + " " + Scrub(message));
                         if (!was || _gotFinal || _aborted) break;
                         string all = (code + " " + message).ToLowerInvariant();
@@ -325,6 +486,22 @@ namespace MuseDesk.Voice
                         break;
                     }
             }
+        }
+
+        string _lastLateLogged = "";
+
+        /// <summary>rc22 diagnostics: words the service finalised after the sentence was already handed on (the user ended the
+        /// request between pieces, or a cap closed it). They are not acted on; the log says so, once per distinct text, so a
+        /// headset session shows whether words were lost. (The owner's own speech, on their own device: Debug.Log only.)</summary>
+        void LogLatePiece(string text)
+        {
+            string t = text.Trim();
+            if (t.Length == 0 || t == _lastLateLogged) return;
+            if (LastSentence.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0) return;     // the repeat of a piece already used
+            _lastLateLogged = t;
+            if (t.Length > 160) t = t.Substring(0, 157) + "...";
+            Debug.Log("[MuseDesk.Voice] dropped late piece \"" + t.Replace('"', '\'') + "\": it arrived after the sentence \""
+                      + LastSentence.Replace('"', '\'') + "\" was already handed on" + (_aborted ? " (request closed)" : ""));
         }
 
         void SetListening(bool on)

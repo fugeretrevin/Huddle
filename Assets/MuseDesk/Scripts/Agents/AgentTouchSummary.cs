@@ -126,8 +126,9 @@ namespace MuseDesk.Agents
 
             bool live = controller != null && controller.IsLive;
             _sb.Clear();
-            _sb.Append("<b>").Append(view.displayName).Append("</b>   <size=80%>")
-               .Append(live ? "LIVE" : "SCRIPTED DEMO").Append("</size>\n");
+            _sb.Append("<b>").Append(view.displayName).Append("</b>");
+            if (!live) _sb.Append("   <size=80%>SCRIPTED DEMO</size>");        // rc20 (owner): no LIVE tag
+            _sb.Append('\n');
             // Same words as the desk nameplate (one mapping for every surface).
             bool waitingOnUser = false;
             if (controller != null)

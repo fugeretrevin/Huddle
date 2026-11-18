@@ -55,12 +55,15 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void WallIsOfferedOnlyFromTheDeskAtRest()
+        public void WallIsOfferedFromAnyPlaceAtRest()
         {
+            // rc18 (owner): Wall from anywhere. From Floor / Ceiling at rest the office goes home first (the director chains it).
             var i = In(PlacementMode.Floor);
-            Assert.IsTrue(SpacesDockLogic.Compute(i).wallDisabled, "Floor -> Wall must go through Desk (a swept move)");
+            Assert.IsFalse(SpacesDockLogic.Compute(i).wallDisabled, "Floor at rest offers Wall (via Desk)");
             i = In(PlacementMode.Ceiling);
-            Assert.IsTrue(SpacesDockLogic.Compute(i).wallDisabled);
+            Assert.IsFalse(SpacesDockLogic.Compute(i).wallDisabled, "Ceiling at rest offers Wall (via Desk)");
+            i = In(PlacementMode.Floor, wall: false);
+            Assert.IsTrue(SpacesDockLogic.Compute(i).wallDisabled, "flag off: no Wall");
             i = In(); i.previewing = true; i.floorPreview = true;
             Assert.IsTrue(SpacesDockLogic.Compute(i).wallDisabled, "not while a floor preview is open");
             i = In(); i.transitioning = true;
@@ -70,17 +73,18 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
-        public void GreyedWallSaysWhyOnlyWhenFloorOrCeilingIsAtRest()
+        public void WallKeyNeedsNoExplanationAnywhere()
         {
-            Assert.AreEqual(SpacesDockLogic.WallFromDeskNote, SpacesDockLogic.Compute(In(PlacementMode.Floor)).wallNote);
-            Assert.AreEqual(SpacesDockLogic.WallFromDeskNote, SpacesDockLogic.Compute(In(PlacementMode.Ceiling)).wallNote);
+            // rc18: Wall works from Floor / Ceiling too, so the old "go back to Desk first" line is never shown.
+            Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(In(PlacementMode.Floor)).wallNote));
+            Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(In(PlacementMode.Ceiling)).wallNote));
             Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(In()).wallNote), "Desk offers Wall: nothing to explain");
             Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(In(PlacementMode.Floor, wall: false)).wallNote), "flag off: say nothing");
             var i = In(PlacementMode.Floor); i.previewing = true; i.floorPreview = true;
             Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(i).wallNote), "preview keys own the line");
             i = In(PlacementMode.Floor); i.transitioning = true;
             Assert.IsTrue(string.IsNullOrEmpty(SpacesDockLogic.Compute(i).wallNote), "moving: Stop owns the line");
-            Assert.IsTrue(SpacesDockLogic.Compute(In(PlacementMode.Floor)).wallDisabled, "the rule itself is unchanged");
+            Assert.IsFalse(SpacesDockLogic.Compute(In(PlacementMode.Floor)).wallDisabled, "offered at rest");
         }
 
         [Test]
@@ -119,6 +123,27 @@ namespace MuseDesk.Tests.EditMode
             k = SpacesDockLogic.Compute(i);
             Assert.IsTrue(k.move);
             Assert.IsFalse(k.select || k.manager);
+        }
+
+        [Test]
+        public void ManagerKeyIsOfferedOnTheFloorAndTheCeilingAtRest()
+        {
+            // rc22 (owner, worn rc21): "allow the manager to function on the ceiling and floor modes".
+            foreach (var m in new[] { PlacementMode.Floor, PlacementMode.Ceiling })
+            {
+                var i = In(m); i.wallManagerEnabled = true;
+                var k = SpacesDockLogic.Compute(i);
+                Assert.IsTrue(k.manager, m + " at rest offers the Manager");
+                Assert.IsFalse(k.move || k.select || k.meet, m + ": the Wall's other keys stay on the Wall");
+                i.transitioning = true;
+                Assert.IsFalse(SpacesDockLogic.Compute(i).manager, m + ": not while the office moves");
+                i = In(m); i.wallManagerEnabled = true; i.previewing = true; i.floorPreview = m == PlacementMode.Floor;
+                Assert.IsFalse(SpacesDockLogic.Compute(i).manager, m + ": not while a preview is open");
+                i = In(m);
+                Assert.IsFalse(SpacesDockLogic.Compute(i).manager, m + ": flag off, no Manager");
+            }
+            var d = In(); d.wallManagerEnabled = true;
+            Assert.IsFalse(SpacesDockLogic.Compute(d).manager, "Desk: unchanged (no Manager key)");
         }
 
         [Test]

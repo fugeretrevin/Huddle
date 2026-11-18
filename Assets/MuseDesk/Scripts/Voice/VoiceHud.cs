@@ -1,3 +1,4 @@
+using System;
 using TMPro;
 using UnityEngine;
 using MuseDesk.Workspace;
@@ -49,6 +50,32 @@ namespace MuseDesk.Voice
         public TMP_Text confirmLabel;
         public TMP_Text cancelLabel;
 
+        [Header("rc21: the readout's own spot")]
+        [Tooltip("When the readout appears, lift it off the dock and turn it to face the eyes (see PlaceForEye).")]
+        public bool placeTowardEye = true;
+        [Tooltip("How far above the microphone key the readout's centre sits (m, world up).")]
+        public float liftMetres = 0.10f;
+        [Tooltip("How far from the microphone key toward the eyes the readout's centre sits (m).")]
+        public float towardEyeMetres = 0.08f;
+
+        /// <summary>rc20 (owner, worn rc19: "the panel with what was heard was intersecting with the panel, bring that bit
+        /// out"). Set by whoever shows cards near the user (the Wall habitat): given the readout's world bounds, the world
+        /// offset that brings it out in front of anything it would cut into (zero when it is clear).</summary>
+        public static Func<Bounds, Vector3> Clearance;
+        Vector3 _readoutRest, _confirmRest, _cancelRest, _nudge;
+        Quaternion _readoutRestRot = Quaternion.identity, _confirmRestRot = Quaternion.identity, _cancelRestRot = Quaternion.identity;
+        // The pose the readout and its keys have while shown (local to their parents), without the clearance nudge.
+        Vector3 _readoutBase, _confirmBase, _cancelBase;
+        Quaternion _readoutBaseRot = Quaternion.identity, _confirmBaseRot = Quaternion.identity, _cancelBaseRot = Quaternion.identity;
+        bool _restSet, _poseDirty = true;
+        Transform _eye;
+        /// <summary>For drivers: how far the readout is brought out right now (m).</summary>
+        public float NudgeMetres => _nudge.magnitude;
+        /// <summary>For drivers: true when the readout was lifted toward the eyes the last time it appeared.</summary>
+        public bool PlacedForEye { get; private set; }
+        /// <summary>For drivers: how many times the readout was given its spot.</summary>
+        public int PlaceCount { get; private set; }
+
         readonly ScaleEase _readoutEase = new ScaleEase();
         readonly ScaleEase _confirmEase = new ScaleEase();
         readonly ScaleEase _cancelEase = new ScaleEase();
@@ -96,6 +123,7 @@ namespace MuseDesk.Voice
                 if (cancelKey != null && _cancelEase.Shown) cancelKey.BroadcastMessage("SyncToCurrentScale", SendMessageOptions.DontRequireReceiver);
             }
             _wasAnimating = animating;
+            KeepClear(dt);
 
             if (halo == null) return;
             float target;
@@ -108,6 +136,133 @@ namespace MuseDesk.Voice
             if (Mathf.Abs(next - _levelShown) < 0.0005f) return;
             _levelShown = next;
             halo.localScale = haloRestScale * (1f + haloSwell * _levelShown);
+        }
+
+        void EnsureRest()
+        {
+            if (_restSet || readout == null) return;
+            _readoutRest = readout.localPosition; _readoutRestRot = readout.localRotation;
+            if (confirmKey != null) { _confirmRest = confirmKey.localPosition; _confirmRestRot = confirmKey.localRotation; }
+            if (cancelKey != null) { _cancelRest = cancelKey.localPosition; _cancelRestRot = cancelKey.localRotation; }
+            _readoutBase = _readoutRest; _readoutBaseRot = _readoutRestRot;
+            _confirmBase = _confirmRest; _confirmBaseRot = _confirmRestRot;
+            _cancelBase = _cancelRest; _cancelBaseRot = _cancelRestRot;
+            _restSet = true;
+        }
+
+        bool KeysIdle()
+        {
+            return !(_confirmEase.Shown || _confirmEase.Animating || _cancelEase.Shown || _cancelEase.Animating);
+        }
+
+        Transform Eye()
+        {
+            if (_eye != null && _eye.gameObject.activeInHierarchy) return _eye;
+            Camera c = Camera.main;
+            if (c != null) { _eye = c.transform; return _eye; }
+            var go = GameObject.Find("CenterEyeAnchor");
+            _eye = go != null ? go.transform : null;
+            return _eye;
+        }
+
+        /// <summary>
+        /// rc21 (owner, worn rc20: "the panel for speech is still clipping"). The readout was built 8 cm up the dock's own
+        /// face (MicSlot on ModeConsole, local y +0.08, z 0): coplanar with the dock body and its status lip, so it cut into
+        /// the dock, and into whatever stood next to the dock, from any angle. When it appears it now gets its own spot:
+        /// <see cref="liftMetres"/> above the microphone key and <see cref="towardEyeMetres"/> toward the eyes, turned to face
+        /// them (below eye line, in reach). The Confirm / Cancel keys keep their place in front of the readout's lower edge.
+        /// The spot is chosen only while the readout and both keys are hidden, so nothing moves under a pressing finger; it is
+        /// stored relative to the dock, so it follows the dock if the dock is moved.
+        /// </summary>
+        public void PlaceForEye()
+        {
+            EnsureRest();
+            if (readout == null) return;
+            Transform p = readout.parent;
+            Transform eye = Eye();
+            PlacedForEye = false;
+            _readoutBase = _readoutRest; _readoutBaseRot = _readoutRestRot;
+            _confirmBase = _confirmRest; _confirmBaseRot = _confirmRestRot;
+            _cancelBase = _cancelRest; _cancelBaseRot = _cancelRestRot;
+            if (placeTowardEye && p != null && eye != null)
+            {
+                Vector3 anchor = transform.position;                 // the microphone key
+                Vector3 toEye = eye.position - anchor;
+                float d = toEye.magnitude;
+                if (d > 0.12f)
+                {
+                    toEye /= d;
+                    Vector3 pos = anchor + Vector3.up * liftMetres + toEye * Mathf.Min(towardEyeMetres, d * 0.4f);
+                    Vector3 away = pos - eye.position;                // the text faces -Z: +Z points away from the eyes
+                    if (away.sqrMagnitude > 1e-6f)
+                    {
+                        Quaternion rot = Quaternion.LookRotation(away.normalized, Vector3.up);
+                        // Rest pose of the readout in world space (its rest rotation is the frame the keys' offsets live in).
+                        Quaternion restWorld = p.rotation * _readoutRestRot;
+                        Vector3 restWorldPos = p.TransformPoint(_readoutRest);
+                        Quaternion delta = rot * Quaternion.Inverse(restWorld);
+                        _readoutBase = p.InverseTransformPoint(pos);
+                        _readoutBaseRot = Quaternion.Inverse(p.rotation) * rot;
+                        if (confirmKey != null) PlaceKey(confirmKey, _confirmRest, _confirmRestRot, restWorldPos, pos, delta, out _confirmBase, out _confirmBaseRot);
+                        if (cancelKey != null) PlaceKey(cancelKey, _cancelRest, _cancelRestRot, restWorldPos, pos, delta, out _cancelBase, out _cancelBaseRot);
+                        PlacedForEye = true;
+                    }
+                }
+            }
+            PlaceCount++;
+            _poseDirty = true;
+            ApplyPose();
+        }
+
+        static void PlaceKey(Transform key, Vector3 restLocal, Quaternion restRot, Vector3 readoutRestWorld, Vector3 readoutWorld,
+                             Quaternion delta, out Vector3 baseLocal, out Quaternion baseRot)
+        {
+            Transform kp = key.parent;
+            Vector3 restWorld = kp != null ? kp.TransformPoint(restLocal) : restLocal;
+            Quaternion restWorldRot = kp != null ? kp.rotation * restRot : restRot;
+            // Same offset from the readout, turned with it.
+            Vector3 world = readoutWorld + delta * (restWorld - readoutRestWorld);
+            Quaternion worldRot = delta * restWorldRot;
+            baseLocal = kp != null ? kp.InverseTransformPoint(world) : world;
+            baseRot = kp != null ? Quaternion.Inverse(kp.rotation) * worldRot : worldRot;
+        }
+
+        void ApplyPose()
+        {
+            if (readout == null || !_restSet) return;
+            _poseDirty = false;
+            readout.localPosition = _readoutBase + ToLocal(readout.parent, _nudge);
+            readout.localRotation = _readoutBaseRot;
+            if (confirmKey != null) { confirmKey.localPosition = _confirmBase + ToLocal(confirmKey.parent, _nudge); confirmKey.localRotation = _confirmBaseRot; }
+            if (cancelKey != null) { cancelKey.localPosition = _cancelBase + ToLocal(cancelKey.parent, _nudge); cancelKey.localRotation = _cancelBaseRot; }
+        }
+
+        static Vector3 ToLocal(Transform parent, Vector3 world) { return parent != null ? parent.InverseTransformVector(world) : world; }
+
+        void KeepClear(float dt)
+        {
+            if (readout == null) return;
+            EnsureRest();
+            Vector3 want = Vector3.zero;
+            bool keysUp = !KeysIdle();
+            if (keysUp) want = _nudge;                 // a key may be under a finger: nothing moves while the keys are up
+            else if (Clearance != null && _readoutEase.Shown)
+            {
+                // The readout's bounds at its base place (the nudge is taken off first so it does not chase itself).
+                var rs = readout.GetComponentsInChildren<Renderer>();
+                if (rs.Length > 0)
+                {
+                    Bounds b = rs[0].bounds;
+                    for (int i = 1; i < rs.Length; i++) b.Encapsulate(rs[i].bounds);
+                    b.center -= _nudge;
+                    try { want = Clearance(b); } catch (Exception) { want = Vector3.zero; }
+                }
+            }
+            Vector3 next = Vector3.Lerp(_nudge, want, 1f - Mathf.Exp(-dt * 10f));
+            if ((next - want).sqrMagnitude < 1e-8f) next = want;
+            if (next == _nudge && !_poseDirty) return;
+            _nudge = next;
+            ApplyPose();
         }
 
         /// <summary>Microphone level 0..1 while listening.</summary>
@@ -148,7 +303,12 @@ namespace MuseDesk.Voice
             if (readout != null)
             {
                 if (_readoutEase.Shown) { /* already up: the text changed in place */ }
-                else _readoutEase.Show();
+                else
+                {
+                    // rc21: its own spot, chosen only while nothing of it can be under a finger.
+                    if (KeysIdle() || PlaceCount == 0) PlaceForEye();
+                    _readoutEase.Show();
+                }
             }
             SetKey(confirmKey, _confirmEase, confirmLabel, ref _confirmWord, confirmWord);
             SetKey(cancelKey, _cancelEase, cancelLabel, ref _cancelWord, cancelWord);

@@ -260,6 +260,26 @@ namespace MuseDesk.Voice
             if (SpatialWorkspaceState.IsRemote) SummonRequests.RaiseAskAgent(agentId);
         }
 
+        /// <summary>rc22: where a spoken line by <paramref name="agentId"/> should come from: that character when it is in the
+        /// scene (a little above its root), else 0.8 m in front of the user's eyes (the Manager, or no character found).</summary>
+        public Vector3 SpeakerPosition(string agentId)
+        {
+            try
+            {
+                var attention = AgentAttention.Instance;
+                if (attention != null && attention.agents != null && !string.IsNullOrEmpty(agentId))
+                    for (int i = 0; i < attention.agents.Length; i++)
+                    {
+                        var p = attention.agents[i];
+                        if (p != null && p.isActiveAndEnabled && string.Equals(p.Role, agentId, StringComparison.OrdinalIgnoreCase))
+                            return p.transform.position + Vector3.up * 0.08f;
+                    }
+            }
+            catch { }
+            Camera cam = Camera.main;
+            return cam != null ? cam.transform.position + cam.transform.forward * 0.8f : Vector3.zero;
+        }
+
         /// <summary>The characters tilt their heads to the user while the microphone is open.</summary>
         public void AgentsListen(bool on)
         {

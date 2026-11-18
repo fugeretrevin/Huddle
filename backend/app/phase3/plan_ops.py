@@ -87,8 +87,11 @@ class PlanOps:
             return None
         roots = self.root_failures(row)
         if roots:
-            names = ", ".join(f"'{r['title']}' ({r['task_state']})" for r in roots)
-            return {"reason": f"Blocked: it depends on {names}. Retry the failed step to continue.",
+            names = ", ".join(f"'{r['title']}' ({'removed' if r.get('removed') else r['task_state']})"
+                              for r in roots)
+            tail = ("It cannot run: that step was removed from the board."
+                    if all(r.get("removed") for r in roots) else "Retry the failed step to continue.")
+            return {"reason": f"Blocked: it depends on {names}. {tail}",
                     "blocked_by": [r["id"] for r in roots], "cause": "dependency_failed"}
         waiting = []
         for d in self._deps(row):
@@ -115,7 +118,7 @@ class PlanOps:
         if state == FAILED:
             return self._failure_text(sid, row["id"])
         if state == CANCELLED:
-            return "Cancelled before it finished."
+            return "Removed from the board." if row.get("removed") else "Cancelled before it finished."
         info = self.blocked_info(row)
         if info:
             return info["reason"]
@@ -140,6 +143,11 @@ class PlanOps:
                 card["blocked_by"] = info["blocked_by"]
                 blocked.append({"task_id": row["id"], "reason": info["reason"],
                                 "blocked_by": info["blocked_by"]})
+            if row.get("removed"):
+                # The user removed it from the board: listed as cancelled so the status page
+                # never waits on it (additive flag + the reason as its result).
+                card["removed"] = True
+                card["result"] = self._result_text(plan["session_id"], row)
             if st == DONE:
                 # The recorded result of a finished card (its artifact's summary), so a client that
                 # only reads status (e.g. after a reconnect) shows the same words the stream carried.
@@ -277,6 +285,8 @@ class PlanOps:
         if (plan is None or plan["status"] != "committed" or plan.get("synthesis")
                 or plan_id in self._synth_inflight or not self._settled(plan)):
             return None
+        if all(row.get("removed") for _e, row in self._rows(plan)):
+            return None                         # the whole plan was removed: nothing to sum up
         self._synth_inflight.add(plan_id)
         try:
             return await self._synthesize(plan)
@@ -307,7 +317,8 @@ class PlanOps:
         if self._s3.get_plan(plan["plan_id"]).get("synthesis"):
             return None
         done = [r for _e, r in rows if r["task_state"] == DONE]
-        anchor = (done or [r for _e, r in rows])[-1]
+        anchor = (done or [r for _e, r in rows if not r.get("removed")]
+                  or [r for _e, r in rows])[-1]
         c = sum(1 for _e, r in rows if r["task_state"] == DONE)
         summary = f"Plan summary: {c} of {len(rows)} steps completed"
         if self._mode == "demo":

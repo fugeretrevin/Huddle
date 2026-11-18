@@ -178,6 +178,8 @@ namespace MuseDesk.Wall
                 sel.AddListener(() =>
                 {
                     if (!k.shown || !k.enabled || Time.unscaledTime < k.armAt) return;
+                    // rc22: another key pressed switches armed Select Agents off (before the key acts; Select ignores itself).
+                    MuseDesk.Spatial.Wall.SelectModeExit.Raise(k.root != null ? k.root.name : "key");
                     try { if (k.action != null) k.action(); }
                     catch (Exception e) { Debug.LogException(e); }
                 });
@@ -389,6 +391,8 @@ namespace MuseDesk.Wall
             PaperSheet = WallUi.Hex(0xF7F2E3), PaperRim = WallUi.Hex(0xD9D0BA);
 
         public bool Visible => _visible;
+        /// <summary>The card's size in metres (card space).</summary>
+        public Vector2 Size => _size;
         public TMP_Text Title => _title;
         public TMP_Text Body => _body;
         public bool PaperStyle => _paper;
@@ -523,6 +527,7 @@ namespace MuseDesk.Wall
         public bool Press(int i)
         {
             if (i < 0 || i >= _keys.Count || !_keys[i].shown || !_keys[i].enabled || _keys[i].action == null) return false;
+            MuseDesk.Spatial.Wall.SelectModeExit.Raise(_keys[i].root != null ? _keys[i].root.name : "key");   // as the poke does (rc22)
             _keys[i].action();
             return true;
         }

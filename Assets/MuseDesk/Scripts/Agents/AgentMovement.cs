@@ -94,7 +94,14 @@ namespace MuseDesk.Agents
         /// way home, so a later <see cref="ReturnHome"/> keeps to an authored lane too.
         /// <paramref name="seconds"/> above zero sets how long the walk takes; zero keeps the usual rule.
         /// </summary>
-        public void WalkRoute(Transform destination, Transform[] via, Transform[] homeVia, Action onArrived = null, float seconds = 0f)
+        public void WalkRoute(Transform destination, Transform[] via, Transform[] homeVia, Action onArrived = null, float seconds = 0f, float minSeconds = 0f)
+        {
+            WalkRouteCore(destination, via, homeVia, onArrived, seconds);
+            // A floor on the walk time (never faster than the usual rule would make it).
+            if (_moving && minSeconds > _dur) _dur = minSeconds;
+        }
+
+        void WalkRouteCore(Transform destination, Transform[] via, Transform[] homeVia, Action onArrived, float seconds)
         {
             if (destination == null) return;
             _dest = destination; _useDestPos = false; _returning = false; _onArrived = onArrived;

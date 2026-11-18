@@ -7,7 +7,7 @@ using MuseDesk.Spatial.Ui;
 namespace MuseDesk.Wall
 {
     /// <summary>What the framed stamp zone on the paper says.</summary>
-    public enum StampZoneMode { Hidden, Awaiting, Committing, Settled }
+    public enum StampZoneMode { Hidden, Awaiting, Committing, Settled, NeedsRevision }
 
     /// <summary>
     /// The Manager's plan-review paper: a near-user <see cref="WallCard"/> (plate, up to eight poke keys, provenance footer)
@@ -57,9 +57,30 @@ namespace MuseDesk.Wall
         /// <summary>The zone on the paper plane, in the paper's local metres (tests and drivers).</summary>
         public PaperRect ZoneRect => _zoneRect;
 
+        // ── Step ticks (owner, rc18 worn: "too many buttons ... a check box or an x next to each work item rather than keep 1,
+        //    keep 2, so it's just a little check"). Plan pages keep a narrow gutter on the right; each work item's title row
+        //    gets a small square poke key there: ✓ = the step is kept, ✗ = skipped (its title is struck through). ──
+        public const float CheckGutter = 0.026f, CheckSize = 0.018f;
+        readonly Transform _keyTemplate;
+        readonly float _keyScale;
+        readonly List<WallKey> _checks = new List<WallKey>();
+        readonly List<int> _rowItem = new List<int>();          // per shown row: the work item it titles, or -1
+        readonly List<float> _rowY = new List<float>();         // per shown row: the centre of its first line (local y)
+        float _gutter;
+        string _checkSig = "";
+        public const string Kept = "✓", Skipped = "✗";
+
+        /// <summary>Text width (mm) for a plan page: the step-tick gutter is left free on the right.</summary>
+        public float PlanTextWidthMm => TextWidthMm - CheckGutter * 1000f;
+        /// <summary>For drivers: how many step ticks are on show, and the item / label of tick <paramref name="i"/>.</summary>
+        public int ChecksShown { get; private set; }
+        public readonly List<int> CheckItems = new List<int>();
+        public string CheckLabel(int i) { return i >= 0 && i < _checks.Count && _checks[i].label != null ? _checks[i].label.text : null; }
+        public Vector3 CheckWorld(int i) { return i >= 0 && i < _checks.Count && _checks[i].root != null ? _checks[i].root.position : Vector3.zero; }
+
         public WallPlanPaper(Transform parent, string name, Transform keyTemplate, TMP_FontAsset font, WallHabitatView art, Vector2 size, float keyScale)
         {
-            _font = font; _size = size; _art = art;
+            _font = font; _size = size; _art = art; _keyTemplate = keyTemplate; _keyScale = keyScale;
             card = new WallCard(parent, name, keyTemplate, font, art, size, keyScale, true);   // rc12: the cream paper sheet look
             _zoneRect = PlanPaperGeometry.StampZone(size.x, size.y);
             Color ink = Workspace.OfficeTokens.Ink, soft = Workspace.OfficeTokens.InkSoft, teal = Workspace.OfficeTokens.Teal;
@@ -130,16 +151,70 @@ namespace MuseDesk.Wall
         /// <summary>Plain card mode (a title and a paragraph): the row area is cleared and there is no stamp zone.</summary>
         public void ShowText(string title, string body, string footer)
         {
+            _gutter = 0f;
             SetRows(null, 0, 0);
+            SetChecks(null, null);
             SetStampZone(StampZoneMode.Hidden);
             card.SetText(title, body, footer);
         }
 
-        /// <summary>Row mode: one page of laid-out rows. The card's own title/body are blank; the footer is the provenance.</summary>
-        public void ShowPage(PlanPage page, int pageIndex, int pageCount, string footer)
+        /// <summary>Row mode: one page of laid-out rows. The card's own title/body are blank; the footer is the provenance.
+        /// <paramref name="checkGutter"/>: the page was laid out at <see cref="PlanTextWidthMm"/> (plan pages), so the rows sit
+        /// left of the step-tick gutter.</summary>
+        public void ShowPage(PlanPage page, int pageIndex, int pageCount, string footer, bool checkGutter = false)
         {
             card.SetText("", "", footer);
+            float g = checkGutter ? CheckGutter : 0f;
+            if (!Mathf.Approximately(g, _gutter)) { _gutter = g; _signature = ""; }
             SetRows(page, pageIndex, pageCount);
+            if (!checkGutter) SetChecks(null, null);
+        }
+
+        /// <summary>
+        /// The step ticks for the work items titled on this page. <paramref name="approved"/>[i] is item i's kept state (null:
+        /// no ticks). <paramref name="toggle"/> is called with the item index when its tick is poked. Cheap when nothing changed
+        /// (runs every frame while the paper is open).
+        /// </summary>
+        public void SetChecks(IList<bool> approved, Action<int> toggle)
+        {
+            bool on = approved != null && toggle != null && card.Visible;
+            var sb = new System.Text.StringBuilder(on ? "1" : "0");
+            if (on) { sb.Append('|').Append(_signature.GetHashCode()); for (int i = 0; i < approved.Count; i++) sb.Append(approved[i] ? '1' : '0'); }
+            string sig = sb.ToString();
+            if (sig == _checkSig) return;
+            _checkSig = sig;
+
+            int used = 0;
+            CheckItems.Clear();
+            if (on)
+                for (int r = 0; r < _shownRows && r < _rowItem.Count; r++)
+                {
+                    int item = _rowItem[r];
+                    if (item < 0 || item >= approved.Count) continue;
+                    if (_checks.Count <= used) _checks.Add(WallUi.MakeKey(_keyTemplate, card.root, "StepTick" + used, Kept, Vector3.zero, _keyScale, null, 1f));
+                    WallKey k = _checks[used];
+                    if (k.root != null) k.root.localPosition = new Vector3(_size.x * 0.5f - PlanPaperGeometry.SideMargin - CheckSize * 0.5f, _rowY[r], -0.006f);
+                    k.Resize(CheckSize, CheckSize);
+                    bool kept = approved[item];
+                    k.SetLabel(kept ? Kept : Skipped);
+                    if (k.label != null)
+                    {
+                        k.label.color = kept ? Workspace.OfficeTokens.Success : Workspace.OfficeTokens.Coral;
+                        k.label.fontSize = k.baseFontSize * 2.3f;              // one glyph: big and clear, it never needs to fit words
+                        k.label.fontStyle = FontStyles.Bold;
+                    }
+                    int idx = item;
+                    k.action = () => toggle(idx);
+                    k.Show(true);
+                    CheckItems.Add(item);
+                    // A skipped step reads as skipped on the paper too: struck through, soft ink.
+                    TMP_Text t = _rows[r];
+                    t.fontStyle = kept ? (t.fontStyle & ~FontStyles.Strikethrough) : (t.fontStyle | FontStyles.Strikethrough);
+                    t.color = kept ? Workspace.OfficeTokens.Ink : Workspace.OfficeTokens.InkSoft;
+                    used++;
+                }
+            for (int i = used; i < _checks.Count; i++) _checks[i].Show(false);
+            ChecksShown = used;
         }
 
         void SetRows(PlanPage page, int pageIndex, int pageCount)
@@ -159,7 +234,8 @@ namespace MuseDesk.Wall
                 _rows.Add(t);
             }
             float top = _size.y * 0.5f - PlanPaperGeometry.TopMargin;
-            float wCm = TextWidthMm / 10f;
+            float wCm = (TextWidthMm - _gutter * 1000f) / 10f;
+            _rowItem.Clear(); _rowY.Clear();
             for (int i = 0; i < _rows.Count; i++)
             {
                 TMP_Text t = _rows[i];
@@ -169,7 +245,9 @@ namespace MuseDesk.Wall
                 PlanRow r = page.Rows[i];
                 float hMm = Mathf.Max(r.HeightMm - PlanReviewLayout.RowGapMm, r.SizeMm * TextFit.LineHeightEm);
                 t.rectTransform.sizeDelta = new Vector2(wCm, hMm / 10f);
-                t.transform.localPosition = new Vector3(0f, top - (page.TopMm[i] + hMm * 0.5f) / 1000f, -0.0005f);
+                t.transform.localPosition = new Vector3(-_gutter * 0.5f, top - (page.TopMm[i] + hMm * 0.5f) / 1000f, -0.0005f);
+                _rowItem.Add(r.Kind == PlanRowKind.ItemTitle ? ItemOrdinal(r.Text) - 1 : -1);
+                _rowY.Add(top - (page.TopMm[i] + r.SizeMm * TextFit.LineHeightEm * 0.5f) / 1000f);
                 t.fontSize = r.SizeMm;
                 t.fontStyle = r.Bold ? FontStyles.Bold : FontStyles.Normal;
                 t.color = ToneColor(r.Tone);
@@ -188,11 +266,14 @@ namespace MuseDesk.Wall
             bool on = mode != StampZoneMode.Hidden;
             if (_zone.gameObject.activeSelf != on) _zone.gameObject.SetActive(on);
             if (!on) return;
-            string cap = mode == StampZoneMode.Awaiting ? "Stamp here" : mode == StampZoneMode.Committing ? "Waiting for the board" : "";
+            // rc22 (owner, worn rc21: approving after unticking steps "is broken ... make it clearer that it needs a revision").
+            string cap = mode == StampZoneMode.Awaiting ? "Stamp here" : mode == StampZoneMode.Committing ? "Waiting for the board"
+                       : mode == StampZoneMode.NeedsRevision ? "Revise first" : "";
             if (_zoneCaption.text != cap) _zoneCaption.text = cap;
             if (_art != null && _frame.Count > 1)
             {
-                Color frame = mode == StampZoneMode.Awaiting ? Workspace.OfficeTokens.Teal : Workspace.OfficeTokens.InkSoft;
+                Color frame = mode == StampZoneMode.Awaiting ? Workspace.OfficeTokens.Teal
+                            : mode == StampZoneMode.NeedsRevision ? Workspace.OfficeTokens.Coral : Workspace.OfficeTokens.InkSoft;
                 for (int i = 1; i < _frame.Count; i++) _art.Tint(_frame[i], frame);
             }
         }
@@ -229,6 +310,15 @@ namespace MuseDesk.Wall
         {
             _stamp.transform.localScale = Vector3.one * 0.01f * k;
             if (_stampRing != null) _stampRing.transform.localScale = new Vector3(RingW, RingH, RingD) * k;
+        }
+
+        /// <summary>"3. Write the tests" -> 3 (the layout numbers item titles from 1); 0 when there is no number.</summary>
+        public static int ItemOrdinal(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            int n = 0, i = 0;
+            while (i < text.Length && char.IsDigit(text[i]) && i < 4) { n = n * 10 + (text[i] - '0'); i++; }
+            return i > 0 && i < text.Length && text[i] == '.' ? n : 0;
         }
 
         public string RowText(int i) { return i >= 0 && i < _shownRows ? _rows[i].text : null; }

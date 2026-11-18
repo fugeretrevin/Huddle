@@ -53,6 +53,10 @@ class BoardRunBridge:
     def __init__(self, store: Phase2Store, bus: Phase2EventBus) -> None:
         self._store = store
         self._bus = bus
+        # Optional ``async (session_id, run_task_id) -> None``: a run raised a decision for a
+        # card the user already REMOVED from the board; withdraw it so the run does not wait
+        # (wired in main.py to board_remove.withdraw_run_decisions).
+        self.on_removed_decision = None
 
     @property
     def store(self) -> Phase2Store:
@@ -100,6 +104,12 @@ class BoardRunBridge:
                                  extra: dict | None = None) -> None:
         row = self._live_card(run_task_id)
         if row is None:
+            gone = self._store.get_task_v2_by_run(run_task_id)
+            if gone is not None and gone.get("removed") and self.on_removed_decision is not None:
+                try:
+                    await self.on_removed_decision(gone["session_id"], run_task_id)
+                except Exception:  # noqa: BLE001 - never break the run's own reporting
+                    pass
             return
         # A run can raise several decisions (one per proposal revision). The event id
         # stays canonical per run + milestone + revision; revision 0 keeps its old id.

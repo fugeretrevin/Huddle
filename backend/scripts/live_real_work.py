@@ -19,7 +19,10 @@ import httpx
 BASE = sys.argv[1].rstrip("/")
 OUT = sys.argv[2] if len(sys.argv) > 2 else "live_real_work_evidence.json"
 ROOT = Path(sys.argv[3] if len(sys.argv) > 3 else Path(__file__).resolve().parents[1] / "sandbox_workspaces")
-OBJECTIVE = "Build me a login page with email validation, password requirements, and tests."
+# Any real objective can be run (owner, rc18: "test this with building something real"): MUSEDESK_REAL_OBJECTIVE and the
+# follow-up change request MUSEDESK_REAL_CHANGE (worded to finish "Developer, can you ...?"). The defaults are the canonical demo.
+OBJECTIVE = os.environ.get("MUSEDESK_REAL_OBJECTIVE") or "Build me a login page with email validation, password requirements, and tests."
+CHANGE = os.environ.get("MUSEDESK_REAL_CHANGE") or "change the password minimum to 12 characters"
 evidence, results = {"objective": OBJECTIVE, "steps": []}, []
 
 
@@ -128,7 +131,8 @@ with httpx.Client(base_url=BASE, timeout=240) as c:
     else:
         check("R5 an independent pytest run of the folder matches the last card's counts", False, "no folder")
 
-    tester = next((cd.get("task_id") for cd in st.get("cards", []) if cd.get("agent_id") == "tester"), None)
+    # The LATEST Tester card (its result is the folder's newest test run), as when you visit the Tester after the plan.
+    tester = next((cd.get("task_id") for cd in reversed(st.get("cards", [])) if cd.get("agent_id") == "tester"), None)
     before = json.dumps(st, sort_keys=True)
     r = c.post(f"/v2/sessions/{sid}/agents/tester/side-question", headers=h, json={
         "schema_version": 2, "request_id": "real-ask", "task_id": tester, "visit_session_id": "visit-real",
@@ -137,6 +141,81 @@ with httpx.Client(base_url=BASE, timeout=240) as c:
     info("R6 Tester says", (ans.get("reply") if isinstance(ans, dict) else ans) or "")
     after = json.dumps(c.get(f"/v2/sessions/{sid}/manager/plans/{pid}/status", headers=h).json(), sort_keys=True)
     check("R6 asking changed nothing", before == after)
+
+    # ── R7: read-only "what have you changed?" to the Developer ──
+    dev_task = next((cd.get("task_id") for cd in reversed(st.get("cards", [])) if cd.get("agent_id") == "developer"), None)
+    r = c.post(f"/v2/sessions/{sid}/agents/developer/side-question", headers=h, json={
+        "schema_version": 2, "request_id": "real-changed", "task_id": dev_task, "visit_session_id": "visit-real",
+        "question": "Developer, what have you changed?", "idempotency_key": key("changed")})
+    ans7 = keep("R7 ask developer what changed", r)
+    reply7 = (ans7.get("reply") if isinstance(ans7, dict) else "") or ""
+    info("R7 Developer says", reply7)
+    check("R7 the Developer's answer names a real file", any(f in reply7 for f in named) or any(
+        x.name in reply7 for x in folder.glob("*.py")), "")
+
+    # ── R8/R9: a change request is only a suggestion; Apply change adds ONE step that is really worked ──
+    r = c.post(f"/v2/sessions/{sid}/agents/developer/side-question", headers=h, json={
+        "schema_version": 2, "request_id": "real-change", "task_id": dev_task, "visit_session_id": "visit-real",
+        "question": f"Developer, can you {CHANGE}?", "idempotency_key": key("change")})
+    ans8 = keep("R8 change request", r)
+    amend_txt = ((ans8.get("proposed_amendment") or {}).get("summary") if isinstance(ans8, dict) else None)
+    st8 = c.get(f"/v2/sessions/{sid}/manager/plans/{pid}/status", headers=h).json()
+    check("R8 the change came back as a suggestion and nothing changed",
+          bool(amend_txt) and json.dumps(st8, sort_keys=True) == after, (amend_txt or "no amendment")[:120])
+    plan_now = c.get(f"/v2/sessions/{sid}/manager/plans/{pid}", headers=h).json()
+    t_apply = time.time()
+    akey = key("apply")
+    body = {"schema_version": 2, "revision": plan_now.get("revision"), "summary": amend_txt or CHANGE,
+            "agent_id": "developer", "after_task_id": dev_task, "idempotency_key": akey}
+    r = c.post(f"/v2/sessions/{sid}/manager/plans/{pid}/amend", headers=h, json=body)
+    applied = keep("R9 apply change", r)
+    again = c.post(f"/v2/sessions/{sid}/manager/plans/{pid}/amend", headers=h, json=body).json()
+    new_ids = [t.get("task_id") for t in (applied.get("tasks") or [])] if isinstance(applied, dict) else []
+    check("R9 Apply change created exactly one step; pressing again created nothing",
+          r.status_code == 200 and len(new_ids) == 1 and [t.get("task_id") for t in (again.get("tasks") or [])] == new_ids,
+          f"{r.status_code} {new_ids}")
+    end9, t0 = {}, time.time()
+    while new_ids and time.time() - t0 < 900:
+        s9 = c.get(f"/v2/sessions/{sid}/manager/plans/{pid}/status", headers=h).json()
+        end9 = next((cd for cd in s9.get("cards", []) if cd.get("task_id") == new_ids[0]), {})
+        if (end9.get("task_state") or end9.get("state")) in ("completed", "failed", "blocked", "cancelled"):
+            break
+        time.sleep(6)
+    res9 = end9.get("result") or end9.get("failure") or ""
+    info("R9 the new step", f"{end9.get('title')} -> {end9.get('task_state') or end9.get('state')} | {res9[:200]} | {time.time() - t_apply:.0f}s")
+    check("R9 the new step was worked for real (pytest counts on its card)",
+          (end9.get("task_state") or end9.get("state")) == "completed" and bool(re.search(r"\d+ passed", res9)), res9[:120])
+    evidence["apply_change"] = {"suggestion": amend_txt, "task": new_ids, "end": end9, "seconds": round(time.time() - t_apply)}
+
+# ── human-readable evidence (FINAL_LIVE_DEMO_EVIDENCE.md quotes it) ──
+md = [f"# Live run evidence {time.strftime('%Y-%m-%d %H:%M')}", "",
+      f"- backend: {BASE} (Meta model; MUSEDESK_P3_EXECUTE_CODE on)", f"- objective: {OBJECTIVE}",
+      f"- plan: `{pid}` ({plan.get('provenance')}), {len(items)} steps", ""]
+md += ["| card | agent | state | recorded result |", "|---|---|---|---|"]
+try:
+    with httpx.Client(base_url=BASE, timeout=30) as c2:
+        fin = c2.get(f"/v2/sessions/{sid}/manager/plans/{pid}/status", headers=h).json()
+    for cd in fin.get("cards", []):
+        md.append(f"| `{cd.get('task_id')}` {cd.get('title', '')[:60]} | {cd.get('agent_id')} | {cd.get('task_state') or cd.get('state')} | "
+                  f"{(cd.get('result') or cd.get('failure') or cd.get('blocked_reason') or '').replace('|', '/')[:160]} |")
+except Exception as exc:  # noqa: BLE001
+    md.append(f"(status not readable: {type(exc).__name__})")
+if folder.exists():
+    md += ["", f"## Files in `sandbox_workspaces/plans/{pid}`", ""]
+    md += [f"- `{p.name}` ({p.stat().st_size} bytes)" for p in sorted(folder.iterdir()) if p.is_file()]
+    code = next((p for p in sorted(folder.glob("*.py")) if not p.name.startswith("test_")), None)
+    if code:
+        md += ["", f"### `{code.name}` (first 40 lines, verbatim)", "", "```python",
+               *code.read_text(encoding="utf-8").splitlines()[:40], "```"]
+md += ["", "## Independent pytest run of the folder (this script, after the run)", "", "```",
+       *(evidence.get("independent_pytest", "")[-1500:].splitlines()), "```"]
+if "apply_change" in evidence:
+    a = evidence["apply_change"]
+    md += ["", "## Apply change", "", f"- suggestion: {a['suggestion']}", f"- new step: `{a['task']}` -> "
+           f"{(a['end'] or {}).get('task_state') or (a['end'] or {}).get('state')}: {((a['end'] or {}).get('result') or '')[:200]}",
+           f"- seconds from Apply to the end of the step: {a['seconds']}"]
+md += ["", f"Checks: {sum(results)}/{len(results)} passed."]
+Path(OUT).with_suffix(".md").write_text("\n".join(md), encoding="utf-8")
 
 Path(OUT).write_text(json.dumps(evidence, indent=1), encoding="utf-8")
 print(f"{sum(results)}/{len(results)} checks passed; evidence: {OUT}")

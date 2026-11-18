@@ -1,3 +1,5 @@
+> **rc17 and later: use `RC17_FINAL_HARDWARE_QA.md`** (the authoritative worn script). This file keeps the rc15 worn results and the rc16 checks for reference.
+
 # Quest user acceptance QA (owner script, rc17)
 
 Build: `Builds/MuseDesk_rc17_production.apk`, label `rc17-production`, SHA-256 `BD0204F4…7B602AD`, **installed and hash-verified** on the Quest (2026-11-16 night). rc17 = rc16 + Apply change on the visit card. Backend-only changes ride along with `start_wall_backend.ps1`: model-written desk task, hardened sandbox.

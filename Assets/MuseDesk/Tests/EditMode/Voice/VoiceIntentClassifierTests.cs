@@ -184,6 +184,18 @@ namespace MuseDesk.Tests.Voice
         }
 
         [Test]
+        public void Manager_new_goal_in_the_owners_words_is_a_manager_request()
+        {
+            // rc20 (worn rc19): this sentence became a board task instead of a plan. The classifier must give the goal
+            // to the Manager whole (the command centre now lets a named Manager win over the "new task" grammar).
+            var r = C("manager build a program to output stars to the console");
+            Assert.AreEqual(VoiceAction.ManagerRequest, r.Kind);
+            Assert.AreEqual("build a program to output stars to the console", r.Question);
+            r = C("Manager, make me a small expense tracker with tests");
+            Assert.AreEqual(VoiceAction.ManagerRequest, r.Kind);
+        }
+
+        [Test]
         public void Approve_with_focus_still_confirms()
         {
             var r = C("you approve", VoiceAgentTarget.Developer);

@@ -768,6 +768,52 @@ namespace MuseDesk.Phase2.Contracts
             return Task.FromResult(result);
         }
 
+        /// <summary>Take a card off the offline board: the scripted equivalent of the backend's remove. The same event the
+        /// backend sends (task.completed, cancelled, removed true) goes to the reducer; the card is labelled SCRIPTED DEMO.</summary>
+        void RemoveCardLocal(TaskCardV2 card)
+        {
+            _tasks.Remove(card.TaskId);
+            _startedRuns.Remove(card.TaskId);
+            if (card.TaskId == _activeRunTaskId) { _activeRunTaskId = null; _runArtifactIds.Clear(); }
+            card.TaskState = TaskStates.Cancelled;
+            card.Revision += 1;
+            var p = TaskPayload(card);
+            p["removed"] = true;
+            EmitTask(Phase2EventTypes.TaskCompleted, card, p, agentId: card.AgentId);
+        }
+
+        public Task<Phase2CommandResult<TaskCardV2>> RemoveTaskAsync(string taskId, RemoveTaskCommand cmd, CancellationToken ct)
+        {
+            if (TryReplay(cmd.IdempotencyKey, out Phase2CommandResult<TaskCardV2> prior)) return Task.FromResult(prior);
+            Phase2CommandResult<TaskCardV2> result;
+            if (taskId == null || !_tasks.TryGetValue(taskId, out var card))
+                result = Fail("NOT_FOUND", $"unknown task {taskId}", null);
+            else
+            {
+                RemoveCardLocal(card);
+                result = Phase2CommandResult<TaskCardV2>.Success(card.Clone());
+            }
+            Remember(cmd.IdempotencyKey, result);
+            if (result.Ok) Touched();
+            return Task.FromResult(result);
+        }
+
+        public Task<Phase2CommandResult<ClearBoardResult>> ClearBoardAsync(ClearBoardCommand cmd, CancellationToken ct)
+        {
+            if (TryReplay(cmd.IdempotencyKey, out Phase2CommandResult<ClearBoardResult> prior)) return Task.FromResult(prior);
+            var removed = new ClearBoardResult();
+            foreach (var card in new List<TaskCardV2>(_tasks.Values))
+            {
+                if (!cmd.IncludeRunning && TaskStateSets.IsRunning(card.TaskState)) continue;
+                removed.Removed.Add(card.TaskId);
+                RemoveCardLocal(card);
+            }
+            var result = Phase2CommandResult<ClearBoardResult>.Success(removed);
+            Remember(cmd.IdempotencyKey, result);
+            Touched();
+            return Task.FromResult(result);
+        }
+
         public Task<FocusPolicyV2> SetFocusAsync(FocusCommand cmd, CancellationToken ct)
         {
             if (TryReplay(cmd.IdempotencyKey, out FocusPolicyV2 prior)) return Task.FromResult(prior);

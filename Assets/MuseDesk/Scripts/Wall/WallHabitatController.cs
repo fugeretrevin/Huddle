@@ -146,6 +146,8 @@ namespace MuseDesk.Wall
             }
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted += OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded += OnVoiceListeningEnded;
+            SelectModeExit.OtherAction -= OnOtherAction;          // rc22: another key switches armed Select off
+            SelectModeExit.OtherAction += OnOtherAction;
             SyncVoiceManagerHook();
         }
 
@@ -164,7 +166,10 @@ namespace MuseDesk.Wall
             _subscribed = false;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted -= OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded -= OnVoiceListeningEnded;
+            SelectModeExit.OtherAction -= OnOtherAction;
             if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
+            if (MuseDesk.Voice.VoiceHud.Clearance == (System.Func<Bounds, Vector3>)ReadoutClearance) MuseDesk.Voice.VoiceHud.Clearance = null;
+            MuseDesk.Voice.AgentSpeech.StopAll();
             ClearMeetVoiceHook();          // Meet (WallHabitatController.Meet.cs): re-registered per frame while Wall is active
             Unhook();
             ResetPlanStamp();
@@ -195,9 +200,19 @@ namespace MuseDesk.Wall
 
         /// <summary>The voice layer hands "Manager, ..." to this controller ONLY while the Manager flag is on. With the flag off
         /// nothing is registered, so the voice path is exactly what it was before this feature existed.</summary>
+        Func<bool> _managerReady, _managerPlanOpen;
+
         void SyncVoiceManagerHook()
         {
             bool want = isActiveAndEnabled && flags.wallManagerEnabled && flags.wallHabitatEnabled;
+            if (isActiveAndEnabled) MuseDesk.Voice.VoiceHud.Clearance = ReadoutClearance;     // rc20: readout steps out of the cards
+            if (_managerReady == null) { _managerReady = () => this != null && ManagerAvailable; _managerPlanOpen = () => this != null && _planCardOpen; }
+            if (want) { MuseDesk.Voice.VoiceCommandCenter.ManagerReady = _managerReady; MuseDesk.Voice.VoiceCommandCenter.ManagerPlanOpen = _managerPlanOpen; }   // rc22
+            else
+            {
+                if (MuseDesk.Voice.VoiceCommandCenter.ManagerReady == _managerReady) MuseDesk.Voice.VoiceCommandCenter.ManagerReady = null;
+                if (MuseDesk.Voice.VoiceCommandCenter.ManagerPlanOpen == _managerPlanOpen) MuseDesk.Voice.VoiceCommandCenter.ManagerPlanOpen = null;
+            }
             if (want) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = RequestPlanByVoice;
             else if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
         }
@@ -856,18 +871,116 @@ namespace MuseDesk.Wall
         public void WallCancel() { if (WallPreviewing) PressCancel(); }
         public void WallMove() { if (WallActive && !WallPreviewing) PressMove(); }
         public void WallSelect() { if (WallActive && !WallPreviewing && flags.agentSelectEnabled) PressSelectAgents(); }
-        public void WallManager() { if (WallActive && !WallPreviewing && flags.wallManagerEnabled) PressManager(); }
+        public void WallManager() { if (ManagerAvailable || _planCardOpen) PressManager(); }     // rc22: Floor / Ceiling too
 
         // ───────────────────────── events from the reducers ─────────────────────────
 
         void OnHabitatEvent(HabitatEvent e)
         {
             if (_stage == null || !WallActive) return;
-            _stage.Accept(e, Time.unscaledTime);
+            bool walks = !SendPaperByTube(e) && _stage.Accept(e, Time.unscaledTime);
+            // rc21 (owner, worn rc20: "it's not clear at all what they're doing"): the one trip left with the tubes on is a
+            // question for you. A small label over the agent says so while it walks out, presents (facing you) and comes back.
+            if (walks && e.kind == HabitatEventKind.ApprovalRequested && _view != null)
+            {
+                PrepareLabels();
+                _view.ShowQuestionLabel(e.agent, PrettyRole(e.agent) + ": a question for you");
+            }
             // One restrained reaction for a CONFIRMED completion or failure (the event came from the reducer), through the
             // arbiter: never over a walk or a ride, never repeated inside its cooldown.
             if (e.kind == HabitatEventKind.TaskCompleted) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.CompletionNod);
             else if (e.kind == HabitatEventKind.TaskFailed) RequestReaction(e.agent, MuseDesk.Agents.ReactionKind.ErrorWorry);
+        }
+
+        // Owner, rc18 worn: "when the agents are bringing up their papers they should use the tubes too; the elevator should only
+        // be used for a question, otherwise it's slow". With the paper tubes on, a result or a problem report for the Manager,
+        // and a hand-off to an agent on ANOTHER floor, go by tube (the sheet rides up, and on down through the Manager's hub).
+        // A hand-off on the same floor is still a short walk; a question (approval) is still the walk / ride to you.
+        readonly HashSet<string> _tubeSeen = new HashSet<string>();
+        /// <summary>For drivers: event-driven papers sent by tube instead of a trip.</summary>
+        public int PapersByTube { get; private set; }
+
+        bool SendPaperByTube(HabitatEvent e)
+        {
+            if (!cardTubes || _view == null) return false;
+            HabitatRole to;
+            Color tint = WallHabitatView.Paper;
+            switch (e.kind)
+            {
+                case HabitatEventKind.Handoff:
+                    if (!e.hasTarget || e.target == e.agent || e.agent == HabitatRole.Manager) return false;
+                    to = e.target;
+                    // rc21 (owner, worn rc20: "they walk to the elevator and then stand there and then just turn around"): a
+                    // same-floor hand-off used to be a walk to the colleague's corridor door. The Tester's door is beside the
+                    // lift, so the Developer walked up to the lift, held its paper out to nobody and walked back. Every
+                    // hand-off now goes by tube (through the Manager's hub, like the cross-floor ones); the walk stays only
+                    // for a question to you.
+                    break;
+                case HabitatEventKind.TaskCompleted:
+                    if (e.agent != HabitatRole.Researcher) return false;     // the others celebrate in place (as before)
+                    to = HabitatRole.Manager;
+                    break;
+                case HabitatEventKind.TaskFailed:
+                    if (e.agent == HabitatRole.Manager) return false;
+                    to = HabitatRole.Manager; tint = Workspace.OfficeTokens.Coral;
+                    break;
+                default:
+                    return false;
+            }
+            if (!string.IsNullOrEmpty(e.eventId))
+            {
+                if (_tubeSeen.Contains(e.eventId)) return true;               // a replay: already sent
+                if (_tubeSeen.Count > 512) _tubeSeen.Clear();
+                _tubeSeen.Add(e.eventId);
+            }
+            EnsureCardTubes();                                                // the glass material first (never an opaque tube)
+            PrepareLabels();
+            if (!_view.SendUpTube(e.agent, to, tint, TubeLabelText(e, to))) return false;
+            _view.Acknowledge(e.agent, 0.9f);                                 // a small nod as it sends the sheet off
+            PapersByTube++;
+            return true;
+        }
+
+        void PrepareLabels()
+        {
+            if (_view == null) return;
+            if (_view.labelFont == null) _view.labelFont = font;
+            if (_view.labelPlateMaterial == null) _view.labelPlateMaterial = WallUi.PlateMaterial;
+        }
+
+        string PrettyRole(HabitatRole r) { return AgentPresentationRegistry.Pretty(AgentId(r)); }
+
+        /// <summary>rc21: the words on a tube label. Only real facts: who sends it to whom (the event), and the task's own title
+        /// (the committed plan card, else the agent's current task when it IS this event's task); otherwise the kind of paper.</summary>
+        string TubeLabelText(HabitatEvent e, HabitatRole to)
+        {
+            string head = PrettyRole(e.agent) + " → " + PrettyRole(to) + ": ";
+            string title = ShortTitle(PaperTitle(e), 40);
+            switch (e.kind)
+            {
+                case HabitatEventKind.TaskFailed: return head + (title != null ? "Problem: " + title : "Problem report");
+                case HabitatEventKind.TaskCompleted: return head + (title != null ? title : "Result");
+                default: return head + (title != null ? title : "Hand-off");
+            }
+        }
+
+        string PaperTitle(HabitatEvent e)
+        {
+            if (string.IsNullOrEmpty(e.taskId)) return null;
+            PlanCardView c = _board != null ? _board.Find(e.taskId) : null;
+            if (c != null && !string.IsNullOrEmpty(c.title)) return c.title;
+            string tid, title, state; int rev;
+            if (_tasks != null && _tasks.TryGetAgentTask(AgentId(e.agent), out tid, out title, out state, out rev) && tid == e.taskId && !string.IsNullOrEmpty(title))
+                return title;
+            return null;
+        }
+
+        static string ShortTitle(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            s = s.Replace("\r", " ").Replace("\n", " ").Trim();
+            if (s.Length == 0) return null;
+            return s.Length <= max ? s : s.Substring(0, max - 3).TrimEnd() + "...";
         }
 
         void OnSessionReset()

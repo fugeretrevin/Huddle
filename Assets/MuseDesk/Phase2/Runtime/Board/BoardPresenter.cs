@@ -6,6 +6,7 @@ using TMPro;
 using UnityEngine;
 using MuseDesk.Phase2.Contracts;
 using MuseDesk.Spatial;
+using MuseDesk.Agents;
 
 namespace MuseDesk.Phase2.Board
 {
@@ -123,6 +124,7 @@ namespace MuseDesk.Phase2.Board
 
             Reducer.SnapshotLoaded += RebuildAll;
             Reducer.TaskChanged += OnTaskChanged;
+            Reducer.TaskRemoved += OnTaskRemoved;
             Reducer.ResyncNeeded += OnResyncNeeded;
 
             Ready = true;
@@ -140,7 +142,21 @@ namespace MuseDesk.Phase2.Board
             if (Reducer == null) return;
             Reducer.SnapshotLoaded -= RebuildAll;
             Reducer.TaskChanged -= OnTaskChanged;
+            Reducer.TaskRemoved -= OnTaskRemoved;
             Reducer.ResyncNeeded -= OnResyncNeeded;
+        }
+
+        // rc22: a card left the board (removed). Its view eases out and is pooled; selection, dock and pager all key on
+        // the task id / the live view list, so they drop it on their next pass. The column re-lays out and clamps its scroll.
+        void OnTaskRemoved(string taskId)
+        {
+            if (!Ready || string.IsNullOrEmpty(taskId)) return;
+            if (_views.TryGetValue(taskId, out var view))
+            {
+                _views.Remove(taskId);
+                Recycle(taskId, view);
+            }
+            LayoutAllRegions();
         }
 
         // ─────────────────────────── view lifecycle ───────────────────────────
@@ -268,23 +284,178 @@ namespace MuseDesk.Phase2.Board
             _ => backlogRegion,
         };
 
-        void LayoutAllRegions()
+        // ── rc22: per-column paging and the counter badge ──
+        [Header("Paging (rc22)")]
+        [Tooltip("Rows of cards a column shows before it pages (0 = worked out from the frame). Arrow keys scroll one row.")]
+        [Range(0, 8)] public int maxRowsOverride = 0;
+
+        readonly int[] _laneOffset = new int[4];
+        readonly int[] _laneTotal = new int[4];
+        readonly int[] _laneCap = { 6, 6, 6, 6 };
+        BoardLanePager _pager;
+        bool _pagerDone;
+        float _frameBottomY;
+        bool _frameBottomRead;
+
+        Transform LaneRegion(int lane) => lane switch
         {
-            SetLaneCount(0, LayoutRegion(backlogRegion));
-            SetLaneCount(1, LayoutRegion(workingRegion));
-            SetLaneCount(2, LayoutRegion(needsMeRegion));
-            SetLaneCount(3, LayoutRegion(completedRegion));
+            0 => backlogRegion, 1 => workingRegion, 2 => needsMeRegion, _ => completedRegion,
+        };
+
+        public static string LaneName(int lane) => lane >= 0 && lane < LaneNames.Length ? LaneNames[lane] : "";
+        public int LaneOffset(int lane) => _laneOffset[lane];
+        public int LaneTotal(int lane) => _laneTotal[lane];
+        public int LaneCapacity(int lane) => _laneCap[lane];
+        public BoardLanePager Pager => _pager;
+
+        /// <summary>Scroll a column by one row (dir -1 up, +1 down). Clamped; the arrows call this.</summary>
+        public void ScrollLane(int lane, int dir)
+        {
+            if (lane < 0 || lane > 3) return;
+            _laneOffset[lane] = BoardPaging.Step(_laneOffset[lane], dir, _laneTotal[lane], Mathf.Max(1, columns), _laneCap[lane]);
+            LayoutAllRegions();
         }
 
-        /// <summary>Heading text ("Backlog 3") and the dimming of an empty lane's header. Touched
-        /// only when a lane's count changes, so nothing is rebuilt per layout.</summary>
+        void LateUpdate()
+        {
+            if (!Ready) return;
+            if (_clearKey != null)
+            {
+                _clearKey.SetVisible(_laneTotal[0] + _laneTotal[1] + _laneTotal[2] + _laneTotal[3] > 0);   // nothing to clear on an empty board
+                _clearKey.Tick();
+            }
+            if (Time.frameCount % 15 != 0) return;
+            if (!_pagerDone)
+            {
+                if (_pager == null) _pager = new BoardLanePager(this, ScrollLane);
+                if (_pager.TryBuild()) { _pagerDone = true; LayoutAllRegions(); }
+            }
+            if (_clearKey == null && !_clearTried) TryBuildClearKey();
+        }
+
+        // ── rc22: Clear key next to NewTaskButton (two-press confirm: "Clear" -> "Clear all?") ──
+        ConfirmKey _clearKey;
+        bool _clearTried;
+
+        /// <summary>The Clear key, or null until built (probes read its label and state).</summary>
+        public ConfirmKey ClearKey => _clearKey;
+
+        void TryBuildClearKey()
+        {
+            Transform nk = null;
+            foreach (var t in GetComponentsInChildren<Transform>(true)) if (t != null && t.name == "NewTaskButton") { nk = t; break; }
+            if (nk == null) return;
+            float scale = nk.localScale.x;
+            if (scale < 1e-4f || scale > 10f) return;              // the key is mid-animation or not a normal key yet: try again
+            _clearTried = true;
+            const float widthScale = 1.3f;
+            var key = new ConfirmKey(nk, nk.parent, "ClearBoardKey", nk.localPosition, scale, widthScale, "Clear", "Clear all?", ClearBoardKeyAsync);
+            if (!key.Built) return;
+            // Beside New, on the side away from the card toolbar (so the two never collide): one housing width plus a gap.
+            float dir = -1f;
+            var console = FindAnyObjectByType<CardActionConsole>();
+            if (console != null && console.pauseResumeKey != null)
+            {
+                float tx = transform.InverseTransformPoint(console.pauseResumeKey.transform.position).x;
+                dir = nk.localPosition.x >= tx ? 1f : -1f;
+            }
+            float step = scale * key.Unit.x * (0.5f + 0.5f * widthScale) + 0.25f * scale;
+            key.Root.localPosition = nk.localPosition + new Vector3(dir * step, 0f, 0f);
+            _clearKey = key;
+        }
+
+        async Task ClearBoardKeyAsync() => await RequestClearBoardAsync();
+
+        /// <summary>Press the Clear key exactly as a poke does (first press arms it, second clears). For drivers.</summary>
+        public bool PressClearKey() => _clearKey != null && _clearKey.Press();
+
+        /// <summary>Build the Clear key now (and show it when the board has cards) instead of waiting for the next
+        /// LateUpdate pass. For Play Mode drivers. Returns the key or null.</summary>
+        public ConfirmKey EnsureClearKey()
+        {
+            if (_clearKey == null) TryBuildClearKey();
+            if (_clearKey != null) _clearKey.SetVisible(_laneTotal[0] + _laneTotal[1] + _laneTotal[2] + _laneTotal[3] > 0);
+            return _clearKey;
+        }
+
+        /// <summary>The frame's lower edge in board units (read once), or NaN when there is no frame.</summary>
+        public float FrameBottomY { get { RowsFor(backlogRegion); return _frameBottomRead ? _frameBottomY : float.NaN; } }
+
+        /// <summary>How many card rows fit under a lane's header: from the region's top slot down to the frame's lower edge,
+        /// or (rc22 polish) down to the top of the arrow strip at the column's foot when <paramref name="arrows"/>.</summary>
+        int RowsFor(Transform region, bool arrows)
+        {
+            int rows = RowsFor(region);
+            if (!arrows || maxRowsOverride > 0 || _pager == null || !_pager.Built || _pager.BottomStrip <= 0f || !_frameBottomRead || region == null) return rows;
+            Transform board = transform;
+            float bs = Mathf.Abs(board.lossyScale.y);
+            float pitch = bs > 1e-6f ? cardSpacing.y * Mathf.Abs(region.lossyScale.y) / bs : 0f;
+            if (pitch < 1e-5f) return rows;
+            float top = board.InverseTransformPoint(region.position).y;
+            int r = Mathf.FloorToInt((top - (_frameBottomY + _pager.BottomStrip)) / pitch + 0.5f);
+            return Mathf.Clamp(Mathf.Min(r, rows), 1, rows);
+        }
+
+        int RowsFor(Transform region)
+        {
+            if (maxRowsOverride > 0) return maxRowsOverride;
+            const int fallback = 2, hardMax = 6;
+            if (region == null) return fallback;
+            Transform board = transform;
+            if (!_frameBottomRead)
+            {
+                var frame = FindDeep(board, "KanbanFrame_Visual");
+                if (frame == null) return fallback;
+                float minY = float.MaxValue;
+                foreach (var f in frame.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (f.sharedMesh == null) continue;
+                    var b = f.sharedMesh.bounds;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        var c = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                        float y = board.InverseTransformPoint(f.transform.TransformPoint(c)).y;
+                        if (y < minY) minY = y;
+                    }
+                }
+                if (minY == float.MaxValue) return fallback;
+                _frameBottomY = minY;
+                _frameBottomRead = true;
+            }
+            float bs = Mathf.Abs(board.lossyScale.y);
+            if (bs < 1e-6f) return fallback;
+            float pitch = cardSpacing.y * Mathf.Abs(region.lossyScale.y) / bs;      // board units
+            if (pitch < 1e-5f) return fallback;
+            float top = board.InverseTransformPoint(region.position).y;
+            int rows = Mathf.FloorToInt((top - _frameBottomY) / pitch + 0.5f);
+            return Mathf.Clamp(rows, 1, hardMax);
+        }
+
+        static Transform FindDeep(Transform root, string name)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true)) if (t != null && t.name == name) return t;
+            return null;
+        }
+
+        void LayoutAllRegions()
+        {
+            for (int lane = 0; lane < 4; lane++)
+            {
+                int total = LayoutRegion(LaneRegion(lane), lane);
+                _laneTotal[lane] = total;
+                SetLaneCount(lane, total);
+                _pager?.Update(lane, _laneOffset[lane], total, _laneCap[lane]);
+            }
+        }
+
+        /// <summary>The heading shows the column NAME only (rc22: the count lives in its own badge) and the dimming of an
+        /// empty lane's header. Touched only when a lane's count changes, so nothing is rebuilt per layout.</summary>
         void SetLaneCount(int lane, int count)
         {
+            TMP_Text heading = laneHeadings != null && lane < laneHeadings.Length ? laneHeadings[lane] : null;
+            if (heading != null && heading.text != LaneNames[lane]) heading.text = LaneNames[lane];
             if (_laneCounts[lane] == count) return;
             _laneCounts[lane] = count;
-
-            TMP_Text heading = laneHeadings != null && lane < laneHeadings.Length ? laneHeadings[lane] : null;
-            if (heading != null) heading.text = count > 0 ? LaneNames[lane] + " " + count : LaneNames[lane];
 
             Renderer header = laneHeaders != null && lane < laneHeaders.Length ? laneHeaders[lane] : null;
             if (header == null) return;
@@ -310,19 +481,38 @@ namespace MuseDesk.Phase2.Board
         }
 
         /// <summary>Lay a lane's cards into their slots. Returns the number of cards in the lane.</summary>
-        int LayoutRegion(Transform region)
+        int LayoutRegion(Transform region, int lane)
         {
-            if (region == null) return 0;
-            int i = 0;
+            if (region == null) { _laneOffset[lane] = 0; return 0; }
             int cols = Mathf.Max(1, columns);
+            // rc22: count the lane's cards first, then window them (a full column scrolls instead of running off the board).
+            int total = 0;
+            for (int c = 0; c < region.childCount; c++)
+            {
+                var ch = region.GetChild(c);
+                if (!ch.gameObject.activeSelf) continue;
+                var lv = ch.GetComponent<TaskCardView>();
+                if (lv != null && lv.IsLeaving) continue;
+                total++;
+            }
+            int cap = BoardPaging.Capacity(RowsFor(region), cols);
+            // rc22 polish: a column that pages shows its arrows at its foot; the cards then stop above them.
+            if (BoardPaging.Overflows(total, cap)) cap = BoardPaging.Capacity(RowsFor(region, true), cols);
+            _laneCap[lane] = cap;
+            int off = BoardPaging.Clamp(_laneOffset[lane], total, cols, cap);
+            _laneOffset[lane] = off;
+            int i = 0;
             for (int c = 0; c < region.childCount; c++)
             {
                 var child = region.GetChild(c);
                 if (!child.gameObject.activeSelf) continue;
                 var leaver = child.GetComponent<TaskCardView>();
                 if (leaver != null && leaver.IsLeaving) continue;   // easing out: no slot, no moving
-                int row = i / cols, col = i % cols;
+                bool visible = BoardPaging.IsVisible(i, off, cap);
+                int slot = visible ? i - off : (i < off ? 0 : cap - 1);   // scrolled-out cards wait (invisible) at the nearest end
+                int row = slot / cols, col = slot % cols;
                 var card = child.GetComponent<TaskCardView>();
+                if (card != null) card.SetScrolledOut(!visible);
                 var pos = new Vector3(col * cardSpacing.x, -row * cardSpacing.y, 0f);
                 // Record the stable resting slot (parent + local pose) so ReturnHome snaps back
                 // correctly even while the hand is moving the card.
@@ -341,7 +531,7 @@ namespace MuseDesk.Phase2.Board
                 }
                 i++;
             }
-            return i;
+            return total;
         }
 
         // ─────────────────────────── commands ───────────────────────────
@@ -431,6 +621,100 @@ namespace MuseDesk.Phase2.Board
             if (card?.Data == null || Gateway == null) return Task.FromResult(NotReady());
             var cmd = new ResumeCommand { ExpectedRevision = card.Data.Revision, IdempotencyKey = idempotencyKey };
             return RunCardCommandAsync(card, ct => Gateway.ResumeAsync(card.Data.TaskId, cmd, ct), "resume", idempotencyKey);
+        }
+
+        /// <summary>A one-line board status (an error from Remove / Clear). TaskDock shows it on its state line.
+        /// Args: (words, isError).</summary>
+        public event Action<string, bool> StatusLine;
+
+        void RaiseStatus(string text, bool error)
+        {
+            try { StatusLine?.Invoke(text, error); }
+            catch (Exception ex) { Debug.LogError($"[MuseDesk.P2] board status listener error: {ex.Message}"); }
+        }
+
+        /// <summary>Remove one card from the board (rc22). One command per task in flight; the gateway's remove event
+        /// takes the card off the board. A refusal or a transport failure is shown on the card and the status line.</summary>
+        public async Task<Phase2CommandResult<TaskCardV2>> RequestRemoveTaskAsync(string taskId)
+        {
+            if (string.IsNullOrEmpty(taskId) || Gateway == null) return NotReady();
+            string lockId = taskId;
+            if (!_ledger.TryLock(lockId)) return Busy();
+            string key = StableKey(taskId, "remove", "", "remove");
+            var view = FindView(taskId);
+            Phase2CommandResult<TaskCardV2> result = null;
+            try
+            {
+                result = await Gateway.RemoveTaskAsync(taskId, new RemoveTaskCommand { IdempotencyKey = key }, _cts.Token);
+                if (!result.Ok)
+                {
+                    string why = Reason(result.Error);
+                    if (view != null) view.ShowResult(false, why);
+                    RaiseStatus("Couldn't remove it: " + why, true);
+                }
+                else VerifyGone(new[] { taskId });
+                return result;
+            }
+            catch (OperationCanceledException)
+            {
+                return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody { Code = "CANCELLED", Message = "command cancelled" });
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MuseDesk.P2] remove transport error: {ex.Message}");
+                if (view != null) view.ShowResult(false, "Couldn't reach the desktop");
+                RaiseStatus("Couldn't reach the desktop", true);
+                return Phase2CommandResult<TaskCardV2>.Conflict(new CommandErrorBody { Code = "TRANSPORT_ERROR", Message = ex.Message });
+            }
+            finally { _ledger.Unlock(lockId, key, IsDefinitive(result)); }
+        }
+
+        /// <summary>Clear the whole board (rc22), running cards included. Returns the gateway's answer; on failure the
+        /// status line says why and the board is left as it was.</summary>
+        public async Task<Phase2CommandResult<ClearBoardResult>> RequestClearBoardAsync()
+        {
+            if (Gateway == null)
+                return Phase2CommandResult<ClearBoardResult>.Conflict(new CommandErrorBody { Code = "CLIENT_NOT_READY", Message = "board not initialized" });
+            const string lockId = "board|clear";
+            if (!_ledger.TryLock(lockId))
+                return Phase2CommandResult<ClearBoardResult>.Conflict(new CommandErrorBody { Code = "BUSY", Message = "a clear is already in flight" });
+            string key = StableKey("board", "clear", "", "clear");
+            bool definitive = false;
+            try
+            {
+                var result = await Gateway.ClearBoardAsync(new ClearBoardCommand { IncludeRunning = true, IdempotencyKey = key }, _cts.Token);
+                definitive = result.Ok || (result.Error != null && result.Error.Code != "TRANSPORT_ERROR");
+                if (!result.Ok) RaiseStatus("Couldn't clear the board: " + Reason(result.Error), true);
+                else VerifyGone(result.Value != null ? result.Value.Removed.ToArray() : null);
+                return result;
+            }
+            catch (OperationCanceledException)
+            {
+                return Phase2CommandResult<ClearBoardResult>.Conflict(new CommandErrorBody { Code = "CANCELLED", Message = "command cancelled" });
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MuseDesk.P2] clear transport error: {ex.Message}");
+                RaiseStatus("Couldn't reach the desktop", true);
+                return Phase2CommandResult<ClearBoardResult>.Conflict(new CommandErrorBody { Code = "TRANSPORT_ERROR", Message = ex.Message });
+            }
+            finally { _ledger.Unlock(lockId, key, definitive); }
+        }
+
+        // The backend answered "removed". Its events normally arrive first or within a moment; if a card is still in the
+        // model after two seconds the event was missed, so re-fetch the authoritative snapshot (which omits removed cards).
+        async void VerifyGone(string[] ids)
+        {
+            if (ids == null || ids.Length == 0) return;
+            try
+            {
+                await Task.Delay(2000, _cts.Token);
+                if (Reducer == null) return;
+                foreach (var id in ids)
+                    if (id != null && Reducer.Tasks.ContainsKey(id)) { await ResyncAsync(); return; }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Debug.LogWarning($"[MuseDesk.P2] remove verify failed: {ex.Message}"); }
         }
 
         /// <summary>Create a new backlog task. The server's task.created event adds the card to the

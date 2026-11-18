@@ -279,6 +279,40 @@ namespace MuseDesk.Wall
 
         static bool IsTimeout(string net) { return net != null && net.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0; }
 
+        /// <summary>rc20: a request for one frame of the PC's screen (the Screen panel), or null when not live. The caller
+        /// sends and disposes it. Raw BGRA, zlib-compressed; sizes in the X-Width / X-Height headers.</summary>
+        public UnityWebRequest ScreenFrameRequest(int width, int since = -1)
+        {
+            if (!IsLive) return null;
+            var req = UnityWebRequest.Get(session.ApiBaseUrl.TrimEnd('/') + "/v2/sessions/" + Sid + "/screen/frame?w=" + width
+                                          + (since >= 0 ? "&since=" + since : ""));
+            req.SetRequestHeader("Authorization", "Bearer " + session.LiveToken);
+            req.timeout = 5;
+            return req;
+        }
+
+        /// <summary>rc25: open / close the program the agents built in a window on the PC, or send it a tap. <paramref name="what"/>
+        /// is "open", "close", "tap" or "type". done(ok, words): words is the backend's reason when nothing opened.</summary>
+        public void AppCommand(string what, string json, Action<bool, string> done)
+        {
+            if (!IsLive) { done?.Invoke(false, "Apps open on the PC when MuseDesk is connected to the PC app."); return; }
+            Send(UnityWebRequest.kHttpVerbPOST, "/v2/sessions/" + Sid + "/apps/" + what, json ?? "{}", what == "open" ? 15 : 5,
+                (status, resp, net) =>
+                {
+                    if (done == null) return;
+                    if (net != null) { done(false, WallOfflineLogic.UnreachableMessage + "."); return; }
+                    if (status == 403) { done(false, "App windows are off on the PC (the backend was started with -NoScreen)."); return; }
+                    if (status < 200 || status >= 300) { done(false, "The PC did not open it (HTTP " + status + ")."); return; }
+                    try
+                    {
+                        var o = Newtonsoft.Json.Linq.JObject.Parse(resp ?? "{}");
+                        bool ok = what == "open" ? (bool?)o["opened"] ?? false : what == "close" ? true : (bool?)o["sent"] ?? false;
+                        done(ok, (string)o["reason"] ?? (string)o["label"] ?? "");
+                    }
+                    catch (Exception) { done(false, "The PC's answer could not be read."); }
+                });
+        }
+
         string Sid { get { return Uri.EscapeDataString(session.LiveSessionId); } }
 
         static string Key(string given, string fallbackPrefix, string id)

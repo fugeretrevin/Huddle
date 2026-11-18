@@ -1,3 +1,5 @@
+> **Final film order and capture status: `FINAL_VIDEO_SHOT_LEDGER.md`** (10 shots, 2:45–2:50). This file keeps the honesty rules and recording set-up.
+
 # MuseDesk demo storyboard (2:50 film, rc16)
 
 2026-11-16, evening. This builds on the expert's plan (`Downloads/03_QUEST_QA_DEMO_AND_SUBMISSION.md` §E), the readiness table

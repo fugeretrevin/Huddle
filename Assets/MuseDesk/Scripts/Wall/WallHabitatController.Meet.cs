@@ -161,7 +161,9 @@ namespace MuseDesk.Wall
 
         void TickMeet(float dt)
         {
+            TickTalkBubble(dt);   // rc21: speech bubble + head bob (WallHabitatController.TalkBubble.cs)
             SyncMeetVoiceHook();
+            TickVoiceOpen();      // rc22: "Developer, come down here" opens the portal by itself when the spot is safe
 
             // The status line names Meet once each time the habitat comes to rest on a wall (placed, or restored).
             bool atRest = WallActive && !WallPreviewing;
@@ -192,12 +194,55 @@ namespace MuseDesk.Wall
             bool want = isActiveAndEnabled && flags.wallHabitatEnabled && flags.largeAgentPortalEnabled && WallActive;
             if (want) { if (MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler != _meetVoice) MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler = _meetVoice; }
             else ClearMeetVoiceHook();
+            SyncCompanionVoiceHook();
         }
 
         void ClearMeetVoiceHook()
         {
             if (_meetVoice != null && MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler == _meetVoice)
                 MuseDesk.Voice.VoiceCommandCenter.PortalRequestHandler = null;
+            ClearCompanionVoiceHook();
+        }
+
+        // ── rc18: talk to the agent that is with you (no name needed) ──
+        System.Func<MuseDesk.Voice.VoiceAgentTarget> _companionWho;
+        System.Func<string, string> _companionAsk;
+
+        void SyncCompanionVoiceHook()
+        {
+            if (_companionWho == null) { _companionWho = CompanionForVoice; _companionAsk = AskCompanionByVoice; }
+            bool want = isActiveAndEnabled && flags.wallHabitatEnabled && flags.agentBtwEnabled && WallActive;
+            if (want)
+            {
+                if (MuseDesk.Voice.VoiceCommandCenter.CompanionAgent != _companionWho) MuseDesk.Voice.VoiceCommandCenter.CompanionAgent = _companionWho;
+                if (MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler != _companionAsk) MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler = _companionAsk;
+            }
+            else ClearCompanionVoiceHook();
+        }
+
+        void ClearCompanionVoiceHook()
+        {
+            if (_companionWho != null && MuseDesk.Voice.VoiceCommandCenter.CompanionAgent == _companionWho) MuseDesk.Voice.VoiceCommandCenter.CompanionAgent = null;
+            if (_companionAsk != null && MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler == _companionAsk) MuseDesk.Voice.VoiceCommandCenter.CompanionQuestionHandler = null;
+        }
+
+        /// <summary>The agent with the user: perched on the desk, or out of the portal (talking). None otherwise.</summary>
+        MuseDesk.Voice.VoiceAgentTarget CompanionForVoice()
+        {
+            if (this == null || !isActiveAndEnabled || !WallActive || _side == null) return MuseDesk.Voice.VoiceAgentTarget.None;
+            bool perched = _visit.State == VisitState.Perched;
+            bool portal = _portal.State >= PortalState.Emerging && _portal.State <= PortalState.Conversing;
+            if (!perched && !portal) return MuseDesk.Voice.VoiceAgentTarget.None;
+            return MuseDesk.Voice.VoiceIntentClassifier.FromId(_side.agentId);
+        }
+
+        string AskCompanionByVoice(string question)
+        {
+            if (CompanionForVoice() == MuseDesk.Voice.VoiceAgentTarget.None) return null;
+            string name = char.ToUpperInvariant(_side.agentId[0]) + _side.agentId.Substring(1);
+            if (AskText(question)) return "Asking the " + name + "… the answer shows on its card.";
+            if (_side.State == SideAskState.Asking) return "The " + name + " is still answering your last question.";
+            return null;
         }
 
         /// <summary>"Researcher, come here": the same preview the chooser opens. Null (not handled) outside Wall mode.</summary>
@@ -207,8 +252,43 @@ namespace MuseDesk.Wall
             HabitatRole role;
             if (!TryVoiceRole(t, out role)) return null;
             string agent = AgentId(role);
-            if (MeetAgent(agent)) return MeetCopy.VoiceOpened(AgentPresentationRegistry.Pretty(agent));
+            if (MeetAgent(agent))
+            {
+                // rc22 (owner, worn rc21: "Developer, come down here ... so they actually go there"): a spoken request opens the
+                // portal by itself as soon as the spot is confirmed safe (room-checked, full size). An unchecked or fallback spot
+                // still waits for Open here, exactly as before.
+                // Only a "come ..." request ("come here", "come down here", "get over here") opens by itself; "meet the developer"
+                // still shows the preview and waits for Open here, as before.
+                var vc = MuseDesk.Voice.VoiceCommandCenter.Instance;
+                string said = vc != null ? (vc.LastTranscript ?? "").ToLowerInvariant() : "";
+                bool comeHere = said.Contains("come") || said.Contains("get over") || said.Contains("get down");
+                if (!comeHere) return MeetCopy.VoiceOpened(AgentPresentationRegistry.Pretty(agent));
+                _voiceOpenAgent = agent;
+                _voiceOpenUntil = Time.unscaledTime + 5f;
+                return "The " + AgentPresentationRegistry.Pretty(agent) + " is coming down to you.";
+            }
             return string.IsNullOrEmpty(LastMeetRefusal) ? "Not now." : LastMeetRefusal + ".";
+        }
+
+        string _voiceOpenAgent;
+        float _voiceOpenUntil;
+        /// <summary>For drivers: portals opened by voice without a press.</summary>
+        public int VoiceAutoOpens { get; private set; }
+
+        void TickVoiceOpen()
+        {
+            if (_voiceOpenAgent == null) return;
+            if (Time.unscaledTime > _voiceOpenUntil) { _voiceOpenAgent = null; return; }
+            if (_portal.State != PortalState.AwaitConfirm || _portal.Agent != _voiceOpenAgent) return;
+            if (!_portal.Spot.valid || !_portal.Spot.roomChecked || PortalSpotIsFallback)
+            {
+                _voiceOpenAgent = null;
+                Note("Check the spot, then press Open here");
+                return;
+            }
+            _voiceOpenAgent = null;
+            VoiceAutoOpens++;
+            _portal.Confirm();
         }
 
         /// <summary>One line for drivers and logs.</summary>

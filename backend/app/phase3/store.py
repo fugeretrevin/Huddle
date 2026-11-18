@@ -3,6 +3,11 @@
 ``manager_plans_v3`` is created with ``CREATE TABLE IF NOT EXISTS`` (no existing table is
 altered). Also holds the one cross-table helper commit rollback needs, because
 ``Phase2Store`` has no delete.
+
+``adhoc_tasks_v3`` records the board cards the USER created and assigned to a worker while the
+backend was live with a model: only those cards are worked by the runner outside a plan (an
+old card in the database is never picked up just because it is queued). ``folder`` is the
+restricted-workspace folder under ``<workspace_root>/tasks`` its work used.
 """
 from __future__ import annotations
 
@@ -23,6 +28,13 @@ CREATE TABLE IF NOT EXISTS manager_plans_v3 (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_manager_plans_v3_session ON manager_plans_v3(session_id, created_at);
+CREATE TABLE IF NOT EXISTS adhoc_tasks_v3 (
+    task_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    requested_at REAL NOT NULL,
+    folder TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_adhoc_tasks_v3_session ON adhoc_tasks_v3(session_id, requested_at);
 """
 
 
@@ -80,6 +92,45 @@ class Phase3Store:
                  plan["plan_id"], expected_revision))
             self._s._conn.commit()
             return cur.rowcount == 1
+
+    # ─────────────────────── ad-hoc (user-assigned) cards ───────────────────────
+    def mark_adhoc(self, task_id: str, session_id: str, requested_at: float) -> bool:
+        """Record that the user asked for this card to be worked. True if newly recorded."""
+        with self._s._lock:
+            cur = self._s._conn.execute(
+                "INSERT OR IGNORE INTO adhoc_tasks_v3(task_id, session_id, requested_at, folder)"
+                " VALUES (?,?,?,NULL)", (task_id, session_id, float(requested_at)))
+            self._s._conn.commit()
+            return cur.rowcount == 1
+
+    def adhoc_entry(self, task_id: str) -> dict[str, Any] | None:
+        with self._s._lock:
+            row = self._s._conn.execute(
+                "SELECT * FROM adhoc_tasks_v3 WHERE task_id=?", (task_id,)).fetchone()
+        return dict(row) if row else None
+
+    def adhoc_entries(self, session_id: str) -> list[dict[str, Any]]:
+        """This session's ad-hoc cards, oldest request first."""
+        with self._s._lock:
+            rows = self._s._conn.execute(
+                "SELECT * FROM adhoc_tasks_v3 WHERE session_id=? ORDER BY requested_at, rowid",
+                (session_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def adhoc_sessions(self) -> list[str]:
+        """Sessions with at least one ad-hoc card that has not reached a terminal state."""
+        with self._s._lock:
+            rows = self._s._conn.execute(
+                "SELECT DISTINCT a.session_id FROM adhoc_tasks_v3 a JOIN tasks_v2 t ON t.id=a.task_id"
+                " WHERE t.task_state NOT IN ('completed','failed','cancelled')"
+                " ORDER BY a.session_id").fetchall()
+        return [r["session_id"] for r in rows]
+
+    def set_adhoc_folder(self, task_id: str, folder: str) -> None:
+        with self._s._lock:
+            self._s._conn.execute("UPDATE adhoc_tasks_v3 SET folder=? WHERE task_id=?",
+                                  (folder, task_id))
+            self._s._conn.commit()
 
     def delete_tasks_v2(self, task_ids: list[str]) -> int:
         """Rollback helper: remove task rows this commit created (nothing else)."""

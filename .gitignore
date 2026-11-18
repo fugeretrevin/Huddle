@@ -76,3 +76,11 @@ TempAssembly*.dll
 /Assets/Oculus/Voice.meta
 
 TestResults/
+
+# Release signing (keystore lives in %USERPROFILE%\.musedesk; never commit a key or its passwords)
+*.keystore
+*.jks
+signing.json
+
+# Film captures (large media, never committed)
+/Captures/

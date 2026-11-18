@@ -38,6 +38,10 @@ namespace MuseDesk.Spatial
         public struct Reading
         {
             public bool holding, nearHover, uiHover;
+            /// <summary>uiHover that came ONLY from a ray hovering (no poke, no selection). Rays sweep across keys, cards and
+            /// the desk agents' stand-in ray targets on their way to wherever the user points, so a pointing gesture
+            /// (Select agents) may ignore it: owner, worn rc17 "it says hand was over a key but I'm pretty sure it wasn't".</summary>
+            public bool rayHoverOnly;
         }
 
         static readonly List<Entry> _entries = new List<Entry>(32);
@@ -81,6 +85,15 @@ namespace MuseDesk.Spatial
             return s.With(s.holding || r.holding, s.nearHover || r.nearHover, s.uiHover || r.uiHover);
         }
 
+        /// <summary>As <see cref="Apply(AimHandSample,int)"/>, but a ray that only HOVERS something does not count as
+        /// "over a key" (for gestures that point with the ray, like Select agents). A poke hover or any selection still does.</summary>
+        public static AimHandSample ApplyPointing(AimHandSample s, int hand)
+        {
+            Reading r = Read(hand);
+            bool ui = r.uiHover && !r.rayHoverOnly;
+            return s.With(s.holding || r.holding, s.nearHover || r.nearHover, s.uiHover || ui);
+        }
+
         static void Refresh()
         {
             int f = Time.frameCount;
@@ -88,6 +101,7 @@ namespace MuseDesk.Spatial
             _frame = f;
             _left = default(Reading);
             _right = default(Reading);
+            bool lNonRayUi = false, rNonRayUi = false, lRayHover = false, rRayHover = false;
 
             if (!_found)
             {
@@ -113,9 +127,13 @@ namespace MuseDesk.Spatial
                     case Kind.Ray: ui = true; break;
                     default: ui = selected; break;
                 }
-                if (e.side != 1) { _left.holding |= holding; _left.nearHover |= near; _left.uiHover |= ui; }
-                if (e.side != 0) { _right.holding |= holding; _right.nearHover |= near; _right.uiHover |= ui; }
+                bool rayHover = ui && e.kind == Kind.Ray && !selected;
+                bool otherUi = ui && !rayHover;
+                if (e.side != 1) { _left.holding |= holding; _left.nearHover |= near; _left.uiHover |= ui; lRayHover |= rayHover; lNonRayUi |= otherUi; }
+                if (e.side != 0) { _right.holding |= holding; _right.nearHover |= near; _right.uiHover |= ui; rRayHover |= rayHover; rNonRayUi |= otherUi; }
             }
+            _left.rayHoverOnly = lRayHover && !lNonRayUi;
+            _right.rayHoverOnly = rRayHover && !rNonRayUi;
         }
 
         static void Find()

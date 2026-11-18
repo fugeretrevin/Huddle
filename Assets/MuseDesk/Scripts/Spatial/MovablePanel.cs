@@ -78,6 +78,12 @@ namespace MuseDesk.Spatial
         [Tooltip("Time constant of the smoothing that removes hand jitter, seconds.")]
         public float smoothTime = 0.05f;
         public bool faceHead = true;
+        [Tooltip("Owner (worn rc17): the Spaces panel 'wouldn't face me' and could not be angled. While the bar is held, turning " +
+                 "the wrist left/right turns the panel by this much per degree (on top of facing the head). 0 = off.")]
+        public float wristTurnGain = 1.2f;
+        [Tooltip("Largest extra turn from the wrist, degrees either way.")]
+        public float wristTurnMax = 75f;
+        float _proxyYaw0;
         public float minReach = PanelLayoutMath.MinReach;
         public float maxReach = PanelLayoutMath.MaxReach;
         [Tooltip("Gap kept between two panels, metres.")]
@@ -228,6 +234,7 @@ namespace MuseDesk.Spatial
             _head = RemoteNearUser.Head();
             _yaw0 = _head != null ? PanelLayoutMath.YawToward(_pivot0, _head.position, 0f) : 0f;
             _yawDelta = 0f;
+            _proxyYaw0 = grabProxy != null ? YawOf(grabProxy.rotation) : 0f;
             _holdStart = Time.unscaledTime;
             _movedFar = false; _chipOffered = false;
             SuspendPokes();
@@ -242,10 +249,21 @@ namespace MuseDesk.Spatial
             float target = 0f;
             if (faceHead && _head != null)
                 target = Mathf.DeltaAngle(_yaw0, PanelLayoutMath.YawToward(pivot, _head.position, _yaw0));
+            // The hand's own turn (the grab proxy follows the hand's rotation): angle the panel by turning the wrist.
+            if (wristTurnGain > 0f && grabProxy != null)
+                target += Mathf.Clamp(Mathf.DeltaAngle(_proxyYaw0, YawOf(grabProxy.rotation)) * wristTurnGain, -wristTurnMax, wristTurnMax);
             _yawDelta = Mathf.LerpAngle(_yawDelta, target, k);
             // Yaw only, about the world's up: no roll, and the authored tilt is kept.
             Quaternion turn = Quaternion.AngleAxis(_yawDelta, Vector3.up);
             transform.SetPositionAndRotation(pivot + turn * (_pos0 - _pivot0), PanelLayoutMath.UprightTurn(_rot0, _yawDelta));
+        }
+
+        /// <summary>Heading of a rotation about the world's up (from its forward, or its right when forward is near vertical).</summary>
+        static float YawOf(Quaternion q)
+        {
+            Vector3 f = q * Vector3.forward; f.y = 0f;
+            if (f.sqrMagnitude < 0.04f) { Vector3 r = q * Vector3.right; r.y = 0f; return Mathf.Atan2(r.x, r.z) * Mathf.Rad2Deg - 90f; }
+            return Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
         }
 
         /// <summary>Clamp a world pivot height so the panel's base stays in the vertical band around the desk plane.</summary>

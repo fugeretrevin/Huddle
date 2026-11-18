@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using MuseDesk.Models;
@@ -96,6 +96,37 @@ namespace MuseDesk.Voice
 
         public VoiceOffice Office => _office;
         public bool IsListening => _listening;
+        /// <summary>rc21: the longest the microphone stays open for one sentence, pauses included.</summary>
+        public float ListenCapSeconds => Mathf.Max(maxListenSeconds, SentenceStitcher.DefaultMaxSeconds + 2f);
+
+        /// <summary>rc21: given the words so far of a piece the speech service called final, whether they already read as a
+        /// whole command (act now: "stop", "approve", "floor mode"), clearly go on ("Manager," alone; "new task" with no
+        /// title), or neither (the stitcher waits a short grace for more words when the piece is more than two words).</summary>
+        public PieceVerdict SentenceVerdict(string text)
+        {
+            string heard = WakeWord.Canonical(VoiceAnswers.Ascii(text ?? "").Trim());
+            if (heard.Length == 0) return PieceVerdict.Unknown;
+            if (_pending != Pending.None) return PieceVerdict.Complete;          // an open question: answers are short
+            // rc22: only someone starting to talk ("okay so", "hey", "um"): wait for the rest rather than act on it.
+            if (VoiceFiller.IsOnlyFiller(heard)) return PieceVerdict.Incomplete;
+            VoiceAgentTarget who; string rest;
+            bool named = WakeWord.Parse(heard, out who, out rest);
+            if (named && (string.IsNullOrWhiteSpace(rest) || VoiceFiller.IsOnlyFiller(rest))) return PieceVerdict.Incomplete;   // "Manager," / "Manager, um" then a pause
+            string via;
+            VoiceIntent intent = ParseForgiving(heard, out via);                 // rc22: after the name, without filler
+            switch (intent.Kind)
+            {
+                case VoiceIntentKind.None:
+                case VoiceIntentKind.AskAgent:
+                case VoiceIntentKind.AskWhy:
+                case VoiceIntentKind.Start:
+                    return PieceVerdict.Unknown;                                 // free speech: may go on
+                case VoiceIntentKind.CreateTask:
+                    return string.IsNullOrEmpty(intent.Text) ? PieceVerdict.Incomplete : PieceVerdict.Unknown;
+                default:
+                    return PieceVerdict.Complete;                                // a closed command
+            }
+        }
         public bool HasPendingQuestion => _pending != Pending.None;
 
         // ───────────────────────── hands-free mic ─────────────────────────
@@ -209,7 +240,7 @@ namespace MuseDesk.Voice
             _source.MicLevelChanged += OnLevel;
             _source.Problem += OnProblem;
             var wit = sourceBehaviour as WitVoiceSource;
-            if (wit != null) wit.ToggleHandler = PressMic;
+            if (wit != null) { wit.ToggleHandler = PressMic; wit.SentenceVerdict = SentenceVerdict; }
             _hooked = true;
         }
 
@@ -223,6 +254,7 @@ namespace MuseDesk.Voice
             _source.Problem -= OnProblem;
             var wit = sourceBehaviour as WitVoiceSource;
             if (wit != null && wit.ToggleHandler == (Action)PressMic) wit.ToggleHandler = null;
+            if (wit != null && wit.SentenceVerdict == (Func<string, PieceVerdict>)SentenceVerdict) wit.SentenceVerdict = null;
             _hooked = false;
         }
 
@@ -232,8 +264,10 @@ namespace MuseDesk.Voice
             _office.Find(false);
             VoiceAddressing.Shared.Tick(now);
 
-            // The microphone never stays open longer than one sentence.
-            if (_listening && now - _listenStart > maxListenSeconds && _source != null) _source.EndRequest();
+            // The microphone never stays open longer than one sentence. rc21 (worn rc20, "it's not waiting for my full sentence"):
+            // the scene's maxListenSeconds (6) ended every request after 6 s, mid-goal, whatever the speech service did. A
+            // sentence may now run as long as the stitcher allows (pauses included); this cap is only the backstop.
+            if (_listening && now - _listenStart > ListenCapSeconds && _source != null) _source.EndRequest();
 
             // The speech service never keeps the readout on "Thinking" for ever.
             if (_thinking && now - _thinkStart > maxThinkSeconds)
@@ -395,7 +429,8 @@ namespace MuseDesk.Voice
         {
             _thinking = false;
             _mic.NotifyFinal(Time.unscaledTime);
-            HandleFinal(text);
+            var wit = sourceBehaviour as WitVoiceSource;
+            HandleFinal(text, wit != null ? Mathf.Max(1, wit.LastPieces) : 1);
         }
 
         void OnProblem(VoiceProblem problem, string detail)
@@ -413,6 +448,7 @@ namespace MuseDesk.Voice
             }
             if (problem == VoiceProblem.NoSpeech)
             {
+                if (!_autoListen) Debug.Log("[MuseDesk.Voice] heard nothing (mic key): the speech service returned no words");
                 if (_pending != Pending.None) { ShowPrompt(); RefreshMic(); return; }
                 if (_autoListen) EndDisplay();
                 else Result("Heard nothing", TrySaying(), VoiceTone.Neutral, 2.5f);
@@ -426,10 +462,10 @@ namespace MuseDesk.Voice
         // ───────────────────────── a finished sentence ─────────────────────────
 
         /// <summary>A final transcript, exactly as if the recogniser had produced it (the driver).</summary>
-        public void InjectFinal(string transcript) { _thinking = false; HandleFinal(transcript); }
+        public void InjectFinal(string transcript) { _thinking = false; HandleFinal(transcript, 1); }
 
         /// <summary>A final transcript as if the hands-free loop had heard it (the driver): same path, but quiet when it is not a command.</summary>
-        public void InjectAmbientFinal(string transcript) { _thinking = false; _ambient = true; _ambientQuiet = false; HandleFinal(transcript); }
+        public void InjectAmbientFinal(string transcript) { _thinking = false; _ambient = true; _ambientQuiet = false; HandleFinal(transcript, 1); }
 
         /// <summary>A partial transcript, exactly as if the recogniser had produced it (the driver).</summary>
         public void InjectPartial(string transcript)
@@ -451,34 +487,164 @@ namespace MuseDesk.Voice
         /// null when it is not handled (the sentence then goes through the normal grammar, exactly as before).</summary>
         public static Func<VoiceAgentTarget, string> PortalRequestHandler;
 
-        void HandleFinal(string transcript)
+        /// <summary>rc18: set by the Wall habitat. The agent that is with the user right now (perched on the desk, or out of the
+        /// portal), else None. While it is not None, natural speech that is not a command goes to that agent.</summary>
+        public static Func<VoiceAgentTarget> CompanionAgent;
+        /// <summary>rc18: set by the Wall habitat. Asks the companion a free question (read-only side conversation); returns
+        /// the line to show ("Asking the Developer…"), or null when it could not be asked (the sentence then goes on as before).</summary>
+        public static Func<string, string> CompanionQuestionHandler;
+
+        /// <summary>rc22: set by the Wall habitat (optional). Whether the Manager can take a goal right now (on the Wall, Floor or
+        /// Ceiling). Used only for sentences that do NOT name the Manager (the mic-key fallback below): when it says no, such a
+        /// sentence gets the usual "Not understood" card instead of "the Manager works on the Wall...". Null: assume it can.</summary>
+        public static Func<bool> ManagerReady;
+
+        // ── rc22 diagnostics: one log line per final sentence (the owner's own speech, on their own device, Debug.Log only) ──
+        string _logRoute, _logOutcome, _logDrop;
+        bool _logAddressed;
+
+        void Route(string route, string outcome) { _logRoute = route; _logOutcome = outcome ?? ""; }
+        void Drop(string route, string reason) { _logRoute = route; _logOutcome = "dropped"; _logDrop = reason; }
+
+        static string LogText(string s, int max = 160)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            s = s.Replace('"', '\'').Replace('\n', ' ').Replace('\r', ' ');
+            return s.Length > max ? s.Substring(0, max - 3) + "..." : s;
+        }
+
+        void HandleFinal(string transcript, int pieces)
+        {
+            bool ambient = _ambient;
+            _logRoute = "None"; _logOutcome = ""; _logDrop = null; _logAddressed = false;
+            try { HandleFinalCore(transcript); }
+            finally
+            {
+                string said = LogText(VoiceAnswers.Ascii(transcript ?? "").Trim());
+                string read = LogText(LastTranscript);
+                Debug.Log("[MuseDesk.Voice] heard \"" + said + "\" (pieces=" + pieces + ", hands-free=" + (ambient ? "true" : "false")
+                          + ", addressed=" + (_logAddressed ? "true" : "false") + ") -> " + _logRoute
+                          + (string.IsNullOrEmpty(_logOutcome) ? "" : " " + LogText(_logOutcome, 120))
+                          + (read != said && read.Length > 0 ? " [read as \"" + read + "\"]" : ""));
+                if (_logDrop != null) Debug.Log("[MuseDesk.Voice] dropped \"" + said + "\": " + _logDrop);
+            }
+        }
+
+        static bool IsDecisionKind(VoiceIntentKind k)
+        {
+            return k == VoiceIntentKind.Approve || k == VoiceIntentKind.Reject || k == VoiceIntentKind.RequestChanges
+                || k == VoiceIntentKind.DecisionNotPending;
+        }
+
+        /// <summary>rc22 (owner, worn rc21: "the mic needs to be less picky"): the grammar, tried on the sentence as heard
+        /// first; when that means nothing, on the words after an address ("Hey team, open the board"), then without filler
+        /// and politeness ("um, could you open the, uh, board for me please"). A cleaned sentence never becomes a decision:
+        /// "can you approve it" stays a question, as the grammar's tests require. <paramref name="via"/> says which reading won.</summary>
+        VoiceIntent ParseForgiving(string heard, out string via)
+        {
+            VoiceContext ctx = CurrentContext();
+            via = "";
+            VoiceIntent intent = VoiceIntentParser.Parse(heard, ctx);
+            if (intent.Kind != VoiceIntentKind.None) return intent;
+
+            VoiceAgentTarget who; string rest;
+            bool named = WakeWord.Parse(heard, out who, out rest) && rest.Length > 0;
+            if (named)
+            {
+                VoiceIntent r = VoiceIntentParser.Parse(rest, ctx);
+                if (r.Kind != VoiceIntentKind.None) { via = " (after the name)"; return r; }
+            }
+            string clean = VoiceFiller.Clean(heard);
+            if (clean != heard.Trim())
+            {
+                VoiceIntent r = VoiceIntentParser.Parse(clean, ctx);
+                if (r.Kind != VoiceIntentKind.None && !IsDecisionKind(r.Kind)) { via = " (without filler: \"" + clean + "\")"; return r; }
+            }
+            if (named)
+            {
+                string cleanRest = VoiceFiller.Clean(rest);
+                if (cleanRest != rest.Trim())
+                {
+                    VoiceIntent r = VoiceIntentParser.Parse(cleanRest, ctx);
+                    if (r.Kind != VoiceIntentKind.None && !IsDecisionKind(r.Kind)) { via = " (after the name, without filler)"; return r; }
+                }
+            }
+            return intent;
+        }
+
+        void HandleFinalCore(string transcript)
         {
             // A leading name the service misheard ("Research your why") is read as the name ("Researcher, why").
             string heard = WakeWord.Canonical(VoiceAnswers.Ascii(transcript ?? "").Trim());
             _office.Find(true);
             HandledCount++;
             LastTranscript = heard;
-            if (heard.Length == 0) { LastIntent = "None"; OnProblem(VoiceProblem.NoSpeech, null); return; }
+            if (heard.Length == 0) { LastIntent = "None"; Drop("None", "empty sentence"); OnProblem(VoiceProblem.NoSpeech, null); return; }
             bool ambient = _ambient;        // this sentence came from the hands-free loop
             _ambient = _ambientQuiet = false;
 
-            VoiceIntent intent = VoiceIntentParser.Parse(heard, CurrentContext());
+            // Who the sentence starts with, if anyone (rc22: forgiving names, see WakeWord). Read once for every path below.
+            VoiceAgentTarget addrWho; string addrRest;
+            bool addressedAny = WakeWord.Parse(heard, out addrWho, out addrRest);
+            _logAddressed = addressedAny;
 
-            // Wall portal (Meet): "Researcher, come here" / "meet the developer". Only while the Wall registered for it.
+            string via;
+            VoiceIntent intent = ParseForgiving(heard, out via);
+
+            // Wall portal (Meet): "Researcher, come here" / "meet the developer" / (rc22) "come down here, developer". Only while
+            // the Wall registered for it. Read before the companion: a "come here" that names an agent is a Meet request, never
+            // a question for the agent already beside the user.
             VoiceAgentTarget meetWho;
             bool meetAsked = PortalVoiceRequest.Routes(heard, PortalRequestHandler != null, _pending != Pending.None, out meetWho);
             bool meetOnlyAddress = false;     // hands-free: the sentence passed the name rule only as a portal request
 
+            // rc22 polish (owner: "agents respond to basic conversation even if they don't have context: small talk, playful
+            // banter, flirting platonically reciprocated"): a sentence that is ONLY small talk ("hey developer, how are you",
+            // "tell me a joke", "thanks!") gets a short scripted line in that agent's voice, spoken and shown, labelled scripted.
+            // Never a command (halts and commands keep their routes), never changes anything. Hands-free: only when addressed
+            // by name or to the agent beside the user (the privacy rule).
+            if (_pending == Pending.None && !meetAsked && TrySmallTalk(heard, intent, ambient, addressedAny, addrWho, addrRest))
+            {
+                RefreshMic();
+                return;
+            }
+
+            // rc18 (owner): talk naturally to the agent that is WITH you (perched on the desk or out of the portal), no name
+            // needed: "hey, why are you doing this instead of that?". It goes to that agent's side conversation (live: the real
+            // model answers as that agent; offline: the scripted reply), shown on its visit card. Read-only, as the keys are.
+            if (_pending == Pending.None && !meetAsked && CompanionQuestionHandler != null && CompanionAgent != null)
+            {
+                VoiceAgentTarget companion = CompanionAgent();
+                bool command = !(intent.Kind == VoiceIntentKind.None || intent.Kind == VoiceIntentKind.AskAgent || intent.Kind == VoiceIntentKind.AskWhy
+                                 || intent.Kind == VoiceIntentKind.Status || intent.Kind == VoiceIntentKind.WhoNeedsMe);
+                string question;
+                if (CompanionAddressing.ForCompanion(heard, companion, command, out question))
+                {
+                    string reply = CompanionQuestionHandler(question);
+                    if (reply != null)
+                    {
+                        _ambient = _ambientQuiet = false;
+                        _actedOnPartial = VoiceIntentKind.None;
+                        _partial = "";
+                        LastIntent = "CompanionQuestion";
+                        LastMessage = reply;
+                        Route("CompanionQuestion:" + companion, "asked: " + reply);
+                        if (policy != null) policy.NotifyHeard(LastMessage);
+                        Result("You: " + VoiceAnswers.Clip(question, 60), reply, VoiceTone.Agent, 3.5f);
+                        RefreshMic();
+                        return;
+                    }
+                }
+            }
+
             // Hands-free sentences must start with a name ("Researcher, ...", "Hey MuseDesk, ..."), unless they halt
             // something or answer a conversation the user already opened. The name itself is not a command, so when the
             // whole sentence parses to nothing, the words after the name are tried.
+            // (rc22: the words after the name are already tried by ParseForgiving, for the mic key too.)
             bool addressed = false;
             if (ambient)
             {
-                VoiceAgentTarget who; string rest;
-                addressed = WakeWord.Parse(heard, out who, out rest);
-                if (addressed && intent.Kind == VoiceIntentKind.None && rest.Length > 0)
-                    intent = VoiceIntentParser.Parse(rest, CurrentContext());
+                addressed = addressedAny;
                 bool halting = intent.Kind == VoiceIntentKind.Stop || intent.Kind == VoiceIntentKind.Cancel;
                 meetOnlyAddress = meetAsked && !WakeWord.Allows(addressed, _pending != Pending.None, halting);
                 if (!PortalVoiceRequest.AllowsHandsFree(addressed, _pending != Pending.None, halting, meetAsked))
@@ -492,8 +658,13 @@ namespace MuseDesk.Voice
                         // Nothing is acted on; the user is only told what was heard and how to address it.
                         LastIntent = "UnaddressedHint";
                         Result("Heard: " + VoiceAnswers.Clip(heard, 60), WakeWord.Hint, VoiceTone.Neutral, 3.5f);
+                        Drop("UnaddressedHint", "hands-free sentence mentions an agent but does not start with a name (hint shown, nothing done; grammar read " + intent + ")");
                     }
-                    else if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                    else
+                    {
+                        if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                        Drop("Unaddressed", "hands-free sentence does not start with a name and is not stop/cancel (privacy rule; grammar read " + intent + ")");
+                    }
                     RefreshMic();
                     return;
                 }
@@ -506,12 +677,17 @@ namespace MuseDesk.Voice
             _partial = "";
             if (acted != VoiceIntentKind.None && (intent.Kind == acted || intent.Kind == VoiceIntentKind.Stop || intent.Kind == VoiceIntentKind.Cancel))
             {
+                Route(intent.ToString(), "already acted on while it was still a partial (" + acted + ")");
                 RefreshMic();
                 return;
             }
 
             // While a decision counts down, only words about it matter; chatter does not stop the clock.
-            if (_pending == Pending.Decision && intent.Kind == VoiceIntentKind.None) { ShowPrompt(); ScheduleRelisten(); return; }
+            if (_pending == Pending.Decision && intent.Kind == VoiceIntentKind.None)
+            {
+                Drop("None", "a spoken decision is counting down; only cancel / stop / the other decision word count");
+                ShowPrompt(); ScheduleRelisten(); return;
+            }
 
             // Meet: the Wall opens the portal PREVIEW for that agent (nothing opens until Open here is pressed). It comes before
             // the grammar because "come here" is also the office's Bring here: while the habitat is on the wall (the only time a
@@ -523,6 +699,7 @@ namespace MuseDesk.Voice
                 {
                     LastIntent = "PortalRequest";
                     LastMessage = reply;
+                    Route("PortalRequest:" + meetWho, "sent: " + reply);
                     if (policy != null) policy.NotifyHeard(LastMessage);
                     Result("Heard: " + VoiceAnswers.Clip(heard, 60), reply, VoiceTone.Good, 4f);
                     RefreshMic();
@@ -532,6 +709,7 @@ namespace MuseDesk.Voice
                 {
                     // Nobody took it, and without the portal exception this hands-free sentence was not addressed: stay quiet, as before.
                     LastIntent = "Unaddressed";
+                    Drop("Unaddressed", "hands-free meet request the Wall did not take, and the sentence does not start with a name");
                     if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
                     RefreshMic();
                     return;
@@ -542,16 +720,24 @@ namespace MuseDesk.Voice
             // registered as the Manager (the Wall habitat, when it is active and its flag is on). It only ASKS for a plan:
             // nothing is created until the user approves the plan paper.
             // (Hands-free: only when the sentence was addressed by name, e.g. "Manager, plan a login page".)
-            if ((!ambient || addressed) && intent.Kind == VoiceIntentKind.None && _pending == Pending.None && ManagerRequestHandler != null)
+            // rc20 (worn rc19): "Manager, build a program that prints stars" parsed as the board's "new task" command
+            // (CreateTask) and never reached the Manager. A sentence that NAMES the Manager is the Manager's, unless it halts.
+            bool managerMayTake = intent.Kind == VoiceIntentKind.None || intent.Kind == VoiceIntentKind.CreateTask
+                                  || intent.Kind == VoiceIntentKind.Start || intent.Kind == VoiceIntentKind.AskAgent;
+            if ((!ambient || addressed) && managerMayTake && _pending == Pending.None && ManagerRequestHandler != null)
             {
                 VoiceClassification c = VoiceIntentClassifier.Classify(heard);
                 if (c.Kind == VoiceAction.ManagerRequest && !string.IsNullOrEmpty(c.Question) && c.Question.Trim().Length >= 3)
                 {
-                    string reply = ManagerRequestHandler(c.Question.Trim());
+                    // rc22: "Manager, um, could you plan a login page" -> "plan a login page".
+                    string goal = VoiceFiller.Clean(c.Question.Trim());
+                    if (goal.Length < 3) goal = c.Question.Trim();
+                    string reply = ManagerRequestHandler(goal);
                     if (reply != null)
                     {
                         LastIntent = "ManagerRequest";
                         LastMessage = reply;
+                        Route("ManagerRequest", "goal \"" + goal + "\": " + reply);
                         if (policy != null) policy.NotifyHeard(LastMessage);
                         Result("Heard: " + VoiceAnswers.Clip(heard, 60), reply, VoiceTone.Agent, 4f);
                         RefreshMic();
@@ -560,10 +746,40 @@ namespace MuseDesk.Voice
                 }
             }
 
-                        VoiceTone tone; float seconds; bool understood;
+            // rc22 (owner, worn rc21: "the mic needs to be less picky"): with the MIC KEY (or a hands-free sentence addressed to
+            // everyone, "Hey MuseDesk, ..."), a sentence that is no command and names no agent is not thrown away as "Not
+            // understood": it goes to the Manager as a goal or question. (The agent that is WITH the user already took natural
+            // speech above.) Safe: the Manager only drafts a plan; nothing runs until the user approves the plan paper.
+            // Hands-free room chatter (no name) never reaches this: it was dropped by the name rule above.
+            bool unnamed = (addressedAny ? addrWho == VoiceAgentTarget.None : true)
+                           && VoiceIntentClassifier.ResolveTarget(heard) == VoiceAgentTarget.None;
+            bool comeNoName = PortalVoiceRequest.IsUnnamedComeRequest(addressedAny ? addrRest : heard);   // "come down here": say who
+            if (intent.Kind == VoiceIntentKind.None && _pending == Pending.None && unnamed && !comeNoName && (!ambient || addressed)
+                && ManagerRequestHandler != null && (ManagerReady == null || ManagerReady()))
+            {
+                string goal = VoiceFiller.Clean(addressedAny ? addrRest : heard);
+                if (VoiceFiller.ContentWords(goal) >= 2 && goal.Length >= 6)
+                {
+                    string reply = ManagerRequestHandler(goal);
+                    if (reply != null)
+                    {
+                        LastIntent = "ManagerRequest(unnamed)";
+                        LastMessage = reply;
+                        Route("ManagerRequest(unnamed)", "goal \"" + goal + "\": " + reply);
+                        if (policy != null) policy.NotifyHeard(LastMessage);
+                        Result("Heard: " + VoiceAnswers.Clip(heard, 60), reply, VoiceTone.Agent, 4.5f);
+                        RefreshMic();
+                        return;
+                    }
+                }
+            }
+
+            VoiceTone tone; float seconds; bool understood;
             string message = Execute(intent, out tone, out seconds, out understood);
             LastMessage = message ?? "";
             if (policy != null) policy.NotifyHeard(LastMessage);
+            if (understood) Route(intent.ToString() + via, string.IsNullOrEmpty(message) ? (_pending != Pending.None ? "asked to confirm" : "done") : "done: " + message);
+            else Route("None", "Not understood (" + WhyNotUnderstood(ambient, addressed, unnamed) + ")");
 
             if (_pending != Pending.None)
             {
@@ -575,15 +791,117 @@ namespace MuseDesk.Voice
                 // Room chatter that is not a command: no card, no paper line, nothing sent. (Addressed by name and not
                 // understood: the user meant to talk to us, so the normal "Not understood" card below answers.)
                 if (_display == Display.Listening || _display == Display.Thinking) EndDisplay();
+                Drop("None", "hands-free, not addressed, not a command (allowed through only as an open conversation's follow-up)");
             }
             else if (message != null)
             {
                 string shown = VoiceAnswers.Clip(heard, 60);
                 if (understood) Result("Heard: " + shown, message, tone, seconds);
-                else Result("Not understood", "Heard: " + Quote(shown), tone, seconds, TrySaying());
+                else
+                {
+                    // rc22 (owner): not a bare "Not understood": the agent the sentence was for (or the one beside the user, or
+                    // the Manager) says it can't, and 2-3 things that would work now. Shown and spoken. (Hands-free room chatter
+                    // never gets here: it was dropped above.)
+                    FallbackFacts facts = BuildFallbackFacts(heard, addressedAny ? addrWho : VoiceAgentTarget.None, comeNoName);
+                    string line = VoiceFallbackLine.Line(facts);
+                    string who = VoiceFallbackLine.SpeakerId(facts);
+                    LastMessage = line;
+                    Result(VoiceAnswers.RoleName(who) + ": not understood", "Heard: " + Quote(shown) + "\n" + line, tone, Mathf.Max(seconds, 6f), TrySaying());
+                    bool spoke = false;
+                    try { spoke = AgentSpeech.Say(who, line, _office.SpeakerPosition(who)); } catch (Exception e) { Debug.LogWarning("[MuseDesk] voice: fallback line not spoken (" + e.GetType().Name + ")."); }
+                    _logOutcome += " -> " + who + " says \"" + line + "\"" + (spoke ? "" : " (not spoken: speech off or unavailable)");
+                }
                 _paperLine = _office.PaperStatus(understood ? message : "Voice heard: " + Quote(shown));
             }
             RefreshMic();
+        }
+
+        /// <summary>rc22: set by the Wall habitat (optional): a Manager plan card is open, waiting for approval.</summary>
+        public static Func<bool> ManagerPlanOpen;
+
+        [Tooltip("rc22 polish: agents answer small talk (greetings, how are you, thanks, jokes, banter) with short scripted lines.")]
+        public bool smallTalkEnabled = true;
+        int _smallTalkTurn;
+        /// <summary>For drivers: how many small-talk lines were answered, and the last one.</summary>
+        public int SmallTalkCount { get; private set; }
+        public string LastSmallTalk { get; private set; }
+
+        bool TrySmallTalk(string heard, VoiceIntent intent, bool ambient, bool addressedAny, VoiceAgentTarget addrWho, string addrRest)
+        {
+            if (!smallTalkEnabled) return false;
+            bool chatty = intent.Kind == VoiceIntentKind.None || intent.Kind == VoiceIntentKind.Status || intent.Kind == VoiceIntentKind.AskAgent
+                          || intent.Kind == VoiceIntentKind.AskWhy || intent.Kind == VoiceIntentKind.WhoNeedsMe;
+            if (!chatty) return false;
+            string text = addressedAny ? addrRest : heard;
+            SmallTalkKind kind = SmallTalk.Classify(text);
+            if (kind == SmallTalkKind.None) return false;
+
+            VoiceAgentTarget companion = VoiceAgentTarget.None;
+            try { if (CompanionAgent != null) companion = CompanionAgent(); } catch { }
+            if (ambient && !addressedAny && companion == VoiceAgentTarget.None) return false;   // hands-free room chatter stays private
+            VoiceAgentTarget who = addressedAny ? addrWho : VoiceAgentTarget.None;
+            if (who == VoiceAgentTarget.None) who = VoiceIntentClassifier.ResolveTarget(heard);   // "thanks, developer"
+            if (who == VoiceAgentTarget.None) who = companion;
+            if (who == VoiceAgentTarget.None) who = VoiceAgentTarget.Manager;
+
+            string line = SmallTalk.Reply(kind, who, _smallTalkTurn++);
+            if (string.IsNullOrEmpty(line)) return false;
+            string id = VoiceIntentClassifier.AgentId(who) ?? "manager";
+            SmallTalkCount++;
+            LastSmallTalk = id + ": " + line;
+            LastIntent = "SmallTalk";
+            LastMessage = line;
+            _ambient = _ambientQuiet = false;
+            _actedOnPartial = VoiceIntentKind.None;
+            _partial = "";
+            if (policy != null) policy.NotifyHeard(LastMessage);
+            Result(VoiceAnswers.RoleName(id), line, VoiceTone.Agent, 4f, "Small talk (scripted). Nothing changed.");
+            bool spoke = false;
+            try { spoke = AgentSpeech.Say(id, line, _office.SpeakerPosition(id)); } catch (Exception e) { Debug.LogWarning("[MuseDesk] voice: small talk not spoken (" + e.GetType().Name + ")."); }
+            Route("SmallTalk:" + kind + ":" + who, "\"" + line + "\"" + (spoke ? "" : " (not spoken: speech off or unavailable)"));
+            return true;
+        }
+
+        static bool SafeCall(Func<bool> f) { try { return f != null && f(); } catch { return false; } }
+
+        FallbackFacts BuildFallbackFacts(string heard, VoiceAgentTarget addressedTo, bool comeNoName)
+        {
+            VoiceContext ctx = CurrentContext();
+            VoiceHelpState h = _office.HelpState(ctx);
+            VoiceAgentTarget named = addressedTo != VoiceAgentTarget.None ? addressedTo : VoiceIntentClassifier.ResolveTarget(heard);
+            VoiceAgentTarget companion = VoiceAgentTarget.None;
+            try { if (CompanionAgent != null) companion = CompanionAgent(); } catch { }
+            bool managerCan = ManagerRequestHandler != null && (ManagerReady == null || SafeCall(ManagerReady));
+            return new FallbackFacts
+            {
+                Speaker = named != VoiceAgentTarget.None ? named : (companion != VoiceAgentTarget.None ? companion : VoiceAgentTarget.Manager),
+                Companion = companion,
+                Mode = h.Mode,
+                Live = h.Live,
+                Moving = (ctx & VoiceContext.Moving) != 0,
+                Previewing = (ctx & VoiceContext.Previewing) != 0,
+                DecisionWaiting = (ctx & VoiceContext.DecisionPending) != 0,
+                PaperOpen = _office.PaperOpen,
+                ManagerPlanOpen = SafeCall(ManagerPlanOpen),
+                ManagerCanPlan = managerCan,
+                PortalAvailable = PortalRequestHandler != null,
+                BoardAvailable = _office.Dock != null && _office.Dock.board != null,
+                FloorEnabled = h.FloorEnabled,
+                CeilingEnabled = h.CeilingEnabled,
+                HasResult = h.HasResult,
+                AskedToComeWithoutName = comeNoName,
+            };
+        }
+
+        /// <summary>For the log: why a sentence that reached the grammar was not understood.</summary>
+        string WhyNotUnderstood(bool ambient, bool addressed, bool unnamed)
+        {
+            if (_pending != Pending.None) return "an open question is waiting for confirm / cancel";
+            if (ambient && !addressed) return "hands-free, not addressed";
+            if (!unnamed) return "names an agent but is not a command or question the grammar knows";
+            if (ManagerRequestHandler == null) return "no grammar match; the Manager is not registered (Wall Manager off)";
+            if (ManagerReady != null && !ManagerReady()) return "no grammar match; the Manager is not available here";
+            return "no grammar match; too short or only small talk for the Manager";
         }
 
         VoiceContext CurrentContext()
@@ -1038,7 +1356,7 @@ namespace MuseDesk.Voice
 
         // ───────────────────────── readout ─────────────────────────
 
-        string ModeWord() { return _office.IsLive ? "LIVE" : "SCRIPTED DEMO"; }
+        string ModeWord() { return _office.IsLive ? "" : "SCRIPTED DEMO"; }      // rc20 (owner): no LIVE tag
 
         string TrySaying() { return VoiceAnswers.TrySaying(_office.HelpState(CurrentContext())); }
 

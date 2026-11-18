@@ -77,8 +77,12 @@ class ArtifactService:
             # Additive, event-only: how the content came to exist (e.g. real sandbox
             # execution). Never set for scripted content.
             payload["work_provenance"] = work_provenance
-        await self._bus.publish(session_id, EventTypeV2.artifact_created, payload,
-                                task_id=task_id, artifact_id=artifact_id)
+        card = self._store.get_task_v2(task_id)
+        if not (card and card.get("removed")):
+            # A card the user removed from the board never gets a late result announced
+            # (the row is kept; the snapshot leaves it out with the card).
+            await self._bus.publish(session_id, EventTypeV2.artifact_created, payload,
+                                    task_id=task_id, artifact_id=artifact_id)
         return ArtifactV2(artifact_id=artifact_id, task_id=task_id, kind=ArtifactKind(kind),
                           summary=clean_summary, source_mode=mode, content_hash=content_hash,
                           created_at=now, pages=[ArtifactPage(**p) for p in clean_pages])

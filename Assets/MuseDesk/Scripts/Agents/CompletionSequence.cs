@@ -67,7 +67,7 @@ namespace MuseDesk.Agents
         public float handoffWaitMax = 1.2f;
         [Tooltip("Longest wait for the whole chain of reported handoffs (including queued ones) to finish their " +
                  "give / receive beat before the celebration starts. Past it, unfinished ones are retired. Presentation only.")]
-        public float handoffChainWaitMax = 15f;
+        public float handoffChainWaitMax = 24f;   // was 15: the rc18 handoffs are slower (walk >= 2.2 s, ready beat, 1.8 s hold)
 
         [Header("Success timing, seconds from the start of the sequence")]
         [Tooltip("When the Developer and Researcher acknowledge the Tester.")]

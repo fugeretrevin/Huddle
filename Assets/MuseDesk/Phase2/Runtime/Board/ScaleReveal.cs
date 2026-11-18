@@ -46,6 +46,9 @@ namespace MuseDesk.Phase2.Board
             enabled = false;
         }
 
+        /// <summary>The scale the object has when shown (what it had when this component woke).</summary>
+        public Vector3 AuthoredScale { get { EnsureInit(); return _authored; } }
+
         public void Show() => Set(true);
         public void Hide() => Set(false);
 

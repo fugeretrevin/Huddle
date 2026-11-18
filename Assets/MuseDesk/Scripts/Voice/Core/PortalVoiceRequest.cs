@@ -12,20 +12,27 @@ namespace MuseDesk.Voice
     ///   2. Meet-first: the sentence starts with "meet" (after at most three lead-in words such as "hey", "let me",
     ///      "I want to", or after a generic address like "MuseDesk,") and the next words name the agent:
     ///      "meet the developer", "let me meet the tester", "MuseDesk, meet the researcher".
+    ///   3. (rc22) Name-last: a come / meet phrase plus polite filler, then the agent's name: "come down here, developer",
+    ///      "can you come here, tester?". Names are as forgiving as WakeWord's ("manage her", "testa").
     /// Never on a negation ("don't come here", "I don't want to meet the tester"), never without an agent
     /// ("MuseDesk, come here"), never when the sentence carries anything else ("Researcher, come here and fix the build").
-    /// What it opens is only a preview the user must confirm on the card.
+    /// What it opens is decided by the Wall's PortalRequestHandler (a preview, or the portal itself where the spot is valid).
     /// </summary>
     public static class PortalVoiceRequest
     {
+        // rc22 (owner: "'Developer, come down here' and then it triggers the Meet feature"): more natural phrasings. Never
+        // "come back" (that is the office's Bring here / a different request).
         static readonly string[][] ComePhrases = Split(
-            "come and meet me", "come meet me", "come over here", "come on over", "get over here", "come over", "come here",
-            "come to me", "over here", "meet me", "join me", "step out", "come out");
+            "come and meet me", "come meet me", "come and see me", "come see me", "come over to me", "come down to me",
+            "come down here", "come up here", "come over here", "come on over", "come on down", "get over here", "get down here",
+            "come over", "come down", "come here", "come to me", "over here", "down here", "meet me", "join me", "step out", "come out");
 
         static readonly HashSet<string> Polite = new HashSet<string>
         {
             "please", "pls", "now", "can", "could", "would", "will", "you", "quickly", "quick", "a", "sec", "second", "moment",
             "for", "just", "right", "ok", "okay", "hey", "here", "then", "so",
+            // rc22: hesitations and lead-ins people put around it ("um, okay, can you come down here real quick").
+            "um", "uh", "er", "erm", "hmm", "oh", "well", "alright", "real", "mind", "if", "go", "ahead", "and", "yo", "hi", "hello",
         };
 
         static readonly HashSet<string> Negators = new HashSet<string>
@@ -72,6 +79,15 @@ namespace MuseDesk.Voice
         /// <summary>True when <paramref name="heard"/> asks for one agent to step out; <paramref name="agent"/> says which.</summary>
         public static bool TryParse(string heard, out VoiceAgentTarget agent)
         {
+            if (TryParseOnce(heard, out agent)) return true;
+            // rc22: once more without hesitations and polite lead-ins/tails ("I was wondering if you could come down here,
+            // developer, for me please"). Clean never removes a negation, and negations are checked again on the cleaned words.
+            string clean = VoiceFiller.Clean(heard);
+            return clean != (heard ?? "").Trim() && TryParseOnce(clean, out agent);
+        }
+
+        static bool TryParseOnce(string heard, out VoiceAgentTarget agent)
+        {
             agent = VoiceAgentTarget.None;
             if (string.IsNullOrEmpty(heard)) return false;
             bool q;
@@ -85,9 +101,41 @@ namespace MuseDesk.Voice
                 List<string> r = VoiceIntentClassifier.Tokenize(rest, out q);
                 if (named != VoiceAgentTarget.None && IsComeRequest(r, named)) { agent = named; return true; }
                 // "Researcher, meet the tester" / "MuseDesk, meet the developer": the agent after "meet" is the one asked for.
-                return MeetFirst(r, out agent);
+                if (MeetFirst(r, out agent)) return true;
+                // rc22: "MuseDesk, come down here, developer": the name at the end, after an address to everyone.
+                if (named == VoiceAgentTarget.None) return NameLast(r, out agent);
+                return false;
             }
-            return MeetFirst(all, out agent);
+            if (MeetFirst(all, out agent)) return true;
+            // rc22: the name at the END ("come down here, developer", "can you come here, tester?").
+            return NameLast(all, out agent);
+        }
+
+        /// <summary>rc22: a come / meet request that names NOBODY ("can you come down here?"). Not a goal for the Manager; the
+        /// user is told to say the name ("Developer, come here").</summary>
+        public static bool IsUnnamedComeRequest(string heard)
+        {
+            if (string.IsNullOrWhiteSpace(heard)) return false;
+            bool q;
+            List<string> t = VoiceIntentClassifier.Tokenize(VoiceFiller.Clean(heard), out q);
+            if (t.Count == 0 || t.Count > 10) return false;
+            for (int i = 0; i < t.Count; i++) if (Negators.Contains(t[i]) || VoiceIntentClassifier.FromId(t[i]) != VoiceAgentTarget.None) return false;
+            return IsComeRequest(t, VoiceAgentTarget.None);
+        }
+
+        /// <summary>rc22: "[polite] come-phrase [polite] , &lt;agent&gt;": the agent's name (forgiving spellings) is the last
+        /// word(s), and everything before it is one come / meet phrase plus polite filler.</summary>
+        static bool NameLast(List<string> t, out VoiceAgentTarget agent)
+        {
+            agent = VoiceAgentTarget.None;
+            int start;
+            VoiceAgentTarget a = WakeWord.NameAtEnd(t, out start);
+            if (a == VoiceAgentTarget.None || start <= 0) return false;
+            var before = t.GetRange(0, start);
+            if (before.Count > 0 && before[before.Count - 1] == "the") return false;   // "come see the developer" is not an address
+            if (!IsComeRequest(before, a)) return false;
+            agent = a;
+            return true;
         }
 
         /// <summary>The words after the name: one come / meet phrase and nothing but polite filler (or the name again).</summary>
@@ -112,7 +160,7 @@ namespace MuseDesk.Voice
             for (int i = 0; i < t.Count; i++)
             {
                 if (used[i] || Polite.Contains(t[i])) continue;
-                if (VoiceIntentClassifier.FromId(t[i]) == named) continue;
+                if (named != VoiceAgentTarget.None && VoiceIntentClassifier.FromId(t[i]) == named) continue;
                 return false;
             }
             return true;

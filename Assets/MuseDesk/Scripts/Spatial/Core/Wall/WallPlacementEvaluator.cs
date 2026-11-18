@@ -39,7 +39,14 @@ namespace MuseDesk.Spatial.Wall
         [Tooltip("Compact 2-level habitat: width, height, depth (m).")]
         public Vector3 compactSize = new Vector3(0.74f, 0.62f, 0.22f);
         [Tooltip("Keep this far from the wall's side, top and bottom edges (m).")]
-        public float edgeInset = 0.08f;
+        public float edgeInset = 0.03f;      // rc22 (owner: "make the wall placement less strict"): was 0.08
+        [Tooltip("rc22 (owner, worn rc21: \"less strict so it can sometimes intersect with things\"): touching scanned furniture or " +
+                 "covering a window no longer refuses the spot; it is offered amber (\"overlaps ...\") and scored lower, so clear " +
+                 "spots still come first. Doors, other walls, the user's head and the screen stay hard limits.")]
+        public bool softFurniture = true;
+        public bool softWindows = true;
+        [Tooltip("Score multiplier for a spot that overlaps furniture or a window.")]
+        public float overlapScoreFactor = 0.55f;
         [Tooltip("Keep this far from a door or window rectangle (m).")]
         public float openingMargin = 0.10f;
         [Tooltip("The habitat volume grown by this much must not touch scanned furniture (m).")]
@@ -103,6 +110,8 @@ namespace MuseDesk.Spatial.Wall
         public string reason;
         /// <summary>Smallest clearance found to an opening, furniture or another wall (m), for the review flag.</summary>
         public float minClearance;
+        /// <summary>rc22: a soft limit the spot crosses while still valid (HitsFurniture / OverlapsWindow), else None.</summary>
+        public WallProblem overlap;
 
         public Pose Pose => new Pose(position, rotation);
         /// <summary>Centre of the habitat volume (half the depth out from the wall).</summary>
@@ -120,6 +129,7 @@ namespace MuseDesk.Spatial.Wall
                                              WallLayoutKind layout, SeatedUser user, WallPlacementSettings s)
         {
             var c = new WallCandidate { wallIndex = wallIndex, layout = layout, u = u, centerY = centerY, size = s.SizeOf(layout), minClearance = float.MaxValue };
+            string _overlapLabel = null;          // rc22: the furniture a soft overlap touches (for the reason line)
             if (walls == null || walls.WallAvailability != RoomAvailability.Available)
                 return Fail(ref c, walls == null ? WallProblem.NoRoom : (walls.WallAvailability == RoomAvailability.Available ? WallProblem.NoWalls : WallProblem.NoRoom),
                             walls == null ? "No room scan" : SpatialGeometry.ReasonText(walls.WallAvailability));
@@ -150,8 +160,11 @@ namespace MuseDesk.Spatial.Wall
                 WallOpening o = walls.GetOpening(i);
                 if (o.wallId != w.id) continue;
                 if (o.Overlaps(u - hw, u + hw, centerY - hh, centerY + hh, s.openingMargin))
+                {
+                    if (o.kind == WallOpeningKind.Window && s.softWindows) { if (c.overlap == WallProblem.None) c.overlap = WallProblem.OverlapsWindow; continue; }
                     return Fail(ref c, o.kind == WallOpeningKind.Window ? WallProblem.OverlapsWindow : WallProblem.OverlapsDoor,
                                 o.kind == WallOpeningKind.Window ? "Covers a window" : "Covers a door");
+                }
                 c.minClearance = Mathf.Min(c.minClearance, o.Gap(u - hw, u + hw, centerY - hh, centerY + hh));
             }
 
@@ -173,7 +186,11 @@ namespace MuseDesk.Spatial.Wall
                     if (!SpatialGeometry.VerticalRangesTouch(centerY - hh, centerY + hh, f.minY, f.maxY, s.furnitureMargin)) continue;
                     OrientedRect fr = f.Footprint;
                     float gap = foot.DistanceTo(fr);
-                    if (gap <= s.furnitureMargin) return Fail(ref c, WallProblem.HitsFurniture, "Furniture is in the way" + (string.IsNullOrEmpty(f.label) ? "" : " (" + Pretty(f.label) + ")"));
+                    if (gap <= s.furnitureMargin)
+                    {
+                        if (s.softFurniture) { c.overlap = WallProblem.HitsFurniture; _overlapLabel = f.label; continue; }
+                        return Fail(ref c, WallProblem.HitsFurniture, "Furniture is in the way" + (string.IsNullOrEmpty(f.label) ? "" : " (" + Pretty(f.label) + ")"));
+                    }
                     c.minClearance = Mathf.Min(c.minClearance, gap);
                 }
             }
@@ -204,9 +221,13 @@ namespace MuseDesk.Spatial.Wall
             c.valid = true;
             c.problem = WallProblem.None;
             c.score = Score(s, headDist, viewAngle, aboveScreen ? Mathf.Max(fromForward, 30f) : fromForward, eyeRel, c.minClearance);
+            if (c.overlap != WallProblem.None) c.score *= s.overlapScoreFactor;
             float review = Mathf.Max(s.openingMargin, s.furnitureMargin) * s.reviewMarginFactor;
-            c.needsReview = !c.roomChecked || c.minClearance < review || viewAngle > s.maxViewAngleDeg - 15f || (fromForward < s.monitorSoftDeg && !aboveScreen);
-            c.reason = !c.roomChecked ? "Room scan incomplete: check the spot yourself"
+            c.needsReview = !c.roomChecked || c.minClearance < review || viewAngle > s.maxViewAngleDeg - 15f || (fromForward < s.monitorSoftDeg && !aboveScreen)
+                            || c.overlap != WallProblem.None;
+            c.reason = c.overlap == WallProblem.HitsFurniture ? "Fits, overlapping " + (string.IsNullOrEmpty(_overlapLabel) ? "furniture" : Pretty(_overlapLabel)) + " a little"
+                     : c.overlap == WallProblem.OverlapsWindow ? "Fits, over part of a window"
+                     : !c.roomChecked ? "Room scan incomplete: check the spot yourself"
                      : c.needsReview ? "Fits, but close to something: please check"
                      : aboveScreen && fromForward < s.monitorSoftDeg ? "Fits above your screen" : "Fits this wall";
             return c;

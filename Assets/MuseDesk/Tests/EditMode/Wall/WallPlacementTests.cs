@@ -95,8 +95,16 @@ namespace MuseDesk.Tests.EditMode.Wall
             // A desk pushed against wall-E reaches 0.85 m: the low spot touches it, a spot above it fits.
             var r = Room();
             r.room.AddFurniture("TABLE", new Vector3(1.6f, 0.425f, 0f), new Vector3(0.8f, 0.85f, 1.4f));
-            Assert.AreEqual(WallProblem.HitsFurniture, Eval(r, "wall-E", 0f, 1.08f, WallLayoutKind.Compact).problem);
-            Assert.IsTrue(Eval(r, "wall-E", 0f, 1.35f, WallLayoutKind.Compact).valid);
+            // rc22 (owner: "less strict so it can sometimes intersect"): touching furniture is allowed, amber, and scored lower.
+            WallCandidate low = Eval(r, "wall-E", 0f, 1.08f, WallLayoutKind.Compact);
+            Assert.IsTrue(low.valid && low.needsReview, low.reason);
+            Assert.AreEqual(WallProblem.HitsFurniture, low.overlap);
+            WallCandidate high = Eval(r, "wall-E", 0f, 1.35f, WallLayoutKind.Compact);
+            Assert.IsTrue(high.valid);
+            Assert.AreEqual(WallProblem.None, high.overlap);
+            Assert.Greater(high.score, low.score, "a clear spot is preferred");
+            var strict = new WallPlacementSettings { softFurniture = false };
+            Assert.AreEqual(WallProblem.HitsFurniture, WallPlacementEvaluator.Evaluate(r.room, r, r.IndexOf("wall-E"), 0f, 1.08f, WallLayoutKind.Compact, User(), strict).problem);
         }
 
         [Test]
@@ -160,7 +168,10 @@ namespace MuseDesk.Tests.EditMode.Wall
             r.AddOpening("wall-E", WallOpeningKind.Door, 0.6f, 1.0f, 0.9f, 2.0f);
             Assert.AreEqual(WallProblem.OverlapsDoor, Eval(r, "wall-E", 0.6f, 1.35f).problem);
             r.AddOpening("wall-W", WallOpeningKind.Window, -0.5f, 1.4f, 1.0f, 1.0f);
-            Assert.AreEqual(WallProblem.OverlapsWindow, Eval(r, "wall-W", -0.5f, 1.35f).problem);
+            // rc22: a window may be partly covered (amber); a door never.
+            WallCandidate win = Eval(r, "wall-W", -0.5f, 1.35f);
+            Assert.IsTrue(win.valid && win.needsReview, win.reason);
+            Assert.AreEqual(WallProblem.OverlapsWindow, win.overlap);
             // Far enough along the wall the spot is fine again.
             Assert.IsTrue(Eval(r, "wall-E", -0.9f, 1.35f).valid);
             foreach (var c in WallPlacementEvaluator.FindCandidates(r.room, r, User(), S))
@@ -173,7 +184,8 @@ namespace MuseDesk.Tests.EditMode.Wall
             var r = Room();
             r.room.AddFurniture("STORAGE", new Vector3(1.8f, 1.0f, 0.6f), new Vector3(0.4f, 2.0f, 0.5f));   // tall shelf against wall-E
             WallCandidate blocked = Eval(r, "wall-E", 0.6f, 1.35f);
-            Assert.AreEqual(WallProblem.HitsFurniture, blocked.problem);
+            Assert.AreEqual(WallProblem.HitsFurniture, blocked.overlap, "rc22: allowed, but marked as overlapping");
+            Assert.IsTrue(blocked.needsReview);
             var r2 = Room();
             r2.room.AddFurniture("TABLE", new Vector3(1.6f, 0.37f, 0.6f), new Vector3(0.8f, 0.74f, 1.2f));  // a desk below the spot
             Assert.IsTrue(Eval(r2, "wall-E", 0.6f, 1.35f).valid, "a desk under the habitat is not in its volume");
@@ -199,7 +211,7 @@ namespace MuseDesk.Tests.EditMode.Wall
         public void TooHighOrLowForTheSeatedEye()
         {
             var r = Room();
-            Assert.AreEqual(WallProblem.TooHigh, Eval(r, "wall-E", 0.6f, 1.2f + 0.8f).problem);
+            Assert.AreEqual(WallProblem.TooHigh, Eval(r, "wall-E", 0.6f, 1.2f + 0.9f).problem);     // rc22: 3 cm edge inset (was 8)
             Assert.AreEqual(WallProblem.TooLow, Eval(r, "wall-E", 0.6f, 0.6f).problem);
         }
 
@@ -322,7 +334,8 @@ namespace MuseDesk.Tests.EditMode.Wall
             Assert.IsFalse(WallPlacementCodec.TryRestore(s, r.room, noWall, User(), S, out back, out why));
 
             s = WallPlacementCodec.Build(c, r.room.RoomId, true, reference, "b1");
-            r.room.AddFurniture("STORAGE", new Vector3(1.8f, 1.0f, 0.6f), new Vector3(0.4f, 2.0f, 0.5f));
+            // rc22: furniture no longer blocks (soft overlap); a door still does.
+            r.AddOpening("wall-E", WallOpeningKind.Door, 0.6f, 1.0f, 0.9f, 2.0f);
             Assert.IsFalse(WallPlacementCodec.TryRestore(s, r.room, r, User(), S, out back, out why));
             StringAssert.Contains("no longer fits", why);
 
@@ -404,7 +417,8 @@ namespace MuseDesk.Tests.EditMode.Wall
             var f = Flow(r);
             f.RequestEnter(true, false); f.PlaceHere(false);
             Vector3 at = f.Placed.position;
-            r.room.AddFurniture("STORAGE", f.Placed.VolumeCenter, new Vector3(0.3f, 0.3f, 0.3f));
+            // rc22: furniture is a soft overlap now; a door appearing under the habitat still invalidates the spot.
+            r.AddOpening(f.Placed.wallId, WallOpeningKind.Door, f.Placed.u, 1.0f, 0.9f, 2.0f);
             f.OnRoomChanged();
             Assert.IsTrue(f.Suspended);
             Assert.AreEqual(WallModeState.Active, f.State);

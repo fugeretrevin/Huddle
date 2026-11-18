@@ -89,14 +89,71 @@ namespace MuseDesk.Phase2.Board
                 // Cards are pooled: follow the task id, not the view object.
                 _selected = presenter.FindView(_selectedTaskId);
                 bool gone = _selected == null || _selected.Data == null || !_selected.gameObject.activeInHierarchy;
-                if (gone || TaskStateSets.IsTerminal(_selected.Data.TaskState) || now >= _hideAt)
+                // rc22: a finished card stays selected so it can be removed (Pause / Priority hide themselves by state).
+                if (gone || now >= _hideAt)
                     Deselect();
             }
 
             Mark(_selected);
             ApplyActions(_selected != null ? _selected.Data : null);
+            UpdateRemoveKey();
             if (_selected != null && now >= _noticeUntil) ShowTitle(_selected.Data);
         }
+
+        // ─── rc22: Remove key (two-press confirm: "Remove" -> "Sure?" for 3 s -> removed) ───
+
+        ConfirmKey _removeKey;
+        string _removeKeyForId;
+        bool _removeBuildTried;
+
+        /// <summary>The Remove key, or null until the toolbar is bound (probes read its label and state).</summary>
+        public ConfirmKey RemoveKey => _removeKey;
+
+        void UpdateRemoveKey()
+        {
+            if (_removeKey == null)
+            {
+                if (_removeBuildTried || priorityKey == null || pauseResumeKey == null) return;
+                _removeBuildTried = true;
+                BuildRemoveKey();
+                if (_removeKey == null) return;
+            }
+            bool has = HasSelection;
+            if (has && _removeKeyForId != _selectedTaskId) { _removeKey.Disarm(); _removeKeyForId = _selectedTaskId; }
+            if (!has) _removeKeyForId = null;
+            _removeKey.SetVisible(has);
+            _removeKey.Tick();
+            if (has && (_removeKey.Armed || _removeKey.Busy))
+                _hideAt = Mathf.Max(_hideAt, Time.unscaledTime + 2f);   // the toolbar must not vanish between the two presses
+        }
+
+        void BuildRemoveKey()
+        {
+            Transform prio = priorityKey.transform;
+            Transform parent = prio.parent;
+            if (parent == null) return;
+            Vector3 step = prio.localPosition - pauseResumeKey.transform.localPosition;     // one key pitch along the row
+            if (step.sqrMagnitude < 1e-10f) step = new Vector3(Mathf.Abs(prio.localScale.x) * 1.25f, 0f, 0f);
+            Vector3 pos = prio.localPosition + step;
+            float scale = priorityKey.AuthoredScale.x;
+            if (scale < 1e-5f) return;
+            _removeKey = new ConfirmKey(prio, parent, "RemoveKey", pos, scale, 1.15f, "Remove", "Sure?", RemoveSelectedAsync);
+            if (!_removeKey.Built) _removeKey = null;
+        }
+
+        async System.Threading.Tasks.Task RemoveSelectedAsync()
+        {
+            string id = _selectedTaskId;
+            if (id == null || presenter == null) return;
+            _hideAt = Time.unscaledTime + idleHideSeconds + 4f;
+            await presenter.RequestRemoveTaskAsync(id);   // a refusal is shown by the card (and so by the caption) and the status line
+        }
+
+        /// <summary>Press the Remove key exactly as a poke does (the first press arms it, the second removes). For drivers.</summary>
+        public bool PressRemoveKey() => _removeKey != null && _removeKey.Press();
+
+        /// <summary>Build / refresh the Remove key now instead of waiting for the next Update. For Play Mode drivers.</summary>
+        public ConfirmKey EnsureRemoveKey() { UpdateRemoveKey(); return _removeKey; }
 
         void Bind()
         {

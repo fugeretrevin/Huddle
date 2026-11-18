@@ -18,7 +18,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from . import __version__
 from .auth import hash_token, new_token, verify_token
@@ -96,6 +96,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.phase2_store = phase2_store
         app.state.phase2_bus = phase2_bus
         app.state.phase3_store = phase3_store
+        # The bridge the producer reports to; a decision raised for a card the user already
+        # removed from the board is withdrawn at once (see phase2.board_remove).
+        app.state.board_bridge = board
+
+        async def _withdraw_removed(session_id: str, run_task_id: str) -> None:
+            from .phase2.board_remove import withdraw_run_decisions
+            await withdraw_run_decisions(storage, bus, orchestrator, session_id, run_task_id,
+                                         settings.state_source_mode)
+
+        board.on_removed_decision = _withdraw_removed
         app.state.p3_side = None  # side-conversation service (ephemeral memory), lazily built
         # Optional model provider (phase3.provider.ModelProvider). None = no model:
         # side answers are TASK_SNAPSHOT and Manager plans are TEMPLATE_PLAN.
@@ -152,7 +162,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         the run a task belongs to, or null for a card-less run."""
         import json as _json
         cards = {c["run_task_id"]: c["id"]
-                 for c in request.app.state.phase2_store.list_tasks_v2(session_id)
+                 for c in request.app.state.phase2_store.list_tasks_v2(session_id,
+                                                                       include_removed=True)
                  if c.get("run_task_id")}
         return [{"task_id": t["id"], "agent_id": t["agent_id"],
                  "parent_task_id": t["parent_task_id"], "status": t["status"],
@@ -182,6 +193,128 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse(status="ok", version=__version__)
+
+    # ─────────────────────── PC screen panel (rc20) ───────────────────────
+    @app.get("/v2/sessions/{session_id}/screen/frame")
+    async def screen_frame(session_id: str, request: Request, w: int = 1280, since: int | None = None,
+                           authorization: str | None = Header(default=None)) -> Response:
+        """The PC's primary screen for the headset's screen panel: BGRA pixels, top row first, zlib-compressed.
+        Off unless the backend was started with MUSEDESK_SCREEN_SHARE=true; a paired session only. rc21: the latest frame
+        is held by a capture thread that runs only while frames are asked for; ``since`` is the X-Seq the caller already
+        has: a newer frame is returned at once, or after a short wait, and 304 means the picture has not changed."""
+        from . import screen_capture
+        await require_session(session_id, request, authorization)
+        if not screen_capture.enabled():
+            raise HTTPException(status_code=403, detail="screen sharing is off on the PC")
+        try:
+            f = await asyncio.to_thread(screen_capture.streamer().get, w, since, 0.25 if since is not None else 2.0)
+        except Exception:  # noqa: BLE001 - never leak capture internals
+            raise HTTPException(status_code=503, detail="the screen could not be read")
+        if f is None:
+            if since is None:
+                raise HTTPException(status_code=503, detail="the screen could not be read")
+            return Response(status_code=304, headers={"X-Seq": str(since), "Cache-Control": "no-store"})
+        return Response(content=f.data, media_type="application/octet-stream",
+                        headers={"X-Width": str(f.width), "X-Height": str(f.height), "X-Format": "BGRA32",
+                                 "X-Compression": "zlib", "X-Seq": str(f.seq), "Cache-Control": "no-store",
+                                 "X-App": "1" if f.app else "0"})
+
+    # ─────────────────────── rc25: open the agents' program in a window ───────────────────────
+    def _app_target(request: Request, session_id: str, body: dict[str, Any]) -> tuple[Any, str]:
+        """(folder, label) of the work to open: the named plan / board task, else this session's newest work."""
+        from pathlib import Path as _P
+        root = _P(request.app.state.settings.workspace_root).resolve()
+        s3 = request.app.state.phase3_store
+        plan_id, task_id = body.get("plan_id"), body.get("task_id")
+        cands: list[tuple[_P, str]] = []
+        for p in s3.plans_for_session(session_id):
+            if plan_id and p.get("plan_id") != plan_id:
+                continue
+            cands.append((root / "plans" / str(p.get("plan_id")), str(p.get("title") or "The plan's app")))
+        titles = {c["id"]: c.get("title") for c in
+                  request.app.state.phase2_store.list_tasks_v2(session_id, include_removed=True)}
+        for e in s3.adhoc_entries(session_id):
+            if not e.get("folder") or (task_id and e["task_id"] != task_id):
+                continue
+            cands.append((root / "tasks" / str(e["folder"]), str(titles.get(e["task_id"]) or "The task's app")))
+        if plan_id or task_id:
+            cands = cands[:1]
+
+        from .phase3.app_launcher import LaunchError, find_module
+
+        def newest(c: tuple[_P, str]) -> float:
+            files = list(c[0].glob("*.py")) if c[0].is_dir() else []
+            return max((f.stat().st_mtime for f in files), default=-1.0)
+
+        def openable(c: tuple[_P, str]) -> bool:
+            return c[0].is_dir() and c[0].resolve().is_relative_to(root) and find_module(c[0]) is not None
+        cands = [c for c in cands if openable(c)]
+        if not cands and not (plan_id or task_id):
+            # The headset starts a new session each launch: then the newest program built on this PC (all of it is the
+            # owner's own restricted workspace).
+            for sub in ("plans", "tasks"):
+                base = root / sub
+                if base.is_dir():
+                    for d in base.iterdir():
+                        plan = s3.get_plan(d.name) if sub == "plans" else None
+                        cands.append((d, str((plan or {}).get("title") or "The newest app")))
+            cands = [c for c in cands if openable(c)]
+        if not cands:
+            raise LaunchError("Nothing has been built yet." if not (plan_id or task_id)
+                              else "That work has no program to open.")
+        return max(cands, key=newest)
+
+    def _apps_gate() -> Any:
+        from .phase3 import app_launcher
+        if not app_launcher.enabled():
+            raise HTTPException(status_code=403, detail="app windows are off on the PC (the backend was started with -NoScreen)")
+        return app_launcher
+
+    @app.get("/v2/sessions/{session_id}/apps")
+    async def app_status(session_id: str, request: Request, session=Depends(require_session)) -> dict[str, Any]:
+        from .phase3 import app_launcher
+        st = app_launcher.launcher().status() if app_launcher.enabled() else {"running": False}
+        st["enabled"] = app_launcher.enabled()
+        return st
+
+    @app.post("/v2/sessions/{session_id}/apps/open")
+    async def app_open(session_id: str, request: Request, session=Depends(require_session)) -> dict[str, Any]:
+        al = _apps_gate()
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - no body: the newest work
+            body = {}
+        try:
+            folder, label = _app_target(request, session_id, body if isinstance(body, dict) else {})
+            st = await asyncio.to_thread(al.launcher().launch, folder, label)
+        except al.LaunchError as e:
+            return {"opened": False, "reason": str(e), "running": False}
+        return {"opened": True, **st}
+
+    @app.post("/v2/sessions/{session_id}/apps/close")
+    async def app_close(session_id: str, request: Request, session=Depends(require_session)) -> dict[str, Any]:
+        al = _apps_gate()
+        closed = await asyncio.to_thread(al.launcher().close)
+        return {"closed": closed, "running": False}
+
+    @app.post("/v2/sessions/{session_id}/apps/tap")
+    async def app_tap(session_id: str, request: Request, session=Depends(require_session)) -> dict[str, Any]:
+        al = _apps_gate()
+        body = await request.json()
+        try:
+            u, v = float(body.get("u")), float(body.get("v"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="u and v (0..1) are required")
+        if not (0.0 <= u <= 1.0 and 0.0 <= v <= 1.0):
+            raise HTTPException(status_code=422, detail="u and v must be within 0..1")
+        return {"sent": al.launcher().tap(u, v)}
+
+    @app.post("/v2/sessions/{session_id}/apps/type")
+    async def app_type(session_id: str, request: Request, session=Depends(require_session)) -> dict[str, Any]:
+        al = _apps_gate()
+        body = await request.json()
+        text = str(body.get("text") or "")[:200]
+        return {"sent": bool(text) and al.launcher().type_text(text)}
 
     # ─────────────────────── sessions ───────────────────────
     @app.post("/v1/sessions", response_model=SessionCreated, status_code=201)

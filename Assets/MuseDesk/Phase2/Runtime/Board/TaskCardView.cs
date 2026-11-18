@@ -322,7 +322,7 @@ namespace MuseDesk.Phase2.Board
                 transform.localPosition = HomeWithLift();
                 transform.localRotation = _homeLocalRot;
             }
-            if (_baseScaleCaptured) transform.localScale = _baseScale * ((1f + (selectedScale - 1f) * _lift) * _revealScale * _hide.Factor);
+            if (_baseScaleCaptured) transform.localScale = _baseScale * ((1f + (selectedScale - 1f) * _lift) * _revealScale * _hide.Factor * _scrollFactor);
         }
 
         // ─── Polish S9a: leaving (recycle) and the details sheet ease on panelHide / panelAppear, never pop ───
@@ -480,6 +480,9 @@ namespace MuseDesk.Phase2.Board
             _laneChanged = false;
             _presenceDirty = false;
             RestoreColliders(_hideOff);
+            RestoreColliders(_scrollOff);
+            ScrolledOut = false;
+            _scrollFactor = 1f;
             if (_detailsInit && detailsRoot != null && detailsRoot.activeSelf)
             {
                 IsExpanded = false;
@@ -548,7 +551,7 @@ namespace MuseDesk.Phase2.Board
                 if (priorityLabel && priorityLabel.color != want) priorityLabel.color = want;
             }
             if (!_noticeActive) SetText(stateLabel, StateLine(Data));
-            SetText(sourceLabel, ModeWords(Data.SourceMode));
+            SetText(sourceLabel, CardModeWords(Data.SourceMode));
             if (statusMarker) ApplyStateTint();
         }
 
@@ -783,6 +786,43 @@ namespace MuseDesk.Phase2.Board
         /// value is shown as scripted, so nothing is ever presented as live by default.</summary>
         public static string ModeWords(string sourceMode)
             => sourceMode == SourceModes.Live ? "LIVE" : "SCRIPTED DEMO";
+
+        /// <summary>The mode line printed on a card face. rc22 (owner: remove the live line): a live card shows
+        /// nothing; anything not explicitly live keeps "SCRIPTED DEMO" (honesty).</summary>
+        public static string CardModeWords(string sourceMode)
+            => sourceMode == SourceModes.Live ? "" : "SCRIPTED DEMO";
+
+        // ─── rc22: scrolled out of a full column (hidden by scale, colliders off) ───
+
+        readonly System.Collections.Generic.List<Collider> _scrollOff = new System.Collections.Generic.List<Collider>();
+        float _scrollFactor = 1f;
+
+        /// <summary>True while the card is scrolled out of its column's window.</summary>
+        public bool ScrolledOut { get; private set; }
+
+        /// <summary>Hide (or restore) the card because its column has more cards than fit. By scale, never SetActive; colliders
+        /// (poke, grab) are off while out. A card in a hand is never hidden.</summary>
+        public void SetScrolledOut(bool out_)
+        {
+            if (out_ == ScrolledOut) return;
+            if (out_ && IsHeld) return;
+            ScrolledOut = out_;
+            CaptureBaseScale();
+            if (out_)
+            {
+                SetExpanded(false);
+                SetCollidersOff(_scrollOff, transform);
+                _scrollFactor = MuseDesk.Workspace.ScaleEase.HiddenFactor;
+            }
+            else
+            {
+                if (!_hide.IsLeaving) RestoreColliders(_scrollOff); else _scrollOff.Clear();
+                _scrollFactor = 1f;
+            }
+            _presenceDirty = true;
+            if (_baseScaleCaptured && !_revealing)
+                transform.localScale = _baseScale * (_revealScale * _hide.Factor * _scrollFactor);
+        }
 
         /// <summary>True for a queued executable card whose run has not been started: the card that
         /// Start (or a drop on the Researcher) launches.</summary>

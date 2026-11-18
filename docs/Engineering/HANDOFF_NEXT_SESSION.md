@@ -1,119 +1,194 @@
 ﻿# Handoff for the next session
 
-> **2026-11-14 Phase 3 Wall Habitat:** see `docs/Engineering/WALL_HABITAT_STATUS.md` (branch `feature/wall-habitat`, tag `wall-habitat-1`, all Wall flags OFF, nothing worn). The competition line `release/final-refinement` / rc6-2 is untouched.
+## UPDATE 2026-11-18 (demo day): HOW TO START UP (read this first; deadline 2026-11-18 12:00 PT)
 
-2026-11-13, about 11:50. Deadline 2026-11-18, noon Pacific.
+**State:** the Quest runs **rc25** (`Builds/MuseDesk_rc25_release.apk`, `77B7B50A…D63C`, versionCode 9, release-signed).
+HEAD `0e88c79` on `feature/rc8-feedback-1` (local only, not pushed). The owner started recording the demo on 2026-11-18 morning;
+the backend was stopped afterwards on their request. Next build would be rc26, versionCode 10 (`BuildApkTo.cs` protects rc6–rc25).
 
-## Where things stand
+**Start the live backend (Meta model, real code in the restricted workspace, Screen panel + app windows ON):**
+```powershell
+# from the repo root; its OWN window (Claude Code may kill its own background shells under memory pressure)
+$root=(Get-Location).Path; $log="$root\Logs\backend_live_demo.log"
+Start-Process powershell -ArgumentList "-NoExit","-ExecutionPolicy","Bypass","-Command",
+  "`$host.UI.RawUI.WindowTitle='MuseDesk backend (LIVE)'; & '$root\scripts\start_wall_backend.ps1' *>&1 | Tee-Object -FilePath '$log'"
+```
+- Expect in the log: "Screen panel: ON", "App windows: ON", "Starting LIVE with the Meta model API", "Application startup complete".
+  The red `NativeCommandError` line is just uvicorn writing INFO to stderr (harmless).
+- Check: `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/health` → 200.
+- Flags: `-NoScreen` (no screen panel, no app windows), `-TextOnly` (model text only, no code run), `-Demo` (scripted demo).
+- The owner can also just run `powershell -ExecutionPolicy Bypass -File scripts\start_wall_backend.ps1` in their own terminal.
 
-| Item | Value |
+**Connect the Quest (USB):**
+```powershell
+$adb="C:\Program Files\Unity\Hub\Editor\6000.6.8f1\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools\adb.exe"
+& $adb -s 2G97C5ZHCK037K reverse tcp:8765 tcp:8765     # -s is needed: a stale "emulator-5562 offline" is also listed
+& $adb -s 2G97C5ZHCK037K shell dumpsys package com.musedesk.quest | Select-String versionCode   # 9 = rc25
+```
+- Then **restart MuseDesk on the Quest** if it was open while the backend was down (it drops to the offline SCRIPTED DEMO
+  and only goes live on a fresh launch).
+- Before filming: the Screen panel mirrors this PC's main screen. Tell the owner to hide private windows.
+
+**Stop the backend:** close the "MuseDesk backend (LIVE)" window, or find the listener and stop its tree:
+`Get-NetTCPConnection -LocalPort 8765 -State Listen` → OwningProcess (python) → its parent python (venv launcher) →
+its parent powershell. Also stop any `python … app_window_host …` process (an open app window). Confirm /health fails.
+
+**rc25 app windows (owner asked how to use them):** in the headset press **Screen** (dock) → **Open app** (panel's lower
+left) → the PC opens the newest program the agents built (`build_ui(ui)` window, else a `main(argv)` run panel) and the
+panel shows only that window → fingertip taps reach it (press in, pull back ~2.5 cm before the next tap) → **Close app**
+(same key) or the red Close app button in the window. Picks the session's newest work, else the newest on the PC
+(last one: tic-tac-toe, `backend\sandbox_workspaces\plans\mp-0781687d3f`). Real fingertip taps are NOT yet owner-confirmed.
+
+**Offline Play drives / preflight in the Editor need the backend OFF** (otherwise the Editor goes live mid-run).
+
+## UPDATE 2026-11-17 night (read this first; deadline 2026-11-18 12:00 PT)
+
+- **On the Quest:** the newest rcNN-release in `Builds/` (see the bottom of the newest `RC2x_QA.md`; rc23 = 28DCF3ED,
+  versionCode 7; rc24 if built). All release-signed (CN=MuseDesk), installed with `adb install -r`, hash-verified on device.
+  Next build: next rc number and versionCode +1; `AgentScripts/BuildApkTo.cs` protects every rc path already built.
+- **Owner checklists (what changed, line by line):** `RC20_QA.md`, `RC21_QA.md`, `RC22_QA.md` (19 items), plus rc23 polish
+  (board arrows at the column foot, small talk, arm clearance, one-sided monitors on the desk AND in the Wall habitat,
+  clutter removed) and the change-request fix below. WORN: only what the owner said (transcribed in those files).
+- **Live (Meta model, PC backend):** `live_real_work.py` 13/13 on a new goal (to-do module; change "also let the user
+  delete a task by its number" now recognised as a change request: `side_intent.py` gained feature-request verbs);
+  `live_adhoc_task.py` 5/5 (a task the user adds and assigns is worked for real). Backend 419 passed, 1 skipped.
+- **Start the live backend for the owner:** `Start-Process powershell` running `scripts\start_wall_backend.ps1` in its OWN
+  window (Claude Code kills its own background shells under memory pressure), then `adb reverse tcp:8765 tcp:8765`.
+  Offline Play drives need it OFF.
+- **Editor gotcha (new):** the Play clock sometimes freezes (frames advance, `Time.unscaledTime` stuck, ClockProbe dt=0).
+  Stop + start Play once; if it is stuck at frame 1, the owner restarts Unity (Claude may not quit the Editor).
+- **Probe gotcha:** `scripts\drv.ps1` cannot pass arguments with spaces or `|`; use no-arg probe methods. Each
+  `script run` is a fresh assembly, so probe statics do not survive between calls.
+- **Agents used this session (all report AUTO only):** they may not enter Play Mode or build; the lead verifies in Play
+  (one at a time), runs `scripts\preflight.ps1 -Only <group>` group by group in the FOREGROUND, then builds.
+- **Antigravity soft textures:** rejected by the owner (kept rc20 matte); backup in `Logs/antigravity_soft_backup/`.
+- **Not done / known:** clothing clipping on agents needs a Blender re-weight; the desk drop has no MRUK desk raycast; the
+  Manager's own monitor (inside a combined Wall mesh) is still double-sided.
+- **Next:** owner wears the newest build -> transcribe -> fix P0/P1 only -> film (`FINAL_VIDEO_SHOT_LEDGER.md`) ->
+  submission by the owner (`FINAL_SUBMISSION_CHECKLIST.md`). Never push/merge/submit without the owner.
+
+## UPDATE 2026-11-17 day
+
+- **The owner wore rc18** and gave six notes (verbatim in `RC18_MORNING_QA.md`; no per-line PASS/FAIL, so nothing marked WORN).
+- **rc19 INSTALLED:** `Builds/MuseDesk_rc19_release.apk`, label rc19-release, release-signed, versionCode 3,
+  `F197F662…5EFD57`, hash-verified on the Quest (installed with `-r`, settings kept). Protected in `BuildApkTo.cs`; the next
+  build is rc20 with versionCode 4. Owner check: **`RC19_QA.md`** (one line per note).
+  - plan paper: a tick key per work item (no Keep/Skip keys); tubes on the back wall, fainter; results / problem reports /
+    cross-floor hand-offs ride the tubes, the summary flies straight from the printer (elevator only for questions);
+    portal 1.2x, platform lower; less gloss (27 materials x0.82 smoothness, sky reflections 0.55, key light 0.85).
+- **Live real build on a NEW objective (expense tracker): 13/13** (`RC19_QA.md`). It exposed a gap: a change step rewrote a
+  test file and the folder went 51 -> 45 tests silently. **Fixed in the backend (no APK needed):** a step that leaves fewer
+  tests is asked once to restore them, else its card says "N fewer tests than before (a -> b)". Backend 375 passed.
+- The live script takes any objective: `MUSEDESK_REAL_OBJECTIVE`, `MUSEDESK_REAL_CHANGE`.
+- Repo note: `git commit` printed "bad object refs/stash" (background repack failed). Commits are fine; not touched.
+
+## UPDATE 2026-11-17 overnight (read this first; the older text below is the rc17 state)
+
+- **Release key: DONE.** The owner ran `scripts\make_release_keystore.ps1` (a NEW key; there was never an old password).
+  `%USERPROFILE%\.musedesk\` holds the keystore + `signing.json` (never print, copy or commit them).
+- **Quest:** now runs a RELEASE-signed build (the rc17 code, `Builds/MuseDesk_signtest_rc17code.apk`, 38AE41EE…, verified).
+  So rc18 and later install with `adb install -r` (no uninstall, no reset).
+- **rc17 worn by the owner (2026-11-17):** "all the core things seem like they work" + 18 polish notes (ledger in
+  `RC17_FINAL_HARDWARE_QA.md`). All 18 addressed overnight in rc18; the owner's morning checklist is
+  **`RC18_MORNING_QA.md`** (what changed, line by line, and what to check).
+- **rc18 INSTALLED:** `Builds/MuseDesk_rc18_release.apk` (label rc18-release, release-signed, versionCode 2,
+  FEEFEFC1…A3D421, hash-verified on the Quest). rc18 is protected in `BuildApkTo.cs`; the next build is rc19 with versionCode 3.
+- **Not done on purpose:** full-screen colour grading (passthrough alpha risk, could not be checked on the headset overnight).
+- Next: owner wears rc18 (`RC18_MORNING_QA.md`), then filming and submission as below (steps 5 and 6).
+
+---
+
+(Written 2026-11-16 ~23:45, before the owner restarted the PC.)
+
+**Deadline:** 2026-11-18 12:00 PT (Meta VR Start Developer Competition 2026, Productivity track).
+**Repo:** https://github.com/fugeretrevin/MuseDesk, branch `feature/rc8-feedback-1`.
+**HEAD:** `1d28a9d` plus this handoff commit. The handoff commit is local only; push when the owner agrees. `main` is not merged.
+
+## Where we are
+
+- **On the Quest:** rc17 `Builds/MuseDesk_rc17_production.apk`, SHA-256
+  `BD0204F4556E6A301379A09F0ED986B9797273A989FC71AA222EEA0A17B602AD`, installed and hash-verified.
+- **Rollbacks:** rc16 `D25583D1`, rc15 `047DD408`, rc14 `3CD37ED9`, rc13 `3DAF3AE6`.
+- **Automated (all green):**
+  - `scripts\preflight.ps1` 13/13 (ledger in `Logs/preflight/`, which is git-ignored);
+  - EditMode 1636/1636;
+  - backend pytest 371 passed / 1 skipped.
+- **Live (Meta model):** `backend/scripts/live_real_work.py` 13/13 (plan `mp-5f997c5bbd`; Apply change made the password
+  minimum 12; 32 passed after 2 real fixes; independent pytest re-runs matched). Also `live_e2e` 71/71 and `live_journey`
+  17/17. Details: `docs/Engineering/FINAL_LIVE_DEMO_EVIDENCE.md`.
+- **WORN:** nothing on rc16/rc17 yet.
+  - rc15 worn PASS: rugs, ceiling shelf hand-over, Select beam, portal, visitor head/body; 72.2 fps.
+  - rc15 worn FAIL: voice (fixed in rc16, not yet worn).
+- **Not in the rc17 APK:** P-1, the receipt-flyer fix (`WallHabitatController.Manager.cs`). It goes into rc18.
+
+## Blockers and next steps (in order)
+
+1. **P0, owner: release signing.** rc17 is DEBUG-signed, versionCode 1, and a Meta release channel refuses it.
+   - The owner runs this in their own PowerShell window: `powershell -ExecutionPolicy Bypass -File scripts\make_release_keystore.ps1`.
+   - It writes `%USERPROFILE%\.musedesk\musedesk-release.keystore` and `signing.json`. Back them up and never commit them.
+2. **Owner wears rc17:** `docs/Engineering/RC17_FINAL_HARDWARE_QA.md` (B1–B8, D performance, E live from the Quest).
+   - Start `scripts\quest_perf_watch.ps1 -Label rc17_worn` first.
+   - Transcribe the owner's PASS/FAIL into its results ledger. Never mark WORN without the owner's words.
+3. Triage P0/P1 only, fix, run `scripts\preflight.ps1` (backend OFF), get 13/13.
+4. **Build rc18 (release-signed):**
+   `unity command script run --file AgentScripts/BuildApkTo.cs --entry BuildApkTo.RunSigned --args '[\"Builds/MuseDesk_rc18_release.apk\", 2]' --timeout 2400`
+   - **Uninstall first:** the signature changes, so `install -r` fails. That resets the saved panel layout and mic preference.
+   - Verify the hash on the device. The owner then smokes B1 + B2 + leaving Wall mid-receipt.
+5. **Film:**
+   - order and sources: `FINAL_VIDEO_SHOT_LEDGER.md`;
+   - procedure: `FINAL_RECORDING_PREFLIGHT.md`;
+   - tools: `FINAL_CAPTURE_INSTRUCTIONS.md`.
+   Offline takes first, then the live takes, then the PC cutaway.
+6. **Submission (owner only):** `FINAL_SUBMISSION_CHECKLIST.md`. It has the capability wording and the judge instructions.
+   Claude never submits or publishes.
+
+## After the restart (environment)
+
+- **Unity Editor:** reopen the project; check `unity status`. The PID changes; the old one was 30296.
+  - If drivers time out, run `AgentScripts/ClockProbe.cs`. A stalled Play clock means restarting Unity.
+  - **Never run EditMode tests while Play Mode is on** (deadlock). If stuck, focus Unity and press Ctrl+P.
+- **Backend (live):** `scripts\start_wall_backend.ps1` (prints "Starting LIVE with the Meta model API" and the real-work line),
+  then `adb reverse tcp:8765 tcp:8765`.
+  - Claude Code stopped it twice for low memory (0.5 GB free with Unity open). Prefer running it in the owner's own terminal.
+- **Offline Play drives need the backend OFF.** Otherwise the app goes live mid-run and the drives fail.
+- **Quest:** adb serial `2G97C5ZHCK037K`, package `com.musedesk.quest`. adb is at
+  `C:\Program Files\Unity\Hub\Editor\6000.6.8f1\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools\adb.exe`.
+- **Check the device before a take:** `scripts\record_preflight.ps1`. `-Restart` gives a clean take, `-Pull` copies the clips.
+
+## Key tools
+
+| Tool | Use |
 |---|---|
-| Branch | `release/final-refinement` |
-| Build commit | `6fbedcc`, tag `rc-feedback-1` |
-| APK | `Builds/MuseDesk.apk` (89 MB), copy `Builds/MuseDesk_rc_feedback1.apk`; **installed on the Quest 3** 2026-11-13 11:45 |
-| Previous build | `8a5f931` / `rc-spatial-1` (`Builds/MuseDesk_rc_spatial.apk`); restore point before this round: tag `pre-headset-feedback-1` |
-| Flags | Desk always; Floor ON; Ceiling ON (validation only) |
+| `scripts\compile.ps1`, `scripts\tests.ps1 -Timeout 900` | compile; EditMode |
+| `scripts\preflight.ps1 [-Only group]` | every automated group + ledger (compile, editmode, backend, drives, spatial, portal, amend, desk) |
+| `scripts\regress.ps1`, `scripts\amend_check.ps1 [-Live]` | Play drive sweep; Apply-change check |
+| `scripts\drv.ps1 Class Method Arg` | one Play driver call |
+| `AgentScripts/CineCam.cs` | capture-only in-engine camera (Shot / Dolly / Off; 7 presets) |
+| `AgentScripts/LogTally.cs` | real console errors vs Editor-only Meta SDK noise |
+| `backend\scripts\live_real_work.py`, `live_e2e.py`, `live_journey.py` | live suites (backend running) |
 
-**Nothing in this build has been worn.** Everything below is Editor Play Mode with driver scripts (no hands, no passthrough, synthetic room).
+## Standing rules (owner)
 
-## What this round added (owner's headset feedback on `rc-spatial-1`)
+- **Never** print, copy or move `ProjectSettings/wit.config`, `Assets/MuseDesk/Voice/WitConfig_MuseDesk.asset`,
+  `backend/.env`, or the release keystore / `signing.json`.
+- **Never** mark WORN without an owner report.
+- **Never** submit, publish, push or merge without the owner.
+- **Protect the rollback APKs.** The builder refuses existing files and the paths of rc6–rc17.
+- **Git:** no destructive git; never `git commit -a`. Leave the pre-existing dirty files uncommitted: the Inter SDF fonts,
+  `AgentTalk_Paper.mat`, the URP asset, `generate_workstations.py`, the `.blend1` files, `docs/0*_`, `README_START_HERE.md`,
+  `AgentScripts/_GuardedRun.cs`.
+- Never edit `Assets/` scripts during Play Mode or an APK build.
+- **Owner decisions:** keep Floor, Ceiling and the large portal ON; hands-free voice needs a name first; the Wall Manager uses
+  its dedicated model; the office never moves at start-up; judges get the labelled offline demo.
+- **Honesty:**
+  - SCRIPTED DEMO and LIVE labels are always true.
+  - Research is model text only (no web).
+  - The code runner is a "restricted workspace", not a sandbox.
+  - Never show live work as instant.
 
-| Feedback | What was built | Evidence |
-|---|---|---|
-| Stamp stays on the desk after stamping | Both stamps leave with a pop and puff about 2 s after a decision and pop back for the next one | PLAY: Waiting then Hidden after approve; 12 tests |
-| Floor placement needs bending down | Point at the floor, footprint highlight, pinch and drag, red with a reason where it cannot go, pinch-hold to confirm | PLAY: drag, invalid spot refused, hold-confirm moved the office; 20 tests |
-| Ceiling: props lag, props out of place | Loose props pinned to the office during every move; plant, lamp, books, clock hidden in Ceiling mode (they stand outside the pod deck) | PLAY: 0.0 mm drift over a 1.76 m move; 7 tests |
-| "Needs you" marker tilted and central | Always upright; hangs under the pod's front edge when docked | PLAY: tilt 0.00 deg, placement BelowPod |
-| Control cards intersect the lowered office | Grab bar under the dock (with board), plaque, mode console and receipt; poses saved; reset by 1.5 s pinch on a bar or by voice | PLAY: drag and save, panels keep their place across mode switches; 37 tests |
-| Mode keys look cheap and stacked | One wedge console: Desk / Floor / Ceiling selector, context row (Next, Confirm, Cancel, Stop, Lower/Raise, Bring, Status), status line, Focus key, mic key | PLAY: context row changes with mode; capture `docs/review_screenshots/feedback1/` |
-| Voice and interactivity | Voice command centre (mic key on the console, local intent parser, undo window for approve/reject, ask an agent for status); characters glance up, react to pokes, show a status chip on gaze, wave back, speech bubbles | PLAY via `VoiceDrive.Say` and `AgentInteractionDrive`; 346 voice tests, 28 interaction tests |
+## Other docs
 
-Automated: every EditMode fixture passes when run one at a time (about 600 tests). Smoke checks 78 of 78. XR visual QA 0 FAIL, 89 WARN.
-
-## Check on the headset first
-
-1. Desk: approve with the stamp, watch it poof; next run, stamps come back.
-2. Mode console at front right: does it look right, are the keys reachable, do the grab bars drag and stay?
-3. Mic key on the console: press, say "start", "Developer, what are you working on", "approve" with a paper in hand (1.5 s undo), "floor mode". Needs internet on the headset. Does the mic permission prompt appear only on first press?
-4. Poke a character; look at one for a second; wave.
-5. Floor: press Floor, point at the floor, pinch-drag the footprint, pinch-hold to confirm.
-6. Ceiling: props ride with the pod, marker under the pod, drag the dock clear of the lowered office.
-
-## Known problems and loose ends
-
-- **Full EditMode run hung the Editor** (main thread stuck over 10 min; Editor was killed and restarted). Each fixture passes alone; the cause is not found. Run fixtures with `scripts\tests.ps1 <FixtureName>` until it is.
-- Voice readout position above the mic slot was never looked at; it may overlap the console or receipt.
-- Console key travel is 5.2 mm, not the 2 mm asked for.
-- Console was 21 mm below the desk plane after its builder; `AgentScripts/FixConsoleHeight.cs` lifts it (run after `BuildModeConsoleV1`, then re-run `BuildMovablePanelsV1`).
-- Spoken approve in the scripted demo said "Not sent" although it was sent; patched in `VoiceOffice.Respond`, compiled, **not re-run in Play Mode**.
-- Floor drag: no wrist-twist rotation (office always faces the user). A pinch meant for a paper can grab the footprint if the ray lands on it.
-- Pod deck stays 5 cm narrower than the office (widening would leave the validated footprint).
-- A knocked-over prop pops home when a move starts.
-- Character arm poses, squash axis, wave and high-five thresholds were written blind. Old touch summary card is switched off (poke bubble replaces it).
-- Voice gesture (pinch at the mouth) is built but off. No TTS.
-- `SpatialDrive.Report` finds TaskDock under `Panel_Dock` again (fixed, ceiling ideas round).
-- Git still prints "bad object refs/stash" on maintenance; untouched. `.blend1` files stay uncommitted.
-- No device performance numbers yet. Recorder: `scripts\quest_perf_watch.ps1 -Label desk -CaptureMinutes 4` (start by hand).
-
-## Antigravity ceiling VFX (not in `rc-feedback-1`; INTEGRATED in the ceiling ideas round below â€” kept for the notes)
-
-Branch `art-spatial-workspace-expansion`, commit `cbd606b`, in `.worktrees/spatial-art` (the earlier merge took `53f7129`). By Antigravity's own report, not checked here:
-- `CeilingMount` rebuilt with a 4-leaf iris docking bay (4 bones `Bone_Iris_F/B/L/R`, 0.44 m canopy, 4,580 tris); `DockedPose` moved to y = -0.388 m.
-- `SpatialPortalCone.shader` (additive, single-pass instanced), `Mat_Spatial_PortalCone`, `Mat_Spatial_SoftParticle`, cone and ring meshes, `Tex_SoftGlowDot.png`.
-- `CeilingDeploymentVFXController.cs`: halo, ripple, portal cone, tether motes, aperture particles, air-cushion ring, arrival burst. It binds to `CeilingWorkspacePodController.StateChanged`.
-
-Integration notes for whoever does it:
-- This project does **not** use `CeilingWorkspacePodController` (it moves transforms the logic owns). The VFX controller needs a small adapter driven by `CeilingPodMachine` states through `CeilingPodArt`, or its `ApplySnapshotImmediate(...)` called from there.
-- The mount changed size and `DockedPose` moved: `mountOffset`, `mastAttachHeight` and the mount/mast part of the swept volume must be re-measured (`BuildCeilingPolishV1` measures them; re-run it after the art is placed) and the ceiling safety tests re-run.
-- `BuildSpatialArtV1` placed the old mount; write a new builder (`BuildCeilingVfxV1`) rather than re-running it.
-- Additive transparents over passthrough and two more particle systems cost fill rate: check on the headset before keeping them on.
-- Tag a restore point before merging; merge only the art paths, as last time.
-
-Antigravity's follow-up ideas, in the order worth doing: (4) three-stage spatial audio for unlock, travel and lock; (1) pinch-and-pull on the tether to lower the pod; (2) look up and pinch to summon; (3) scan-reveal grid on the real ceiling during placement; (5) bounce light on real furniture (most cost, least certain on Quest).
-
-## Ceiling ideas round (2026-11-13 afternoon, after `rc-feedback-1`; restore point tag `pre-ceiling-vfx`)
-
-Antigravity's `cbd606b` art paths merged (our `Art/Shaders.meta` kept). Built by four Sonnet builders, integrated here. **PLAY only, not in an APK yet, never worn.**
-
-| Idea | What | Evidence |
-|---|---|---|
-| Ceiling VFX (iris mount, portal cone, halo, rings, particles) | `CeilingVfxBridge` maps `CeilingPodMachine` states onto `CeilingDeploymentVFXController.OnPodState`; switches `vfxEnabled` / `particlesEnabled` (turn particles off first if fill rate hurts) | Builder: mount inside Core's `mountClearance`/`mountDepth`; `mountOffset`, `mastAttachHeight`, `dockDrop` unchanged. PLAY: arrival burst + halo at dock. 11 tests |
-| (4) Three-stage audio | `CeilingPodAudio`: unlock click, travel hum (0.9 down / 1.1 up), lock thunk+chime; procedural clips; Meta XR Audio spatializer | PLAY: cues on all legs incl. the first trip up from the desk (fixed: cue raised a frame before Ceiling mode was set is held 0.3 s). 9 tests. Volumes unheard |
-| (1)+(2) Reach up and pull it down | `CeilingPullGesture`: hand ray or gaze on the pod/mast, pinch, pull down 12 cm â†’ lower; push up when engaged â†’ raise. Calls the core's `RequestPodDescend/Retract` (same sweep as the console) and shows the refusal reason | PLAY via `CeilingPullDrive`: not-targeted, early release, sideways, too slow, busy hand, held all refused; pull down and push up move the pod (false "refused" on push-up fixed). 14 tests |
-| (3) Scan-reveal grid | `CeilingScanReveal` + `CeilingScanGrid.shader`: teal grid 2 mm under the real ceiling around the candidate mount point during ceiling preview, red when invalid, fades on confirm/cancel | PLAY: shown at ceiling-2 mm, wipe 0.6 s, fade to 0 after confirm. 8 tests |
-| (5) Bounce light | Skipped (cost, uncertain on Quest) | â€” |
-
-Ceiling safety fixtures re-run after the builders: Evaluator 5, Pod 8, SweptPath 19, SweptMoves 17, Director 15 â€” all pass.
-
-Check on the headset: the effects over passthrough (fill rate), sound levels, whether a 12 cm pull feels right (thresholds in `CeilingPullGesture.settings`), the cue label reads the right way round, grid brightness. Known: a pinch aimed at a paper before the ISDK hovers it can still arm the pull (it needs 12 cm of travel to fire).
-
-Three new pure-logic files live in `Scripts/Spatial/Core/` (`CeilingVfxMap`, `CeilingPodAudioCues`, `CeilingPullLogic`) because the EditMode asmdef only reaches Core; no existing Core file changed.
-
-## Headset feedback 2 (2026-11-13 afternoon; restore point tag `pre-headset-feedback-2`)
-
-Owner wore `rc-feedback-1`. Five items, PLAY-verified here, in the next APK; not yet worn.
-
-| Feedback | Fix | Evidence |
-|---|---|---|
-| Floor: good spots refused; letting go on "ready" did nothing | Root cause: the only route to the floor turned overhead and swung a corner within 6-8 cm of the head axis, so the sweep (correctly) refused most spots beside/behind the shoulder. New `Core/FloorRoutePlanner` tries side-step shapes, all through the unchanged `SweepRoute`. "Ready" now includes the route. Release on a ready spot places (pinch >= 0.25 s, dragged >= 5 cm); refusals stay visible on a words plate. Chosen-spot margins: user 0.6 -> 0.45 m sides/behind, furniture 0.15 -> 0.11 m (both above the sweep's own). Lost-hand-placed-the-office bug found and fixed (a lost hand only drops). | PLAY `FloorAimDrive`: DragAndRelease placed (4-pose route, swept clear); ReleaseBesideShoulder placed (was refused); ReleaseWhereBlocked reason + no move; Twitch/Flick no place. Tests: FloorReleaseToPlace 9, FloorAimSession 9, FloorAimDirector 9, Persistence 5 + all spatial/ceiling fixtures green |
-| Guided scan for Floor/Ceiling | `PlacementGuide` (scene object `LookGuide`): card "Look at the floor / Look up at the ceiling", 0.6 s gaze dwell, then the request; scan grid starts from the gaze point (`FloorScanReveal` new, `CeilingScanReveal` sweeps gaze -> mount). Floor preview opens where you looked when that spot is usable (`CentrePreviewOn(.., quietIfBlocked)`), else the automatic spot silently. "Start here" after 8 s, Cancel. Voice "floor/ceiling mode" goes through it too | PLAY `PlacementGuideDrive`: card waits at level gaze; look down 45 / up 60 opens the preview, card switches to next step. 13 tests. NOTE: first builder run attached to the old desk-placement marker `PlacementGuide` (WorkspacePlacement hides it); the builder now removes that and uses `LookGuide` |
-| Task card text spills to edges | `BuildTextFitV1`: labels inside the card face with 2.5 mm margin, chips clear of the top edge, titles 2 lines + ellipsis | PLAY `TextFitDrive.ReportWorstCase` (merge with the builder file to run): all live card labels >= 2.3 mm from the edge |
-| Agent name tags overflow / not centred | Nameplates: role + activity one line each, centred as a block; gaze chips centred, inside the plate | 6.6-6.9 mm margins; chips 3.5 mm (were -7 mm) |
-| Move panels up/down | Height follows the hand 1:1 within -5..+45 cm of the desk plane, kept on release; near the desk up to 3 cm below the detected desk plane (`deskSinkAllowance`) | PLAY `PanelsDrive`: dock lowered 52 -> 0 mm, raised to 300 mm. PanelHeight 8 tests |
-
-Docs still out of date: `ROOM_PLACEMENT_FINDINGS.md` "known mismatch" (wall margin now 0.11 m) and the "pinch-hold to confirm" wording above (release-to-place is primary; hold still works).
-
-## Scene build order (append-only; never re-run older builders after newer)
-
-... `IntegrateSpatial`, `BuildSpatialArtV1`, then this round: `BuildStampPoofV1`, `BuildFloorAimV1`, `BuildAgentInteractionV1`, `BuildModeConsoleV1`, `BuildMovablePanelsV1`, `BuildCeilingPolishV1`, `FixConsoleHeight`, `BuildMovablePanelsV1` (again), `BuildVoiceV2`, then the ceiling ideas round: `BuildCeilingVfxV1`, `BuildCeilingAudioV1`, `BuildCeilingScanV1`, `BuildCeilingPullV1`, then headset feedback 2: `BuildTextFitV1`, `BuildFloorPlaceFixV1`, `BuildPlacementGuideV1`, then rc6 gesture safety: `BuildPlaceHereV1`, then rc6-1 feedback (guide card polish, desk office 9 cm lower: `offDeskDrop` 0.30 -> 0.39): `BuildGuideCardPolishV1` (run AFTER `BuildPlaceHereV1`; check with `GuideCardPolishDrive Heights|Card`).
-
-## Tools
-
-- Builders: `scripts\run_guarded.ps1 -File AgentScripts\X.cs -Entry X.Apply` (the Editor is shared with Antigravity).
-- Play Mode drivers: `scripts\drv.ps1 <Class> <Method> [arg]` with `PlayDrive`, `SpatialDrive`, `StampPoofDrive`, `FloorAimDrive`, `CeilingPolishDrive`, `PanelsDrive`, `VoiceDrive`, `AgentInteractionDrive`. A string argument with spaces does not pass through `drv.ps1` yet.
-- Tests: `scripts\tests.ps1 <FixtureName>`.
-- Agents: `.claude/agents/` has `musedesk-scout` (Haiku), `musedesk-builder` (Sonnet), `musedesk-architect` (Opus). Route by cost.
-- Records: `QUEST_HARDWARE_VALIDATION_MATRIX.md` (defect log has this round's seven items as "In progress"; mark them after the owner re-tests), `FINAL_SPATIAL_RELEASE_AUDIT.md` (describes `rc-spatial-1`; not yet updated for this build).
-
-Walk routes (rc6-1 feedback, agents clipped through the Researcher's desk): after BuildPlaceHereV1, run BuildWalkRoutesV1 (Researcher exit waypoints + moves Decor_MiniPlant behind the agents; Revert() undoes). Check with scripts\drv.ps1 WalkClipDrive Measure (edit or Play) and WalkClipDrive Delivery then DeliveryResult (Play).
-
+- **Full project overview for an expert:** `PROJECT_STATE_FOR_EXPERT_REVIEW.md` is rc15-era. The latest state is in this file
+  plus the FINAL_* docs.
+- **Fix history:** `END_TO_END_GAPS_AND_FIXES.md` (F-1…F-18), `FINAL_POLISH_FIX_LOG.md`.
+- **Go/no-go:** `FINAL_RELEASE_GO_NO_GO.md`. GO for filming on rc17; submission = signed rc18.
