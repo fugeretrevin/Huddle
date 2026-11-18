@@ -285,7 +285,7 @@ namespace MuseDesk.Wall
                 _prop[r].gameObject.SetActive(false);
             }
 
-            if (manifest != null) { _artRoots = manifest.ApplyTo(this); BindArtElevator(); OpenManagerSideWall(); }
+            if (manifest != null) { _artRoots = manifest.ApplyTo(this); BindArtElevator(); OpenManagerSideWall(); FixMonitorScreens(); }
             // After the manifest: a proxy it hid stays out of the merged mesh.
             if (BatchStaticStructure) BatchStructure(structure);
             _recordColors = false;
@@ -459,6 +459,76 @@ namespace MuseDesk.Wall
             m.RecalculateBounds();
             mf.sharedMesh = m;
             ManagerWallTrianglesCut = cut;
+        }
+
+        /// <summary>For drivers: triangles moved off the glowing screen material (the back and edges of the desk monitors).</summary>
+        public int ScreenTrianglesFixed { get; private set; }
+
+        /// <summary>For drivers: the monitor renderers fixed, with their kept/moved triangle counts.</summary>
+        public readonly List<KeyValuePair<Renderer, string>> ScreenFixLog = new List<KeyValuePair<Renderer, string>>();
+
+        /// <summary>
+        /// rc23 (owner, worn rc21: "monitors clip, and the developer workstation's screen is visible from both sides").
+        /// The art's monitor screens are thin boxes with the glowing screen material on every face. The agent stands behind the
+        /// desk (habitat-local smaller z) facing the user (+Z, Yaw 0) so the monitor's screen faces -Z; the user sees its back.
+        /// On a runtime mesh copy (the asset is never touched) only the triangles whose normal points toward -Z (the agent) keep
+        /// the screen material, nudged 0.3 mm that way off the bezel; the back and the edges go to a second submesh in the
+        /// station's charcoal material. Unreadable meshes are skipped. Runs once at build.
+        /// </summary>
+        void FixMonitorScreens()
+        {
+            if (_artRoots == null) return;
+            Vector3 towardAgentWorld = root.TransformDirection(Vector3.back).normalized;
+            foreach (var g in _artRoots)
+            {
+                if (g == null) continue;
+                foreach (var mr in g.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    if (!mr.name.EndsWith("Screen", System.StringComparison.Ordinal)) continue;
+                    var mf = mr.GetComponent<MeshFilter>();
+                    Material screen = mr.sharedMaterial;
+                    if (mf == null || mf.sharedMesh == null || screen == null || mr.sharedMaterials.Length != 1) continue;
+                    if (screen.name.IndexOf("Screen", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    Mesh src = mf.sharedMesh;
+                    if (!src.isReadable || src.subMeshCount != 1 || src.name.EndsWith("_FrontOnly")) continue;
+                    Material dark = null;
+                    if (mr.transform.parent != null)
+                        foreach (var sib in mr.transform.parent.GetComponentsInChildren<MeshRenderer>(true))
+                            if (sib.sharedMaterial != null && sib.sharedMaterial.name.IndexOf("Charcoal", System.StringComparison.OrdinalIgnoreCase) >= 0) { dark = sib.sharedMaterial; break; }
+                    if (dark == null) continue;
+
+                    Transform t = mf.transform;
+                    Vector3[] v = src.vertices; int[] tri = src.triangles;
+                    var front = new List<int>(tri.Length); var rest = new List<int>(tri.Length);
+                    for (int i = 0; i < tri.Length; i += 3)
+                    {
+                        Vector3 a = t.TransformPoint(v[tri[i]]), b = t.TransformPoint(v[tri[i + 1]]), c = t.TransformPoint(v[tri[i + 2]]);
+                        Vector3 n = Vector3.Cross(b - a, c - a);
+                        var dst = n.sqrMagnitude > 1e-16f && Vector3.Dot(n.normalized, towardAgentWorld) > 0.5f ? front : rest;
+                        dst.Add(tri[i]); dst.Add(tri[i + 1]); dst.Add(tri[i + 2]);
+                    }
+                    if (front.Count == 0 || rest.Count == 0) continue;
+
+                    // Nudge only the vertices the screen face alone uses, so the back and edges stay where they are.
+                    var usedByRest = new HashSet<int>(rest);
+                    var moved = new HashSet<int>();
+                    Vector3 nudge = t.InverseTransformVector(towardAgentWorld * 0.0003f);
+                    for (int i = 0; i < front.Count; i++) if (!usedByRest.Contains(front[i])) moved.Add(front[i]);
+                    foreach (int i in moved) v[i] += nudge;
+
+                    Mesh m = Object.Instantiate(src);
+                    m.name = src.name + "_FrontOnly";
+                    m.vertices = v;
+                    m.subMeshCount = 2;
+                    m.SetTriangles(front, 0, false);
+                    m.SetTriangles(rest, 1, false);
+                    m.RecalculateBounds();
+                    mf.sharedMesh = m;
+                    mr.sharedMaterials = new[] { screen, dark };
+                    ScreenTrianglesFixed += rest.Count / 3;
+                    ScreenFixLog.Add(new KeyValuePair<Renderer, string>(mr, "screenTris=" + front.Count / 3 + " movedToDark=" + rest.Count / 3 + " nudgedVerts=" + moved.Count + " dark=" + dark.name));
+                }
+            }
         }
 
         /// <summary>Habitat-local z of things mounted on the back wall (the back panels end at z 0.015-0.019).</summary>

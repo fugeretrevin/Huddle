@@ -76,7 +76,11 @@ def classify_intent(question: str) -> str:
 _VERBS = ("cancel|stop|abort|halt|switch|change|modify|redo|rewrite|delete|remove|drop|deploy|"
           "publish|push|merge|revert|undo|restart|rerun|re-run|replace|rename|add|install|run|"
           "execute|fix|update|use|make|set|skip|pause|resume|reassign|approve|commit|create|"
-          "send|write|implement|ship|accept|reject|bypass|disable|ignore")
+          "send|write|implement|ship|accept|reject|bypass|disable|ignore|"
+          # rc23 (live run: "Developer, can you also let the user delete a task by its number?" was read as a status question
+          # and no Apply change was offered): the usual feature-request verbs. Read verbs (show, tell, check) stay out.
+          "let|allow|support|enable|handle|include|extend|improve|refactor|build|validate|sort|save|store|limit|"
+          "require|increase|decrease|raise|lower|move|split|format|convert|translate|optimi[sz]e|clean|simplify")
 # Lead-ins before the verb, each optionally followed by a comma. rc14 (E2E journey D6): spoken requests start with a
 # softener or the agent's name ("Actually, change the password rule to 12 characters", "Developer, change ...");
 # before, the comma broke the match and such a request was answered as a status question (still read-only, but no

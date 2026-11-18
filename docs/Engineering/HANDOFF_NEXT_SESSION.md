@@ -1,6 +1,32 @@
 ﻿# Handoff for the next session
 
-## UPDATE 2026-11-17 day (read this first)
+## UPDATE 2026-11-17 night (read this first; deadline 2026-11-18 12:00 PT)
+
+- **On the Quest:** the newest rcNN-release in `Builds/` (see the bottom of the newest `RC2x_QA.md`; rc23 = 28DCF3ED,
+  versionCode 7; rc24 if built). All release-signed (CN=MuseDesk), installed with `adb install -r`, hash-verified on device.
+  Next build: next rc number and versionCode +1; `AgentScripts/BuildApkTo.cs` protects every rc path already built.
+- **Owner checklists (what changed, line by line):** `RC20_QA.md`, `RC21_QA.md`, `RC22_QA.md` (19 items), plus rc23 polish
+  (board arrows at the column foot, small talk, arm clearance, one-sided monitors on the desk AND in the Wall habitat,
+  clutter removed) and the change-request fix below. WORN: only what the owner said (transcribed in those files).
+- **Live (Meta model, PC backend):** `live_real_work.py` 13/13 on a new goal (to-do module; change "also let the user
+  delete a task by its number" now recognised as a change request: `side_intent.py` gained feature-request verbs);
+  `live_adhoc_task.py` 5/5 (a task the user adds and assigns is worked for real). Backend 419 passed, 1 skipped.
+- **Start the live backend for the owner:** `Start-Process powershell` running `scripts\start_wall_backend.ps1` in its OWN
+  window (Claude Code kills its own background shells under memory pressure), then `adb reverse tcp:8765 tcp:8765`.
+  Offline Play drives need it OFF.
+- **Editor gotcha (new):** the Play clock sometimes freezes (frames advance, `Time.unscaledTime` stuck, ClockProbe dt=0).
+  Stop + start Play once; if it is stuck at frame 1, the owner restarts Unity (Claude may not quit the Editor).
+- **Probe gotcha:** `scripts\drv.ps1` cannot pass arguments with spaces or `|`; use no-arg probe methods. Each
+  `script run` is a fresh assembly, so probe statics do not survive between calls.
+- **Agents used this session (all report AUTO only):** they may not enter Play Mode or build; the lead verifies in Play
+  (one at a time), runs `scripts\preflight.ps1 -Only <group>` group by group in the FOREGROUND, then builds.
+- **Antigravity soft textures:** rejected by the owner (kept rc20 matte); backup in `Logs/antigravity_soft_backup/`.
+- **Not done / known:** clothing clipping on agents needs a Blender re-weight; the desk drop has no MRUK desk raycast; the
+  Manager's own monitor (inside a combined Wall mesh) is still double-sided.
+- **Next:** owner wears the newest build -> transcribe -> fix P0/P1 only -> film (`FINAL_VIDEO_SHOT_LEDGER.md`) ->
+  submission by the owner (`FINAL_SUBMISSION_CHECKLIST.md`). Never push/merge/submit without the owner.
+
+## UPDATE 2026-11-17 day
 
 - **The owner wore rc18** and gave six notes (verbatim in `RC18_MORNING_QA.md`; no per-line PASS/FAIL, so nothing marked WORN).
 - **rc19 INSTALLED:** `Builds/MuseDesk_rc19_release.apk`, label rc19-release, release-signed, versionCode 3,
