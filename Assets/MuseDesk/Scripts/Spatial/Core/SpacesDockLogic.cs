@@ -148,6 +148,9 @@ namespace MuseDesk.Spatial
             bool floorOrCeiling = i.mode == PlacementMode.Floor || i.mode == PlacementMode.Ceiling;
             bool awayAtRest = floorOrCeiling && !i.previewing && !i.transitioning && !b.deskDisabled;
             k.wallDisabled = !i.wallEnabled || !(deskIdle || awayAtRest);
+            // rc22 (owner, worn rc21: "allow the manager to function on the ceiling and floor modes"): at rest in Floor or
+            // Ceiling the Manager key sits in its usual slot (the third of the lower row; Bring/Lower and Status use the first two).
+            k.manager = i.wallManagerEnabled && floorOrCeiling && !i.previewing && !i.transitioning;
             return k;
         }
     }

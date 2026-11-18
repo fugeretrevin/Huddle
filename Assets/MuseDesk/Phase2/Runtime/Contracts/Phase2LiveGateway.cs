@@ -93,6 +93,27 @@ namespace MuseDesk.Phase2.Contracts
         public Task<Phase2CommandResult<TaskCardV2>> ResumeAsync(string taskId, ResumeCommand cmd, CancellationToken ct)
             => CommandAsync($"/v2/sessions/{_sessionId}/tasks/{taskId}/resume", cmd, ct);
 
+        public Task<Phase2CommandResult<TaskCardV2>> RemoveTaskAsync(string taskId, RemoveTaskCommand cmd, CancellationToken ct)
+            => CommandAsync($"/v2/sessions/{_sessionId}/tasks/{taskId}/remove", cmd, ct);
+
+        public async Task<Phase2CommandResult<ClearBoardResult>> ClearBoardAsync(ClearBoardCommand cmd, CancellationToken ct)
+        {
+            try
+            {
+                var json = await _rest.PostJsonAsync($"/v2/sessions/{_sessionId}/board/clear", JsonConvert.SerializeObject(cmd), ct);
+                var res = JsonConvert.DeserializeObject<ClearBoardResult>(json) ?? new ClearBoardResult();
+                return Phase2CommandResult<ClearBoardResult>.Success(res);
+            }
+            catch (RestException rex) when (rex.StatusCode == 409)
+            {
+                CommandErrorBody body = null;
+                try { body = JsonConvert.DeserializeObject<CommandErrorBody>(rex.Body); }
+                catch { }
+                if (body != null && !string.IsNullOrEmpty(body.Code)) return Phase2CommandResult<ClearBoardResult>.Conflict(body);
+                throw;
+            }
+        }
+
         public async Task<FocusPolicyV2> SetFocusAsync(FocusCommand cmd, CancellationToken ct)
         {
             var json = await _rest.PostJsonAsync($"/v2/sessions/{_sessionId}/focus",

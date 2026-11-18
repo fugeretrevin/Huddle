@@ -285,7 +285,7 @@ namespace MuseDesk.Wall
                 _prop[r].gameObject.SetActive(false);
             }
 
-            if (manifest != null) { _artRoots = manifest.ApplyTo(this); BindArtElevator(); }
+            if (manifest != null) { _artRoots = manifest.ApplyTo(this); BindArtElevator(); OpenManagerSideWall(); }
             // After the manifest: a proxy it hid stays out of the merged mesh.
             if (BatchStaticStructure) BatchStructure(structure);
             _recordColors = false;
@@ -407,6 +407,59 @@ namespace MuseDesk.Wall
         }
 
         bool _recordColors = true;   // only the constructor's structure boxes are batch candidates
+
+        /// <summary>For drivers: triangles removed from the Manager floor's right-hand end wall (0 = not opened).</summary>
+        public int ManagerWallTrianglesCut { get; private set; }
+
+        /// <summary>
+        /// rc22 (owner, worn rc21: "get rid of the right wall on the third floor of the wall mode so we can see through to the
+        /// manager from our desk if it's to the left of us"). The Manager floor's structure is one combined mesh; its right-hand
+        /// end wall (seen from the front: the habitat's -X end) is cut out of a runtime copy: every triangle lying in the thin
+        /// slab at that end, above the floor and in front of the back panel. The floor slab, the back wall, the roof and the
+        /// other floors are untouched.
+        /// </summary>
+        void OpenManagerSideWall()
+        {
+            if (_artRoots == null) return;
+            MeshFilter mf = null;
+            foreach (var g in _artRoots)
+            {
+                if (g == null) continue;
+                foreach (var f in g.GetComponentsInChildren<MeshFilter>(true))
+                    if (f.name == "WallHabitat_ManagerLookout_Structure") { mf = f; break; }
+                if (mf != null) break;
+            }
+            if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable) return;
+            Mesh src = mf.sharedMesh;
+            Vector3[] v = src.vertices;
+            var hv = new Vector3[v.Length];
+            float minX = float.MaxValue;
+            for (int i = 0; i < v.Length; i++) { hv[i] = root.InverseTransformPoint(mf.transform.TransformPoint(v[i])); if (hv[i].x < minX) minX = hv[i].x; }
+            float floorTop = 0.148f;
+            for (int f = 0; f < layout.floors.Count; f++) if (layout.floors[f].id == "Manager") floorTop = layout.floors[f].floorY - 0.002f;
+            Mesh m = Object.Instantiate(src);
+            m.name = src.name + "_OpenRight";
+            int cut = 0;
+            for (int s = 0; s < m.subMeshCount; s++)
+            {
+                int[] t = m.GetTriangles(s);
+                var keep = new List<int>(t.Length);
+                for (int i = 0; i < t.Length; i += 3)
+                {
+                    Vector3 a = hv[t[i]], b = hv[t[i + 1]], c = hv[t[i + 2]];
+                    bool inSlab = Mathf.Max(a.x, Mathf.Max(b.x, c.x)) < minX + 0.025f
+                               && Mathf.Min(a.y, Mathf.Min(b.y, c.y)) > floorTop
+                               && Mathf.Max(a.z, Mathf.Max(b.z, c.z)) > 0.03f;
+                    if (inSlab) { cut++; continue; }
+                    keep.Add(t[i]); keep.Add(t[i + 1]); keep.Add(t[i + 2]);
+                }
+                m.SetTriangles(keep, s, false);
+            }
+            if (cut == 0) { Object.Destroy(m); return; }
+            m.RecalculateBounds();
+            mf.sharedMesh = m;
+            ManagerWallTrianglesCut = cut;
+        }
 
         /// <summary>Habitat-local z of things mounted on the back wall (the back panels end at z 0.015-0.019).</summary>
         const float LampZ = 0.0225f;

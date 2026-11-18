@@ -139,6 +139,42 @@ namespace MuseDesk.EditorTools
             return urpMat;
         }
 
+        /// <summary>
+        /// rc22 (owner, worn rc21: "the researcher's button also clips its shirt"). The brass chest button sat half inside the
+        /// shirt (its front at the shirt's surface, mesh -Y = front, Z = up, Blender units). Its 50 vertices (brass, chest
+        /// height, on the centre line) move forward by 0.065 units so the whole button sits on the shirt. The glasses (also
+        /// brass, at head height) are untouched.
+        /// </summary>
+        static void NudgeResearcherButton(GameObject root)
+        {
+            int moved = 0;
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                Mesh m = smr.sharedMesh;
+                if (m == null) continue;
+                var mats = smr.sharedMaterials;
+                var verts = m.vertices;
+                var done = new HashSet<int>();
+                for (int s = 0; s < m.subMeshCount && s < mats.Length; s++)
+                {
+                    if (mats[s] == null || mats[s].name.IndexOf("Brass", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    foreach (int i in m.GetTriangles(s))
+                    {
+                        if (done.Contains(i)) continue;
+                        Vector3 v = verts[i];
+                        if (v.z < 0.00095f || v.z > 0.00118f || Mathf.Abs(v.x) > 0.0001f) continue;
+                        verts[i] = new Vector3(v.x, v.y - 0.000065f, v.z);
+                        done.Add(i);
+                    }
+                }
+                if (done.Count == 0) continue;
+                m.vertices = verts;
+                m.RecalculateBounds();
+                moved += done.Count;
+            }
+            Debug.Log("[ModelBoundsFixer] Agent_Researcher: chest button moved out of the shirt (" + moved + " vertices)");
+        }
+
         void OnPostprocessModel(GameObject root)
         {
             string p = assetPath.Replace("\\", "/");
@@ -216,6 +252,7 @@ namespace MuseDesk.EditorTools
                     if (mf.sharedMesh != null) { mf.sharedMesh.RecalculateBounds(); fixedCount++; }
                 foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                     if (smr.sharedMesh != null) { smr.sharedMesh.RecalculateBounds(); fixedCount++; }
+                if (p.EndsWith("/Agent_Researcher.fbx")) NudgeResearcherButton(root);
             }
 
             if (fixedCount > 0)

@@ -7,7 +7,7 @@ using MuseDesk.Spatial.Ui;
 namespace MuseDesk.Wall
 {
     /// <summary>What the framed stamp zone on the paper says.</summary>
-    public enum StampZoneMode { Hidden, Awaiting, Committing, Settled }
+    public enum StampZoneMode { Hidden, Awaiting, Committing, Settled, NeedsRevision }
 
     /// <summary>
     /// The Manager's plan-review paper: a near-user <see cref="WallCard"/> (plate, up to eight poke keys, provenance footer)
@@ -266,11 +266,14 @@ namespace MuseDesk.Wall
             bool on = mode != StampZoneMode.Hidden;
             if (_zone.gameObject.activeSelf != on) _zone.gameObject.SetActive(on);
             if (!on) return;
-            string cap = mode == StampZoneMode.Awaiting ? "Stamp here" : mode == StampZoneMode.Committing ? "Waiting for the board" : "";
+            // rc22 (owner, worn rc21: approving after unticking steps "is broken ... make it clearer that it needs a revision").
+            string cap = mode == StampZoneMode.Awaiting ? "Stamp here" : mode == StampZoneMode.Committing ? "Waiting for the board"
+                       : mode == StampZoneMode.NeedsRevision ? "Revise first" : "";
             if (_zoneCaption.text != cap) _zoneCaption.text = cap;
             if (_art != null && _frame.Count > 1)
             {
-                Color frame = mode == StampZoneMode.Awaiting ? Workspace.OfficeTokens.Teal : Workspace.OfficeTokens.InkSoft;
+                Color frame = mode == StampZoneMode.Awaiting ? Workspace.OfficeTokens.Teal
+                            : mode == StampZoneMode.NeedsRevision ? Workspace.OfficeTokens.Coral : Workspace.OfficeTokens.InkSoft;
                 for (int i = 1; i < _frame.Count; i++) _art.Tint(_frame[i], frame);
             }
         }

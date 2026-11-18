@@ -39,7 +39,9 @@ namespace MuseDesk.Voice
         [Tooltip("Join pieces the speech service cut at a pause into one sentence (see SentenceStitcher).")]
         public bool stitchSentences = true;
         [Tooltip("Microphone level (0..1) that counts as the user starting to talk again while a piece is held.")]
-        public float resumeSoundLevel = 0.1f;
+        // rc22 (owner: "less picky"): 0.1 -> 0.05, so a softly spoken continuation also extends the wait for more words. It
+        // can only ever make the stitcher wait longer, and never past its hold cap (4 s after a piece).
+        public float resumeSoundLevel = 0.05f;
         /// <summary>Set by VoiceCommandCenter: whether a piece already reads as a whole command (act now) or clearly goes on.</summary>
         public Func<string, PieceVerdict> SentenceVerdict;
 
@@ -416,6 +418,7 @@ namespace MuseDesk.Voice
                     break;
                 case Ev.Full:
                     {
+                        if ((!_requestOpen || _gotFinal) && !string.IsNullOrWhiteSpace(q.A)) LogLatePiece(q.A);
                         if (!_requestOpen || _gotFinal || string.IsNullOrWhiteSpace(q.A)) break;
                         if (Stitching && !_pieceLive) break;   // the previous piece's response repeating its transcript
                         string piece = q.A.Trim();
@@ -483,6 +486,22 @@ namespace MuseDesk.Voice
                         break;
                     }
             }
+        }
+
+        string _lastLateLogged = "";
+
+        /// <summary>rc22 diagnostics: words the service finalised after the sentence was already handed on (the user ended the
+        /// request between pieces, or a cap closed it). They are not acted on; the log says so, once per distinct text, so a
+        /// headset session shows whether words were lost. (The owner's own speech, on their own device: Debug.Log only.)</summary>
+        void LogLatePiece(string text)
+        {
+            string t = text.Trim();
+            if (t.Length == 0 || t == _lastLateLogged) return;
+            if (LastSentence.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0) return;     // the repeat of a piece already used
+            _lastLateLogged = t;
+            if (t.Length > 160) t = t.Substring(0, 157) + "...";
+            Debug.Log("[MuseDesk.Voice] dropped late piece \"" + t.Replace('"', '\'') + "\": it arrived after the sentence \""
+                      + LastSentence.Replace('"', '\'') + "\" was already handed on" + (_aborted ? " (request closed)" : ""));
         }
 
         void SetListening(bool on)

@@ -261,10 +261,41 @@ namespace MuseDesk.Workspace
             }
             if (hint != null) hint.text = canRunAgain ? "" : HintLive;
             // View is offered only for work that was delivered (never for a failed or stopped run).
+            bool viewShown = viewer != null && !string.IsNullOrEmpty(_deliveredArtifactId);
             if (viewKey != null)
             {
-                if (viewer != null && !string.IsNullOrEmpty(_deliveredArtifactId)) _viewEase.Show(); else _viewEase.Hide();
+                if (viewShown) _viewEase.Show(); else _viewEase.Hide();
             }
+            PlaceCloseKey(canRunAgain, viewShown);
+        }
+
+        // ── rc22 (owner, worn rc21: "for the rejected proposal ... and it shows stopped, there needs to be a way to close that
+        // panel too"): a Close key on the receipt, in the first free key slot. Closing only hides this card (like Clear). ──
+        MuseDesk.Wall.WallKey _closeKey;
+
+        void PlaceCloseKey(bool runAgainShown, bool viewShown)
+        {
+            Transform template = runAgainKey != null ? runAgainKey : viewKey;
+            if (template == null) return;
+            if (_closeKey == null)
+            {
+                float s = Mathf.Abs((runAgainKey != null ? runAgainKeyScale : viewKeyScale).x);
+                _closeKey = MuseDesk.Wall.WallUi.MakeKey(template, transform, "Key_CloseReceipt", "Close", template.localPosition, s, Dismiss);
+            }
+            Vector3 slot;
+            if (!runAgainShown && runAgainKey != null) slot = runAgainKey.localPosition;
+            else if (!viewShown && viewKey != null) slot = viewKey.localPosition;
+            else if (runAgainKey != null && viewKey != null) slot = runAgainKey.localPosition + (runAgainKey.localPosition - viewKey.localPosition);
+            else slot = template.localPosition + Vector3.right * 0.05f;
+            _closeKey.root.localPosition = slot;
+            _closeKey.Show(_shown);
+        }
+
+        /// <summary>Poke target of the Close key: put the receipt away (nothing about the run changes).</summary>
+        public void Dismiss()
+        {
+            Clear();
+            if (_closeKey != null) _closeKey.Show(false);
         }
 
         /// <summary>Hide the receipt and forget the run it described (SessionReset, a new run).</summary>
@@ -277,6 +308,7 @@ namespace MuseDesk.Workspace
             if (!_shown) return;
             _shown = false;
             _ease.Hide();
+            if (_closeKey != null) _closeKey.Show(false);
             if (_settle < 1f)
             {
                 _settle = 1f;

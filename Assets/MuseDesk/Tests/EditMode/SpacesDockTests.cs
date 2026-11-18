@@ -126,6 +126,27 @@ namespace MuseDesk.Tests.EditMode
         }
 
         [Test]
+        public void ManagerKeyIsOfferedOnTheFloorAndTheCeilingAtRest()
+        {
+            // rc22 (owner, worn rc21): "allow the manager to function on the ceiling and floor modes".
+            foreach (var m in new[] { PlacementMode.Floor, PlacementMode.Ceiling })
+            {
+                var i = In(m); i.wallManagerEnabled = true;
+                var k = SpacesDockLogic.Compute(i);
+                Assert.IsTrue(k.manager, m + " at rest offers the Manager");
+                Assert.IsFalse(k.move || k.select || k.meet, m + ": the Wall's other keys stay on the Wall");
+                i.transitioning = true;
+                Assert.IsFalse(SpacesDockLogic.Compute(i).manager, m + ": not while the office moves");
+                i = In(m); i.wallManagerEnabled = true; i.previewing = true; i.floorPreview = m == PlacementMode.Floor;
+                Assert.IsFalse(SpacesDockLogic.Compute(i).manager, m + ": not while a preview is open");
+                i = In(m);
+                Assert.IsFalse(SpacesDockLogic.Compute(i).manager, m + ": flag off, no Manager");
+            }
+            var d = In(); d.wallManagerEnabled = true;
+            Assert.IsFalse(SpacesDockLogic.Compute(d).manager, "Desk: unchanged (no Manager key)");
+        }
+
+        [Test]
         public void MovingTheHabitatIsAPreviewWithTheWallLit()
         {
             var i = In(); i.wallActive = true; i.wallPreviewing = true; i.wallCanPlace = true;

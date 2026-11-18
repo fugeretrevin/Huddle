@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using MuseDesk.Spatial;
 using MuseDesk.Spatial.Ui;
 using MuseDesk.Spatial.Wall;
 
@@ -63,9 +64,27 @@ namespace MuseDesk.Wall
         };
         static readonly string[] ObjectiveKeys = { "Login flow", "Fix tests", "Write docs" };
 
+        /// <summary>rc22 (owner, worn rc21: "allow the manager to function on the ceiling and floor modes"): the Manager plans on
+        /// the Wall and also while the office is on the Floor or the Ceiling (at rest). Cards print into the habitat's tray only
+        /// once it is on a wall; the backend work, the plan paper, the status page and the summary need no habitat.</summary>
+        public bool ManagerAvailable
+        {
+            get
+            {
+                if (!flags.wallManagerEnabled || WallPreviewing) return false;
+                if (WallActive) return true;
+                var mode = SpatialWorkspaceState.Mode;
+                bool away = mode == WorkspaceMode.Floor || mode == WorkspaceMode.Ceiling;
+                bool busy = director != null && (director.IsPreviewing || (director.Core != null && director.Core.IsTransitioning));
+                return away && !busy;
+            }
+        }
+
         public void PressManager()
         {
-            if (!flags.wallManagerEnabled || !WallActive) return;
+            if (!flags.wallManagerEnabled) return;
+            // Closing is always allowed (the mode may have changed while the paper was open); opening needs the Manager here.
+            if (!_planCardOpen && !ManagerAvailable) return;
             EnsurePlanCard();
             if (_paper == null) return;
             _planCardOpen = !_planCardOpen;
@@ -112,10 +131,45 @@ namespace MuseDesk.Wall
         {
             if (!flags.wallManagerEnabled || _backend == null) return null;
             // rc20: not on the Wall used to fall through to the board's "new task" (a card nobody planned or worked).
-            if (!WallActive) return "The Manager works on the Wall. Open the Wall, then tell the Manager your goal again.";
+            if (!ManagerAvailable) return "The Manager works on the Wall, the Floor or the Ceiling. Open one, then tell the Manager your goal again.";
+            // rc22 (owner, worn rc21: "every question means the manager starts building a plan; allow it to answer normal
+            // questions too"): a question is answered (read-only side conversation); only a goal drafts a plan.
+            if (ManagerUtterance.IsQuestion(objective)) return AskManagerQuestion(objective);
             EnsurePlanCard();
             if (_paper != null && !_planCardOpen) PressManager();
             return RequestPlan(objective) ? "The Manager is drafting a plan. Nothing starts until you approve it." : _manager.Message;
+        }
+
+        SideConversationSession _managerSide;
+        string _managerQuestion, _managerAnswer;
+        /// <summary>For drivers: questions the Manager answered (not planned).</summary>
+        public int ManagerQuestionsAnswered { get; private set; }
+        public string ManagerLastAnswer => _managerAnswer ?? "";
+
+        /// <summary>Ask the Manager a question (read-only: nothing is planned or created). The answer is spoken and shown on the
+        /// Manager's paper.</summary>
+        public string AskManagerQuestion(string question)
+        {
+            if (_backend == null || string.IsNullOrWhiteSpace(question)) return null;
+            if (_managerSide == null) _managerSide = new SideConversationSession("manager", "mgr-ask-" + System.DateTime.UtcNow.Ticks.ToString("x"));
+            if (_managerSide.State == SideAskState.Asking) return "The Manager is still answering your last question.";
+            string rid, key;
+            if (!_managerSide.TryBegin(question, Time.unscaledTime, out rid, out key)) return null;
+            _managerQuestion = question.Trim();
+            _managerAnswer = null;
+            SideConversationSession session = _managerSide;
+            _backend.AskSide("manager", null, session.visitSessionId, question, -1, rid, key, reply =>
+            {
+                if (session != _managerSide || !session.Complete(reply)) return;
+                bool ok = reply.status == "answered" || reply.status == "amendment_suggested";
+                _managerAnswer = ok ? reply.reply : "I couldn't answer that just now.";
+                if (ok) ManagerQuestionsAnswered++;
+                _paperRefreshAt = 0f;
+                Note("Manager: " + (_managerAnswer.Length > 80 ? _managerAnswer.Substring(0, 77) + "..." : _managerAnswer));
+                MuseDesk.Voice.AgentSpeech.Say("manager", _managerAnswer,
+                    _planCard != null && _planCard.Visible ? _planCard.root.position : SpeechSpot());
+            });
+            return "Asking the Manager…";
         }
 
         public void ToggleItem(int index)
@@ -132,9 +186,35 @@ namespace MuseDesk.Wall
             _riskStep = false;
         }
 
+        /// <summary>rc22: some proposed steps are crossed out. The plan that would be approved is then not the plan on the paper,
+        /// so it must be revised first (the Manager redoes it without those steps; a new revision to read and stamp).</summary>
+        public bool PlanEditedSinceProposal
+        {
+            get
+            {
+                if (_manager.State != ManagerFlowState.AwaitingApproval) return false;
+                for (int i = 0; i < _manager.Items.Count; i++) if (!_manager.Items[i].approved) return true;
+                return false;
+            }
+        }
+
+        float _reviseHintSaidAt = -99f;
+
         public bool ApprovePlan()
         {
             List<string> approved, authorized; int rev; string key, problem;
+            if (PlanEditedSinceProposal)
+            {
+                // rc22 (owner, worn rc21: approval "is broken if you uncheck an item or two; make it clearer it needs a revision").
+                Note("You crossed out steps: press Revise now, then stamp the new plan");
+                if (Time.unscaledTime - _reviseHintSaidAt > 6f)
+                {
+                    _reviseHintSaidAt = Time.unscaledTime;
+                    MuseDesk.Voice.AgentSpeech.Say("manager", "You crossed out some steps. Press Revise and I'll redo the plan without them. Then stamp it.",
+                        _planCard != null && _planCard.Visible ? _planCard.root.position : SpeechSpot());
+                }
+                return false;
+            }
             if (!_manager.TryBuildCommit(out approved, out authorized, out rev, out key, out problem))
             {
                 Note(problem);
@@ -638,7 +718,12 @@ namespace MuseDesk.Wall
                 _paper.SetStamp(null, Color.clear);
                 var sb = new StringBuilder();
                 if (!string.IsNullOrEmpty(_manager.Message) && st != ManagerFlowState.Monitoring) sb.AppendLine(_manager.Message);
-                sb.Append("Pick a goal. You will see the plan before anything is created.");
+                if (!string.IsNullOrEmpty(_managerQuestion))
+                {
+                    sb.Append("You: ").AppendLine(_managerQuestion);
+                    sb.Append("Manager: ").AppendLine(string.IsNullOrEmpty(_managerAnswer) ? "…thinking" : _managerAnswer).AppendLine();
+                }
+                sb.Append("Pick a goal, or say \"Manager, build …\". Ask the Manager anything; only a goal makes a plan, and you see it before anything is created.");
                 _paper.ShowText("Manager: what should the team do?", sb.ToString(), mode);
                 for (int i = 0; i < ObjectiveKeys.Length; i++) { int oi = i; Key(keys, ObjectiveKeys[i], () => RequestPlan(Objectives[oi])); }
                 Key(keys, _board.Count > 0 && committed ? "Status" : null, () => _askMode = false);
@@ -659,7 +744,8 @@ namespace MuseDesk.Wall
             string foot = layout.ProvenanceText;
             if (st == ManagerFlowState.Committing) foot += " · stamping: waiting for the board to confirm";
             else if (st == ManagerFlowState.AwaitingApproval)
-                foot += " · " + (_riskStep ? "a risky step needs your separate OK" : "rev " + _manager.Revision + " · proposed steps are not tasks yet");
+                foot += " · " + (PlanEditedSinceProposal ? "you crossed out steps: press Revise now for the new plan, then stamp it"
+                                : _riskStep ? "a risky step needs your separate OK" : "rev " + _manager.Revision + " · proposed steps are not tasks yet");
             else if (st == ManagerFlowState.Rejected) foot += " · rejected: nothing was created";
             else foot += " · committed: these are real board cards";
             _paper.ShowPage(pages[_page], _page, pages.Count, foot, true);
@@ -679,7 +765,8 @@ namespace MuseDesk.Wall
             else
             {
                 _paper.SetStamp(null, Color.clear);
-                _paper.SetStampZone(st == ManagerFlowState.AwaitingApproval ? StampZoneMode.Awaiting : st == ManagerFlowState.Committing ? StampZoneMode.Committing : StampZoneMode.Hidden);
+                _paper.SetStampZone(st == ManagerFlowState.AwaitingApproval ? (PlanEditedSinceProposal ? StampZoneMode.NeedsRevision : StampZoneMode.Awaiting)
+                                    : st == ManagerFlowState.Committing ? StampZoneMode.Committing : StampZoneMode.Hidden);
             }
 
             bool more = pages.Count > 1;
@@ -691,7 +778,7 @@ namespace MuseDesk.Wall
             if (st == ManagerFlowState.AwaitingApproval)
             {
                 Key(keys, more ? "More" : null, turn);
-                Key(keys, "Revise", () => RevisePlan());
+                Key(keys, PlanEditedSinceProposal ? "Revise now" : "Revise", () => RevisePlan());
                 Key(keys, _riskStep ? "Confirm risk" : null, ConfirmRisky);
                 Key(keys, null, null);
                 Key(keys, "Close", PressManager);
@@ -702,7 +789,8 @@ namespace MuseDesk.Wall
                 Key(keys, st == ManagerFlowState.Rejected ? "New plan" : null, () => _askMode = true);
                 Key(keys, null, null);
                 Key(keys, more ? "More" : null, turn);
-                Key(keys, null, null); Key(keys, null, null); Key(keys, null, null);
+                Key(keys, null, null); Key(keys, null, null);
+                Key(keys, "Close", PressManager);          // rc22 (owner): a rejected / stamped paper can be closed too
                 Key(keys, "Close", PressManager);
             }
         }

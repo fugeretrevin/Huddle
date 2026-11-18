@@ -163,6 +163,7 @@ namespace MuseDesk.Wall
         {
             TickTalkBubble(dt);   // rc21: speech bubble + head bob (WallHabitatController.TalkBubble.cs)
             SyncMeetVoiceHook();
+            TickVoiceOpen();      // rc22: "Developer, come down here" opens the portal by itself when the spot is safe
 
             // The status line names Meet once each time the habitat comes to rest on a wall (placed, or restored).
             bool atRest = WallActive && !WallPreviewing;
@@ -251,8 +252,43 @@ namespace MuseDesk.Wall
             HabitatRole role;
             if (!TryVoiceRole(t, out role)) return null;
             string agent = AgentId(role);
-            if (MeetAgent(agent)) return MeetCopy.VoiceOpened(AgentPresentationRegistry.Pretty(agent));
+            if (MeetAgent(agent))
+            {
+                // rc22 (owner, worn rc21: "Developer, come down here ... so they actually go there"): a spoken request opens the
+                // portal by itself as soon as the spot is confirmed safe (room-checked, full size). An unchecked or fallback spot
+                // still waits for Open here, exactly as before.
+                // Only a "come ..." request ("come here", "come down here", "get over here") opens by itself; "meet the developer"
+                // still shows the preview and waits for Open here, as before.
+                var vc = MuseDesk.Voice.VoiceCommandCenter.Instance;
+                string said = vc != null ? (vc.LastTranscript ?? "").ToLowerInvariant() : "";
+                bool comeHere = said.Contains("come") || said.Contains("get over") || said.Contains("get down");
+                if (!comeHere) return MeetCopy.VoiceOpened(AgentPresentationRegistry.Pretty(agent));
+                _voiceOpenAgent = agent;
+                _voiceOpenUntil = Time.unscaledTime + 5f;
+                return "The " + AgentPresentationRegistry.Pretty(agent) + " is coming down to you.";
+            }
             return string.IsNullOrEmpty(LastMeetRefusal) ? "Not now." : LastMeetRefusal + ".";
+        }
+
+        string _voiceOpenAgent;
+        float _voiceOpenUntil;
+        /// <summary>For drivers: portals opened by voice without a press.</summary>
+        public int VoiceAutoOpens { get; private set; }
+
+        void TickVoiceOpen()
+        {
+            if (_voiceOpenAgent == null) return;
+            if (Time.unscaledTime > _voiceOpenUntil) { _voiceOpenAgent = null; return; }
+            if (_portal.State != PortalState.AwaitConfirm || _portal.Agent != _voiceOpenAgent) return;
+            if (!_portal.Spot.valid || !_portal.Spot.roomChecked || PortalSpotIsFallback)
+            {
+                _voiceOpenAgent = null;
+                Note("Check the spot, then press Open here");
+                return;
+            }
+            _voiceOpenAgent = null;
+            VoiceAutoOpens++;
+            _portal.Confirm();
         }
 
         /// <summary>One line for drivers and logs.</summary>

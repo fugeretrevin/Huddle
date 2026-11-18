@@ -126,6 +126,14 @@ namespace MuseDesk.Voice
             if (t.Count == 0) return r;
 
             VoiceAgentTarget named = ResolveTarget(t);
+            // rc22: a sound-alike name at the start ("man ager, plan ...", "testa, status", "the developer, why ...") names the
+            // agent too (WakeWord's forgiving rule; only the first three words, never a word inside the sentence).
+            string leadRest = null;
+            if (named == VoiceAgentTarget.None)
+            {
+                VoiceAgentTarget lead; string rest;
+                if (WakeWord.Parse(transcript, out lead, out rest) && lead != VoiceAgentTarget.None) { named = lead; leadRest = rest; }
+            }
             bool you = t.Contains("you") || t.Contains("your") || t.Contains("youre");
             VoiceAgentTarget target = named != VoiceAgentTarget.None ? named : (you ? focused : VoiceAgentTarget.None);
             bool viaFocus = named == VoiceAgentTarget.None && target != VoiceAgentTarget.None;
@@ -165,7 +173,7 @@ namespace MuseDesk.Voice
                 // whether it is a question for a named agent.
                 r.Negated = negated;
                 r.Hedged = hedgedDecision;
-                return Ask(r, t, named, target, viaFocus, hadQuestionMark);
+                return Ask(r, t, named, target, viaFocus, hadQuestionMark, leadRest);
             }
 
             // ── plain commands ──
@@ -192,10 +200,10 @@ namespace MuseDesk.Voice
             // ── manager / agent questions ──
             if (named == VoiceAgentTarget.Manager)
             {
-                r.Question = StripName(transcript);
+                r.Question = leadRest ?? StripName(transcript);
                 return Done(r, VoiceAction.ManagerRequest, 0.8f);
             }
-            return Ask(r, t, named, target, viaFocus, hadQuestionMark);
+            return Ask(r, t, named, target, viaFocus, hadQuestionMark, leadRest);
         }
 
         /// <summary>The first agent a token list names (role words included), or None.</summary>
@@ -259,12 +267,12 @@ namespace MuseDesk.Voice
         }
 
         static VoiceClassification Ask(VoiceClassification r, List<string> t, VoiceAgentTarget named,
-            VoiceAgentTarget target, bool viaFocus, bool hadQuestionMark)
+            VoiceAgentTarget target, bool viaFocus, bool hadQuestionMark, string leadRest = null)
         {
             if (target == VoiceAgentTarget.None) return r;
             // "you" alone is not an address: it must at least be shaped like a question.
             if (viaFocus && !(hadQuestionMark || QuestionStarters.Contains(t[0]))) return r;
-            string q = StripName(r.Raw);
+            string q = leadRest ?? StripName(r.Raw);
             r.Question = q;
             r.Negated = false;
             r.Hedged = false;

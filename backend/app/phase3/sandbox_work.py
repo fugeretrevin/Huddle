@@ -271,8 +271,11 @@ class SandboxWork:
     """Runs one Developer or Tester plan card for real. Never raises for model output
     problems: they come back as a failed outcome with an honest reason."""
 
-    def __init__(self, workspace_root: str, test_timeout: int = 60, fix_attempts: int = 1) -> None:
-        self.guard = WorkspaceGuard(str(Path(workspace_root) / "plans"))
+    def __init__(self, workspace_root: str, test_timeout: int = 60, fix_attempts: int = 1,
+                 subdir: str = "plans") -> None:
+        # ``subdir``: "plans" for Manager plan folders (one per plan), "tasks" for cards the user
+        # assigned directly (one folder per card, see PlanRunner._adhoc_folder).
+        self.guard = WorkspaceGuard(str(Path(workspace_root) / subdir))
         self.test_timeout = int(test_timeout)
         self.fix_attempts = max(0, int(fix_attempts))
         self._tests_seen: dict[str, int] = {}     # plan id -> tests in its folder after the last real run
@@ -404,10 +407,10 @@ class SandboxWork:
             line = _test_header(result)
         if attempts > 1:
             head += " (after 1 fix)" if attempts == 2 else f" (after {attempts - 1} fixes)"
-        pages = [{"page": 0, "title": "Result (sandbox: real files, real pytest run)",
+        pages = [{"page": 0, "title": "Result (restricted workspace: real files, real pytest run)",
                   "content": "\n".join([
-                      "Written by the model into the plan's sandbox folder and run with pytest "
-                      "on the PC. Counts are pytest's own.",
+                      "Written by the model into a restricted workspace folder and run with "
+                      "pytest on the PC. Counts are pytest's own.",
                       "", line, "", "Files written this step: " + (files_txt or "none"),
                       *(["", "Notes:"] + [f"- {n}" for n in notes] if notes else []),
                       *(["", "Summary: " + summary] if summary else [])]),

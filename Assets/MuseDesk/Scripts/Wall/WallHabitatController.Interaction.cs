@@ -83,7 +83,31 @@ namespace MuseDesk.Wall
         public AgentPresentationRegistry Presentations => _registry;
         public SideConversationSession Side => _side;
         public WallCard VisitCard => _visitCard;
-        public Vector3 PerchWorld => nearUserRig != null ? nearUserRig.TransformPoint(perchLocal) : transform.position;
+
+        // ── rc22 (owner, worn rc21): the agent lands where it is let go (DeskDropRule), and the grab keeps hold (CarryGrip) ──
+        [Tooltip("rc22: where a released agent lands on the desk (under the release point, inside the usable desk, clear of the body and the dock).")]
+        public DeskDropSettings deskDrop = new DeskDropSettings();
+        readonly CarryGrip _grip = new CarryGrip();
+        Vector3 _perchSpotLocal;
+        bool _perchSpotSet;
+        Vector3 _carryDir;
+        Vector3 _padLift = new Vector3(0f, 0.002f, 0f);
+        bool _otherBusyPrev;
+
+        /// <summary>Where the perched agent stands (or will land): the spot it was let go on, else the fixed teal pad.
+        /// The landing, the pad, the visit card, the talk bubble, the regrab and the return all use this.</summary>
+        public Vector3 PerchWorld => nearUserRig != null ? nearUserRig.TransformPoint(_perchSpotSet ? _perchSpotLocal : perchLocal) : transform.position;
+        /// <summary>The fixed teal pad (the default landing and the fallback for a release out of range).</summary>
+        public Vector3 PerchPadWorld => nearUserRig != null ? nearUserRig.TransformPoint(perchLocal) : transform.position;
+        /// <summary>True while the perched agent stands on a spot of the user's choosing (not the pad).</summary>
+        public bool PerchOnUserSpot => _perchSpotSet;
+        /// <summary>The last release's decision (for drivers and the log).</summary>
+        public DeskDropResult LastDrop { get; private set; }
+        /// <summary>How often armed Select switched itself off because the user did something else, and what it was.</summary>
+        public int SelectAutoOffs { get; private set; }
+        public string LastSelectAutoOff { get; private set; }
+        /// <summary>For drivers: the carry's longer release / lost-hand grace is on the hand arbiter right now.</summary>
+        public bool CarryGripApplied => _grip.Applied;
 
         // ───────────────────────── keys ─────────────────────────
 
@@ -93,6 +117,40 @@ namespace MuseDesk.Wall
             if (_visit.IsArmed) { _visit.Disarm(); Note("Select Agents off"); return; }
             if (_portal.State != PortalState.Hidden) { Note("Close the portal first"); return; }
             if (!_visit.Arm()) Note(_visit.Message); else Note(_visit.Message);
+        }
+
+        /// <summary>rc22: a key other than Select was pressed (raised before it acts): armed Select switches off.</summary>
+        void OnOtherAction(string what)
+        {
+            if (_visit == null || !SelectModeExit.ShouldDisarm(_visit.IsArmed, what)) return;
+            DisarmSelect(what);
+        }
+
+        /// <summary>Armed Select off because the user did something else. Only Armed: a pick in progress becomes a carry first
+        /// (never disarmed), and a carry is never touched. No hand is claimed while armed; the hover lock and any pinch still
+        /// debouncing toward an agent are dropped (silently: it was not refused, the mode ended).</summary>
+        void DisarmSelect(string cause)
+        {
+            if (_visit == null || !_visit.IsArmed) return;
+            _visit.Disarm();
+            _lock.Reset();
+            _pinchPending[0] = _pinchPending[1] = false;
+            _hoverRole = -1;
+            SelectAutoOffs++;
+            LastSelectAutoOff = cause;
+            Note(SelectModeExit.OffNote);
+            Debug.Log("[MuseDesk.Wall] Select Agents off: the user did something else (" + cause + ")");
+        }
+
+        /// <summary>Something other than Select Agents is going on now (rising edges switch armed Select off).</summary>
+        string OtherBusyNow()
+        {
+            if (HandInteractionProbe.AnyHeld) return "grab";
+            if (_planCardOpen) return "plan paper";
+            if (MeetChoosing) return "Meet chooser";
+            if (ScreenOpen) return "screen panel";
+            if (DraggedCard != null) return "card drag";
+            return null;
         }
 
         void ReleaseHands()
@@ -123,6 +181,13 @@ namespace MuseDesk.Wall
             TickPresentations();
             TickMeet(dt);
 
+            // rc22: armed Select switches off when the user starts something else (a grab, the plan paper, the Meet chooser,
+            // the screen panel, a card drag). A rising edge: whatever was already going on when Select was armed does not count.
+            string other = OtherBusyNow();
+            bool otherBusy = other != null;
+            if (SelectModeExit.EdgeTrips(_visit.IsArmed, _otherBusyPrev, otherBusy)) DisarmSelect(other);
+            _otherBusyPrev = otherBusy;
+
             bool selectMode = WallActive && flags.agentSelectEnabled && (_visit.IsArmed || _visit.State == VisitState.Carrying);
             // V2: while an agent sits on the perch, a pinch ON it picks it up again (to move it, or to put it back on the wall).
             bool regrabMode = useSelectGrabV2 && WallActive && flags.agentSelectEnabled && _visit.State == VisitState.Perched
@@ -150,14 +215,20 @@ namespace MuseDesk.Wall
             }
 
             _arb.externallyHeld = SpatialWorkspaceState.TransitionHeld;
+            bool carrying = _carryHand >= 0 && _visit.State == VisitState.Carrying;
             for (int i = 0; i < 2; i++)
             {
                 AimHandSample s = _simOn[i] ? _sim[i] : ReadHand(i);
                 // Select agents points with the hand ray: a ray merely sweeping over a key/card on its way is not "over a key"
                 // (rc17 worn false refusals). A fingertip poke hover or a real ray selection still blocks the pinch.
                 if (!_simOn[i]) s = selectMode ? HandInteractionProbe.ApplyPointing(s, i) : HandInteractionProbe.Apply(s, i);
+                // rc22 keep hold: while carrying, the OTHER hand picking something up does not take the agent away (the
+                // arbiter cancels a claim on any hold). The carrying hand's own grab, and a paper's transition hold, still do.
+                if (useSelectGrabV2 && carrying && i != _carryHand) s.holding = false;
                 _samples[i] = s;
             }
+            // rc22 keep hold: a longer seen-open release and a longer frozen lost hand while carrying (given back after).
+            _grip.Apply(_arb.settings, useSelectGrabV2 && carrying, selectGrab);
             _arb.Tick(dt, _samples[0], _samples[1]);
 
             // Hover: which agent does a free hand's ray point at?
@@ -391,6 +462,8 @@ namespace MuseDesk.Wall
             _proxyFrom = _proxy.position;
             _proxyT = 0f;
             _proxyVel = Vector3.zero;
+            _carryDir = Vector3.zero;
+            _perchSpotSet = false;                                // a fresh visit: the pad until it is let go somewhere
             _landStarted = false;
             // A soft ring marks the projection as a projection.
             float ringK = Mathf.Max(1e-5f, _proxy.lossyScale.y / Mathf.Max(1e-5f, transform.lossyScale.y));
@@ -404,7 +477,9 @@ namespace MuseDesk.Wall
             else ArtHelper().Box(_proxy, "ProjectionRing", Vector3.zero, Vector3.one, WallHabitatView.Teal).transform.localScale = new Vector3(0.09f, 0.002f, 0.09f) / ringK;
             EnsurePerch();
             _side = null;
-            Note(useSelectGrabV2 ? "Pull it toward you and let go: it lands on the teal pad" : "Let go over the teal pad on your desk");
+            Note(!useSelectGrabV2 ? "Let go over the teal pad on your desk"
+                 : deskDrop != null && deskDrop.enabled ? "Bring it over your desk and let go: it stands where you put it"
+                 : "Pull it toward you and let go: it lands on the teal pad");
         }
 
         GameObject SourceFor(HabitatRole role)
@@ -452,10 +527,17 @@ namespace MuseDesk.Wall
                 Note(_visit.Message + ". Nothing changed.");
                 return;
             }
-            Vector3 eye = ResolveHead() != null ? ResolveHead().position
-                        : (nearUserRig != null ? nearUserRig.TransformPoint(new Vector3(0f, 0.30f, 0.62f)) : PerchWorld);
-            VisitDrop drop = _proxy != null ? VisitDropRule.Decide(_proxy.position, PerchWorld, eye, HomeAnchorOf(_visit.Agent), visitDrop) : VisitDrop.Home;
-            _visit.Release(drop);
+            // rc22: it lands where it was let go (DeskDropRule); out of range = the previous rule (the pad, or home).
+            DeskDropResult r = _proxy != null ? DecideDrop(_proxy.position) : new DeskDropResult { kind = DeskDropKind.Home, spot = perchLocal, why = "no projection" };
+            LastDrop = r;
+            if (r.kind != DeskDropKind.Home)
+            {
+                _perchSpotSet = r.kind == DeskDropKind.Spot;
+                _perchSpotLocal = r.spot;
+            }
+            Debug.Log("[MuseDesk.Wall] Select Agents release: " + r.kind + " at rig " + r.spot.ToString("F3") + (r.adjusted ? " (pulled onto the desk)" : "")
+                      + (r.why != null ? " because " + r.why : ""));
+            _visit.Release(r.kind != DeskDropKind.Home ? VisitDrop.Perch : VisitDrop.Home);
             if (_visit.State == VisitState.Perched)
             {
                 _landStarted = false;                       // land (again) onto the perch from where it was let go
@@ -464,11 +546,46 @@ namespace MuseDesk.Wall
             else Note(_visit.Message);
         }
 
+        Vector3 EyeWorld()
+        {
+            Transform h = ResolveHead();
+            return h != null ? h.position : (nearUserRig != null ? nearUserRig.TransformPoint(new Vector3(0f, 0.30f, 0.62f)) : PerchPadWorld);
+        }
+
+        /// <summary>
+        /// rc22: where a projection let go at <paramref name="releaseWorld"/> lands. The previous rule (<see cref="VisitDropRule"/>,
+        /// world space, around the fixed pad) is the fallback; <see cref="DeskDropRule"/> places it on the desk under the release
+        /// point when that is a desk placement (rig space: within reach, nearer the user than its wall home, over the usable desk,
+        /// clear of the body keep-out and the dock). Without the rig: the previous rule only.
+        /// </summary>
+        DeskDropResult DecideDrop(Vector3 releaseWorld)
+        {
+            Vector3 eye = EyeWorld();
+            Vector3 home = HomeAnchorOf(_visit.Agent);
+            VisitDrop legacy = VisitDropRule.Decide(releaseWorld, PerchPadWorld, eye, home, visitDrop);
+            if (nearUserRig == null)
+                return new DeskDropResult { kind = legacy == VisitDrop.Perch ? DeskDropKind.Pad : DeskDropKind.Home, spot = perchLocal, why = "no desk rig" };
+            return DeskDropRule.Decide(nearUserRig.InverseTransformPoint(releaseWorld), perchLocal, nearUserRig.InverseTransformPoint(eye),
+                                       nearUserRig.InverseTransformPoint(home), true, dockLocal, legacy, deskDrop);
+        }
+
+        /// <summary>The visit card's usual spot (rig space) for the agent where it stands.</summary>
+        Vector3 VisitCardUsualLocal => _perchSpotSet ? DeskDropRule.CardFor(_perchSpotLocal, perchLocal, visitCardLocal) : visitCardLocal;
+
+        /// <summary>The pad marks where the agent stands, or (while carrying) where letting go now would land it.</summary>
+        void PlacePad(Vector3 spotLocal)
+        {
+            if (_perchPad == null) return;
+            Vector3 want = spotLocal + _padLift;
+            if ((_perchPad.localPosition - want).sqrMagnitude > 1e-8f) _perchPad.localPosition = want;
+        }
+
         /// <summary>Picked up off the perch: follow the hand from where it stands (no fly-in), keep its size.</summary>
         void BeginRegrab()
         {
             _proxyT = 1f;
             _proxyVel = Vector3.zero;
+            _carryDir = Vector3.zero;
             _landStarted = false;
             if (_audio != null) _audio.Play(WallCue.Land, true);
             Note(_visit.Message);
@@ -478,6 +595,8 @@ namespace MuseDesk.Wall
         {
             bool showPad = _visit.State == VisitState.Carrying || _visit.State == VisitState.Perched;
             if (_perchPad != null && _perchPad.gameObject.activeSelf != showPad) _perchPad.gameObject.SetActive(showPad);
+            if (_visit.State == VisitState.Off) _perchSpotSet = false;      // rc22: no visit, no chosen spot (the next starts at the pad)
+            if (_visit.State == VisitState.Perched) PlacePad(_perchSpotSet ? _perchSpotLocal : perchLocal);
             if (_proxy == null) return;
             if (_proxyLife != null)
             {
@@ -491,10 +610,16 @@ namespace MuseDesk.Wall
                 {
                     if (_carryHand < 0) return;
                     AimHandSample s = _samples[_carryHand];
-                    if (!s.tracked) return;                                   // frozen: neither move nor release
-                    if (!s.pinching) return;                                  // opening the fingers: hold still while the release debounces
+                    // Frozen (hand lost, inside the grace) or opening the fingers (inside the release grace): hold still, and
+                    // forget the follow velocity so a pinch that comes back resumes smoothly instead of flinging.
+                    if (!s.tracked || !s.pinching) { _proxyVel = Vector3.zero; return; }
                     _proxyT = Mathf.Min(1f, _proxyT + dt / 0.45f);
-                    Vector3 target = s.origin + s.direction * 0.14f + Vector3.down * 0.02f;
+                    // rc22: a smoothed ray direction and a fixed distance along it: pointer-pose jitter does not shake the agent.
+                    Vector3 rawDir = s.direction.sqrMagnitude > 1e-8f ? s.direction.normalized : Vector3.forward;
+                    if (_carryDir.sqrMagnitude < 1e-8f) _carryDir = rawDir;
+                    else _carryDir = Vector3.Slerp(_carryDir, rawDir, 1f - Mathf.Exp(-dt / Mathf.Max(1e-3f, selectGrab.carryDirSmoothSeconds))).normalized;
+                    Vector3 target = s.origin + _carryDir * selectGrab.carryDistance + Vector3.down * 0.02f;
+                    float follow = Mathf.Max(0.01f, selectGrab.carryFollowSeconds);
                     if (_proxyT < 1f)
                     {
                         // Fly from the habitat to the hand on a fixed-endpoint ease (starts where the agent stands).
@@ -505,19 +630,24 @@ namespace MuseDesk.Wall
                     else
                     {
                         // Then follow the hand with a short critically damped lag: hand-tracking jitter is absorbed,
-                        // deliberate motion is not delayed noticeably (60 ms).
+                        // deliberate motion is not delayed noticeably (~70 ms).
                         Vector3 p = _proxy.position;
-                        p.x = MuseDesk.Motion.Damped.Follow(p.x, target.x, ref _proxyVel.x, 0.06f, dt, 1e-4f);
-                        p.y = MuseDesk.Motion.Damped.Follow(p.y, target.y, ref _proxyVel.y, 0.06f, dt, 1e-4f);
-                        p.z = MuseDesk.Motion.Damped.Follow(p.z, target.z, ref _proxyVel.z, 0.06f, dt, 1e-4f);
+                        p.x = MuseDesk.Motion.Damped.Follow(p.x, target.x, ref _proxyVel.x, follow, dt, 1e-4f);
+                        p.y = MuseDesk.Motion.Damped.Follow(p.y, target.y, ref _proxyVel.y, follow, dt, 1e-4f);
+                        p.z = MuseDesk.Motion.Damped.Follow(p.z, target.z, ref _proxyVel.z, follow, dt, 1e-4f);
                         _proxy.position = p;
                     }
                     Vector3 eye = ResolveHead() != null ? ResolveHead().position : _proxy.position + Vector3.back;
                     _proxy.rotation = WallUi.FacingEye(eye, _proxy.position) ;   // +Z toward the user
-                    // The pad lights when letting go now would land it there (V2: the same rule the release uses).
-                    bool over = useSelectGrabV2
-                        ? VisitDropRule.Decide(_proxy.position, PerchWorld, eye, HomeAnchorOf(_visit.Agent), visitDrop) == VisitDrop.Perch
-                        : (_proxy.position - PerchWorld).magnitude <= perchRadius;
+                    // The pad shows where letting go now would land it, lit when it would stay (V2: the same rule the release uses).
+                    bool over;
+                    if (useSelectGrabV2)
+                    {
+                        DeskDropResult pr = DecideDrop(_proxy.position);
+                        over = pr.kind != DeskDropKind.Home;
+                        PlacePad(over ? pr.spot : (_visit.IsRegrab && _perchSpotSet ? _perchSpotLocal : perchLocal));
+                    }
+                    else over = (_proxy.position - PerchWorld).magnitude <= perchRadius;
                     if (_perchPadR != null) ArtHelper().Tint(_perchPadR, over ? WallHabitatView.Teal : WallHabitatView.Teal * 0.55f);
                     return;
                 }
@@ -669,6 +799,7 @@ namespace MuseDesk.Wall
             }
             else _perchPadR = ArtHelper().Box(nearUserRig, "WallVisitPerch", perchLocal, new Vector3(0.11f, 0.004f, 0.11f), WallHabitatView.Teal * 0.55f);
             _perchPad = _perchPadR.transform;
+            _padLift = _perchPad.localPosition - perchLocal;      // rc22: the pad moves with the landing spot, same lift
             _perchPad.gameObject.SetActive(false);
         }
 
@@ -707,7 +838,8 @@ namespace MuseDesk.Wall
         {
             Transform h = ResolveHead();
             Vector3 eye = h != null ? h.position : (nearUserRig != null ? nearUserRig.TransformPoint(new Vector3(0, 0.30f, 0.62f)) : Vector3.zero);
-            if (_visitCard != null && nearUserRig != null) _visitCard.Place(CardSpot(_visitCard, nearUserRig.TransformPoint(visitCardLocal)), eye, 12f);
+            // rc22: the card stands beside the agent where it was put down (unless the user moved the card).
+            if (_visitCard != null && nearUserRig != null) _visitCard.Place(CardSpot(_visitCard, nearUserRig.TransformPoint(VisitCardUsualLocal)), eye, 12f);
             // The plan paper is taller than the old plan card: it grows UP from the old card's bottom edge, so it stays clear of
             // the stamps and the desk things the old card was placed above.
             if (_planCard != null && nearUserRig != null)
@@ -1183,7 +1315,10 @@ namespace MuseDesk.Wall
                  + " grabs=" + _grabs + " regrabs=" + _regrabs + " refusals=" + _refusals + (LastSelectRefusal != null ? " lastRefusal='" + LastSelectRefusal + "'" : "")
                  + " away=" + _registry.AwayCount + " projections=" + ProjectionCount
                  + " muted office=" + (_mute != null ? _mute.OfficeMuted : 0) + " distance=" + (_mute != null ? _mute.DistanceMuted : 0)
-                 + " gate L=" + _arb.Signal(0) + "/" + _arb.LastBlock(0) + " R=" + _arb.Signal(1) + "/" + _arb.LastBlock(1);
+                 + " gate L=" + _arb.Signal(0) + "/" + _arb.LastBlock(0) + " R=" + _arb.Signal(1) + "/" + _arb.LastBlock(1)
+                 + " grip=" + _grip.Applied + " release=" + _arb.settings.releaseDebounce.ToString("F2") + "s lost=" + _arb.settings.lostGraceSeconds.ToString("F2") + "s"
+                 + " perch=" + (_perchSpotSet ? "spot" : "pad") + " lastDrop=" + LastDrop.kind + (LastDrop.why != null ? "(" + LastDrop.why + ")" : "")
+                 + " autoOffs=" + SelectAutoOffs + (LastSelectAutoOff != null ? "(" + LastSelectAutoOff + ")" : "");
         }
         public bool HasPortalAvatar => _portalAvatar != null;
         public float PortalAvatarHeight => _portal.Spot.avatarHeight;

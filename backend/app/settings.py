@@ -93,6 +93,12 @@ class Settings(BaseSettings):
     # tests really run (statically checked first, timeout, no credentials in the env).
     # OFF by default; scripts/start_wall_backend.ps1 turns it on for LIVE runs.
     p3_execute_code: bool = False
+    # A card the USER created and assigned to a worker (not a plan card, not auth_demo) is worked
+    # by the same runner when the backend is live with a model (rc21 owner: "the developer only
+    # works when the manager is doing things"). It is picked up this many seconds after the
+    # assign, so the client's follow-up command (it sends priority right after assign) does not
+    # race the runner's revision bump. Tests set 0.
+    p3_adhoc_start_delay_seconds: float = 1.5
     p3_sandbox_test_timeout_seconds: int = 60
     p3_sandbox_fix_attempts: int = 2
     # Model used when MUSEDESK_MODEL_PROVIDER=anthropic (key: MUSEDESK_PROVIDER_API_KEY or

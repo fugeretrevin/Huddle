@@ -291,6 +291,7 @@ namespace MuseDesk.Documents
         {
             if (!_grabbable) return;
             _grabbable = false;
+            MuteInteractables();
             for (int i = 0; i < _colliders.Length; i++)
             {
                 Collider c = _colliders[i];
@@ -318,6 +319,7 @@ namespace MuseDesk.Documents
         {
             if (_grabbable) return;
             _grabbable = true;
+            UnmuteInteractables();
             for (int i = 0; i < _colliders.Length; i++)
             {
                 Collider c = _colliders[i];
@@ -328,6 +330,38 @@ namespace MuseDesk.Documents
             }
             if (body != null && _frozeBody) body.isKinematic = _bodyWasKinematic;
             _frozeBody = false;
+        }
+
+        // A shrunk collider is not enough: a hand grab scores by pose distance, so a pinch at the spot
+        // still took the invisible stamp. While gone, every Interaction SDK interactable on the stamp
+        // (grab, hand grab, distance grab, ray, poke) is switched off through its component's enabled
+        // flag, the SDK's own unregister path. That also cancels a selection still in progress, so a
+        // stamp in a hand at that moment is released cleanly. Only what this switched off is switched
+        // back on, so anything another system muted stays muted.
+        readonly System.Collections.Generic.List<Behaviour> _muted = new System.Collections.Generic.List<Behaviour>(4);
+        readonly System.Collections.Generic.List<MonoBehaviour> _scratch = new System.Collections.Generic.List<MonoBehaviour>(8);
+
+        /// <summary>Number of interactables this stamp currently has switched off (for the probe).</summary>
+        public int MutedInteractableCount => _muted.Count;
+
+        void MuteInteractables()
+        {
+            GetComponentsInChildren(true, _scratch);
+            for (int i = 0; i < _scratch.Count; i++)
+            {
+                MonoBehaviour mb = _scratch[i];
+                if (mb == null || !mb.enabled || !(mb is Oculus.Interaction.IInteractable)) continue;
+                mb.enabled = false;
+                _muted.Add(mb);
+            }
+            _scratch.Clear();
+        }
+
+        void UnmuteInteractables()
+        {
+            for (int i = 0; i < _muted.Count; i++)
+                if (_muted[i] != null) _muted[i].enabled = true;
+            _muted.Clear();
         }
 
         void ApplyScale(float xz, float y)

@@ -118,6 +118,11 @@ class Phase2Store:
             for col in ("task_template", "run_task_id"):
                 if col not in have:
                     self._s._conn.execute(f"ALTER TABLE tasks_v2 ADD COLUMN {col} TEXT")
+            # Board remove / clear: a removed card stays in the table (never deleted) as
+            # ``cancelled`` with ``removed=1``, and is left out of the board snapshot.
+            if "removed" not in have:
+                self._s._conn.execute(
+                    "ALTER TABLE tasks_v2 ADD COLUMN removed INTEGER NOT NULL DEFAULT 0")
             self._s._conn.commit()
 
     # ─────────────────────── events (own monotonic seq) ───────────────────────
@@ -238,13 +243,26 @@ class Phase2Store:
             ).fetchone()
         return dict(row) if row else None
 
-    def list_tasks_v2(self, session_id: str) -> list[dict[str, Any]]:
+    def list_tasks_v2(self, session_id: str, include_removed: bool = False) -> list[dict[str, Any]]:
+        """The session's board cards. Cards the user removed are left out unless asked for."""
+        q = "SELECT * FROM tasks_v2 WHERE session_id=?"
+        if not include_removed:
+            q += " AND COALESCE(removed, 0)=0"
         with self._s._lock:
-            rows = self._s._conn.execute(
-                "SELECT * FROM tasks_v2 WHERE session_id=? ORDER BY created_at, id",
-                (session_id,),
-            ).fetchall()
+            rows = self._s._conn.execute(q + " ORDER BY created_at, id", (session_id,)).fetchall()
         return [dict(r) for r in rows]
+
+    def remove_task_v2(self, task_id: str, now: str) -> dict[str, Any] | None:
+        """Atomically mark a card removed: ``cancelled``, ``removed=1``, revision + 1.
+        Returns the updated row, or None when it was already removed (or does not exist)."""
+        with self._s._lock:
+            cur = self._s._conn.execute(
+                "UPDATE tasks_v2 SET task_state='cancelled', removed=1, revision=revision+1,"
+                " updated_at=? WHERE id=? AND COALESCE(removed, 0)=0", (now, task_id))
+            self._s._conn.commit()
+            if cur.rowcount != 1:
+                return None
+        return self.get_task_v2(task_id)
 
     def update_task_v2(self, task_id: str, *, task_state: str | None = None,
                       agent_id: str | None = None, priority: int | None = None,
@@ -258,6 +276,8 @@ class Phase2Store:
                 return None
             cur = dict(row)
             new_state = task_state if task_state is not None else cur["task_state"]
+            if cur.get("removed"):
+                new_state = cur["task_state"]   # a removed card stays cancelled, whoever writes
             new_agent = agent_id if agent_id is not None else cur["agent_id"]
             new_prio = priority if priority is not None else cur["priority"]
             new_rev = cur["revision"] + (1 if bump_revision else 0)

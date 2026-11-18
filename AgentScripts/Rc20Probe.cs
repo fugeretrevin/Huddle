@@ -277,6 +277,103 @@ public static class Rc20Probe
         return "proxy=" + c.HasProxy + " at " + at.ToString("F2") + " eye " + eye.ToString("F2") + " saved";
     }
 
+    /// <summary>rc22: the Manager away from the Wall. Reports mode, whether the dock shows the Manager key, presses it, asks
+    /// for a plan by voice, and reports the paper.</summary>
+    public static string ManagerAway()
+    {
+        var c = C; if (c == null) return "no controller";
+        var mc = Object.FindAnyObjectByType<MuseDesk.Spatial.ModeConsole>();
+        var mk = mc != null ? mc.managerKey : null;
+        string keyState = mk != null && mk.root != null ? "managerKey scale=" + mk.root.localScale.x.ToString("F4") : "no key";
+        bool pressed = mc != null && mc.PressByName("Manager");
+        string voice = c.RequestPlanByVoice("build a program that prints a triangle of stars") ?? "null";
+        return "mode=" + MuseDesk.Spatial.SpatialWorkspaceState.Mode + " available=" + c.ManagerAvailable + " " + keyState
+             + " pressed=" + pressed + " paperVisible=" + (c.PlanPaper != null && c.PlanPaper.Visible)
+             + " manager=" + c.Manager.State + " voice='" + voice + "'";
+    }
+
+    /// <summary>Keep pinching, and move the carried agent over a desk point <paramref name="dx"/> m to the rig's right of the
+    /// pad (negative = left), the same way WallDrive.ToPerch aims at the pad.</summary>
+    public static string ToPadOffset(string dx)
+    {
+        var c = C; if (c == null) return "no controller";
+        float d = 0f; float.TryParse(dx, out d);
+        Vector3 pad = c.PerchPadWorld;
+        Vector3 right = c.nearUserRig != null ? c.nearUserRig.right : Vector3.right;
+        Vector3 target = pad + right * d + Vector3.up * 0.02f;
+        var cam = Camera.main; Vector3 head = cam != null ? cam.transform.position : new Vector3(0, 1.2f, 0);
+        Vector3 o = target - (target - head).normalized * 0.14f;
+        c.SimulateHand(1, o, target - o, true);
+        return "aiming at pad+" + d.ToString("F2") + " target=" + target.ToString("F3") + " pad=" + pad.ToString("F3");
+    }
+
+    /// <summary>Aim __CineCam at the Manager floor from the habitat's right-hand side (its -X end), in front and a little
+    /// above: the angle a user sitting to the habitat's right sees it from. Reports how many wall triangles were cut.</summary>
+    public static string AimSide()
+    {
+        var c = C; if (c == null || c.View == null) return "no view";
+        Transform root = c.View.root;
+        Vector3 look = root.TransformPoint(new Vector3(-0.05f, 0.26f, 0.10f));
+        Vector3 pos = root.TransformPoint(new Vector3(-1.10f, 0.40f, 0.85f));
+        var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
+        var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
+        cam.enabled = true; cam.depth = 100f; cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.01f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.2f, 0.22f, 0.25f);
+        cam.transform.position = pos; cam.transform.rotation = Quaternion.LookRotation(look - pos, Vector3.up); cam.fieldOfView = 38f;
+        return "aimed from the right side; managerWallTrianglesCut=" + c.View.ManagerWallTrianglesCut;
+    }
+
+    /// <summary>Aim __CineCam from the user's eye (Camera.main) at the Manager floor, tight field of view.</summary>
+    public static string AimFromEyeAtManager()
+    {
+        var c = C; if (c == null || c.View == null) return "no view";
+        var main = Camera.main; if (main == null) return "no main camera";
+        Transform root = c.View.root;
+        Vector3 look = root.TransformPoint(new Vector3(0.0f, 0.26f, 0.12f));
+        var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
+        var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
+        cam.enabled = true; cam.depth = 100f; cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.01f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.2f, 0.22f, 0.25f);
+        cam.transform.position = main.transform.position;
+        cam.transform.rotation = Quaternion.LookRotation(look - main.transform.position, Vector3.up); cam.fieldOfView = 16f;
+        Vector3 toEye = root.InverseTransformPoint(main.transform.position);
+        return "eye in habitat space=" + toEye.ToString("F2") + " (x>0: the elevator end is nearer, x<0: the tree end)";
+    }
+
+    /// <summary>Aim __CineCam at a named object from the user's eye side, framing it (name without spaces).</summary>
+    public static string AimAt(string name)
+    {
+        GameObject t = null;
+        foreach (var tr in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+            if (tr.name == name && tr.gameObject.activeInHierarchy) { t = tr.gameObject; break; }
+        if (t == null) return "not found: " + name;
+        Bounds b = new Bounds(t.transform.position, Vector3.zero);
+        foreach (var r in t.GetComponentsInChildren<Renderer>()) if (r.enabled) b.Encapsulate(r.bounds);
+        var main = Camera.main; Vector3 eye = main != null ? main.transform.position : b.center + Vector3.back;
+        Vector3 dir = (b.center - eye).normalized;
+        float dist = Mathf.Max(0.35f, b.extents.magnitude * 2.2f);
+        var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
+        var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
+        cam.enabled = true; cam.depth = 100f; cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.01f; cam.fieldOfView = 40f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.2f, 0.22f, 0.25f);
+        cam.transform.position = b.center - dir * dist; cam.transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
+        return "aimed at " + name + " size=" + b.size.ToString("F2");
+    }
+
+    public static string ManagerAsk()
+    {
+        var c = C; if (c == null) return "no controller";
+        string a = c.RequestPlanByVoice("what is the developer working on?");
+        string b = c.RequestPlanByVoice("build a program that prints a triangle of stars");
+        return "question -> '" + a + "' | goal -> '" + b + "' manager=" + c.Manager.State;
+    }
+
+    public static string ManagerAskResult()
+    {
+        var c = C; if (c == null) return "no controller";
+        return "answered=" + c.ManagerQuestionsAnswered + " answer='" + c.ManagerLastAnswer + "' spoken[" + MuseDesk.Voice.AgentSpeech.LastSpeaker + "]='" + MuseDesk.Voice.AgentSpeech.LastSaid + "'";
+    }
+
     public static string VoiceInternals()
     {
         var s = Object.FindAnyObjectByType<MuseDesk.Voice.WitVoiceSource>(FindObjectsInactive.Include);

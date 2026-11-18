@@ -146,6 +146,8 @@ namespace MuseDesk.Wall
             }
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted += OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded += OnVoiceListeningEnded;
+            SelectModeExit.OtherAction -= OnOtherAction;          // rc22: another key switches armed Select off
+            SelectModeExit.OtherAction += OnOtherAction;
             SyncVoiceManagerHook();
         }
 
@@ -164,6 +166,7 @@ namespace MuseDesk.Wall
             _subscribed = false;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningStarted -= OnVoiceListeningStarted;
             MuseDesk.Voice.VoiceAddressing.Shared.ListeningEnded -= OnVoiceListeningEnded;
+            SelectModeExit.OtherAction -= OnOtherAction;
             if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
             if (MuseDesk.Voice.VoiceHud.Clearance == (System.Func<Bounds, Vector3>)ReadoutClearance) MuseDesk.Voice.VoiceHud.Clearance = null;
             MuseDesk.Voice.AgentSpeech.StopAll();
@@ -197,10 +200,19 @@ namespace MuseDesk.Wall
 
         /// <summary>The voice layer hands "Manager, ..." to this controller ONLY while the Manager flag is on. With the flag off
         /// nothing is registered, so the voice path is exactly what it was before this feature existed.</summary>
+        Func<bool> _managerReady, _managerPlanOpen;
+
         void SyncVoiceManagerHook()
         {
             bool want = isActiveAndEnabled && flags.wallManagerEnabled && flags.wallHabitatEnabled;
             if (isActiveAndEnabled) MuseDesk.Voice.VoiceHud.Clearance = ReadoutClearance;     // rc20: readout steps out of the cards
+            if (_managerReady == null) { _managerReady = () => this != null && ManagerAvailable; _managerPlanOpen = () => this != null && _planCardOpen; }
+            if (want) { MuseDesk.Voice.VoiceCommandCenter.ManagerReady = _managerReady; MuseDesk.Voice.VoiceCommandCenter.ManagerPlanOpen = _managerPlanOpen; }   // rc22
+            else
+            {
+                if (MuseDesk.Voice.VoiceCommandCenter.ManagerReady == _managerReady) MuseDesk.Voice.VoiceCommandCenter.ManagerReady = null;
+                if (MuseDesk.Voice.VoiceCommandCenter.ManagerPlanOpen == _managerPlanOpen) MuseDesk.Voice.VoiceCommandCenter.ManagerPlanOpen = null;
+            }
             if (want) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = RequestPlanByVoice;
             else if (MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler == RequestPlanByVoice) MuseDesk.Voice.VoiceCommandCenter.ManagerRequestHandler = null;
         }
@@ -859,7 +871,7 @@ namespace MuseDesk.Wall
         public void WallCancel() { if (WallPreviewing) PressCancel(); }
         public void WallMove() { if (WallActive && !WallPreviewing) PressMove(); }
         public void WallSelect() { if (WallActive && !WallPreviewing && flags.agentSelectEnabled) PressSelectAgents(); }
-        public void WallManager() { if (WallActive && !WallPreviewing && flags.wallManagerEnabled) PressManager(); }
+        public void WallManager() { if (ManagerAvailable || _planCardOpen) PressManager(); }     // rc22: Floor / Ceiling too
 
         // ───────────────────────── events from the reducers ─────────────────────────
 

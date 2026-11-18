@@ -30,8 +30,15 @@ namespace MuseDesk.Wall
         [Tooltip("Width in pixels asked of the PC (the PC scales the screen down to this).")]
         public int screenPixels = 1280;
 
-        Transform _screenRoot, _screenQuad, _screenHandle;
-        Renderer _screenQuadR, _screenHandleR;
+        Transform _screenRoot, _screenQuad, _screenHandle, _screenSize;
+        Renderer _screenQuadR, _screenHandleR, _screenSizeR;
+        // rc22: upright panel + resize handle at the lower-right corner. The width is remembered with the position.
+        const float SizeOff = 0.02f, MinW = 0.35f, MaxW = 1.6f;
+        float _screenWidth;
+        int _screenSizeHand = -1;
+        Vector3 _rsUL, _rsGrabOff;
+        /// <summary>For drivers: the panel width now (m).</summary>
+        public float ScreenWidth => _screenWidth > 0f ? _screenWidth : screenPanelWidth;
         TMP_Text _screenText;
         WallKey _kScreen;
         Material _screenMat;
@@ -76,7 +83,7 @@ namespace MuseDesk.Wall
                 _screenSeq = -1;
                 if (_backend == null || !_backend.IsLive) ShowScreenWords("Your PC screen shows here when MuseDesk is connected to the PC app.");
             }
-            if (_kScreen != null) _kScreen.SetLabel(_screenOpen ? "Hide" : "Screen");
+            if (_kScreen != null) _kScreen.SetLabel(_screenOpen ? "Hide\nscreen" : "Screen");   // "Hide screen" (11 chars) does not fit one line at the 5.5 mm key floor (FitsOnKey): two lines
         }
 
         void EnsureScreen()
@@ -88,7 +95,7 @@ namespace MuseDesk.Wall
             _screenRoot = new GameObject("PcScreenPanel").transform;
             _screenRoot.SetParent(nearUserRig, false);
             var art = ArtHelper();
-            float w = screenPanelWidth, h = w / _screenAspect;
+            float w = ScreenWidth, h = w / _screenAspect;
             // A dark bezel behind the picture, a little larger, so it reads as a monitor in the room.
             art.Box(_screenRoot, "Bezel", new Vector3(0f, 0f, 0.006f), new Vector3(w + 0.024f, h + 0.024f, 0.01f), new Color(0.13f, 0.13f, 0.15f));
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -112,6 +119,9 @@ namespace MuseDesk.Wall
             _screenHandleR = WallUi.Plate(_screenRoot, "GrabHandle", new Vector3(0f, -h * 0.5f - 0.022f, 0.002f), 0.09f, 0.009f, 0.004f,
                                           HandleIdle, WallUi.PlateMaterial, art);
             _screenHandle = _screenHandleR.transform;
+            _screenSizeR = WallUi.Plate(_screenRoot, "SizeHandle", new Vector3(w * 0.5f + SizeOff, -h * 0.5f - SizeOff, 0.002f), 0.03f, 0.03f, 0.004f,
+                                        HandleIdle, WallUi.PlateMaterial, art);
+            _screenSize = _screenSizeR.transform;
             _screenRoot.gameObject.SetActive(false);
         }
 
@@ -147,6 +157,7 @@ namespace MuseDesk.Wall
         void PlaceScreen()
         {
             if (_screenRoot == null) return;
+            LayoutScreen();
             Vector3 local = _screenUserMoved ? _screenUserLocal : screenPanelLocal;
             _screenRoot.localPosition = local;
             Transform h = ResolveHead();
@@ -157,7 +168,7 @@ namespace MuseDesk.Wall
         static Quaternion ScreenFacing(Vector3 pos, Vector3 eye)
         {
             Vector3 away = pos - eye;                     // +Z of the root points away from the eye
-            away.y *= 0.5f;                               // a gentle tilt only
+            away.y = 0f;                                  // rc22: always upright (yaw only: no pitch, no roll)
             return Quaternion.LookRotation(away.sqrMagnitude < 1e-6f ? Vector3.forward : away.normalized, Vector3.up);
         }
 
@@ -386,11 +397,53 @@ namespace MuseDesk.Wall
         void ResizeScreen(float aspect)
         {
             _screenAspect = aspect;
-            float w = screenPanelWidth, h = w / aspect;
+            LayoutScreen();
+        }
+
+        /// <summary>Sizes the picture, bezel, text, grab bar and corner handle from the current width and aspect.</summary>
+        void LayoutScreen()
+        {
+            if (_screenRoot == null) return;
+            float w = ScreenWidth, h = w / _screenAspect;
             if (_screenQuad != null) _screenQuad.localScale = new Vector3(w, h, 1f);
             var bezel = _screenRoot.Find("Bezel");
             if (bezel != null) bezel.localScale = new Vector3(w + 0.024f, h + 0.024f, 0.01f);
             if (_screenHandle != null) _screenHandle.localPosition = new Vector3(0f, -h * 0.5f - 0.022f, 0.002f);
+            if (_screenSize != null) _screenSize.localPosition = new Vector3(w * 0.5f + SizeOff, -h * 0.5f - SizeOff, 0.002f);
+            if (_screenText != null)
+            {
+                _screenText.rectTransform.sizeDelta = new Vector2(Mathf.Max(1f, w * 100f - 6f), Mathf.Max(1f, h * 100f - 6f));
+                _screenText.fontSize = 6f * w / 0.72f;
+            }
+        }
+
+        /// <summary>Sets the width (clamped) keeping the upper-left corner where it is.</summary>
+        void SetScreenWidth(float width)
+        {
+            if (_screenRoot == null) return;
+            float sc = nearUserRig != null ? nearUserRig.lossyScale.x : 1f;
+            Quaternion q = _screenRoot.rotation;
+            float w0 = ScreenWidth, h0 = w0 / _screenAspect;
+            Vector3 ul = _screenRoot.position + q * new Vector3(-w0 * 0.5f, h0 * 0.5f, 0f) * sc;
+            _screenWidth = Mathf.Clamp(width, MinW, MaxW);
+            LayoutScreen();
+            float w = _screenWidth, h = w / _screenAspect;
+            _screenRoot.position = ul + q * new Vector3(w * 0.5f, -h * 0.5f, 0f) * sc;
+        }
+
+        void SaveScreenPlace()
+        {
+            _screenUserMoved = true;
+            _screenUserLocal = nearUserRig.InverseTransformPoint(_screenRoot.position);
+        }
+
+        /// <summary>For drivers: set the panel width in metres (clamped 0.35-1.6), as the corner handle would.</summary>
+        public bool DriverResizeScreen(float widthMetres)
+        {
+            if (_screenRoot == null || !_screenOpen) return false;
+            SetScreenWidth(widthMetres);
+            SaveScreenPlace();
+            return true;
         }
 
         void TickScreenDrag(float dt)
@@ -398,13 +451,25 @@ namespace MuseDesk.Wall
             if (_screenHandle == null) return;
             Transform head = ResolveHead();
             Vector3 eye = head != null ? head.position : nearUserRig.TransformPoint(new Vector3(0f, 0.30f, 0.62f));
-            bool close = false;
+            bool close = false, sizeNear = false;
             for (int i = 0; i < 2; i++)
             {
                 AimHandSample s = _simOn[i] ? _sim[i] : ReadHand(i);
                 bool pinch = s.tracked && s.pinching;
                 bool began = pinch && !_screenPrevPinch[i];
                 _screenPrevPinch[i] = pinch;
+                if (_screenSizeHand == i)
+                {
+                    if (!pinch) { _screenSizeHand = -1; SaveScreenPlace(); continue; }
+                    float sc = nearUserRig.lossyScale.x;
+                    Vector3 rel = Quaternion.Inverse(_screenRoot.rotation) * (s.origin - _rsUL) / sc + _rsGrabOff;
+                    Vector2 dir = new Vector2(1f, -1f / _screenAspect);
+                    float nw = (rel.x - SizeOff) * dir.x + (rel.y + SizeOff) * dir.y;
+                    nw /= dir.sqrMagnitude;
+                    SetScreenWidth(Mathf.Lerp(ScreenWidth, nw, 1f - Mathf.Exp(-dt * 18f)));
+                    close = true;
+                    continue;
+                }
                 if (_screenHand == i)
                 {
                     if (!pinch)
@@ -420,7 +485,22 @@ namespace MuseDesk.Wall
                     close = true;
                     continue;
                 }
-                if (_screenHand >= 0 || !s.tracked) continue;
+                if (_screenHand >= 0 || _screenSizeHand >= 0 || !s.tracked) continue;
+                if (_screenSize != null && (s.origin - _screenSize.position).sqrMagnitude <= cardGrabReach * cardGrabReach)
+                {
+                    sizeNear = true;
+                    if (began && i != _carryHand && i != _aimHand && !HandBusyWithCard(i))
+                    {
+                        float sc0 = nearUserRig.lossyScale.x;
+                        float w0 = ScreenWidth, h0 = w0 / _screenAspect;
+                        _rsUL = _screenRoot.position + _screenRoot.rotation * new Vector3(-w0 * 0.5f, h0 * 0.5f, 0f) * sc0;
+                        Vector3 handLocal = Quaternion.Inverse(_screenRoot.rotation) * (s.origin - _rsUL) / sc0;
+                        _rsGrabOff = new Vector3(w0 + SizeOff, -(h0 + SizeOff), 0f) - handLocal;
+                        _screenSizeHand = i;
+                        Note("Resizing the screen");
+                        continue;
+                    }
+                }
                 bool near = (s.origin - _screenHandle.position).sqrMagnitude <= cardGrabReach * cardGrabReach;
                 close |= near;
                 if (began && near && i != _carryHand && i != _aimHand && !HandBusyWithCard(i))
@@ -430,7 +510,8 @@ namespace MuseDesk.Wall
                     Note("Moving the screen");
                 }
             }
-            if (_screenHandleR != null) ArtHelper().Tint(_screenHandleR, _screenHand >= 0 ? WallHabitatView.Teal : close ? HandleHover : HandleIdle);
+            if (_screenHandleR != null) ArtHelper().Tint(_screenHandleR, _screenHand >= 0 ? WallHabitatView.Teal : close && !sizeNear && _screenSizeHand < 0 ? HandleHover : HandleIdle);
+            if (_screenSizeR != null) ArtHelper().Tint(_screenSizeR, _screenSizeHand >= 0 ? WallHabitatView.Teal : sizeNear ? HandleHover : HandleIdle);
         }
 
         /// <summary>For drivers: move the panel by <paramref name="delta"/> (world m) as a pinch on its handle would.</summary>

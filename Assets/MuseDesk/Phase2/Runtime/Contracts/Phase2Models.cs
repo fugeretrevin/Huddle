@@ -299,6 +299,27 @@ namespace MuseDesk.Phase2.Contracts
         [JsonProperty("idempotency_key")] public string IdempotencyKey;
     }
 
+    /// <summary>rc22: remove one card from the board. The backend answers with the removed card; the stream
+    /// carries task.completed (task_state "cancelled", removed true).</summary>
+    public class RemoveTaskCommand
+    {
+        [JsonProperty("schema_version")] public int SchemaVersion = 2;
+        [JsonProperty("idempotency_key")] public string IdempotencyKey;
+    }
+
+    /// <summary>rc22: clear the whole board. include_running also removes cards whose run is in progress.</summary>
+    public class ClearBoardCommand
+    {
+        [JsonProperty("schema_version")] public int SchemaVersion = 2;
+        [JsonProperty("include_running")] public bool IncludeRunning = true;
+        [JsonProperty("idempotency_key")] public string IdempotencyKey;
+    }
+
+    public class ClearBoardResult
+    {
+        [JsonProperty("removed")] public System.Collections.Generic.List<string> Removed = new System.Collections.Generic.List<string>();
+    }
+
     public class FocusCommand
     {
         [JsonProperty("schema_version")] public int SchemaVersion = 2;

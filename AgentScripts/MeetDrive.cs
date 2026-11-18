@@ -316,19 +316,22 @@ public static class MeetDrive
             () => OnceEach("researcher") && Count(_mirrorClosed, "researcher") == 1 && _markerOn[0] == 1 && _markerOff[0] == 1, 1.5f,
             () => Exactly("researcher") + " markers on/off=" + _markerOn[0] + "/" + _markerOff[0]);
 
-        Add("10 voice, hands-free: \"Tester, come here\" opens the Tester's preview", () =>
+        // rc22 (owner: "Developer, come down here ... so they actually go there"): a spoken "come here" on a safe, room-checked
+        // spot opens the portal by itself (no Open here press). "meet the developer" (step 12) still only previews.
+        Add("10 voice, hands-free: \"Tester, come here\" opens the portal and the Tester comes out by itself", () =>
         {
             var vc = One<VoiceCommandCenter>();
             if (vc == null) return "no VoiceCommandCenter in the scene";
             if (VoiceCommandCenter.PortalRequestHandler == null) return "the Wall did not register PortalRequestHandler | " + C.DescribeMeet();
             vc.InjectAmbientFinal("Tester, come here");
             return null;
-        }, () => Previewing("tester") && One<VoiceCommandCenter>().LastIntent == "PortalRequest", 3f,
-            () => { var vc = One<VoiceCommandCenter>(); return "intent=" + vc.LastIntent + " said='" + vc.LastMessage + "' | " + SpotWords(); });
+        }, () => C.Portal.Agent == "tester" && C.Portal.State == PortalState.Conversing && C.VoiceAutoOpens > 0
+                 && One<VoiceCommandCenter>().LastIntent == "PortalRequest", 8f,
+            () => { var vc = One<VoiceCommandCenter>(); return "intent=" + vc.LastIntent + " said='" + vc.LastMessage + "' portal=" + C.Portal.State + " autoOpens=" + C.VoiceAutoOpens + " | " + SpotWords(); });
 
-        Add("11 Cancel on the card: the Tester is home, once", () =>
-            PressCardKey(C.VisitCard, "Cancel") ? null : "no Cancel key: " + KeyList(C.VisitCard),
-            () => HomeAgain("tester") && OnceEach("tester") && Since > 0.2f, 4f, () => Exactly("tester"));
+        Add("11 Send back on the card: the Tester is home, once", () =>
+            PressCardKey(C.VisitCard, "Send back") ? null : "no Send back key: " + KeyList(C.VisitCard),
+            () => HomeAgain("tester") && OnceEach("tester") && Since > 0.3f, 6f, () => Exactly("tester"));
 
         Add("12 voice, hands-free, name not first: \"meet the developer\" opens the Developer's preview", () =>
         {

@@ -96,6 +96,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.phase2_store = phase2_store
         app.state.phase2_bus = phase2_bus
         app.state.phase3_store = phase3_store
+        # The bridge the producer reports to; a decision raised for a card the user already
+        # removed from the board is withdrawn at once (see phase2.board_remove).
+        app.state.board_bridge = board
+
+        async def _withdraw_removed(session_id: str, run_task_id: str) -> None:
+            from .phase2.board_remove import withdraw_run_decisions
+            await withdraw_run_decisions(storage, bus, orchestrator, session_id, run_task_id,
+                                         settings.state_source_mode)
+
+        board.on_removed_decision = _withdraw_removed
         app.state.p3_side = None  # side-conversation service (ephemeral memory), lazily built
         # Optional model provider (phase3.provider.ModelProvider). None = no model:
         # side answers are TASK_SNAPSHOT and Manager plans are TEMPLATE_PLAN.
@@ -152,7 +162,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         the run a task belongs to, or null for a card-less run."""
         import json as _json
         cards = {c["run_task_id"]: c["id"]
-                 for c in request.app.state.phase2_store.list_tasks_v2(session_id)
+                 for c in request.app.state.phase2_store.list_tasks_v2(session_id,
+                                                                       include_removed=True)
                  if c.get("run_task_id")}
         return [{"task_id": t["id"], "agent_id": t["agent_id"],
                  "parent_task_id": t["parent_task_id"], "status": t["status"],

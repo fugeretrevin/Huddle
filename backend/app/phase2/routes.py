@@ -9,11 +9,13 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import verify_token
 from ..ws_stream import pump_events
 from .artifacts import ArtifactService
 from .board_bridge import card_from_row
+from .board_remove import BoardRemover
 from .diagrams import DiagramService
 from .errors import CommandError, NotFoundError
 from .events import Phase2EventBus
@@ -66,20 +68,54 @@ def _services(request: Request) -> dict[str, Any]:
     }
 
 
+def _request_worker(request: Request, session_id: str, task_id: str) -> None:
+    """The user created / assigned this card to a worker: when the backend is live with a
+    model, the plan runner works it for real (``PlanRunner.request_adhoc`` decides and never
+    raises). Demo mode, no model, pipeline and plan cards: nothing changes."""
+    runner = getattr(request.app.state, "p3_runner", None)
+    if runner is not None:
+        runner.request_adhoc(session_id, task_id)
+
+
+class RemoveTaskCommand(BaseModel):
+    """Body of ``POST .../tasks/{id}/remove`` (optional; an ``Idempotency-Key`` header works too)."""
+    model_config = ConfigDict(extra="ignore")
+    schema_version: int = 2
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+class ClearBoardCommand(BaseModel):
+    """Body of ``POST .../board/clear`` (optional)."""
+    model_config = ConfigDict(extra="ignore")
+    schema_version: int = 2
+    include_running: bool = True
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+def _remover(request: Request) -> BoardRemover:
+    st = request.app.state
+    return BoardRemover(_store(request), _bus(request), _source_mode(request),
+                        storage=getattr(st, "storage", None), v1_bus=getattr(st, "bus", None),
+                        orchestrator=getattr(st, "orchestrator", None))
+
+
 def _build_snapshot(request: Request, session_row: dict) -> SnapshotV2:
     store = _store(request)
     sid = session_row["id"]
     focus = FocusService(store, _bus(request), _source_mode(request))
-    tasks = [card_from_row(t) for t in store.list_tasks_v2(sid)]
+    rows = store.list_tasks_v2(sid)                     # removed cards are left out
+    tasks = [card_from_row(t) for t in rows]
+    on_board = {t["id"] for t in rows}
+    removed = {t["id"] for t in store.list_tasks_v2(sid, include_removed=True)} - on_board
     handoffs = [
         HandoffV2(handoff_id=h["id"], from_agent_id=h["from_agent_id"],
                   to_agent_id=h["to_agent_id"], task_id=h["task_id"], artifact_id=h["artifact_id"],
                   kind=h["kind"], state=h["state"], source_mode=h["source_mode"])
-        for h in store.list_handoffs_v2(sid)
+        for h in store.list_handoffs_v2(sid) if h["task_id"] not in removed
     ]
     artifacts = [
         ArtifactRefV2(artifact_id=a["id"], kind=a["kind"], source_mode=a["source_mode"])
-        for a in store.list_artifacts_v2(sid)
+        for a in store.list_artifacts_v2(sid) if a["task_id"] not in removed
     ]
     inbox = [
         InboxItemV2(item_id=i["item_id"], kind=i["kind"], summary=i["summary"],
@@ -150,6 +186,8 @@ def register_phase2_routes(app: FastAPI) -> None:
             )
             # Inside the idempotent command: emitted once, never on a replayed key.
             await svc.announce_created(session_id, card)
+            if card.agent_id is not None:
+                _request_worker(request, session_id, card.task_id)
             return card.model_dump(mode="json")
 
         return await _idempotent_command(request, session_id, "tasks.create",
@@ -164,6 +202,7 @@ def register_phase2_routes(app: FastAPI) -> None:
         async def run() -> dict[str, Any]:
             card = await graph.assign(session_id, task_id, body.target_agent_id.value,
                                       body.expected_revision)
+            _request_worker(request, session_id, card.task_id)
             return card.model_dump(mode="json")
 
         return await _idempotent_command(request, session_id, f"tasks.{task_id}.assign",
@@ -205,6 +244,42 @@ def register_phase2_routes(app: FastAPI) -> None:
 
         return await _idempotent_command(request, session_id, f"tasks.{task_id}.resume",
                                          body.model_dump(mode="json"), run)
+
+    # ─────────────────────── remove / clear (user board actions, any mode) ───────────────────────
+    @app.post("/v2/sessions/{session_id}/tasks/{task_id}/remove")
+    async def remove_task(session_id: str, task_id: str, request: Request,
+                          body: RemoveTaskCommand | None = None,
+                          idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                          session=Depends(require_session)) -> dict[str, Any]:
+        remover = _remover(request)
+
+        async def run() -> dict[str, Any]:
+            card = await remover.remove(session_id, task_id)
+            return {"task": card.model_dump(mode="json")}
+
+        key = idempotency_key or (body.idempotency_key if body else None)
+        if not key:
+            return await run()                  # removing twice is a no-op anyway
+        return await _idempotent_command(request, session_id, f"tasks.{task_id}.remove",
+                                         {"idempotency_key": key}, run)
+
+    @app.post("/v2/sessions/{session_id}/board/clear")
+    async def clear_board(session_id: str, request: Request,
+                          body: ClearBoardCommand | None = None,
+                          idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                          session=Depends(require_session)) -> dict[str, Any]:
+        remover = _remover(request)
+        include_running = body.include_running if body else True
+
+        async def run() -> dict[str, Any]:
+            return {"removed": await remover.clear(session_id, include_running=include_running)}
+
+        key = idempotency_key or (body.idempotency_key if body else None)
+        if not key:
+            return await run()
+        return await _idempotent_command(request, session_id, "board.clear",
+                                         {"idempotency_key": key,
+                                          "include_running": include_running}, run)
 
     # ─────────────────────── focus ───────────────────────
     @app.post("/v2/sessions/{session_id}/focus")

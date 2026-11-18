@@ -24,6 +24,19 @@ namespace MuseDesk.Spatial.Wall
         public float lockGraceSeconds = 0.35f;
         [Tooltip("Ignore anything closer than this along the ray (m).")]
         public float minRayDistance = 0.2f;
+
+        [Header("Carry (rc22: keep hold)")]
+        [Tooltip("While carrying, the pinch must read open this long on a tracked hand to let go (s). The arbiter's own is 0.12 s; " +
+                 "hand tracking drops a held pinch for 0.05-0.15 s now and then.")]
+        public float carryReleaseSeconds = 0.20f;
+        [Tooltip("While carrying, a lost hand is held (frozen) this long before the carry is cancelled (s). The arbiter's own is 0.2 s.")]
+        public float carryLostSeconds = 1.0f;
+        [Tooltip("The carried projection sits this far along the hand ray (m).")]
+        public float carryDistance = 0.14f;
+        [Tooltip("The carried projection follows the hand with this critically damped lag (s).")]
+        public float carryFollowSeconds = 0.07f;
+        [Tooltip("The ray direction used for the carry point is smoothed with this time constant (s): angular jitter of the pointer pose.")]
+        public float carryDirSmoothSeconds = 0.08f;
     }
 
     [Serializable]

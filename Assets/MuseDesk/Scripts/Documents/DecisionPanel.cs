@@ -137,6 +137,7 @@ namespace MuseDesk.Documents
         static readonly int ColorId = Shader.PropertyToID("_Color");
 
         MaterialPropertyBlock _block;
+        string _agentId;     // the agent that asked (event agent_id); empty = the Researcher
         Phase _phase = Phase.Ready;
         // Until a HeldPaperController says otherwise the sheet counts as open and usable, so a paper
         // without a hand-over still works.
@@ -164,6 +165,7 @@ namespace MuseDesk.Documents
         public void Bind(DecisionContent c, string sourceMode, string provenanceLabel, int revision, string agentId)
         {
             if (c == null) return;
+            _agentId = agentId;
             Revision = revision < 0 ? 0 : revision;
             bool live = string.Equals(sourceMode ?? c.SourceMode, SourceModes.Live, System.StringComparison.OrdinalIgnoreCase);
             string mode = live ? "" : "SCRIPTED DEMO";        // rc20 (owner): no LIVE tag; the demo stays labelled
@@ -522,6 +524,24 @@ namespace MuseDesk.Documents
             string t = Ascii(text);
             // "Asking..." is a state, not an answer: it is not put in quotation marks.
             answer.text = t.EndsWith("...") && t.Length <= 12 ? "<b>Answer</b>  " + t : "<b>Answer</b>  \"" + t + "\"";
+            // Every why-answer (the Why key and the voice question) lands here, so this is the one place
+            // the agent who owns the decision also says it. Only real answers are spoken.
+            if (IsSpeakableAnswer(text))
+            {
+                string id = string.IsNullOrWhiteSpace(_agentId) ? AgentIds.Researcher : _agentId.Trim().ToLowerInvariant();
+                MuseDesk.Voice.AgentSpeech.Say(id, t, transform.position);
+            }
+        }
+
+        /// <summary>True for a real answer from the agent; false for empty text, the "Asking..." state and the
+        /// parenthesised placeholders ("(no answer)", "(couldn't reach the backend for an answer)").</summary>
+        public static bool IsSpeakableAnswer(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            string t = text.Trim();
+            if (t.EndsWith("...") && t.Length <= 12) return false;
+            if (t[0] == '(' && t[t.Length - 1] == ')') return false;
+            return true;
         }
 
         public void SetVoiceStatus(string text)

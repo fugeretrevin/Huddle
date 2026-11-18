@@ -104,7 +104,9 @@ namespace MuseDesk.Phase2.Board
             _reducer = presenter.Reducer;
             _reducer.SnapshotLoaded += OnSnapshotLoaded;
             _reducer.TaskChanged += OnTaskChanged;
+            _reducer.TaskRemoved += OnTaskRemoved;
             presenter.AssignResolved += OnCommandResolved;
+            presenter.StatusLine += OnBoardStatus;
             if (session != null)
             {
                 session.RunStateChanged += MarkDirty;
@@ -183,8 +185,9 @@ namespace MuseDesk.Phase2.Board
                 {
                     _reducer.SnapshotLoaded -= OnSnapshotLoaded;
                     _reducer.TaskChanged -= OnTaskChanged;
+                    _reducer.TaskRemoved -= OnTaskRemoved;
                 }
-                if (presenter != null) presenter.AssignResolved -= OnCommandResolved;
+                if (presenter != null) { presenter.AssignResolved -= OnCommandResolved; presenter.StatusLine -= OnBoardStatus; }
             }
             if (_sessionHooked && session != null)
             {
@@ -202,6 +205,10 @@ namespace MuseDesk.Phase2.Board
 
         void MarkDirty() => _dirty = true;
         void OnTaskChanged(TaskCardV2 card) => _dirty = true;
+        // rc22: a removed card leaves the dock's counts and focus task; the dock re-reads the reducer.
+        void OnTaskRemoved(string taskId) => _dirty = true;
+        // rc22: a Remove / Clear that failed says so on the dock's state line (the board's status line).
+        void OnBoardStatus(string text, bool error) => Notice(text, error ? refusedColor : okColor, 4f);
         void OnCommandResolved(TaskCardView card, Phase2CommandResult<TaskCardV2> result) => _dirty = true;
         void OnBoardChanged(bool expanded) => _dirty = true;
 

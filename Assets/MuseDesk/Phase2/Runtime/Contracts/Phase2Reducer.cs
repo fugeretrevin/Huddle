@@ -48,6 +48,7 @@ namespace MuseDesk.Phase2.Contracts
         // ─── typed events for presenters ───
         public event Action SnapshotLoaded;                 // full reset: rebuild all views
         public event Action<TaskCardV2> TaskChanged;        // a task card upserted/mutated
+        public event Action<string> TaskRemoved;            // rc22: a card was removed from the board (task id)
         public event Action<HandoffV2> HandoffCreated;      // deduped: fires once per handoff_id
         public event Action<HandoffV2> HandoffChanged;      // received/failed state change
         public event Action<ArtifactRefV2> ArtifactAdded;   // a new artifact ref known to the snapshot
@@ -176,6 +177,13 @@ namespace MuseDesk.Phase2.Contracts
         {
             var id = e.TaskId ?? e.PayloadString("task_id");
             if (string.IsNullOrEmpty(id)) return;
+            // rc22: a removed card (payload removed:true, sent as task.completed / cancelled) leaves the board model.
+            // It is never seeded as a new card, and every view drops it through TaskRemoved.
+            if (e.PayloadValue<bool?>("removed") == true)
+            {
+                if (_tasks.Remove(id)) TaskRemoved?.Invoke(id);
+                return;
+            }
             if (!_tasks.TryGetValue(id, out var t))
             {
                 // task.progress / decision.requested are also mirrored v1 lifecycle types (a v1

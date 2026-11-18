@@ -487,6 +487,9 @@ namespace MuseDesk.Spatial
 
         // ───────────────────────── key targets (wired by the builder) ─────────────────────────
 
+        /// <summary>rc22: any accepted key other than Select tells the Wall's armed Select Agents to switch off (before it acts).</summary>
+        static void Other(string key) { MuseDesk.Spatial.Wall.SelectModeExit.Raise(key); }
+
         bool Refused(ConsoleKey k)
         {
             if (director != null && k.shown && !k.disabled) return false;
@@ -504,6 +507,7 @@ namespace MuseDesk.Spatial
         public void PressDesk()
         {
             if (Refused(deskKey)) return;
+            Other("Desk");
             if (guide != null) guide.CancelGuide();       // a guided Floor / Ceiling step is dropped; nothing had moved
             director.RequestDesk();
             AfterPlaceRequest(deskKey, WorkspaceMode.Desk);
@@ -512,6 +516,7 @@ namespace MuseDesk.Spatial
         public void PressFloor()
         {
             if (Refused(floorKey)) return;
+            Other("Floor");
             if (guide != null && guide.TryBegin(WorkspaceMode.Floor)) return;   // guided: the request follows the user's gaze
             director.RequestFloor();                  // also "Send back" while a Floor office is parked at the desk
             AfterPlaceRequest(floorKey, WorkspaceMode.Floor);
@@ -520,6 +525,7 @@ namespace MuseDesk.Spatial
         public void PressCeiling()
         {
             if (Refused(ceilingKey)) return;
+            Other("Ceiling");
             if (guide != null && guide.TryBegin(WorkspaceMode.Ceiling)) return;
             director.RequestCeiling();
             AfterPlaceRequest(ceilingKey, WorkspaceMode.Ceiling);
@@ -531,6 +537,7 @@ namespace MuseDesk.Spatial
         public void PressNext()
         {
             if (Refused(nextKey)) return;
+            Other("Next");
             if (WallContext) { _host.WallNextSpot(); return; }
             // Floor preview: the next detected spot, or (after a drag) back to a scored one, as the guide card's key.
             if (_floorPreview && director.IsPreviewing) director.ChooseAnotherSpot();
@@ -540,6 +547,7 @@ namespace MuseDesk.Spatial
         public void PressConfirm()
         {
             if (Refused(confirmKey)) return;
+            Other("Confirm");
             if (WallContext)
             {
                 _host.WallPlace();
@@ -555,6 +563,7 @@ namespace MuseDesk.Spatial
         public void PressCancel()
         {
             if (Refused(cancelKey)) return;
+            Other("Cancel");
             if (WallContext) { _host.WallCancel(); return; }
             director.CancelPlacement();
         }
@@ -563,6 +572,7 @@ namespace MuseDesk.Spatial
         public void PressWall()
         {
             if (Refused(wallKey)) return;
+            Other("Wall");
             IWallModeHost h = ResolveHost();
             if (h == null) { if (wallKey.visual != null) wallKey.visual.FlashRefused(); return; }
             if (h.WallPreviewing || h.WallActive) return;                     // already there, or choosing a spot
@@ -573,32 +583,35 @@ namespace MuseDesk.Spatial
         }
 
         /// <summary>Wall preview: Full / Compact.</summary>
-        public void PressLayout() { if (!Refused(layoutKey) && ResolveHost() != null) _host.WallToggleLayout(); }
+        public void PressLayout() { if (!Refused(layoutKey) && ResolveHost() != null) { Other("Layout"); _host.WallToggleLayout(); } }
         /// <summary>Wall at rest: choose a new wall spot (a preview; the habitat stays until Place).</summary>
-        public void PressMove() { if (!Refused(moveKey) && ResolveHost() != null) _host.WallMove(); }
+        public void PressMove() { if (!Refused(moveKey) && ResolveHost() != null) { Other("Move"); _host.WallMove(); } }
         public void PressSelect() { if (!Refused(selectKey) && ResolveHost() != null) _host.WallSelect(); }
-        public void PressManager() { if (!Refused(managerKey) && ResolveHost() != null) _host.WallManager(); }
+        public void PressManager() { if (!Refused(managerKey) && ResolveHost() != null) { Other("Manager"); _host.WallManager(); } }
         /// <summary>Wall at rest: Meet (the agent chooser, or the perched agent steps out). Refusals are said on the status line.</summary>
-        public void PressMeet() { if (!Refused(meetKey) && ResolveHost() != null) _host.WallMeet(); }
+        public void PressMeet() { if (!Refused(meetKey) && ResolveHost() != null) { Other("Meet"); _host.WallMeet(); } }
 
-        public void PressStop() { if (!Refused(stopKey)) director.StopMove(); }
+        public void PressStop() { if (!Refused(stopKey)) { Other("Stop"); director.StopMove(); } }
 
         /// <summary>Ceiling mode: Lower when the pod is docked, Raise when it is down.</summary>
         public void PressPod()
         {
             if (Refused(podKey)) return;
+            Other("Pod");
             if (_podDown) director.SendPodUp(); else director.BringPodDown();
         }
 
         public void PressBring()
         {
             if (Refused(bringKey)) return;
+            Other("Bring");
             if (summon != null) summon.PressBring(); else SummonRequests.RaiseBringOfficeHere();
         }
 
         public void PressStatus()
         {
             if (Refused(statusKey)) return;
+            Other("Status");
             if (summon != null) summon.PressStatus(); else SummonRequests.RaiseShowLatestUpdate();
         }
 

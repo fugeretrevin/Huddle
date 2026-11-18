@@ -205,7 +205,9 @@ namespace MuseDesk.Voice
             "and", "or", "but", "so", "that", "which", "who", "whose", "where", "to", "the", "a", "an", "of", "for", "with",
             "in", "on", "at", "from", "by", "about", "into", "onto", "then", "because", "if", "when", "while", "than", "as",
             "my", "your", "our", "their", "its", "this", "these", "those", "is", "are", "was", "were", "be", "can", "could",
-            "should", "would", "will", "please", "um", "uh", "erm", "like", "also", "plus", "make", "build", "write", "add",
+            "should", "would", "will", "um", "uh", "erm", "like", "also", "plus", "make", "build", "write", "add",
+            // rc22: "please" is no longer here: "open the board please" is a whole command (a lone "please" or "can you
+            // please" still waits, through VoiceCommandCenter's verdict and the word count).
         };
 
         public static bool EndsDangling(string text)

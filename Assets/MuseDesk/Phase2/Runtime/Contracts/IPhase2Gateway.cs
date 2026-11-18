@@ -46,6 +46,11 @@ namespace MuseDesk.Phase2.Contracts
         Task<Phase2CommandResult<TaskCardV2>> PauseAsync(string taskId, PauseCommand cmd, CancellationToken ct);
         Task<Phase2CommandResult<TaskCardV2>> ResumeAsync(string taskId, ResumeCommand cmd, CancellationToken ct);
 
+        /// <summary>rc22: remove one card (the backend emits task.completed, cancelled, removed:true).</summary>
+        Task<Phase2CommandResult<TaskCardV2>> RemoveTaskAsync(string taskId, RemoveTaskCommand cmd, CancellationToken ct);
+        /// <summary>rc22: clear the board; returns the ids that were removed.</summary>
+        Task<Phase2CommandResult<ClearBoardResult>> ClearBoardAsync(ClearBoardCommand cmd, CancellationToken ct);
+
         Task<FocusPolicyV2> SetFocusAsync(FocusCommand cmd, CancellationToken ct);
         Task<ArtifactPageResponse> GetArtifactPageAsync(string artifactId, int page, int pageSize, CancellationToken ct);
         Task<DiagramV2> CreateDiagramAsync(DiagramCommand cmd, CancellationToken ct);
@@ -114,6 +119,10 @@ namespace MuseDesk.Phase2.Contracts
             => Require().PauseAsync(taskId, cmd, ct);
         public Task<Phase2CommandResult<TaskCardV2>> ResumeAsync(string taskId, ResumeCommand cmd, CancellationToken ct)
             => Require().ResumeAsync(taskId, cmd, ct);
+        public Task<Phase2CommandResult<TaskCardV2>> RemoveTaskAsync(string taskId, RemoveTaskCommand cmd, CancellationToken ct)
+            => Require().RemoveTaskAsync(taskId, cmd, ct);
+        public Task<Phase2CommandResult<ClearBoardResult>> ClearBoardAsync(ClearBoardCommand cmd, CancellationToken ct)
+            => Require().ClearBoardAsync(cmd, ct);
         public Task<FocusPolicyV2> SetFocusAsync(FocusCommand cmd, CancellationToken ct) => Require().SetFocusAsync(cmd, ct);
         public Task<ArtifactPageResponse> GetArtifactPageAsync(string artifactId, int page, int pageSize, CancellationToken ct)
             => Require().GetArtifactPageAsync(artifactId, page, pageSize, ct);
