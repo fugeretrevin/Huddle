@@ -2,7 +2,7 @@
 
 **Build:** `Builds/MuseDesk_rc22_release.apk`, label `rc22-release`, release-signed (CN=MuseDesk), versionCode 6,
 SHA-256 `04A218BC9F36AFC2D1A3F0FCA3F2CCEA5E4DFCC86B7A11DC0C0A53E5AC84A301` (label found in the APK).
-Install: pending (the Quest was not connected when it was built). Rollback: rc21 `3D9DA134`.
+Installed on the Quest (2026-11-17, `adb install -r`, settings kept); on-device sha256 matches; versionCode=6. Rollback: rc21 `3D9DA134`.
 **Rule:** only your words make anything WORN.
 
 | # | Your note (rc21, live) | What rc22 does | Check |
