@@ -44,6 +44,6 @@ Installed on the Quest (2026-11-17, `adb install -r`, settings kept); on-device 
 ## rc23 / rc24 (2026-11-17 night)
 
 - **rc23** `28DCF3ED` (versionCode 7), installed and hash-verified: board arrows at the column foot, small talk, idle arm clearance, one-sided desk monitors, clutter removed.
-- **rc24** `6358B73D11B5CB34066F1417B2A8663C0B397ED48CFF93E45F864880809D03A0` (versionCode 8, CN=MuseDesk, label found): rc23 + the Wall habitat's three monitor screens one-sided (318 triangles to a dark back; captured from both sides). **Not installed yet**: the Quest dropped off USB (battery was 6%). Install: `adb install -r Builds\MuseDesk_rc24_release.apk`.
+- **rc24** `6358B73D11B5CB34066F1417B2A8663C0B397ED48CFF93E45F864880809D03A0` (versionCode 8, CN=MuseDesk, label found): rc23 + the Wall habitat's three monitor screens one-sided (318 triangles to a dark back; captured from both sides). **Installed** on the Quest (2026-11-17, APK hash re-checked, device reports versionCode 8, `adb reverse tcp:8765` set, live backend health 200). Not worn yet.
 - Backend (no APK needed): change requests such as "can you also let the user delete a task by its number?" now offer Apply change (side_intent verbs; 12 new tests; backend 419 passed). Live: `live_real_work` 13/13 (to-do module + delete change, 30 tests), `live_adhoc_task` 5/5.
 - Play regression on rc24 code: all groups PASS, 0 real errors (ledgers `Logs/preflight/ecfd1b0_20261117_21*.md`).
