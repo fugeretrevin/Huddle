@@ -291,6 +291,28 @@ namespace MuseDesk.Wall
             return req;
         }
 
+        /// <summary>rc25: open / close the program the agents built in a window on the PC, or send it a tap. <paramref name="what"/>
+        /// is "open", "close", "tap" or "type". done(ok, words): words is the backend's reason when nothing opened.</summary>
+        public void AppCommand(string what, string json, Action<bool, string> done)
+        {
+            if (!IsLive) { done?.Invoke(false, "Apps open on the PC when MuseDesk is connected to the PC app."); return; }
+            Send(UnityWebRequest.kHttpVerbPOST, "/v2/sessions/" + Sid + "/apps/" + what, json ?? "{}", what == "open" ? 15 : 5,
+                (status, resp, net) =>
+                {
+                    if (done == null) return;
+                    if (net != null) { done(false, WallOfflineLogic.UnreachableMessage + "."); return; }
+                    if (status == 403) { done(false, "App windows are off on the PC (the backend was started with -NoScreen)."); return; }
+                    if (status < 200 || status >= 300) { done(false, "The PC did not open it (HTTP " + status + ")."); return; }
+                    try
+                    {
+                        var o = Newtonsoft.Json.Linq.JObject.Parse(resp ?? "{}");
+                        bool ok = what == "open" ? (bool?)o["opened"] ?? false : what == "close" ? true : (bool?)o["sent"] ?? false;
+                        done(ok, (string)o["reason"] ?? (string)o["label"] ?? "");
+                    }
+                    catch (Exception) { done(false, "The PC's answer could not be read."); }
+                });
+        }
+
         string Sid { get { return Uri.EscapeDataString(session.LiveSessionId); } }
 
         static string Key(string given, string fallbackPrefix, string id)

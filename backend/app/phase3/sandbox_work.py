@@ -87,6 +87,26 @@ RULES = (
     "block containing the whole file. After the last file, one line starting 'Summary:' that "
     "says what the files do in one sentence. Nothing else.")
 
+# rc25 (owner: "make an app that does X and then we can see it in MuseDesk"): the program can show itself. MuseDesk's
+# window host (app_window_host.py) calls build_ui(ui) with this small toolkit; the program never imports tkinter.
+UI_RULES = (
+    "When the user wants an app, a game, a window, buttons or anything they would see or tap, "
+    "the main module must also define def build_ui(ui): MuseDesk opens it in a window on the "
+    "PC and shows it in the user's headset, where they tap it. Do not import tkinter; use only "
+    "the ui object you are given: ui.title(text); ui.label(text, size=14, bold=False, "
+    "color='#24272b') returns an object with .set(text); ui.button(text, on_click) with "
+    ".set(text); ui.text_input(placeholder='', on_enter=None) with .get() and .set(text); "
+    "ui.text_box(height=8) with .write(line), .clear(), .set(text); ui.canvas(width, height, "
+    "background='white') with .clear(), .circle(x, y, r, fill, outline), .oval(x0, y0, x1, y1, "
+    "fill), .rect(x0, y0, x1, y1, fill), .line(x0, y0, x1, y1, color, width), .arc(x0, y0, x1, "
+    "y1, start, extent, fill), .polygon([(x, y), ...], fill), .text(x, y, text, color, size), "
+    ".on_click(fn) where fn(x, y) gets canvas pixels, and .width/.height; ui.row() gives the "
+    "same calls laid out side by side; ui.every(ms, fn) repeats fn (animation); ui.after(ms, "
+    "fn) runs it once. Colours are names or '#rrggbb'. Keep the logic in plain classes and "
+    "functions the tests check; build_ui only wires them to the ui. Use big buttons (the user "
+    "taps from a headset) and a canvas no larger than 640x420. Test build_ui too, with a small "
+    "fake ui class in the test file that records the calls. ")
+
 DEV_SYSTEM = (
     "You are the Developer on a small software team. You write REAL code for ONE plan step: "
     "your files are saved into a sandbox folder and the tests in it are run with pytest, so "
@@ -100,7 +120,7 @@ DEV_SYSTEM = (
     "When the code is a program the user runs, every input the step mentions (sizes, options, "
     "characters) must be a real option of def main(argv=None), parsed by hand from the list of "
     "strings (sys and argparse are not available here), and tested by calling main([...]) and "
-    "checking the printed output. " + RULES)
+    "checking the printed output. " + UI_RULES + RULES)
 
 # rc19 (owner, live run on a new objective): a later step rewrote a test file and the folder went from 51 to 45 tests
 # with nobody told. When a step leaves FEWER tests than the folder had before it, the Developer gets one chance to put the

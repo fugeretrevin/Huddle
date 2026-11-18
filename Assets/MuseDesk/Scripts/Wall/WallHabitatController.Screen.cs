@@ -15,7 +15,9 @@ namespace MuseDesk.Wall
     /// screen as a panel rather than strictly through passthrough". A Screen key beside the dock opens a panel showing the
     /// PC's main screen (live mode: the backend reads it on request, over USB; nothing is stored). The panel has a grab
     /// handle under it like the cards; once moved it opens there again. Offline (the scripted demo) the key says why it
-    /// cannot show anything. Presentation only: nothing on the PC can be clicked from the panel.
+    /// cannot show anything. The PC's own desktop cannot be clicked from the panel. rc25: the one exception is the app the
+    /// agents built, opened with the Open app key (WallHabitatController.App.cs): the panel then shows only that window and
+    /// fingertip taps on it reach that window (and nothing else on the PC).
     /// </summary>
     public partial class WallHabitatController
     {
@@ -183,6 +185,7 @@ namespace MuseDesk.Wall
             if (!screenPanelEnabled) return;
             if (_kScreen == null && nearUserRig != null && keyTemplate != null) EnsureScreen();
             HideFocusKey();
+            TickApp(dt);                          // rc25: Open app / Close app key and taps on the agents' app
             if (!_screenOpen || _screenRoot == null) return;
             TickScreenDrag(dt);
 
@@ -242,11 +245,13 @@ namespace MuseDesk.Wall
                 long code = req.responseCode;
                 bool ok = req.result == UnityWebRequest.Result.Success;
                 int w = 0, h = 0, seq = -1;
+                bool app = false;
                 if (ok && code == 200)
                 {
                     int.TryParse(req.GetResponseHeader("X-Width") ?? "", out w);
                     int.TryParse(req.GetResponseHeader("X-Height") ?? "", out h);
                     int.TryParse(req.GetResponseHeader("X-Seq") ?? "", out seq);
+                    app = req.GetResponseHeader("X-App") == "1";      // rc25: the picture is the agents' app window
                 }
                 int len = dl.Length;
                 _screenZ[zi] = dl.Buffer;
@@ -268,6 +273,7 @@ namespace MuseDesk.Wall
                     return;
                 }
                 _screenSeq = seq;
+                if (!_appBusy) _screenIsApp = app;        // closed on the PC (its own Close key, Esc): the key turns back to Open app
                 _screenBusy = false;                      // the next request goes out now, while this frame decodes
                 if (_screenDecoding) return;              // still decoding the last one: drop this frame
                 _screenDecoding = true;

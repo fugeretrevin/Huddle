@@ -23,12 +23,17 @@ $env:MUSEDESK_P3_PLAN_RUNNER_ENABLED = "true"
 Remove-Item Env:MUSEDESK_P3_EXECUTE_CODE -ErrorAction SilentlyContinue
 # rc20: the headset's Screen panel shows this PC's main screen (read on request, never stored, only to the paired
 # headset over USB). -NoScreen switches it off.
+# rc25: with it, "open the app" opens the program the agents built in a window on this PC (after the restricted
+# workspace's checks), and the screen panel shows that window.
 if ($NoScreen) {
     Remove-Item Env:MUSEDESK_SCREEN_SHARE -ErrorAction SilentlyContinue
-    Write-Host "Screen panel: OFF (-NoScreen)."
+    Remove-Item Env:MUSEDESK_APP_WINDOWS -ErrorAction SilentlyContinue
+    Write-Host "Screen panel: OFF (-NoScreen). App windows: OFF."
 } else {
     $env:MUSEDESK_SCREEN_SHARE = "true"
+    $env:MUSEDESK_APP_WINDOWS = "true"
     Write-Host "Screen panel: ON. The headset's Screen key shows this PC's main screen (only to the paired headset; nothing is saved)."
+    Write-Host "App windows: ON. 'Open app' shows the program the agents built in a window here (Close app or Esc closes it)."
 }
 
 $envFile = Join-Path $backend ".env"

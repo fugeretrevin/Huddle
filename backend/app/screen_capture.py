@@ -1,4 +1,4 @@
-﻿"""rc20/rc21: the PC's primary screen, scaled down, as raw BGRA pixels for the headset's screen panel.
+"""rc20/rc21: the PC's primary screen, scaled down, as raw BGRA pixels for the headset's screen panel.
 
 Windows only, standard library only (ctypes + GDI): no new packages. It is served ONLY when the backend was started with
 MUSEDESK_SCREEN_SHARE=true (the owner's own launcher sets it), only to a paired session (bearer token), and only on
@@ -37,14 +37,17 @@ class Frame:
     data: bytes          # BGRA, top row first; zlib-compressed when ``compressed``
     compressed: bool
     seq: int = 0
+    app: bool = False    # rc25: the picture is the agent-built app's window, not the whole screen
 
 
 _lock = threading.Lock()
 _dpi_set = False
 
 
-def grab(width: int = 1280) -> tuple[int, int, bytes]:
-    """The primary screen scaled to ``width`` (aspect kept), with the mouse pointer drawn in: (w, h, raw BGRA)."""
+def grab(width: int = 1280, region: tuple[int, int, int, int] | None = None) -> tuple[int, int, bytes]:
+    """The primary screen scaled to ``width`` (aspect kept), with the mouse pointer drawn in: (w, h, raw BGRA).
+    rc25: ``region`` (x, y, w, h in physical screen pixels) grabs only that part (the open app's window); it is never
+    scaled up."""
     import ctypes
     from ctypes import wintypes
 
@@ -58,10 +61,15 @@ def grab(width: int = 1280) -> tuple[int, int, bytes]:
             except Exception:  # noqa: BLE001
                 pass
             _dpi_set = True
+        sx, sy = 0, 0
         sw, sh = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
         if sw <= 0 or sh <= 0:
             raise RuntimeError("no screen")
-        w = max(MIN_WIDTH, min(MAX_WIDTH, int(width), sw))
+        if region is not None and region[2] > 0 and region[3] > 0:
+            sx, sy, sw, sh = (int(v) for v in region)
+            w = max(1, min(MAX_WIDTH, int(width), sw))
+        else:
+            w = max(MIN_WIDTH, min(MAX_WIDTH, int(width), sw))
         h = max(1, round(sh * w / sw))
 
         screen_dc = user32.GetDC(None)
@@ -72,8 +80,9 @@ def grab(width: int = 1280) -> tuple[int, int, bytes]:
             gdi32.SetStretchBltMode(mem_dc, 4)        # HALFTONE: readable text when scaled down
             gdi32.SetBrushOrgEx(mem_dc, 0, 0, None)
             SRCCOPY, CAPTUREBLT = 0x00CC0020, 0x40000000
-            gdi32.StretchBlt(mem_dc, 0, 0, w, h, screen_dc, 0, 0, sw, sh, SRCCOPY | CAPTUREBLT)
-            _draw_cursor(user32, mem_dc, sw, sh, w, h)
+            gdi32.StretchBlt(mem_dc, 0, 0, w, h, screen_dc, sx, sy, sw, sh, SRCCOPY | CAPTUREBLT)
+            if region is None:
+                _draw_cursor(user32, mem_dc, sw, sh, w, h)     # the app view has no PC pointer: it is tapped from the headset
 
             class BITMAPINFOHEADER(ctypes.Structure):
                 _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
@@ -131,8 +140,10 @@ def _draw_cursor(user32, dc, sw: int, sh: int, w: int, h: int) -> None:
 class Streamer:
     """Holds the latest compressed frame while somebody is asking for it. In memory only; never stored."""
 
-    def __init__(self, grab_fn=None, idle_stop: float | None = None) -> None:
+    def __init__(self, grab_fn=None, idle_stop: float | None = None, region_fn=None) -> None:
         self._grab = grab_fn or grab
+        # rc25: where the open app's window is (x, y, w, h), or None for the whole screen.
+        self._region = region_fn or _app_region
         self._idle = IDLE_STOP_SECONDS if idle_stop is None else idle_stop
         self._cv = threading.Condition()
         self._frame: Frame | None = None
@@ -199,7 +210,11 @@ class Streamer:
                 with self._cv:
                     width = self._width
                 try:
-                    w, h, raw = self._grab(width)
+                    region = self._region()
+                except Exception:  # noqa: BLE001 - no app view: the whole screen
+                    region = None
+                try:
+                    w, h, raw = self._grab(width, region) if region is not None else self._grab(width)
                 except Exception:  # noqa: BLE001
                     with self._cv:
                         self._error = "the screen could not be read"
@@ -208,28 +223,57 @@ class Streamer:
                     continue
                 self.captured += 1
                 digest = zlib.adler32(raw)
-                key = (w, h, width)
+                key = (w, h, width, region is not None)
                 if digest == last_hash and key == last_key:
                     self.unchanged += 1
                 else:
                     last_hash, last_key = digest, key
                     if pending is not None:
                         pending.result()           # at most one compression in flight; this capture overlapped it
-                    pending = pool.submit(self._compress_and_publish, w, h, raw, width)
+                    try:
+                        pending = pool.submit(self._compress_and_publish, w, h, raw, width, region is not None)
+                    except RuntimeError:           # the interpreter is shutting down: stop quietly
+                        return
                 spare = MIN_FRAME_PERIOD - (time.monotonic() - t0)
                 if spare > 0:
                     time.sleep(spare)
         finally:
             pool.shutdown(wait=False)
 
-    def _compress_and_publish(self, w: int, h: int, raw: bytes, width: int) -> None:
+    def _compress_and_publish(self, w: int, h: int, raw: bytes, width: int, app: bool = False) -> None:
         z = zlib.compress(raw, 1)
         with self._cv:
             if width != self._width:
                 return                              # asked for another size meanwhile
             self._seq += 1
-            self._frame = Frame(w, h, z, True, self._seq)
+            self._frame = Frame(w, h, z, True, self._seq, app)
             self._cv.notify_all()
+
+
+def _app_region() -> tuple[int, int, int, int] | None:
+    """rc25: the agent-built app's window while one is open (the screen panel then shows only it)."""
+    from .phase3 import app_launcher
+    if app_launcher._launcher is None:
+        return None
+    hwnd = app_launcher._launcher.hwnd()
+    if not hwnd:
+        return None
+    _ensure_dpi()
+    return app_launcher.client_rect(hwnd)
+
+
+def _ensure_dpi() -> None:
+    global _dpi_set
+    if _dpi_set or sys.platform != "win32":
+        return
+    import ctypes
+    with _lock:
+        if not _dpi_set:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:  # noqa: BLE001
+                pass
+            _dpi_set = True
 
 
 _streamer = Streamer()

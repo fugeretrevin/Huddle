@@ -47,3 +47,26 @@ Installed on the Quest (2026-11-17, `adb install -r`, settings kept); on-device 
 - **rc24** `6358B73D11B5CB34066F1417B2A8663C0B397ED48CFF93E45F864880809D03A0` (versionCode 8, CN=MuseDesk, label found): rc23 + the Wall habitat's three monitor screens one-sided (318 triangles to a dark back; captured from both sides). **Installed** on the Quest (2026-11-17, APK hash re-checked, device reports versionCode 8, `adb reverse tcp:8765` set, live backend health 200). Not worn yet.
 - Backend (no APK needed): change requests such as "can you also let the user delete a task by its number?" now offer Apply change (side_intent verbs; 12 new tests; backend 419 passed). Live: `live_real_work` 13/13 (to-do module + delete change, 30 tests), `live_adhoc_task` 5/5.
 - Play regression on rc24 code: all groups PASS, 0 real errors (ledgers `Logs/preflight/ecfd1b0_20261117_21*.md`).
+
+## rc25 (2026-11-17 late): open the agents' app in a window, see it and tap it in the headset
+
+Owner: "add a window for that launcher, with a way to close it ... so we can test 'make an app that does X' and then we can see it in MuseDesk ... don't hard code that".
+
+- **Backend**:
+  - `app/phase3/app_launcher.py` + `app_window_host.py` open the newest program the agents built: the session's work, else the newest on this PC.
+  - A program with `build_ui(ui)` draws its own window from a small toolkit (no tkinter import in generated code). Otherwise a run panel shows `main(argv)` output.
+  - The same restricted-workspace static checks run before opening. Credential-free env. One window at a time.
+  - The window closes with its Close app key, Esc, the headset, or the backend stopping.
+  - Routes `/v2/sessions/{sid}/apps` (+ `/open`, `/close`, `/tap`, `/type`), on with `MUSEDESK_APP_WINDOWS` (the start script sets it with the screen panel).
+  - The screen frame crops to the app window (`X-App: 1`).
+  - Developer and planner prompts tell the agents to build apps with `build_ui(ui)`.
+  - Tests: `tests/test_app_windows_rc25.py`. The full backend suite passes.
+- **Unity**:
+  - The Screen panel gets an Open app / Close app key at its lower left, plus a caption.
+  - A fingertip pressed onto the picture taps the app (`ScreenTapLogic`, 5 EditMode tests). EditMode: 1883 passed, 0 failed.
+- **PLAY** (Editor, live backend):
+  - The panel showed the beach-ball window streamed from the PC.
+  - A tap on Run reran it.
+  - A tap on the window's own Close app closed it; the panel returned to the whole screen and the key to Open app.
+  - Note: one edit to `WallHabitatController.App.cs` was made while Play Mode was running. Play was then stopped, the project recompiled, and the checks were redone.
+- **rc25** `77B7B50AB6411A6975EFC12A55E44B9C58CDCCA16DD28047508659747ED8D63C` (versionCode 9, CN=MuseDesk). **Installed** on the Quest, `adb reverse` set. Not worn yet.

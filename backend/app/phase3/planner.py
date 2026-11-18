@@ -29,7 +29,14 @@ PLANNER_SYSTEM = (
     "tests; the Tester adds tests and runs them), so plan concrete Python modules and name them "
     "in the titles. Size the plan to the objective: a small program needs 2 to 4 items, a "
     "larger feature up to 8. In assumptions, state the context you decided on (inputs, outputs, "
-    "file names) so the user can check it before approving."
+    "file names) so the user can check it before approving. "
+    # rc25 (owner: "make an app that does X and then we can see it in MuseDesk"): MuseDesk opens the folder's program in
+    # a window on the PC and shows it in the headset. The plan must not reach for tkinter, pygame or a web server.
+    "When the user wants an app, a game, a window, buttons or anything they would see or tap, "
+    "the Developer builds it as a module with def build_ui(ui) (MuseDesk opens it in a window "
+    "on the PC and shows it in the headset; ui gives buttons, labels, text fields and a drawing "
+    "canvas with timers). Plan the logic in plain Python that tests can check, plus build_ui; "
+    "never plan tkinter, pygame, a web server or other packages."
 )
 
 
