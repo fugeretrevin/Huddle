@@ -9,7 +9,8 @@ namespace MuseDesk.Phase2.Board
     /// <summary>
     /// rc22: the board's per-column header furniture, built at runtime next to the existing header blocks:
     /// a small rounded counter badge at the right end of each header (so the header reads as the column name only),
-    /// and up / down poke keys that scroll a column that holds more cards than fit. The keys are clones of the board's
+    /// and up / down poke keys that scroll a column that holds more cards than fit (rc22 polish: arrow keys at the column's
+    /// FOOT, inside the frame, with a drawn triangle; the title keeps the header left of the badge). The keys are clones of the board's
     /// own "NewTaskButton" (the on-head-proven poke setup), hidden by scale and with the poke switched off when the
     /// column fits; never SetActive. All sizes are derived from the key the board was authored with, so they stay right
     /// while BoardExpander scales the board.
@@ -17,6 +18,85 @@ namespace MuseDesk.Phase2.Board
     public sealed class BoardLanePager
     {
         const float KeyWorldW = 0.030f, KeyWorldH = 0.022f, BadgeWorldW = 0.046f, GapWorld = 0.005f, MarginWorld = 0.008f;
+        // rc23 (Play capture): the drawn arrow came out ~1/5 of its intended size and the strip sat on the frame's bottom rail
+        // (FrameBottomY is the rail's outer edge). Arrow x4.5 (measured), and the strip starts one rail height higher.
+        const float ArrowKeyWorldH = 0.020f, ArrowWorldW = 0.011f * 4.5f, ArrowWorldH = 0.008f * 4.5f, RailWorldH = 0.024f;
+
+        /// <summary>Board units the arrow strip takes at a column's foot (0 until built, or when there is no frame).</summary>
+        public float BottomStrip { get; private set; }
+
+        Transform RegionOf(int lane) => lane switch
+        {
+            0 => _presenter.backlogRegion, 1 => _presenter.workingRegion, 2 => _presenter.needsMeRegion, _ => _presenter.completedRegion,
+        };
+
+        /// <summary>Keep a heading's text box left of <paramref name="limitX"/> (board units): a margin on the side that faces
+        /// the badge, one line, shrink to fit (never below 60 %), an ellipsis as the last resort.</summary>
+        static void FitHeading(Transform board, TMP_Text heading, float limitX)
+        {
+            if (heading == null || board == null) return;
+            heading.textWrappingMode = TextWrappingModes.NoWrap;
+            heading.overflowMode = TextOverflowModes.Ellipsis;
+            if (!heading.enableAutoSizing)
+            {
+                float fs = heading.fontSize;
+                heading.fontSizeMax = fs;
+                heading.fontSizeMin = fs * 0.6f;
+                heading.enableAutoSizing = true;
+            }
+            var corners = new Vector3[4];
+            heading.rectTransform.GetWorldCorners(corners);
+            float right = float.MinValue;
+            for (int c = 0; c < 4; c++) right = Mathf.Max(right, board.InverseTransformPoint(corners[c]).x);
+            float over = right - limitX;
+            if (over <= 0f) return;
+            float k = Mathf.Abs(heading.transform.lossyScale.x / Mathf.Max(1e-6f, Mathf.Abs(board.lossyScale.x)));   // board units per text unit
+            if (k < 1e-6f) return;
+            bool flipped = board.InverseTransformDirection(heading.transform.right).x < 0f;   // the text's +X runs to the board's left
+            Vector4 m = heading.margin;
+            if (flipped) m.x += over / k; else m.z += over / k;
+            heading.margin = m;
+        }
+
+        /// <summary>A flat triangle on the key face (up or down), in the key label's colour. A child of the label, so it moves
+        /// with the pressed face and hides with the key's scale. The fonts carry no arrow glyphs, hence a mesh.</summary>
+        static void AddArrow(WallKey k, bool up, float nowOverFull)
+        {
+            if (k == null || k.root == null) return;
+            Transform face = k.label != null ? k.label.transform : k.root;
+            Material mat = WallUi.PlateMaterial != null ? WallUi.PlateMaterial : WallUi.AccentMaterial;
+            if (mat == null) { if (k.label != null) k.label.text = up ? "Up" : "Down"; return; }
+            var go = new GameObject(up ? "ArrowUp" : "ArrowDown");
+            go.transform.SetParent(face, false);
+            Vector3 ls = face.lossyScale;
+            float sx = Mathf.Max(1e-6f, Mathf.Abs(ls.x)), sy = Mathf.Max(1e-6f, Mathf.Abs(ls.y)), sz = Mathf.Max(1e-6f, Mathf.Abs(ls.z));
+            float f = nowOverFull > 1e-4f ? nowOverFull : 1f;                     // the board may be mid-reveal: size for full scale
+            go.transform.localPosition = new Vector3(0f, 0f, -0.0006f * f / sz);          // just in front of the face
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = new Vector3(ArrowWorldW * f / sx, ArrowWorldH * f / sy, 1f);
+            go.AddComponent<MeshFilter>().sharedMesh = Triangle(up);
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            WallUi.TintPlate(mr, k.label != null ? k.label.color : new Color(0.122f, 0.145f, 0.188f));
+        }
+
+        static Mesh s_up, s_down;
+        /// <summary>A unit triangle in XY, facing -Z (the same winding as WallUi.RoundedRect).</summary>
+        static Mesh Triangle(bool up)
+        {
+            if (up && s_up != null) return s_up;
+            if (!up && s_down != null) return s_down;
+            float t = up ? 0.5f : -0.5f;
+            var v = new[] { new Vector3(0f, t, 0f), new Vector3(-0.5f, -t, 0f), new Vector3(0.5f, -t, 0f) };
+            // (0,1,2) runs counter-clockwise in XY for the up arrow; reversed for -Z facing. The down arrow mirrors it.
+            int[] tri = up ? new[] { 0, 2, 1 } : new[] { 0, 1, 2 };
+            var m = new Mesh { name = up ? "ArrowUp" : "ArrowDown", vertices = v, triangles = tri, normals = new[] { Vector3.back, Vector3.back, Vector3.back } };
+            m.RecalculateBounds();
+            if (up) s_up = m; else s_down = m;
+            return m;
+        }
 
         readonly BoardPresenter _presenter;
         readonly Transform _board;
@@ -114,15 +194,30 @@ namespace MuseDesk.Phase2.Board
                 lane.badgeText.fontSizeMax = 9f;
                 lane.badgeText.text = lane.text ?? "0";
 
+                // rc22 polish (owner: "the column titles are clipping with the task counter, separate those"): the title owns the
+                // header left of the badge, shrinks to fit, never runs under it.
+                FitHeading(_board, heading, bx - badgeW * 0.5f - GapWorld * u);
+
                 if (template != null)
                 {
-                    float keyH = Mathf.Clamp(hH * 0.80f, 0.016f * u, KeyWorldH * u);
+                    // rc22 polish (owner: "move up and down buttons to the bottom of the task board and make them arrows"): two
+                    // arrow keys side by side at the column's foot, inside the frame; the cards stop above them while they show.
+                    float keyH = ArrowKeyWorldH * u;
                     float keyW = KeyWorldW * u;
-                    float downX = bx - badgeW * 0.5f - GapWorld * u - keyW * 0.5f;
-                    float upX = downX - keyW - GapWorld * u;
+                    float cx = (mn.x + mx.x) * 0.5f;
+                    float frameBottom = _presenter.FrameBottomY;
+                    float ky;
+                    if (!float.IsNaN(frameBottom)) { ky = frameBottom + (RailWorldH + MarginWorld) * u + keyH * 0.5f; BottomStrip = keyH + (RailWorldH + 2f * MarginWorld) * u; }
+                    else ky = cy;                                      // no frame to sit on: in the header row as before
+                    float kz = labelZ;
+                    Transform region = RegionOf(i);
+                    if (region != null) kz = Mathf.Min(kz, _board.InverseTransformPoint(region.position).z);   // in front of the panel, with the cards
+                    float half = keyW * 0.5f + GapWorld * u * 0.5f;
                     int laneIndex = i;
-                    lane.down = MakePagerKey(template, "LaneKeyDown_" + i, "Down", new Vector3(downX, cy, labelZ), 0.040f * u, keyW, keyH, () => _scroll(laneIndex, +1));
-                    lane.up = MakePagerKey(template, "LaneKeyUp_" + i, "Up", new Vector3(upX, cy, labelZ), 0.040f * u, keyW, keyH, () => _scroll(laneIndex, -1));
+                    lane.up = MakePagerKey(template, "LaneKeyUp_" + i, "", new Vector3(cx - half, ky, kz), 0.040f * u, keyW, keyH, () => _scroll(laneIndex, -1));
+                    lane.down = MakePagerKey(template, "LaneKeyDown_" + i, "", new Vector3(cx + half, ky, kz), 0.040f * u, keyW, keyH, () => _scroll(laneIndex, +1));
+                    AddArrow(lane.up, true, Mathf.Abs(_board.lossyScale.x) * u);
+                    AddArrow(lane.down, false, Mathf.Abs(_board.lossyScale.x) * u);
                 }
                 ApplyKeys(lane);
                 ApplyBadgeColours(lane);

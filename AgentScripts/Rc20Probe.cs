@@ -351,7 +351,7 @@ public static class Rc20Probe
         foreach (var r in t.GetComponentsInChildren<Renderer>()) if (r.enabled) b.Encapsulate(r.bounds);
         var main = Camera.main; Vector3 eye = main != null ? main.transform.position : b.center + Vector3.back;
         Vector3 dir = (b.center - eye).normalized;
-        float dist = Mathf.Max(0.35f, b.extents.magnitude * 2.2f);
+        float dist = Mathf.Max(0.12f, b.extents.magnitude * _aimFactor);
         var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
         var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
         cam.enabled = true; cam.depth = 100f; cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.01f; cam.fieldOfView = 40f;
@@ -372,6 +372,55 @@ public static class Rc20Probe
     {
         var c = C; if (c == null) return "no controller";
         return "answered=" + c.ManagerQuestionsAnswered + " answer='" + c.ManagerLastAnswer + "' spoken[" + MuseDesk.Voice.AgentSpeech.LastSpeaker + "]='" + MuseDesk.Voice.AgentSpeech.LastSaid + "'";
+    }
+
+    public static string SmallTalkCheck()
+    {
+        var vc = MuseDesk.Voice.VoiceCommandCenter.Instance; if (vc == null) return "no voice centre";
+        var sb = new StringBuilder();
+        foreach (var s in new[] { "Developer, how are you", "Researcher, you're doing great", "Tester, what is blocking you", "Manager, build a calculator" })
+        {
+            vc.InjectAmbientFinal(s);
+            sb.Append("'").Append(s).Append("' -> ").Append(vc.LastIntent).Append(" | ").Append(vc.LastMessage).Append('\n');
+        }
+        sb.Append("spoken[").Append(MuseDesk.Voice.AgentSpeech.LastSpeaker).Append("]='").Append(MuseDesk.Voice.AgentSpeech.LastSaid).Append("'");
+        return sb.ToString();
+    }
+
+    static float _aimFactor = 2.2f;
+    /// <summary>Close-up of the board's left column (header and foot): renders two PNGs next to <paramref name="dir"/>.</summary>
+    public static string BoardCloseUps(string dir)
+    {
+        var frame = GameObject.Find("KanbanFrame_Visual"); if (frame == null) return "no board";
+        Bounds b = new Bounds(frame.transform.position, Vector3.zero);
+        foreach (var r in frame.GetComponentsInChildren<Renderer>()) if (r.enabled) b.Encapsulate(r.bounds);
+        var main = Camera.main; Vector3 eye = main != null ? main.transform.position : b.center + Vector3.back;
+        Vector3 dir2 = (b.center - eye); dir2.y = 0f; dir2.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, dir2);
+        var go = GameObject.Find("__CineCam") ?? new GameObject("__CineCam");
+        var cam = go.GetComponent<Camera>(); if (cam == null) cam = go.AddComponent<Camera>();
+        cam.stereoTargetEye = StereoTargetEyeMask.None; cam.nearClipPlane = 0.01f; cam.fieldOfView = 30f;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.2f, 0.22f, 0.25f);
+        string outp = "";
+        foreach (var spot in new[] { ("head", b.center - right * b.extents.magnitude * 0.55f + Vector3.up * b.extents.y * 0.85f),
+                                      ("foot", b.center - right * b.extents.magnitude * 0.55f - Vector3.up * b.extents.y * 0.85f) })
+        {
+            cam.transform.position = spot.Item2 - dir2 * 0.35f;
+            cam.transform.rotation = Quaternion.LookRotation(spot.Item2 - cam.transform.position, Vector3.up);
+            var rt = new RenderTexture(1280, 720, 24); cam.targetTexture = rt; cam.Render(); RenderTexture.active = rt;
+            var tex = new Texture2D(1280, 720, TextureFormat.RGB24, false); tex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0); tex.Apply();
+            string p = dir + "/board_" + spot.Item1 + ".png"; System.IO.File.WriteAllBytes(p, tex.EncodeToPNG());
+            RenderTexture.active = null; cam.targetTexture = null; Object.Destroy(rt); Object.Destroy(tex); outp += p + " ";
+        }
+        return "saved " + outp;
+    }
+
+    public static string OpenBoardShot(string path)
+    {
+        var ex = Object.FindAnyObjectByType<MuseDesk.Phase2.Board.BoardExpander>();
+        if (ex == null) return "no BoardExpander";
+        if (!ex.IsExpanded) ex.Toggle();
+        return "board expanded=" + ex.IsExpanded;
     }
 
     public static string VoiceInternals()

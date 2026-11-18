@@ -378,7 +378,24 @@ namespace MuseDesk.Phase2.Board
             return _clearKey;
         }
 
-        /// <summary>How many card rows fit under a lane's header: from the region's top slot down to the frame's lower edge.</summary>
+        /// <summary>The frame's lower edge in board units (read once), or NaN when there is no frame.</summary>
+        public float FrameBottomY { get { RowsFor(backlogRegion); return _frameBottomRead ? _frameBottomY : float.NaN; } }
+
+        /// <summary>How many card rows fit under a lane's header: from the region's top slot down to the frame's lower edge,
+        /// or (rc22 polish) down to the top of the arrow strip at the column's foot when <paramref name="arrows"/>.</summary>
+        int RowsFor(Transform region, bool arrows)
+        {
+            int rows = RowsFor(region);
+            if (!arrows || maxRowsOverride > 0 || _pager == null || !_pager.Built || _pager.BottomStrip <= 0f || !_frameBottomRead || region == null) return rows;
+            Transform board = transform;
+            float bs = Mathf.Abs(board.lossyScale.y);
+            float pitch = bs > 1e-6f ? cardSpacing.y * Mathf.Abs(region.lossyScale.y) / bs : 0f;
+            if (pitch < 1e-5f) return rows;
+            float top = board.InverseTransformPoint(region.position).y;
+            int r = Mathf.FloorToInt((top - (_frameBottomY + _pager.BottomStrip)) / pitch + 0.5f);
+            return Mathf.Clamp(Mathf.Min(r, rows), 1, rows);
+        }
+
         int RowsFor(Transform region)
         {
             if (maxRowsOverride > 0) return maxRowsOverride;
@@ -479,6 +496,8 @@ namespace MuseDesk.Phase2.Board
                 total++;
             }
             int cap = BoardPaging.Capacity(RowsFor(region), cols);
+            // rc22 polish: a column that pages shows its arrows at its foot; the cards then stop above them.
+            if (BoardPaging.Overflows(total, cap)) cap = BoardPaging.Capacity(RowsFor(region, true), cols);
             _laneCap[lane] = cap;
             int off = BoardPaging.Clamp(_laneOffset[lane], total, cols, cap);
             _laneOffset[lane] = off;

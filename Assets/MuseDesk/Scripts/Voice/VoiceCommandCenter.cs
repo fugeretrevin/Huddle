@@ -598,6 +598,17 @@ namespace MuseDesk.Voice
             bool meetAsked = PortalVoiceRequest.Routes(heard, PortalRequestHandler != null, _pending != Pending.None, out meetWho);
             bool meetOnlyAddress = false;     // hands-free: the sentence passed the name rule only as a portal request
 
+            // rc22 polish (owner: "agents respond to basic conversation even if they don't have context: small talk, playful
+            // banter, flirting platonically reciprocated"): a sentence that is ONLY small talk ("hey developer, how are you",
+            // "tell me a joke", "thanks!") gets a short scripted line in that agent's voice, spoken and shown, labelled scripted.
+            // Never a command (halts and commands keep their routes), never changes anything. Hands-free: only when addressed
+            // by name or to the agent beside the user (the privacy rule).
+            if (_pending == Pending.None && !meetAsked && TrySmallTalk(heard, intent, ambient, addressedAny, addrWho, addrRest))
+            {
+                RefreshMic();
+                return;
+            }
+
             // rc18 (owner): talk naturally to the agent that is WITH you (perched on the desk or out of the portal), no name
             // needed: "hey, why are you doing this instead of that?". It goes to that agent's side conversation (live: the real
             // model answers as that agent; offline: the scripted reply), shown on its visit card. Read-only, as the keys are.
@@ -807,6 +818,49 @@ namespace MuseDesk.Voice
 
         /// <summary>rc22: set by the Wall habitat (optional): a Manager plan card is open, waiting for approval.</summary>
         public static Func<bool> ManagerPlanOpen;
+
+        [Tooltip("rc22 polish: agents answer small talk (greetings, how are you, thanks, jokes, banter) with short scripted lines.")]
+        public bool smallTalkEnabled = true;
+        int _smallTalkTurn;
+        /// <summary>For drivers: how many small-talk lines were answered, and the last one.</summary>
+        public int SmallTalkCount { get; private set; }
+        public string LastSmallTalk { get; private set; }
+
+        bool TrySmallTalk(string heard, VoiceIntent intent, bool ambient, bool addressedAny, VoiceAgentTarget addrWho, string addrRest)
+        {
+            if (!smallTalkEnabled) return false;
+            bool chatty = intent.Kind == VoiceIntentKind.None || intent.Kind == VoiceIntentKind.Status || intent.Kind == VoiceIntentKind.AskAgent
+                          || intent.Kind == VoiceIntentKind.AskWhy || intent.Kind == VoiceIntentKind.WhoNeedsMe;
+            if (!chatty) return false;
+            string text = addressedAny ? addrRest : heard;
+            SmallTalkKind kind = SmallTalk.Classify(text);
+            if (kind == SmallTalkKind.None) return false;
+
+            VoiceAgentTarget companion = VoiceAgentTarget.None;
+            try { if (CompanionAgent != null) companion = CompanionAgent(); } catch { }
+            if (ambient && !addressedAny && companion == VoiceAgentTarget.None) return false;   // hands-free room chatter stays private
+            VoiceAgentTarget who = addressedAny ? addrWho : VoiceAgentTarget.None;
+            if (who == VoiceAgentTarget.None) who = VoiceIntentClassifier.ResolveTarget(heard);   // "thanks, developer"
+            if (who == VoiceAgentTarget.None) who = companion;
+            if (who == VoiceAgentTarget.None) who = VoiceAgentTarget.Manager;
+
+            string line = SmallTalk.Reply(kind, who, _smallTalkTurn++);
+            if (string.IsNullOrEmpty(line)) return false;
+            string id = VoiceIntentClassifier.AgentId(who) ?? "manager";
+            SmallTalkCount++;
+            LastSmallTalk = id + ": " + line;
+            LastIntent = "SmallTalk";
+            LastMessage = line;
+            _ambient = _ambientQuiet = false;
+            _actedOnPartial = VoiceIntentKind.None;
+            _partial = "";
+            if (policy != null) policy.NotifyHeard(LastMessage);
+            Result(VoiceAnswers.RoleName(id), line, VoiceTone.Agent, 4f, "Small talk (scripted). Nothing changed.");
+            bool spoke = false;
+            try { spoke = AgentSpeech.Say(id, line, _office.SpeakerPosition(id)); } catch (Exception e) { Debug.LogWarning("[MuseDesk] voice: small talk not spoken (" + e.GetType().Name + ")."); }
+            Route("SmallTalk:" + kind + ":" + who, "\"" + line + "\"" + (spoke ? "" : " (not spoken: speech off or unavailable)"));
+            return true;
+        }
 
         static bool SafeCall(Func<bool> f) { try { return f != null && f(); } catch { return false; } }
 

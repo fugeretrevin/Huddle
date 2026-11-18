@@ -125,6 +125,8 @@ namespace MuseDesk.Wall
                     case "Spine": if (_spine == null) _spine = t; break;
                 }
             }
+            // rc22 polish (owner: "arms clip through themselves when idle full size"): hanging arms are rolled clear of the body.
+            if (GetComponent<AgentArmClearance>() == null) gameObject.AddComponent<AgentArmClearance>();
             _baseLocal = transform.localPosition;
             _breathPhase = Random.value * 10f;
             _pokeReady = _waveReady = Time.unscaledTime + 1.5f;
