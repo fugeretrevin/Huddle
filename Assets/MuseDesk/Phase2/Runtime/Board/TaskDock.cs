@@ -359,6 +359,8 @@ namespace MuseDesk.Phase2.Board
             _modeShownKind = kind;
             SetText(modeLabel, ref _modeShown, kind == 2 ? "LIVE" : kind == 1 ? "SCRIPTED DEMO" : "STARTING");
             if (modeChip == null) return;
+            // Capture-only switch (off by default): no empty amber chip once the demo words are hidden.
+            modeChip.enabled = !(kind == 1 && MuseDesk.DebugTools.CaptureClean.On);
             Color c = kind == 2 ? liveChipColor : kind == 1 ? demoChipColor : startingChipColor;
             if (_block == null) _block = new MaterialPropertyBlock();
             modeChip.GetPropertyBlock(_block);

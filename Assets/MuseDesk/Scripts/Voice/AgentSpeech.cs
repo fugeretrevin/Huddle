@@ -122,6 +122,7 @@ namespace MuseDesk.Voice
             t = Regex.Replace(t, @"\s+", " ").Trim();
             // The card carries the mode label; it is not read aloud.
             if (t.StartsWith("SCRIPTED DEMO", StringComparison.Ordinal)) t = t.Substring("SCRIPTED DEMO".Length).TrimStart(' ', ':', '.', '-', '·');
+            if (MuseDesk.DebugTools.CaptureClean.On) t = MuseDesk.DebugTools.CaptureClean.Clean(t);   // capture-only switch
             if (t.Length <= MaxChars) return t;
             int cut = -1;
             for (int i = Mathf.Min(MaxChars, t.Length - 1); i > 40; i--)

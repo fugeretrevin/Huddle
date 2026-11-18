@@ -168,6 +168,8 @@ namespace MuseDesk.Documents
             _agentId = agentId;
             Revision = revision < 0 ? 0 : revision;
             bool live = string.Equals(sourceMode ?? c.SourceMode, SourceModes.Live, System.StringComparison.OrdinalIgnoreCase);
+            // Capture-only switch (off by default): the paper drops its demo band/words for a filmed shot.
+            if (MuseDesk.DebugTools.CaptureClean.On) live = true;
             string mode = live ? "" : "SCRIPTED DEMO";        // rc20 (owner): no LIVE tag; the demo stays labelled
             string needs = Revision > 0 ? "Revised proposal " + Revision + ". Needs your decision" : "Needs your decision";
             Color bandText = live ? liveBandText : demoBandText;
