@@ -1,4 +1,4 @@
-# MuseDesk
+# Huddle
 
 Meta Quest 3 mixed-reality workspace for supervising real AI agents. Three miniature
 AI coworkers (Researcher, Developer, Tester) sit on your real desk in passthrough, do
