@@ -1,0 +1,51 @@
+{
+  "document": "MuseDesk Wall Habitat integration contract",
+  "version": "draft-1",
+  "status": "proposed; adapt to inspected project interfaces before implementation",
+  "workspace_modes": ["Desk", "Floor", "Ceiling", "Wall"],
+  "feature_flags": [
+    "wall_habitat_enabled", "wall_manager_enabled", "agent_select_enabled",
+    "agent_btw_enabled", "large_agent_portal_enabled", "wall_elevator_vfx_enabled"
+  ],
+  "coordinate_system": {"unity_up": "+Y", "wall_outward": "+Z", "wall_horizontal": "+X", "meters_per_unit": 1},
+  "required_habitat_sockets": [
+    "WallContact", "ManagerOfficeSocket", "ResearchCubicleSocket",
+    "DeveloperCubicleSocket", "TesterCubicleSocket", "ElevatorCarSocket",
+    "ElevatorStop_Lower", "ElevatorStop_Manager", "TaskPrinterSocket",
+    "AttentionBeaconSocket", "PortalDepartureSocket", "CourierDispatchSocket"
+  ],
+  "required_agent_sockets": [
+    "AgentHomePose", "WorkPose", "SeatPose", "EntryPose", "HandoffPose",
+    "ElevatorQueuePose", "DocumentAttach", "HeadLookTarget"
+  ],
+  "agent_roles": ["researcher", "developer", "tester", "manager"],
+  "agent_presentation_states": ["home", "selected", "carried_proxy", "desk_visit", "large_portal", "returning"],
+  "manager_plan": {
+    "required": ["plan_id", "revision", "source_request_id", "provenance", "items", "status"],
+    "task_item_required": ["client_item_id", "title", "kind", "proposed_agent", "depends_on", "acceptance_criteria"],
+    "status": ["proposed", "approved", "rejected", "committed", "failed"],
+    "guarantees": ["validated_DAG", "allowed_agent_capabilities", "revision_guard", "idempotent_commit", "authoritative_task_ids"]
+  },
+  "side_conversation": {
+    "request_fields": ["request_id", "agent_id", "task_id", "visit_session_id", "question", "context_revision"],
+    "reply_fields": ["reply", "provenance", "context_revision", "status"],
+    "default_permissions": ["read_authorized_task_snapshot", "explain_existing_result"],
+    "forbidden_without_separate_approval": ["mutate_task", "write_code", "execute_tool", "approve", "deploy", "access_secrets", "spawn_worker"]
+  },
+  "authoritative_state_invariants": [
+    "one logical worker per agent_id",
+    "visual relocation never changes task state",
+    "visual projection does not create backend worker",
+    "new task card only after backend confirms canonical task_id",
+    "manager plan commit idempotent and revision-checked",
+    "portal placement explicitly confirmed and clearance checked",
+    "tracking loss cancels placement/grabs rather than committing",
+    "existing Desk/Floor/Ceiling remain functional",
+    "SCRIPTED DEMO provenance visible on any simulated outputs"
+  ],
+  "minimum_hardware_gates": [
+    "wall_anchor_real_room", "habitat_no_visible_clipping", "elevator_motion",
+    "far_agent_selection", "desk_visit_non_disruptive", "manager_real_task_cards",
+    "portal_safe_placement", "quest_performance_profile"
+  ]
+}

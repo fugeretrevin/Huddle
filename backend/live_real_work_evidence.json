@@ -1,0 +1,392 @@
+{
+ "objective": "build a small to-do list module where you can add, complete and list tasks, with tests",
+ "steps": [
+  {
+   "step": "session",
+   "status": 201,
+   "body": {
+    "schema_version": 1,
+    "session_id": "ses-ff096f3854f7",
+    "token": "gpHvgD0Hl9JpWpUnbR1iZnBaLas57vBARi5R9pJDEbk",
+    "mode": "live_local",
+    "created_at": "2026-11-18T02:40:54Z",
+    "last_seq": 1
+   }
+  },
+  {
+   "step": "R1 propose",
+   "status": 201,
+   "body": {
+    "plan_id": "mp-f6a1f538ac",
+    "source_request_id": "real-1",
+    "title": "Build to-do list module with add, complete, list and tests",
+    "objective": "build a small to-do list module where you can add, complete and list tasks, with tests",
+    "created_at": "2026-11-18T02:41:05Z",
+    "provenance": "LIVE_MODEL",
+    "provenance_note": "Plan drafted by a configured model and then validated by the backend.",
+    "work_execution": "sandbox",
+    "assumptions": [
+     "Fresh Python folder with module file todo.py containing TodoList class",
+     "In-memory storage only, no database or files, Task has id, title, completed flag",
+     "Tests use pytest in test_todo.py"
+    ],
+    "risks": [
+     "Over-scoping beyond add/complete/list",
+     "Ambiguous task ID handling if titles duplicate"
+    ],
+    "items": [
+     {
+      "client_item_id": "todo-impl",
+      "title": "Implement todo.py TodoList with add, complete, list tasks",
+      "kind": "implement",
+      "proposed_agent": "developer",
+      "depends_on": [],
+      "acceptance_criteria": [
+       "TodoList supports add(title)",
+       "TodoList supports complete(id) and list_tasks()",
+       "Completed state is tracked correctly"
+      ],
+      "required_permission": "workspace_write",
+      "dangerous": false,
+      "danger_reasons": []
+     },
+     {
+      "client_item_id": "todo-tests",
+      "title": "Add pytest test_todo.py for add, complete, list tasks",
+      "kind": "test",
+      "proposed_agent": "tester",
+      "depends_on": [
+       "todo-impl"
+      ],
+      "acceptance_criteria": [
+       "Tests cover add and list",
+       "Tests cover complete and edge cases",
+       "Tests are discoverable by pytest"
+      ],
+      "required_permission": "workspace_write",
+      "dangerous": false,
+      "danger_reasons": []
+     },
+     {
+      "client_item_id": "todo-verify",
+      "title": "Run pytest suite and verify todo module passes",
+      "kind": "verify",
+      "proposed_agent": "tester",
+      "depends_on": [
+       "todo-tests"
+      ],
+      "acceptance_criteria": [
+       "All pytest tests pass",
+       "No regressions reported"
+      ],
+      "required_permission": "run_tests",
+      "dangerous": false,
+      "danger_reasons": []
+     }
+    ],
+    "status": "proposed",
+    "revision": 1,
+    "reject_reason": null,
+    "failure": null,
+    "committed_tasks": []
+   }
+  },
+  {
+   "step": "R2 commit",
+   "status": 200,
+   "body": {
+    "plan_id": "mp-f6a1f538ac",
+    "status": "committed",
+    "revision": 2,
+    "tasks": [
+     {
+      "client_item_id": "todo-impl",
+      "task_id": "t2-15c0879438",
+      "agent_id": "developer",
+      "state": "queued",
+      "revision": 0,
+      "depends_on": []
+     },
+     {
+      "client_item_id": "todo-tests",
+      "task_id": "t2-44c17187f1",
+      "agent_id": "tester",
+      "state": "blocked",
+      "revision": 0,
+      "depends_on": [
+       "t2-15c0879438"
+      ]
+     },
+     {
+      "client_item_id": "todo-verify",
+      "task_id": "t2-6e60fddc23",
+      "agent_id": "tester",
+      "state": "blocked",
+      "revision": 0,
+      "depends_on": [
+       "t2-44c17187f1"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "step": "R2 status (final)",
+   "status": 200,
+   "body": {
+    "plan_id": "mp-f6a1f538ac",
+    "title": "Build to-do list module with add, complete, list and tests",
+    "plan_status": "committed",
+    "provenance": "LIVE_MODEL",
+    "total": 3,
+    "counts": {
+     "completed": 3
+    },
+    "cards": [
+     {
+      "task_id": "t2-15c0879438",
+      "client_item_id": "todo-impl",
+      "title": "Implement todo.py TodoList with add, complete, list tasks",
+      "agent_id": "developer",
+      "state": "completed",
+      "revision": 2,
+      "depends_on": [],
+      "result": "Code written: todo.py, test_todo.py \u00b7 pytest 8 passed, 0 failed"
+     },
+     {
+      "task_id": "t2-44c17187f1",
+      "client_item_id": "todo-tests",
+      "title": "Add pytest test_todo.py for add, complete, list tasks",
+      "agent_id": "tester",
+      "state": "completed",
+      "revision": 3,
+      "depends_on": [
+       "t2-15c0879438"
+      ],
+      "result": "Tests run: 14 passed, 0 failed"
+     },
+     {
+      "task_id": "t2-6e60fddc23",
+      "client_item_id": "todo-verify",
+      "title": "Run pytest suite and verify todo module passes",
+      "agent_id": "tester",
+      "state": "completed",
+      "revision": 3,
+      "depends_on": [
+       "t2-44c17187f1"
+      ],
+      "result": "Tests run: 23 passed, 0 failed"
+     }
+    ],
+    "failed": [],
+    "blocked": [],
+    "settled": true,
+    "synthesis": null,
+    "source_mode": "live",
+    "revision": 2,
+    "objective": "build a small to-do list module where you can add, complete and list tasks, with tests",
+    "items": [
+     {
+      "client_item_id": "todo-impl",
+      "title": "Implement todo.py TodoList with add, complete, list tasks",
+      "kind": "implement",
+      "proposed_agent": "developer",
+      "depends_on": [],
+      "acceptance_criteria": [
+       "TodoList supports add(title)",
+       "TodoList supports complete(id) and list_tasks()",
+       "Completed state is tracked correctly"
+      ],
+      "required_permission": "workspace_write",
+      "dangerous": false,
+      "danger_reasons": []
+     },
+     {
+      "client_item_id": "todo-tests",
+      "title": "Add pytest test_todo.py for add, complete, list tasks",
+      "kind": "test",
+      "proposed_agent": "tester",
+      "depends_on": [
+       "todo-impl"
+      ],
+      "acceptance_criteria": [
+       "Tests cover add and list",
+       "Tests cover complete and edge cases",
+       "Tests are discoverable by pytest"
+      ],
+      "required_permission": "workspace_write",
+      "dangerous": false,
+      "danger_reasons": []
+     },
+     {
+      "client_item_id": "todo-verify",
+      "title": "Run pytest suite and verify todo module passes",
+      "kind": "verify",
+      "proposed_agent": "tester",
+      "depends_on": [
+       "todo-tests"
+      ],
+      "acceptance_criteria": [
+       "All pytest tests pass",
+       "No regressions reported"
+      ],
+      "required_permission": "run_tests",
+      "dangerous": false,
+      "danger_reasons": []
+     }
+    ],
+    "work_execution": "sandbox",
+    "synthesis_artifact_id": null
+   }
+  },
+  {
+   "step": "R6 ask tester",
+   "status": 200,
+   "body": {
+    "request_id": "real-ask",
+    "agent_id": "tester",
+    "task_id": "t2-6e60fddc23",
+    "visit_session_id": "visit-real",
+    "reply": "Yes. Tests run: 23 passed, 0 failed.",
+    "provenance": "LIVE_MODEL",
+    "status": "answered",
+    "context_revision": 3,
+    "stale_context": false,
+    "task_snapshot": {
+     "task_id": "t2-6e60fddc23",
+     "title": "Run pytest suite and verify todo module passes",
+     "state": "completed",
+     "agent_id": "tester",
+     "revision": 3
+    },
+    "label": "Model-written",
+    "intent": "status",
+    "context_used": [
+     "task",
+     "events",
+     "artifacts"
+    ],
+    "truncated": false,
+    "deduped": false,
+    "proposed_action": null,
+    "proposed_amendment": null
+   }
+  },
+  {
+   "step": "R7 ask developer what changed",
+   "status": 200,
+   "body": {
+    "request_id": "real-changed",
+    "agent_id": "developer",
+    "task_id": "t2-15c0879438",
+    "visit_session_id": "visit-real",
+    "reply": "According to the context, the change was:\n\nCode written: `todo.py`, `test_todo.py` \u00b7 pytest 8 passed, 0 failed\n\nFor task: Implement todo.py TodoList with add, complete, list tasks.",
+    "provenance": "LIVE_MODEL",
+    "status": "answered",
+    "context_revision": 2,
+    "stale_context": false,
+    "task_snapshot": {
+     "task_id": "t2-15c0879438",
+     "title": "Implement todo.py TodoList with add, complete, list tasks",
+     "state": "completed",
+     "agent_id": "developer",
+     "revision": 2
+    },
+    "label": "Model-written",
+    "intent": "status",
+    "context_used": [
+     "task",
+     "events",
+     "artifacts"
+    ],
+    "truncated": false,
+    "deduped": false,
+    "proposed_action": null,
+    "proposed_amendment": null
+   }
+  },
+  {
+   "step": "R8 change request",
+   "status": 200,
+   "body": {
+    "request_id": "real-change",
+    "agent_id": "developer",
+    "task_id": "t2-15c0879438",
+    "visit_session_id": "visit-real",
+    "reply": "I did not apply that. /btw is read-only, so changing work needs your approval through the normal task flow. Task 'Implement todo.py TodoList with add, complete, list tasks' is completed, revision 2. Last update: task.completed - Code written: todo.py, test_todo.py \u00b7 pytest 8 passed, 0 failed at 2026-11-18T02:42:29Z. Artifacts: code_diff: Code written: todo.py, test_todo.py \u00b7 pytest 8 passed, 0 failed.",
+    "provenance": "TASK_SNAPSHOT",
+    "status": "amendment_suggested",
+    "context_revision": 2,
+    "stale_context": false,
+    "task_snapshot": {
+     "task_id": "t2-15c0879438",
+     "title": "Implement todo.py TodoList with add, complete, list tasks",
+     "state": "completed",
+     "agent_id": "developer",
+     "revision": 2
+    },
+    "label": "From task data (no model)",
+    "intent": "change_request",
+    "context_used": [],
+    "truncated": false,
+    "deduped": false,
+    "proposed_action": {
+     "kind": "change",
+     "negated": false,
+     "target_task_id": "t2-15c0879438",
+     "target_agent": "developer",
+     "text": "Developer, can you also let the user delete a task by its number?",
+     "requires_confirmation": true,
+     "applied": false,
+     "summary": "Requested change (not applied): Developer, can you also let the user delete a task by its number?"
+    },
+    "proposed_amendment": {
+     "summary": "Requested change (not applied): Developer, can you also let the user delete a task by its number?",
+     "requires_approval": true
+    }
+   }
+  },
+  {
+   "step": "R9 apply change",
+   "status": 200,
+   "body": {
+    "plan_id": "mp-f6a1f538ac",
+    "status": "committed",
+    "revision": 3,
+    "tasks": [
+     {
+      "client_item_id": "amend-1",
+      "task_id": "t2-77ddaa8c64",
+      "agent_id": "developer",
+      "state": "queued",
+      "revision": 0,
+      "depends_on": [
+       "t2-15c0879438"
+      ]
+     }
+    ],
+    "amended": true
+   }
+  }
+ ],
+ "independent_pytest": ".......................                                                  [100%]\n23 passed in 0.04s\n",
+ "apply_change": {
+  "suggestion": "Requested change (not applied): Developer, can you also let the user delete a task by its number?",
+  "task": [
+   "t2-77ddaa8c64"
+  ],
+  "end": {
+   "task_id": "t2-77ddaa8c64",
+   "client_item_id": "amend-1",
+   "title": "Change: also let the user delete a task by its number",
+   "agent_id": "developer",
+   "state": "completed",
+   "revision": 2,
+   "depends_on": [
+    "t2-15c0879438"
+   ],
+   "result": "Code written: todo.py, test_todo.py \u00b7 pytest 30 passed, 0 failed"
+  },
+  "seconds": 30
+ }
+}
