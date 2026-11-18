@@ -35,9 +35,9 @@ and the B1/B2 smoke on it before uploading.
 
 | Item | Status |
 |---|---|
-| Video under 3:00 (2:45–2:50), captions, public on YouTube or Vimeo (`FINAL_VIDEO_SHOT_LEDGER.md`) | TO FILM |
-| Music original or licensed; no third-party logos; no identifiable non-entrants | check on the edit |
-| SCRIPTED DEMO parts labelled; live parts show their LIVE labels; "Minutes later" for the live run | check on the edit |
+| Video under 3:00, captions, public on YouTube or Vimeo | **CUT DONE 2026-11-18:** v4 is 1:52.3, 1080p30 H.264, captions burned in, QA passed. It lives outside the repo in `C:\dev\MuseDesk\MuseDesk_Demo_Film` (`Renders/MuseDesk_Competition_Cut_v4.mp4`; start from `START_HERE.md` there). The footage is not committed (6 GB, private room). **Upload to YouTube/Vimeo: Owner.** |
+| Music original or licensed; no third-party logos; no identifiable non-entrants | DONE: the score and SFX are synthesised in the film pipeline (`make_audio.py`) |
+| LIVE vs SCRIPTED provenance | **Owner decision 2026-11-18: no on-screen LIVE/SCRIPTED chips.** Provenance goes in the Devpost description (paragraph in `MuseDesk_Demo_Film/START_HERE.md` §5.4). Two things keep it clear on screen: the scripted decision example plays after the live run is finished, and the template paper's own footer ("Template recommendation. Not live AI research.") stays visible. "4 minutes later" is honest (approve 4:32 → done 8:45). |
 | Description (below) reviewed by the owner | DRAFT |
 | Screenshots: desk, plan paper with the LIVE footer, Wall habitat, portal visitor, receipt with real counts | TO CAPTURE |
 | Credits: Antigravity art, sound sources, Meta Model API, Wit.ai | DRAFT |
