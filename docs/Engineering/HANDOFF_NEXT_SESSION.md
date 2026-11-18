@@ -1,5 +1,46 @@
 ﻿# Handoff for the next session
 
+## UPDATE 2026-11-18 (demo day): HOW TO START UP (read this first; deadline 2026-11-18 12:00 PT)
+
+**State:** the Quest runs **rc25** (`Builds/MuseDesk_rc25_release.apk`, `77B7B50A…D63C`, versionCode 9, release-signed).
+HEAD `0e88c79` on `feature/rc8-feedback-1` (local only, not pushed). The owner started recording the demo on 2026-11-18 morning;
+the backend was stopped afterwards on their request. Next build would be rc26, versionCode 10 (`BuildApkTo.cs` protects rc6–rc25).
+
+**Start the live backend (Meta model, real code in the restricted workspace, Screen panel + app windows ON):**
+```powershell
+# from the repo root; its OWN window (Claude Code may kill its own background shells under memory pressure)
+$root=(Get-Location).Path; $log="$root\Logs\backend_live_demo.log"
+Start-Process powershell -ArgumentList "-NoExit","-ExecutionPolicy","Bypass","-Command",
+  "`$host.UI.RawUI.WindowTitle='MuseDesk backend (LIVE)'; & '$root\scripts\start_wall_backend.ps1' *>&1 | Tee-Object -FilePath '$log'"
+```
+- Expect in the log: "Screen panel: ON", "App windows: ON", "Starting LIVE with the Meta model API", "Application startup complete".
+  The red `NativeCommandError` line is just uvicorn writing INFO to stderr (harmless).
+- Check: `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/health` → 200.
+- Flags: `-NoScreen` (no screen panel, no app windows), `-TextOnly` (model text only, no code run), `-Demo` (scripted demo).
+- The owner can also just run `powershell -ExecutionPolicy Bypass -File scripts\start_wall_backend.ps1` in their own terminal.
+
+**Connect the Quest (USB):**
+```powershell
+$adb="C:\Program Files\Unity\Hub\Editor\6000.6.8f1\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\platform-tools\adb.exe"
+& $adb -s 2G97C5ZHCK037K reverse tcp:8765 tcp:8765     # -s is needed: a stale "emulator-5562 offline" is also listed
+& $adb -s 2G97C5ZHCK037K shell dumpsys package com.musedesk.quest | Select-String versionCode   # 9 = rc25
+```
+- Then **restart MuseDesk on the Quest** if it was open while the backend was down (it drops to the offline SCRIPTED DEMO
+  and only goes live on a fresh launch).
+- Before filming: the Screen panel mirrors this PC's main screen. Tell the owner to hide private windows.
+
+**Stop the backend:** close the "MuseDesk backend (LIVE)" window, or find the listener and stop its tree:
+`Get-NetTCPConnection -LocalPort 8765 -State Listen` → OwningProcess (python) → its parent python (venv launcher) →
+its parent powershell. Also stop any `python … app_window_host …` process (an open app window). Confirm /health fails.
+
+**rc25 app windows (owner asked how to use them):** in the headset press **Screen** (dock) → **Open app** (panel's lower
+left) → the PC opens the newest program the agents built (`build_ui(ui)` window, else a `main(argv)` run panel) and the
+panel shows only that window → fingertip taps reach it (press in, pull back ~2.5 cm before the next tap) → **Close app**
+(same key) or the red Close app button in the window. Picks the session's newest work, else the newest on the PC
+(last one: tic-tac-toe, `backend\sandbox_workspaces\plans\mp-0781687d3f`). Real fingertip taps are NOT yet owner-confirmed.
+
+**Offline Play drives / preflight in the Editor need the backend OFF** (otherwise the Editor goes live mid-run).
+
 ## UPDATE 2026-11-17 night (read this first; deadline 2026-11-18 12:00 PT)
 
 - **On the Quest:** the newest rcNN-release in `Builds/` (see the bottom of the newest `RC2x_QA.md`; rc23 = 28DCF3ED,
